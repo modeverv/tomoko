@@ -11,7 +11,14 @@ from server.edge.pipeline.vad import VADProcessor
 from server.gateway.thinking.fast import ThinkFastMode
 from server.session import TomoroSession
 from server.shared.inference.backends.base import InferenceBackend
-from server.shared.models import SpeechSegment, ThinkingEvent, ThinkingInput, Transcript
+from server.shared.models import (
+    AttentionMode,
+    ParticipationMode,
+    SpeechSegment,
+    ThinkingEvent,
+    ThinkingInput,
+    Transcript,
+)
 
 
 class SequenceVAD:
@@ -38,7 +45,16 @@ class ConstantTranscriber:
 
 
 class InMemoryAmbientLogWriter:
-    async def write(self, transcript: Transcript, *, tomoko_participated: bool) -> None:
+    async def write(
+        self,
+        transcript: Transcript,
+        *,
+        tomoko_participated: bool,
+        attention_mode: AttentionMode,
+        attended: bool,
+        participation_mode: ParticipationMode,
+    ) -> None:
+        del attention_mode, attended, participation_mode
         self.transcript = transcript
         self.tomoko_participated = tomoko_participated
 

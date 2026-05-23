@@ -6,6 +6,9 @@ from typing import Literal
 
 import numpy as np
 
+AttentionMode = Literal["ambient", "engaged", "cooldown", "withdrawn"]
+ParticipationMode = Literal["called", "invited", "observer", "withdraw"]
+
 
 @dataclass
 class SpeechSegment:
@@ -29,8 +32,30 @@ class Transcript:
 @dataclass
 class ParticipationDecision:
     should_participate: bool
-    mode: Literal["called", "invited", "observer", "withdraw"]
+    mode: ParticipationMode
     reason: str
+
+
+@dataclass(frozen=True)
+class ParticipationContext:
+    transcript: str
+    attention_mode: AttentionMode = "ambient"
+    device_id: str | None = None
+    speaker: str | None = None
+
+    @classmethod
+    def from_transcript(
+        cls,
+        transcript: Transcript,
+        *,
+        attention_mode: AttentionMode,
+    ) -> ParticipationContext:
+        return cls(
+            transcript=transcript.text,
+            attention_mode=attention_mode,
+            device_id=transcript.device_id,
+            speaker=transcript.speaker,
+        )
 
 
 @dataclass

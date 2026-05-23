@@ -13,7 +13,14 @@ from server.session import TomoroSession
 from server.shared.inference.backends.base import InferenceBackend
 from server.shared.inference.tts.base import TTSBackend
 from server.shared.inference.tts.say import SayBackend
-from server.shared.models import AudioChunkOut, SpeechSegment, Transcript, TTSInput
+from server.shared.models import (
+    AttentionMode,
+    AudioChunkOut,
+    ParticipationMode,
+    SpeechSegment,
+    Transcript,
+    TTSInput,
+)
 
 
 class SequenceVAD:
@@ -40,7 +47,16 @@ class ConstantTranscriber:
 
 
 class InMemoryAmbientLogWriter:
-    async def write(self, transcript: Transcript, *, tomoko_participated: bool) -> None:
+    async def write(
+        self,
+        transcript: Transcript,
+        *,
+        tomoko_participated: bool,
+        attention_mode: AttentionMode,
+        attended: bool,
+        participation_mode: ParticipationMode,
+    ) -> None:
+        del attention_mode, attended, participation_mode
         self.transcript = transcript
         self.tomoko_participated = tomoko_participated
 

@@ -8,7 +8,7 @@ import pytest
 from server.edge.participation.wake_word import WakeWordJudge
 from server.edge.pipeline.vad import VADProcessor
 from server.session import TomoroSession
-from server.shared.models import SpeechSegment, Transcript
+from server.shared.models import AttentionMode, ParticipationMode, SpeechSegment, Transcript
 
 
 class SequenceVAD:
@@ -43,7 +43,16 @@ class InMemoryAmbientLogWriter:
     def __init__(self) -> None:
         self.rows: list[tuple[Transcript, bool]] = []
 
-    async def write(self, transcript: Transcript, *, tomoko_participated: bool) -> None:
+    async def write(
+        self,
+        transcript: Transcript,
+        *,
+        tomoko_participated: bool,
+        attention_mode: AttentionMode,
+        attended: bool,
+        participation_mode: ParticipationMode,
+    ) -> None:
+        del attention_mode, attended, participation_mode
         self.rows.append((transcript, tomoko_participated))
 
 

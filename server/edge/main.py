@@ -13,7 +13,7 @@ from server.edge.pipeline.vad import create_vad_processor
 from server.gateway.thinking.fast import ThinkFastMode
 from server.session import TomoroSession
 from server.shared.config import NodeConfig
-from server.shared.db import PostgresAmbientLogWriter
+from server.shared.db import PostgresAmbientLogWriter, PostgresConversationLogWriter
 from server.shared.inference.router import InferenceRouter
 from server.shared.inference.tts import create_tts_backend
 from server.shared.inference.tts.base import TTSBackend
@@ -81,6 +81,11 @@ async def websocket_session(websocket: WebSocket) -> None:
         "ambient_log_writer_factory",
         _create_default_ambient_log_writer,
     )
+    conversation_log_writer_factory = getattr(
+        app.state,
+        "conversation_log_writer_factory",
+        _create_default_conversation_log_writer,
+    )
     router_factory = getattr(
         app.state,
         "router_factory",
@@ -103,6 +108,7 @@ async def websocket_session(websocket: WebSocket) -> None:
         transcriber=transcriber_factory(),
         participation_judge=participation_judge_factory(),
         ambient_log_writer=ambient_log_writer_factory(),
+        conversation_log_writer=conversation_log_writer_factory(),
         router=router_factory(),
         thinking_mode=thinking_mode_factory(),
         tts_backend=tts_backend_factory(),
@@ -134,3 +140,8 @@ def _create_default_transcriber() -> SpeechTranscriber:
 def _create_default_ambient_log_writer() -> PostgresAmbientLogWriter:
     config = _load_config()
     return PostgresAmbientLogWriter(config.database.dsn)
+
+
+def _create_default_conversation_log_writer() -> PostgresConversationLogWriter:
+    config = _load_config()
+    return PostgresConversationLogWriter(config.database.dsn)

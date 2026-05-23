@@ -13,7 +13,7 @@ from server.gateway.thinking.fast import ThinkFastMode
 from server.session import TomoroSession
 from server.shared.inference.backends.base import InferenceBackend
 from server.shared.inference.tts.say import SayBackend
-from server.shared.models import SpeechSegment, Transcript
+from server.shared.models import AttentionMode, ParticipationMode, SpeechSegment, Transcript
 
 
 class SequenceVAD:
@@ -40,8 +40,17 @@ class ConstantTranscriber:
 
 
 class NoopAmbientLogWriter:
-    async def write(self, transcript: Transcript, *, tomoko_participated: bool) -> None:
-        pass
+    async def write(
+        self,
+        transcript: Transcript,
+        *,
+        tomoko_participated: bool,
+        attention_mode: AttentionMode,
+        attended: bool,
+        participation_mode: ParticipationMode,
+    ) -> None:
+        del transcript, tomoko_participated, attention_mode, attended, participation_mode
+        return None
 
 
 class FastBackend(InferenceBackend):
