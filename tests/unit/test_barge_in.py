@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 
@@ -118,6 +119,7 @@ class FakeTTSBackend(TTSBackend):
 async def run_one_finished_speech(session: TomoroSession) -> None:
     for _ in range(14):
         await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+    await asyncio.sleep(0)
 
 
 @pytest.mark.unit
@@ -203,6 +205,7 @@ async def test_session_filters_tomoko_echo_during_playback_window() -> None:
     )
 
     await run_one_finished_speech(session)
+    await session._wait_for_reply_task()
     await run_one_finished_speech(session)
 
     assert [row[3] for row in ambient_logs.rows] == ["called", "observer"]
@@ -234,6 +237,7 @@ async def test_session_keeps_hard_interrupt_as_participation() -> None:
     )
 
     await run_one_finished_speech(session)
+    await session._wait_for_reply_task()
     await run_one_finished_speech(session)
 
     assert [row[3] for row in ambient_logs.rows] == ["called", "invited"]

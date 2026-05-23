@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 from collections.abc import Callable
+from contextlib import suppress
 from typing import Any, Literal
 
 import numpy as np
@@ -77,6 +79,10 @@ class TomoroSession:
         self.audio_turns = AudioTurnController(
             playback_echo_grace_ms=playback_echo_grace_ms
         )
+        self._send_lock = asyncio.Lock()
+        self._reply_task: asyncio.Task[None] | None = None
+        self._tts_worker_task: asyncio.Task[None] | None = None
+        self._tts_queue: asyncio.Queue[tuple[str, str] | None] | None = None
 
     @property
     def _playback_echo_grace_ms(self) -> int:
@@ -133,6 +139,7 @@ class TomoroSession:
                 barge_in_decision.reason,
             )
             if barge_in_decision.action == "restart_turn":
+                await self._cancel_reply_generation()
                 await self._stop_active_audio_turn()
             if barge_in_decision.action == "continue_speaking":
                 if self.ambient_log_writer is not None:
@@ -187,10 +194,7 @@ class TomoroSession:
                 )
             
             if self.router is not None and self.thinking_mode is not None:
-                try:
-                    await self._reply_to(transcript)
-                except Exception as e:
-                    logger.error("Error generating reply: %s", e)
+                await self._start_reply_task(transcript)
 
         self.vad_processor.reset()
         self._reset_transcriber_stream()
@@ -263,32 +267,49 @@ class TomoroSession:
         )
         reply = ReplyPipeline(initial_emotion=thinking_input.emotion)
         self._begin_audio_turn()
-        async for event in self.thinking_mode.think(backend, thinking_input):
-            for command in reply.handle_event(event):
-                if command.action == "emotion":
-                    assert command.image is not None
-                    await self._send_event(
-                        {
-                            "type": "emotion",
-                            "value": command.value,
-                            "image": command.image,
-                        }
-                    )
-                elif command.action == "text_delta":
-                    await self._send_event({"type": "reply_text", "delta": command.value})
-                elif command.action == "tts_text":
-                    await self._flush_tts_text(command.value, style=command.style)
-                elif command.action == "done":
-                    reply_text = reply.reply_text.strip()
-                    if self.conversation_log_writer is not None and reply_text:
-                        await self.conversation_log_writer.write_tomoko_turn(
-                            text=reply_text,
-                            emotion=reply.current_emotion,
-                            device_id=transcript.device_id,
+        tts_queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
+        tts_worker = asyncio.create_task(self._run_tts_queue(tts_queue))
+        self._tts_queue = tts_queue
+        self._tts_worker_task = tts_worker
+        try:
+            async for event in self.thinking_mode.think(backend, thinking_input):
+                for command in reply.handle_event(event):
+                    if command.action == "emotion":
+                        assert command.image is not None
+                        await self._send_event(
+                            {
+                                "type": "emotion",
+                                "value": command.value,
+                                "image": command.image,
+                            }
                         )
-                    await self._send_event({"type": "reply_done"})
-                    await self._end_audio_turn()
-                    self._note_attention_activity()
+                    elif command.action == "text_delta":
+                        await self._send_event({"type": "reply_text", "delta": command.value})
+                    elif command.action == "tts_text":
+                        await tts_queue.put((command.value, command.style))
+                    elif command.action == "done":
+                        await tts_queue.put(None)
+                        await tts_worker
+                        reply_text = reply.reply_text.strip()
+                        if self.conversation_log_writer is not None and reply_text:
+                            await self.conversation_log_writer.write_tomoko_turn(
+                                text=reply_text,
+                                emotion=reply.current_emotion,
+                                device_id=transcript.device_id,
+                            )
+                        await self._send_event({"type": "reply_done"})
+                        await self._end_audio_turn()
+                        self._note_attention_activity()
+        except asyncio.CancelledError:
+            tts_worker.cancel()
+            with suppress(asyncio.CancelledError):
+                await tts_worker
+            raise
+        finally:
+            if self._tts_worker_task is tts_worker:
+                self._tts_worker_task = None
+            if self._tts_queue is tts_queue:
+                self._tts_queue = None
 
     async def handle_playback_telemetry(self, telemetry: PlaybackTelemetry) -> None:
         await self.audio_turns.handle_playback_telemetry(telemetry)
@@ -342,16 +363,63 @@ class TomoroSession:
             await self._transition_attention("ambient")
 
     async def _send_event(self, event: dict[str, str]) -> None:
-        maybe_awaitable = self.send_event(event)
-        if inspect.isawaitable(maybe_awaitable):
-            await maybe_awaitable
+        async with self._send_lock:
+            maybe_awaitable = self.send_event(event)
+            if inspect.isawaitable(maybe_awaitable):
+                await maybe_awaitable
 
     async def _send_audio_chunk(self, chunk: AudioChunkOut) -> None:
         if self.send_audio is None:
             return
-        maybe_awaitable = self.send_audio(chunk.data)
-        if inspect.isawaitable(maybe_awaitable):
-            await maybe_awaitable
+        async with self._send_lock:
+            maybe_awaitable = self.send_audio(chunk.data)
+            if inspect.isawaitable(maybe_awaitable):
+                await maybe_awaitable
+
+    async def _start_reply_task(self, transcript: Transcript) -> None:
+        await self._cancel_reply_generation()
+        self._reply_task = asyncio.create_task(self._run_reply_task(transcript))
+
+    async def _run_reply_task(self, transcript: Transcript) -> None:
+        try:
+            await self._reply_to(transcript)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error("Error generating reply: %s", e)
+        finally:
+            if self._reply_task is asyncio.current_task():
+                self._reply_task = None
+
+    async def _cancel_reply_generation(self) -> None:
+        current_task = asyncio.current_task()
+        tasks = [
+            task
+            for task in (self._reply_task, self._tts_worker_task)
+            if task is not None and task is not current_task and not task.done()
+        ]
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with suppress(asyncio.CancelledError):
+                await task
+
+    async def _wait_for_reply_task(self) -> None:
+        task = self._reply_task
+        if task is None:
+            return
+        await task
+
+    async def _run_tts_queue(
+        self,
+        queue: asyncio.Queue[tuple[str, str] | None],
+    ) -> None:
+        while True:
+            item = await queue.get()
+            if item is None:
+                return
+            text, style = item
+            await self._flush_tts_text(text, style=style)
 
     async def _flush_tts_text(self, text: str, *, style: str) -> None:
         if self.tts_backend is None or not text.strip():
@@ -370,7 +438,10 @@ class TomoroSession:
         in_active_playback = self._is_client_playback_active()
         in_playback_echo_grace = self._is_playback_echo_grace_active()
         if self.barge_in_detector is None or not (
-            self._is_tomoko_speaking() or in_active_playback or in_playback_echo_grace
+            self._is_tomoko_speaking()
+            or in_active_playback
+            or in_playback_echo_grace
+            or self._is_reply_generation_active()
         ):
             return None
         decision = self.barge_in_detector.classify(
@@ -402,6 +473,12 @@ class TomoroSession:
 
     def _is_client_playback_active(self) -> bool:
         return self.audio_turns.is_client_playback_active()
+
+    def _is_reply_generation_active(self) -> bool:
+        return bool(
+            (self._reply_task is not None and not self._reply_task.done())
+            or (self._tts_worker_task is not None and not self._tts_worker_task.done())
+        )
 
     async def _reserve_audio_chunk(self, *, text: str, chunk: AudioChunkOut) -> AudioChunkOut:
         return await self.audio_turns.reserve_audio_chunk(text=text, chunk=chunk)

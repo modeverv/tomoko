@@ -1521,3 +1521,42 @@ TomoroSession
 `ReplyDisplayPlanner` は current emotion と表示 asset 解決を所有する。
 `TomoroSession` は image path や表示媒体ごとの対応表を直接持たず、`ReplyPipeline` から返る command を
 既存 WebSocket event に変換するだけに留める。
+
+### 2026-05-23 追記: Kokoro MLX streaming TTS と reply task 化
+
+TTS backend は `say` から `kokoro_mlx` を default に切り替える。
+`say` は fallback / regression 用に残すが、設計上は「同期コマンドが終わるまで `/ws` 受信ループを止める」
+前提を捨てる。
+
+```text
+ThinkingMode token stream
+  -> ReplyPipeline
+       -> text_delta: すぐ WebSocket JSON
+       -> tts_text: sentence flush 単位で TTS queue
+  -> TTS worker
+       -> TTSBackend.synthesize(TTSInput) を streaming 消費
+       -> AudioChunkOut が出るたび WebSocket binary
+```
+
+`TomoroSession.process_audio_chunk()` は参加判断後に reply generation task を起動して戻る。
+これにより、Tomoko が返答を生成中でも同じ `/ws` でマイク入力を受け続けられる。
+
+`KokoroMLXBackend` は `kokoro_mlx.KokoroTTS.from_pretrained()` でモデルをロードし、
+`generate_stream(text, voice, speed, sample_rate)` を `asyncio.to_thread` で非同期 generator に包む。
+Kokoro が返す numpy audio chunk は、ブラウザの `decodeAudioData` 互換性を保つため
+chunk ごとに RIFF/WAVE として `AudioChunkOut` に入れる。raw PCM の解釈をクライアントに移さない。
+
+hard interrupt の扱い:
+
+```text
+STT final while reply/TTS active
+  -> BargeInDetector
+  -> hard_interrupt / restart_turn
+  -> reply task cancel
+  -> TTS worker cancel
+  -> audio_control stop
+```
+
+クライアントは引き続き判定しない。
+`audio_control stop` を受けたら再生中/予約済み source を止めるだけで、
+barge-in 判定と TTS cancel の判断はサーバー側 `TomoroSession` に残す。

@@ -345,3 +345,25 @@ reply 配下の `EmotionImageMapper` に閉じ込める。
 `ReplyAudioPlanner` / `ReplyDisplayPlanner` を束ねて `TomoroSession` に command を返す。
 
 `TomoroSession` は引き続き `ReplyPipeline` だけを知り、image path や将来の表示媒体ごとの対応表を直接持たない。
+
+### 確定した判断: Kokoro MLX TTS は generate_stream を AudioChunkOut に包む
+`kokoro-mlx` は `KokoroTTS.from_pretrained()` と
+`generate_stream(text, voice, speed, sample_rate)` を使う。
+
+Tomoko 側の `/ws` binary はブラウザの `decodeAudioData` 互換性を維持するため、
+Kokoro が返す numpy audio chunk を chunk ごとに RIFF/WAVE に包んで `AudioChunkOut` として送る。
+raw PCM をクライアントに解釈させる実装にはしない。
+
+`config/central_realtime.toml` の TTS backend は `kokoro_mlx` に切り替えた。
+`say` backend は回帰テストと fallback 実装として残す。
+
+### 確定した判断: Reply/TTS 生成は background task 化する
+上の「現時点の `/ws` 受信ループは `process_audio_chunk()` を await する直列構造」という判断は、
+kokoro streaming / barge-in 対応に進むために否定する。
+
+参加判断後の reply 生成は background task として起動し、`process_audio_chunk()` はマイク入力処理へ戻る。
+`ReplyPipeline` から sentence flush された `tts_text` は TTS queue に即投入し、
+TTS worker が順次 `TTSBackend.synthesize()` を streaming 消費して、audio chunk が出るたび `/ws` に送る。
+
+hard interrupt では reply task / TTS worker を cancel し、既存の `audio_control stop` を送って
+生成中 TTS とクライアント再生の両方を止める。

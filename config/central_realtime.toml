@@ -14,7 +14,7 @@ conversation_backend = "local_qwen7b"
 conversation_fallback = "local_qwen_mlx"
 stt_backend = "local_whisper_mlx_small"
 vad_backend = "silero_vad"
-tts_backend = "say"
+tts_backend = "kokoro_mlx"
 
 [backends.local_qwen7b]
 type = "ollama"
@@ -51,4 +51,11 @@ privacy_allowed = true
 type = "say"
 voice = "Kyoko"
 max_latency_ms = 10
+privacy_allowed = true
+
+[backends.kokoro_mlx]
+type = "kokoro_mlx"
+model = "mlx-community/Kokoro-82M-bf16"
+voice = "jf_alpha"
+max_latency_ms = 200
 privacy_allowed = true

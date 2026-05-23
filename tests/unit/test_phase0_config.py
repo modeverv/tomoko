@@ -17,12 +17,17 @@ def test_central_realtime_config_uses_ollama_for_m1() -> None:
 
     assert config.node.role == "central_realtime"
     assert config.inference.conversation_backend == "local_qwen7b"
-    assert config.inference.tts_backend == "say"
+    assert config.inference.tts_backend == "kokoro_mlx"
 
     backend = config.backends["local_qwen7b"]
     assert backend.type == "ollama"
     assert backend.model == "qwen2.5:7b"
     assert backend.privacy_allowed is True
+
+    tts_backend = config.backends["kokoro_mlx"]
+    assert tts_backend.type == "kokoro_mlx"
+    assert tts_backend.model == "mlx-community/Kokoro-82M-bf16"
+    assert tts_backend.voice == "jf_alpha"
 
 
 @pytest.mark.unit

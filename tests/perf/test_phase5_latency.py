@@ -94,6 +94,7 @@ async def test_e2e_latency_under_800ms_with_say_backend() -> None:
 
     for _ in range(14):
         await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+    await session._wait_for_reply_task()
 
     assert first_audio_ms is not None
     assert first_audio_ms < 800

@@ -35,6 +35,7 @@ def set_test_vad(processor: VADProcessor) -> None:
     app.state.transcriber_factory = lambda: None
     app.state.ambient_log_writer_factory = lambda: None
     app.state.conversation_log_writer_factory = lambda: None
+    app.state.tts_backend_factory = lambda: None
 
 
 @pytest.mark.unit

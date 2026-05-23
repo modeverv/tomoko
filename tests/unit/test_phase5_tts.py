@@ -129,6 +129,7 @@ async def test_session_sends_emotion_image_before_tts_audio() -> None:
 
     for _ in range(14):
         await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+    await session._wait_for_reply_task()
 
     assert timeline[0] == "emotion:surprised:/assets/images/tomoko-surprised.svg"
     assert timeline[1].startswith("audio_start:")
@@ -159,6 +160,7 @@ async def test_session_flushes_tts_on_sentence_punctuation() -> None:
 
     for _ in range(14):
         await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+    await session._wait_for_reply_task()
 
     assert [tts_input.text for tts_input in tts.inputs] == ["うん。", "聞こえるよ"]
     assert audio_chunks == [
@@ -187,6 +189,7 @@ async def test_session_keeps_emotion_line_out_of_tts_text() -> None:
 
     for _ in range(14):
         await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+    await session._wait_for_reply_task()
 
     assert tts.inputs == [TTSInput(text="うん、聞こえるよ。", style="happy")]
     assert audio_chunks == ["audio:うん、聞こえるよ。".encode()]
@@ -217,6 +220,7 @@ async def test_session_keeps_inline_emotion_prefix_out_of_tts_text() -> None:
 
     for _ in range(14):
         await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+    await session._wait_for_reply_task()
 
     assert tts.inputs == [TTSInput(text="今日は元気いっぱいだよ！", style="happy")]
     assert audio_chunks == ["audio:今日は元気いっぱいだよ！".encode()]

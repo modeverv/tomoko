@@ -191,13 +191,14 @@ async def test_session_streams_reply_text_after_wake_word() -> None:
 
     for _ in range(14):
         await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+    await session._wait_for_reply_task()
 
     assert router.selections == [("conversation", "privacy")]
     assert {"type": "participation", "mode": "called"} in events
     assert {"type": "reply_text", "delta": "うん"} in events
     assert {"type": "reply_text", "delta": "、聞こえるよ"} in events
     assert {"type": "reply_done"} in events
-    assert events[-1] == {"type": "state", "state": "idle"}
+    assert {"type": "state", "state": "idle"} in events
 
 
 @pytest.mark.unit
@@ -217,6 +218,7 @@ async def test_session_sends_emotion_event_after_wake_word() -> None:
 
     for _ in range(14):
         await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+    await session._wait_for_reply_task()
 
     assert {
         "type": "emotion",
