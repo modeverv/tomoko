@@ -74,6 +74,9 @@ async def test_ws_accepts_playback_telemetry_text_events() -> None:
                 {
                     "type": "playback_started",
                     "turn_id": "turn-1",
+                    "chunk_id": 3,
+                    "scheduled_audio_time": 1.2,
+                    "sent_audio_time": 1.1,
                     "audio_context_time": 1.25,
                     "performance_now_ms": 100.0,
                 }

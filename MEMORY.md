@@ -219,5 +219,54 @@ binary audio chunk は直前の `audio_start.turn_id` に属すると扱う。
 回り込み判定の恒久対応として、サーバー推定だけに頼らず、クライアントから
 `playback_started` / `playback_ended` を同じ `/ws` に JSON で返す。
 
+### 確定した判断: 再生中 active chunk は speaker echo 保護区間として扱う
+`playback_ended` 後の猶予だけでは、次 chunk 再生中の回り込みが `new_question` として
+`attention_engaged_followup` に流れるケースが残った。
+
+サーバーは `playback_started` で `(turn_id, chunk_id)` を active playback chunk として登録し、
+対応する `playback_ended` で解除する。
+active chunk が存在する間の transcript は、hard interrupt 以外 `echo` / `continue_speaking` として扱い、
+通常の参加判定へ流さない。
+
+`playback_ended` 後の speaker echo 猶予は 1200ms では短かったため、2000ms に変更する。
+
 この telemetry はクライアント側判断ではなく、実際に `AudioBufferSourceNode` の再生を予約・終了したという事実だけを送る。
 サーバー側でこの情報をどう speaker echo 窓や barge-in 判定に使うかは、実測ログを見てから決める。
+
+### 確定した判断: playback telemetry の chunk_id と回り込み猶予
+`playback_started` / `playback_ended` は turn 単位ではなく audio chunk 単位で送る。
+payload には `turn_id` / `chunk_id` / `scheduled_audio_time` / `sent_audio_time` /
+`audio_context_time` / `performance_now_ms` を含める。
+
+サーバー側では `playback_ended` 受信後 1200ms を speaker echo grace とし、この窓内の transcript は
+hard interrupt 以外 `echo` / `continue_speaking` 相当に倒して通常の参加判定へ流さない。
+これは MacBook スピーカーから内蔵マイクへの回り込みが、Web Audio の source 終了直後にも遅れて入るため。
+
+### 確定した判断: playback_ended grace 1200ms 判断の否定
+上の「`playback_ended` 受信後 1200ms」という判断は、実ログで猶予を少し超えた自己会話候補が
+`attention_engaged_followup` に流れたため否定する。
+
+現時点の speaker echo grace は 2000ms とする。
+また、`playback_ended` 後だけではなく `playback_started` から対応する `playback_ended` までの
+active playback chunk 区間も speaker echo 保護区間として扱う。
+
+### 確定した判断: playback_ended grace 2000ms 判断の否定
+上の「speaker echo grace は 2000ms」という判断は、active playback chunk 対応後の実ログを見て否定する。
+
+劇的な改善の主因は `playback_active_chunk` であり、`playback_ended_grace` は終了直後の補助としてだけ発火していた。
+確認できた `playback_ended_grace` は秒精度ログ上では終了後およそ1秒以内だったため、猶予は 1200ms に戻す。
+
+今後はログ timestamp をミリ秒単位にして、`playback_ended` から `playback_ended_grace` までの実測差分を確認する。
+
+### 確定した判断: Phase 6.6.1.2 Follow-up 誤起動抑制
+回り込みは `playback_active_chunk` / `playback_ended_grace` で実用上問題ない水準まで改善した。
+残った問題は回り込みではなく、`engaged` / `cooldown` 中の小さな物音や Whisper hallucination が
+`attention_engaged_followup` / `attention_cooldown_followup` として会話継続することだった。
+
+`WakeWordJudge` は follow-up 判定時に、空文字、1〜2文字、低音量の短文、Whisper が無音・ノイズで出しがちな
+「ご視聴ありがとうございました」「字幕をご視聴」「お疲れ様です」系を `low_confidence_followup` として
+`observer` に倒す。
+
+また、低信頼 observer 発話では attention idle を延長しない。
+attention の無音 decay は `TomoroSession.state == "idle"` の無音 chunk だけで積算し、発話中や VAD の無音待ちを
+ambient 復帰カウントに混ぜない。

@@ -33,15 +33,17 @@ class SequenceVAD:
 
 
 class QueueTranscriber:
-    def __init__(self, texts: list[str]) -> None:
+    def __init__(self, texts: list[str], audio_levels: list[float] | None = None) -> None:
         self.texts = texts
+        self.audio_levels = audio_levels or []
 
     async def transcribe(self, segment: SpeechSegment) -> Transcript:
+        audio_level = self.audio_levels.pop(0) if self.audio_levels else -20.0
         return Transcript(
             text=self.texts.pop(0),
             device_id=segment.device_id,
             speaker=None,
-            audio_level_db=-20.0,
+            audio_level_db=audio_level,
             recorded_at=datetime.now(UTC),
             is_final=True,
         )
@@ -168,6 +170,34 @@ async def test_engaged_allows_followup_without_wake_word() -> None:
         "トモコ、聞こえる？",
         "さっきの続きなんだけど",
     ]
+
+
+@pytest.mark.unit
+async def test_engaged_filters_low_confidence_followup_without_extending_attention() -> None:
+    ambient_logs = InMemoryAmbientLogWriter()
+    conversation_logs = InMemoryConversationLogWriter()
+    session = TomoroSession(
+        vad_processor=VADProcessor(
+            vad=SequenceVAD([0.9] + [0.1] * 13 + [0.0] * 2),
+            silence_ms=400,
+        ),
+        send_event=lambda event: None,
+        transcriber=QueueTranscriber(["お疲れ様です"], audio_levels=[-35.0]),
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=ambient_logs,
+        conversation_log_writer=conversation_logs,
+        engaged_timeout_ms=64,
+        cooldown_timeout_ms=64,
+    )
+    await session._transition_attention("engaged")
+
+    await run_one_finished_speech(session)
+    assert [row[3] for row in ambient_logs.rows] == ["observer"]
+    assert conversation_logs.user_turns == []
+
+    for _ in range(2):
+        await session.process_audio_chunk(np.zeros(512, dtype=np.float32).tobytes())
+    assert session.attention_mode == "cooldown"
 
 
 @pytest.mark.unit

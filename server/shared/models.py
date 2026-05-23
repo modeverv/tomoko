@@ -63,6 +63,9 @@ class BargeInDecision:
 class PlaybackTelemetry:
     type: PlaybackEventType
     turn_id: str | None
+    chunk_id: int | None = None
+    scheduled_audio_time: float | None = None
+    sent_audio_time: float | None = None
     audio_context_time: float | None = None
     performance_now_ms: float | None = None
 
@@ -73,6 +76,7 @@ class ParticipationContext:
     attention_mode: AttentionMode = "ambient"
     device_id: str | None = None
     speaker: str | None = None
+    audio_level_db: float | None = None
 
     @classmethod
     def from_transcript(
@@ -86,6 +90,7 @@ class ParticipationContext:
             attention_mode=attention_mode,
             device_id=transcript.device_id,
             speaker=transcript.speaker,
+            audio_level_db=transcript.audio_level_db,
         )
 
 

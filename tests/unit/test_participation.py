@@ -49,3 +49,70 @@ async def test_wake_word_misrecognitions() -> None:
         result = await judge.judge(ParticipationContext(transcript=phrase))
         assert result.should_participate is True
         assert result.mode == "called"
+
+
+@pytest.mark.unit
+async def test_engaged_followup_filters_short_noise() -> None:
+    judge = WakeWordJudge()
+
+    result = await judge.judge(
+        ParticipationContext(
+            transcript="ん",
+            attention_mode="engaged",
+            audio_level_db=-36.0,
+        )
+    )
+
+    assert result.should_participate is False
+    assert result.mode == "observer"
+    assert result.reason == "low_confidence_followup"
+
+
+@pytest.mark.unit
+async def test_engaged_followup_filters_whisper_hallucination() -> None:
+    judge = WakeWordJudge()
+
+    result = await judge.judge(
+        ParticipationContext(
+            transcript="字幕をご視聴頂きましてありがとうございました",
+            attention_mode="engaged",
+            audio_level_db=-24.0,
+        )
+    )
+
+    assert result.should_participate is False
+    assert result.mode == "observer"
+    assert result.reason == "low_confidence_followup"
+
+
+@pytest.mark.unit
+async def test_engaged_followup_filters_quiet_short_phrase() -> None:
+    judge = WakeWordJudge()
+
+    result = await judge.judge(
+        ParticipationContext(
+            transcript="お疲れ様です",
+            attention_mode="engaged",
+            audio_level_db=-35.0,
+        )
+    )
+
+    assert result.should_participate is False
+    assert result.mode == "observer"
+    assert result.reason == "low_confidence_followup"
+
+
+@pytest.mark.unit
+async def test_engaged_followup_keeps_normal_phrase() -> None:
+    judge = WakeWordJudge()
+
+    result = await judge.judge(
+        ParticipationContext(
+            transcript="どうなんやろうね、あなたができること何か教えて",
+            attention_mode="engaged",
+            audio_level_db=-15.0,
+        )
+    )
+
+    assert result.should_participate is True
+    assert result.mode == "invited"

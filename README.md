@@ -87,6 +87,15 @@ make server
 
 開発中にコード変更を自動反映したい場合は `make server-reload` を使う。
 サーバーログは `make server` / `make server-reload` を実行しているターミナルに出る。
+ファイルにも `logs/server.log` として出力される。
+
+詳細なデバッグログをファイルに残したい場合は次を使う。
+
+```bash
+make server-debug
+```
+
+`make server-debug` は DEBUG レベルで起動し、stdout/stderr も `logs/server-debug.log` に追記する。
 
 ## 開発状況
 

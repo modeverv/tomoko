@@ -18,6 +18,7 @@ from server.shared.models import (
     AudioChunkOut,
     BargeInContext,
     ParticipationMode,
+    PlaybackTelemetry,
     SpeechSegment,
     Transcript,
     TTSInput,
@@ -168,6 +169,19 @@ def test_barge_in_detector_classifies_hard_interrupt() -> None:
 
 
 @pytest.mark.unit
+def test_session_default_playback_echo_grace_is_1200ms() -> None:
+    session = TomoroSession(
+        vad_processor=VADProcessor(
+            vad=SequenceVAD([0.1]),
+            silence_ms=400,
+        ),
+        send_event=lambda event: None,
+    )
+
+    assert session._playback_echo_grace_ms == 1200
+
+
+@pytest.mark.unit
 async def test_session_filters_tomoko_echo_during_playback_window() -> None:
     ambient_logs = InMemoryAmbientLogWriter()
     conversation_logs = InMemoryConversationLogWriter()
@@ -232,3 +246,121 @@ async def test_session_keeps_hard_interrupt_as_participation() -> None:
     assert len(stop_events) == 1
     assert stop_events[0]["action"] == "stop"
     assert stop_events[0]["turn_id"]
+
+
+@pytest.mark.unit
+async def test_session_suppresses_followup_during_playback_ended_grace() -> None:
+    ambient_logs = InMemoryAmbientLogWriter()
+    conversation_logs = InMemoryConversationLogWriter()
+    events: list[dict[str, str]] = []
+    session = TomoroSession(
+        vad_processor=VADProcessor(
+            vad=SequenceVAD([0.9] + [0.1] * 13),
+            silence_ms=400,
+        ),
+        send_event=events.append,
+        transcriber=QueueTranscriber(["それで、どうする？"]),
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=ambient_logs,
+        conversation_log_writer=conversation_logs,
+        router=FakeRouter(),  # type: ignore[arg-type]
+        thinking_mode=ThinkFastMode(),
+        tts_backend=FakeTTSBackend(),
+        barge_in_detector=BargeInDetector(),
+    )
+    await session._transition_attention("cooldown")
+    session.handle_playback_telemetry(
+        PlaybackTelemetry(
+            type="playback_ended",
+            turn_id="turn-1",
+            chunk_id=1,
+        )
+    )
+
+    await run_one_finished_speech(session)
+
+    assert [row[3] for row in ambient_logs.rows] == ["observer"]
+    assert conversation_logs.user_turns == []
+    assert {
+        "type": "barge_in",
+        "kind": "echo",
+        "action": "continue_speaking",
+    } in events
+
+
+@pytest.mark.unit
+async def test_session_suppresses_followup_while_playback_chunk_is_active() -> None:
+    ambient_logs = InMemoryAmbientLogWriter()
+    conversation_logs = InMemoryConversationLogWriter()
+    events: list[dict[str, str]] = []
+    session = TomoroSession(
+        vad_processor=VADProcessor(
+            vad=SequenceVAD([0.9] + [0.1] * 13),
+            silence_ms=400,
+        ),
+        send_event=events.append,
+        transcriber=QueueTranscriber(["それで、どうする？"]),
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=ambient_logs,
+        conversation_log_writer=conversation_logs,
+        router=FakeRouter(),  # type: ignore[arg-type]
+        thinking_mode=ThinkFastMode(),
+        tts_backend=FakeTTSBackend(),
+        barge_in_detector=BargeInDetector(),
+    )
+    await session._transition_attention("engaged")
+    session.handle_playback_telemetry(
+        PlaybackTelemetry(
+            type="playback_started",
+            turn_id="turn-1",
+            chunk_id=5,
+        )
+    )
+
+    await run_one_finished_speech(session)
+
+    assert [row[3] for row in ambient_logs.rows] == ["observer"]
+    assert conversation_logs.user_turns == []
+    assert {
+        "type": "barge_in",
+        "kind": "echo",
+        "action": "continue_speaking",
+    } in events
+
+
+@pytest.mark.unit
+async def test_session_keeps_hard_interrupt_while_playback_chunk_is_active() -> None:
+    ambient_logs = InMemoryAmbientLogWriter()
+    conversation_logs = InMemoryConversationLogWriter()
+    events: list[dict[str, str]] = []
+    session = TomoroSession(
+        vad_processor=VADProcessor(
+            vad=SequenceVAD([0.9] + [0.1] * 13),
+            silence_ms=400,
+        ),
+        send_event=events.append,
+        transcriber=QueueTranscriber(["違う違う、待って"]),
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=ambient_logs,
+        conversation_log_writer=conversation_logs,
+        router=FakeRouter(),  # type: ignore[arg-type]
+        thinking_mode=ThinkFastMode(),
+        tts_backend=FakeTTSBackend(),
+        barge_in_detector=BargeInDetector(),
+    )
+    await session._transition_attention("engaged")
+    session.handle_playback_telemetry(
+        PlaybackTelemetry(
+            type="playback_started",
+            turn_id="turn-1",
+            chunk_id=5,
+        )
+    )
+
+    await run_one_finished_speech(session)
+
+    assert [row[3] for row in ambient_logs.rows] == ["invited"]
+    assert [turn[0].text for turn in conversation_logs.user_turns] == [
+        "違う違う、待って"
+    ]
+    assert {"type": "barge_in", "kind": "hard_interrupt", "action": "restart_turn"} in events

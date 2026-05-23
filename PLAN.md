@@ -220,6 +220,30 @@ EMOTION:happy
 
 ---
 
+## Phase 6.6.1.2: Follow-up 誤起動の抑制
+
+Phase 6.6.1 / playback telemetry により、Tomoko 音声の回り込みは実用上問題ない水準まで改善した。
+一方で、`engaged` / `cooldown` 中に小さな物音や Whisper の定型 hallucination が
+`attention_engaged_followup` / `attention_cooldown_followup` として会話継続する問題が残っている。
+
+- [x] STT transcript を全件ログに出す
+  - `text` / `audio_level_db` / `attention_mode` / `state`
+- [x] 低信頼 follow-up を `observer` 扱いにする
+  - 空文字
+  - 1〜2文字の短文
+  - 低音量の短文
+  - Whisper が無音・ノイズで出しがちな定型文
+- [x] 低信頼 observer 発話では attention idle を延長しない
+- [x] `tests/unit/test_participation.py` / `tests/unit/test_attention_mode.py` に回帰テストを追加
+
+**完了条件**:
+- 回り込みは `playback_active_chunk` / `playback_ended_grace` で抑止される
+- 小さな物音や `ご視聴ありがとうございました` 系 hallucination が follow-up 参加しない
+- 低信頼発話で `cooldown -> ambient` 復帰が妨げられない
+- `pytest -m unit` が通る
+
+---
+
 ## Phase 7: 短期記憶
 
 - [ ] `conversation_logs` テーブル作成

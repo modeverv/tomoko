@@ -22,6 +22,7 @@ from server.shared.models import (
     AttentionMode,
     AudioChunkOut,
     BargeInContext,
+    BargeInDecision,
     ParticipationContext,
     PlaybackTelemetry,
     SpeechSegment,
@@ -62,6 +63,7 @@ class TomoroSession:
         barge_in_detector: BargeInDetector | None = None,
         engaged_timeout_ms: int = 8000,
         cooldown_timeout_ms: int = 8000,
+        playback_echo_grace_ms: int = 1200,
     ) -> None:
         self.vad_processor = vad_processor
         self.send_event = send_event
@@ -89,16 +91,18 @@ class TomoroSession:
         self._audio_turn_ended = False
         self._last_playback_started: PlaybackTelemetry | None = None
         self._last_playback_ended: PlaybackTelemetry | None = None
+        self._active_playback_chunks: set[tuple[str | None, int | None]] = set()
+        self._playback_echo_until = 0.0
+        self._playback_echo_grace_ms = playback_echo_grace_ms
 
     async def process_audio_chunk(self, chunk_bytes: bytes) -> SpeechSegment | None:
         chunk = np.frombuffer(chunk_bytes, dtype=np.float32)
         result = self.vad_processor.process_chunk(chunk)
-        if result.segment is None:
-            await self._advance_attention_idle(len(chunk))
         if result.state_changed_to is not None:
             await self._transition(result.state_changed_to)
+        if result.segment is None and self.state == "idle":
+            await self._advance_attention_idle(len(chunk))
         if result.segment is not None:
-            self._note_attention_activity()
             self.latest_segment = result.segment
             await self._handle_finished_speech(result.segment)
         return result.segment
@@ -108,6 +112,15 @@ class TomoroSession:
             return
 
         transcript = await self.transcriber.transcribe(segment)
+        logger.info(
+            "TomoroSession transcript text=%r speaker=%s audio_level_db=%s "
+            "attention_mode=%s state=%s",
+            transcript.text,
+            transcript.speaker,
+            transcript.audio_level_db,
+            self.attention_mode,
+            self.state,
+        )
         previous_attention = self.attention_mode
         barge_in_decision = self._classify_barge_in(transcript)
         if barge_in_decision is not None:
@@ -233,15 +246,26 @@ class TomoroSession:
                 self._note_attention_activity()
 
     def handle_playback_telemetry(self, telemetry: PlaybackTelemetry) -> None:
+        chunk_key = (telemetry.turn_id, telemetry.chunk_id)
         if telemetry.type == "playback_started":
             self._last_playback_started = telemetry
+            self._active_playback_chunks.add(chunk_key)
         elif telemetry.type == "playback_ended":
             self._last_playback_ended = telemetry
+            self._active_playback_chunks.discard(chunk_key)
+            self._playback_echo_until = max(
+                self._playback_echo_until,
+                time.monotonic() + self._playback_echo_grace_ms / 1000,
+            )
         logger.info(
             "TomoroSession playback telemetry type=%s turn_id=%s "
+            "chunk_id=%s scheduled_audio_time=%s sent_audio_time=%s "
             "audio_context_time=%s performance_now_ms=%s",
             telemetry.type,
             telemetry.turn_id,
+            telemetry.chunk_id,
+            telemetry.scheduled_audio_time,
+            telemetry.sent_audio_time,
             telemetry.audio_context_time,
             telemetry.performance_now_ms,
         )
@@ -321,22 +345,45 @@ class TomoroSession:
             await self._send_audio_chunk(outgoing)
 
     def _classify_barge_in(self, transcript: Transcript):
-        if self.barge_in_detector is None or not self._is_tomoko_speaking():
+        in_active_playback = self._is_client_playback_active()
+        in_playback_echo_grace = self._is_playback_echo_grace_active()
+        if self.barge_in_detector is None or not (
+            self._is_tomoko_speaking() or in_active_playback or in_playback_echo_grace
+        ):
             return None
         started_at = self._tomoko_speaking_started_at
         speaking_elapsed_ms = 0.0
         if started_at is not None:
             speaking_elapsed_ms = max(0.0, (time.monotonic() - started_at) * 1000)
-        return self.barge_in_detector.classify(
+        decision = self.barge_in_detector.classify(
             BargeInContext(
                 transcript=transcript.text,
                 recent_tomoko_text=self._recent_tomoko_text,
                 speaking_elapsed_ms=speaking_elapsed_ms,
             )
         )
+        if in_active_playback and decision.kind != "hard_interrupt":
+            return BargeInDecision(
+                kind="echo",
+                action="continue_speaking",
+                reason="playback_active_chunk",
+            )
+        if in_playback_echo_grace and decision.kind != "hard_interrupt":
+            return BargeInDecision(
+                kind="echo",
+                action="continue_speaking",
+                reason="playback_ended_grace",
+            )
+        return decision
 
     def _is_tomoko_speaking(self) -> bool:
         return time.monotonic() <= self._tomoko_speaking_until
+
+    def _is_playback_echo_grace_active(self) -> bool:
+        return time.monotonic() <= self._playback_echo_until
+
+    def _is_client_playback_active(self) -> bool:
+        return bool(self._active_playback_chunks)
 
     def _mark_tomoko_speaking(self, *, text: str, audio_data: bytes) -> None:
         now = time.monotonic()

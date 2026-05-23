@@ -19,19 +19,23 @@ let bytesSent = 0;
 let nextPlaybackTime = 0;
 let currentAudioTurnId = null;
 let playbackSources = [];
+let nextPlaybackChunkId = 1;
 
 function setStatus(value) {
   statusEl.textContent = value;
 }
 
-function sendPlaybackEvent(type, turnId) {
+function sendPlaybackEvent(type, entry) {
   if (!websocket || websocket.readyState !== WebSocket.OPEN) {
     return;
   }
   websocket.send(
     JSON.stringify({
       type,
-      turn_id: turnId,
+      turn_id: entry.turnId,
+      chunk_id: entry.chunkId,
+      scheduled_audio_time: entry.scheduledAudioTime,
+      sent_audio_time: audioContext?.currentTime ?? null,
       audio_context_time: audioContext?.currentTime ?? null,
       performance_now_ms: performance.now(),
     }),
@@ -127,14 +131,17 @@ async function playAudioChunk(arrayBuffer) {
   const entry = {
     source,
     turnId,
+    chunkId: nextPlaybackChunkId,
+    scheduledAudioTime: startAt,
     startedTimer: setTimeout(() => {
-      sendPlaybackEvent("playback_started", turnId);
+      sendPlaybackEvent("playback_started", entry);
     }, startedDelayMs),
   };
+  nextPlaybackChunkId += 1;
   playbackSources.push(entry);
   source.addEventListener("ended", () => {
     clearTimeout(entry.startedTimer);
-    sendPlaybackEvent("playback_ended", turnId);
+    sendPlaybackEvent("playback_ended", entry);
     playbackSources = playbackSources.filter((item) => item !== entry);
   });
   source.start(startAt);
@@ -220,6 +227,7 @@ async function stopSession() {
   nextPlaybackTime = 0;
   currentAudioTurnId = null;
   playbackSources = [];
+  nextPlaybackChunkId = 1;
   stopButton.disabled = true;
 }
 

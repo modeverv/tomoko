@@ -16,6 +16,16 @@ class WakeWordJudge(ParticipationJudge):
         "朋子"
     )
     RECALL_WORDS = ("戻って", "話して", "聞いて", "いいよ")
+    NOISE_HALLUCINATION_PHRASES = (
+        "ご視聴ありがとうございました",
+        "ご視聴頂きましてありがとうございました",
+        "ご視聴頂きま",
+        "字幕をご視聴",
+        "お疲れ様です",
+        "お疲れさまです",
+        "お疲れ様でした",
+        "お疲れさまでした",
+    )
 
     async def judge(self, ctx: ParticipationContext) -> ParticipationDecision:
         normalized = ctx.transcript.casefold()
@@ -40,6 +50,12 @@ class WakeWordJudge(ParticipationJudge):
                 reason="wake_word_detected",
             )
         if ctx.attention_mode in {"engaged", "cooldown"} and normalized.strip():
+            if _looks_like_low_confidence_followup(ctx):
+                return ParticipationDecision(
+                    should_participate=False,
+                    mode="observer",
+                    reason="low_confidence_followup",
+                )
             return ParticipationDecision(
                 should_participate=True,
                 mode="invited",
@@ -50,3 +66,16 @@ class WakeWordJudge(ParticipationJudge):
             mode="observer",
             reason="wake_word_not_found",
         )
+
+
+def _looks_like_low_confidence_followup(ctx: ParticipationContext) -> bool:
+    text = ctx.transcript.strip()
+    if not text:
+        return True
+    if len(text) <= 2:
+        return True
+    if any(phrase in text for phrase in WakeWordJudge.NOISE_HALLUCINATION_PHRASES):
+        return True
+    if ctx.audio_level_db is not None and ctx.audio_level_db <= -30.0 and len(text) <= 20:
+        return True
+    return False

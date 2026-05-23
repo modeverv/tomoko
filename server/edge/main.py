@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -21,8 +22,43 @@ from server.shared.inference.tts import create_tts_backend
 from server.shared.inference.tts.base import TTSBackend
 from server.shared.models import PlaybackTelemetry
 
+
+def _configure_app_logging() -> None:
+    log_level_name = os.environ.get("TOMOKO_LOG_LEVEL", "INFO").upper()
+    log_level = getattr(logging, log_level_name, logging.INFO)
+    log_file_name = os.environ.get("TOMOKO_LOG_FILE", "logs/server.log")
+    formatter = logging.Formatter(
+        "%(asctime)s.%(msecs)03d %(levelname)s:%(name)s:%(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    server_logger = logging.getLogger("server")
+    server_logger.setLevel(log_level)
+    server_logger.handlers = [
+        handler
+        for handler in server_logger.handlers
+        if not getattr(handler, "_tomoko_app_handler", False)
+    ]
+
+    stderr_handler = logging.StreamHandler()
+    stderr_handler.setLevel(log_level)
+    stderr_handler.setFormatter(formatter)
+    stderr_handler._tomoko_app_handler = True  # type: ignore[attr-defined]
+    server_logger.addHandler(stderr_handler)
+
+    if log_file_name:
+        log_file = Path(log_file_name)
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setLevel(log_level)
+        file_handler.setFormatter(formatter)
+        file_handler._tomoko_app_handler = True  # type: ignore[attr-defined]
+        server_logger.addHandler(file_handler)
+    server_logger.propagate = False
+
+
+_configure_app_logging()
 logger = logging.getLogger(__name__)
-logging.getLogger("server").setLevel(logging.INFO)
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 CLIENT_DIR = ROOT_DIR / "client"
@@ -180,6 +216,9 @@ def _handle_client_text_event(session: TomoroSession, text: str) -> None:
         PlaybackTelemetry(
             type=event_type,
             turn_id=payload.get("turn_id"),
+            chunk_id=_optional_int(payload.get("chunk_id")),
+            scheduled_audio_time=_optional_float(payload.get("scheduled_audio_time")),
+            sent_audio_time=_optional_float(payload.get("sent_audio_time")),
             audio_context_time=_optional_float(payload.get("audio_context_time")),
             performance_now_ms=_optional_float(payload.get("performance_now_ms")),
         )
@@ -191,5 +230,14 @@ def _optional_float(value: object) -> float | None:
         return None
     try:
         return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
     except (TypeError, ValueError):
         return None
