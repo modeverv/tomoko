@@ -4,8 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from server.gateway.reply.audio import ReplyAudioPlanner
-from server.gateway.reply.emotion import ReplyEmotionState
-from server.gateway.reply.image import EmotionImageMapper
+from server.gateway.reply.display import ReplyDisplayPlanner
 from server.shared.models import ThinkingEvent
 
 ReplyAction = Literal["emotion", "text_delta", "tts_text", "done"]
@@ -26,26 +25,24 @@ class ReplyPipeline:
         self,
         *,
         initial_emotion: str = "neutral",
-        image_mapper: EmotionImageMapper | None = None,
     ) -> None:
-        self.emotion = ReplyEmotionState(initial_emotion=initial_emotion)
+        self.display = ReplyDisplayPlanner(initial_emotion=initial_emotion)
         self.audio = ReplyAudioPlanner()
-        self.image_mapper = image_mapper or EmotionImageMapper()
         self.reply_text = ""
 
     @property
     def current_emotion(self) -> str:
-        return self.emotion.current
+        return self.display.current_emotion
 
     def handle_event(self, event: ThinkingEvent) -> list[ReplyCommand]:
         if event.type == "emotion":
-            emotion = self.emotion.update(event.value)
+            display = self.display.update_emotion(event.value)
             return [
                 ReplyCommand(
                     action="emotion",
-                    value=emotion,
-                    style=emotion,
-                    image=self.image_mapper.image_for(emotion),
+                    value=display.emotion,
+                    style=display.emotion,
+                    image=display.image,
                 )
             ]
 

@@ -1504,3 +1504,20 @@ TomoroSession
 `TomoroSession` は `ReplyPipeline` だけを知る。
 `ReplyPipeline` は `ThinkingEvent` から WebSocket 表示 command と TTS flush command を作る。
 audio / emotion / image の個別ルールは `server/gateway/reply/` 配下の小さな helper に閉じ込める。
+
+### 2026-05-23 追記: reply display 境界
+
+上の `audio/emotion/image` 分割は、`audio/display` 分割へ改める。
+emotion は TTS style にも使うが、画像や将来の pose / animation などの表示状態を駆動する入力でもあるため、
+reply 配下では display concern としてまとめて扱う。
+
+```text
+TomoroSession
+  -> ReplyPipeline
+       -> ReplyAudioPlanner
+       -> ReplyDisplayPlanner
+```
+
+`ReplyDisplayPlanner` は current emotion と表示 asset 解決を所有する。
+`TomoroSession` は image path や表示媒体ごとの対応表を直接持たず、`ReplyPipeline` から返る command を
+既存 WebSocket event に変換するだけに留める。
