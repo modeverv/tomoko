@@ -601,3 +601,18 @@ Kokoro は `kokoro_mlx` のまま使い、TTS直前のGemma正規化は無効化
 注意点として、`mlx-vlm.stream_generate()` は `asyncio.to_thread` 上では MLX の thread-local stream エラーになった。
 現時点の Gemma会話backendは同じスレッドで同期消費する。
 reply生成は background task だが、MLX生成中にイベントループをどの程度塞ぐかは実セッションで確認する。
+
+### 確定した判断: メイン会話推論は LM Studio の Gemma 4 E2B MLX に切り替える
+内蔵 `mlx-vlm` backend は動作するが、MLX の thread-local stream 制約により生成を同じスレッドで同期消費する必要があった。
+このため Python サーバー側のイベントループを塞ぐ懸念が残る。
+
+LM Studio の OpenAI互換 streaming API は `http://192.168.11.66:1234/v1/chat/completions` で `stream:true` が動作確認済み。
+モデルは `gemma-4-e2b-it-mlx`。
+LM Studio 側が MLX runtime を保持し、Tomoko サーバーは SSE chunk を読むだけになるため、thread 問題とイベントループ占有のリスクを減らせる。
+
+2026-05-24 の起動時 warm-up 実測では、STT 1854.2ms、Kokoro 279.8ms、LM Studio conversation 243.0ms。
+依存同期後の再実行でも LM Studio conversation は 257.1ms で通った。
+直前の内蔵 `GemmaMLXBackend` warm-up 3751.6ms と比べて会話 backend の起動時負荷が大幅に下がった。
+
+default `conversation_backend` は `lmstudio_gemma4_e2b` にする。
+fallback は Ollama ではなく `local_gemma4_e2b_mlx` にして、LM Studio が遅い/落ちた場合もローカルGemma系に留める。

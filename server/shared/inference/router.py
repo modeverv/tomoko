@@ -6,6 +6,7 @@ from typing import Any
 from server.shared.config import NodeConfig
 from server.shared.inference.backends.base import InferenceBackend
 from server.shared.inference.backends.gemma_mlx import GemmaMLXBackend
+from server.shared.inference.backends.lm_studio import LMStudioBackend
 from server.shared.inference.backends.ollama import OllamaBackend
 
 
@@ -33,6 +34,14 @@ class InferenceRouter:
                 if spec.model:
                     self.backends[name] = GemmaMLXBackend(
                         name=spec.name,
+                        model=spec.model,
+                        privacy_allowed=spec.privacy_allowed,
+                    )
+            elif spec.type == "lm_studio":
+                if spec.url and spec.model:
+                    self.backends[name] = LMStudioBackend(
+                        name=spec.name,
+                        url=spec.url,
                         model=spec.model,
                         privacy_allowed=spec.privacy_allowed,
                     )

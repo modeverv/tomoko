@@ -62,18 +62,18 @@ async def test_router_reads_config():
     router = InferenceRouter(config, monitor=MockMonitor())
     backend = await router.select("conversation", "latency")
     assert backend is not None
-    assert backend.name == "local_gemma4_e2b_mlx"
+    assert backend.name == "lmstudio_gemma4_e2b"
 
 @pytest.mark.unit
 async def test_privacy_preference_can_use_private_configured_fallback():
     config = NodeConfig.load("config/central_realtime.toml")
     router = InferenceRouter(
         config=config,
-        monitor=MockMonitor({"local_gemma4_e2b_mlx": InferenceMetrics(latency_ms=900)})
+        monitor=MockMonitor({"lmstudio_gemma4_e2b": InferenceMetrics(latency_ms=900)})
     )
     backend = await router.select("conversation", "privacy")
     assert backend.privacy_allowed
-    assert backend.name == "local_qwen7b"
+    assert backend.name == "local_gemma4_e2b_mlx"
 
 
 @pytest.mark.unit

@@ -10,8 +10,8 @@ chunk_ms = 32
 vad_silence_ms = 400
 
 [inference]
-conversation_backend = "local_gemma4_e2b_mlx"
-conversation_fallback = "local_qwen7b"
+conversation_backend = "lmstudio_gemma4_e2b"
+conversation_fallback = "local_gemma4_e2b_mlx"
 stt_backend = "local_whisper_mlx_small"
 vad_backend = "silero_vad"
 tts_backend = "kokoro_mlx"
@@ -33,6 +33,13 @@ privacy_allowed = true
 [backends.local_gemma4_e2b_mlx]
 type = "gemma_mlx"
 model = "mlx-community/gemma-4-e2b-it-4bit"
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.lmstudio_gemma4_e2b]
+type = "lm_studio"
+url = "http://192.168.11.66:1234"
+model = "gemma-4-e2b-it-mlx"
 max_latency_ms = 800
 privacy_allowed = true
 
