@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 import struct
@@ -97,6 +98,7 @@ class TomoroSession:
         self._active_playback_chunks: set[tuple[str | None, int | None]] = set()
         self._playback_echo_until = 0.0
         self._playback_echo_grace_ms = playback_echo_grace_ms
+        self._lock = asyncio.Lock()
 
     async def process_audio_chunk(self, chunk_bytes: bytes) -> SpeechSegment | None:
         chunk = np.frombuffer(chunk_bytes, dtype=np.float32)
@@ -311,18 +313,19 @@ class TomoroSession:
                 await self._end_audio_turn()
                 self._note_attention_activity()
 
-    def handle_playback_telemetry(self, telemetry: PlaybackTelemetry) -> None:
-        chunk_key = (telemetry.turn_id, telemetry.chunk_id)
-        if telemetry.type == "playback_started":
-            self._last_playback_started = telemetry
-            self._active_playback_chunks.add(chunk_key)
-        elif telemetry.type == "playback_ended":
-            self._last_playback_ended = telemetry
-            self._active_playback_chunks.discard(chunk_key)
-            self._playback_echo_until = max(
-                self._playback_echo_until,
-                time.monotonic() + self._playback_echo_grace_ms / 1000,
-            )
+    async def handle_playback_telemetry(self, telemetry: PlaybackTelemetry) -> None:
+        async with self._lock:
+            chunk_key = (telemetry.turn_id, telemetry.chunk_id)
+            if telemetry.type == "playback_started":
+                self._last_playback_started = telemetry
+                self._active_playback_chunks.add(chunk_key)
+            elif telemetry.type == "playback_ended":
+                self._last_playback_ended = telemetry
+                self._active_playback_chunks.discard(chunk_key)
+                self._playback_echo_until = max(
+                    self._playback_echo_until,
+                    time.monotonic() + self._playback_echo_grace_ms / 1000,
+                )
         logger.info(
             "TomoroSession playback telemetry type=%s turn_id=%s "
             "chunk_id=%s scheduled_audio_time=%s sent_audio_time=%s "
@@ -401,13 +404,10 @@ class TomoroSession:
         tts_input = TTSInput(text=text.strip(), style=style)
         async for chunk in self.tts_backend.synthesize(tts_input):
             await self._ensure_audio_turn_started()
-            self._mark_tomoko_speaking(text=tts_input.text, audio_data=chunk.data)
-            outgoing = AudioChunkOut(
-                data=chunk.data,
-                sequence=self._audio_sequence,
-                is_last=chunk.is_last,
+            outgoing = await self._reserve_audio_chunk(
+                text=tts_input.text,
+                chunk=chunk,
             )
-            self._audio_sequence += 1
             await self._send_audio_chunk(outgoing)
 
     def _classify_barge_in(self, transcript: Transcript):
@@ -451,6 +451,17 @@ class TomoroSession:
     def _is_client_playback_active(self) -> bool:
         return bool(self._active_playback_chunks)
 
+    async def _reserve_audio_chunk(self, *, text: str, chunk: AudioChunkOut) -> AudioChunkOut:
+        async with self._lock:
+            self._mark_tomoko_speaking(text=text, audio_data=chunk.data)
+            outgoing = AudioChunkOut(
+                data=chunk.data,
+                sequence=self._audio_sequence,
+                is_last=chunk.is_last,
+            )
+            self._audio_sequence += 1
+            return outgoing
+
     def _mark_tomoko_speaking(self, *, text: str, audio_data: bytes) -> None:
         now = time.monotonic()
         duration = _wav_duration_seconds(audio_data)
@@ -466,45 +477,62 @@ class TomoroSession:
         self._audio_turn_ended = False
 
     async def _ensure_audio_turn_started(self) -> None:
-        if self._active_audio_turn_id is None:
-            self._begin_audio_turn()
-        if self._audio_turn_started:
+        event = await self._reserve_audio_start_event()
+        if event is None:
             return
-        assert self._active_audio_turn_id is not None
-        await self._send_event(
-            {
+        await self._send_event(event)
+
+    async def _end_audio_turn(self) -> None:
+        event = await self._reserve_audio_end_event()
+        if event is None:
+            return
+        await self._send_event(event)
+
+    async def _stop_active_audio_turn(self) -> None:
+        event = await self._reserve_audio_stop_event()
+        if event is None:
+            return
+        await self._send_event(event)
+
+    async def _reserve_audio_start_event(self) -> dict[str, str] | None:
+        async with self._lock:
+            if self._active_audio_turn_id is None:
+                self._begin_audio_turn()
+            if self._audio_turn_started:
+                return None
+            assert self._active_audio_turn_id is not None
+            self._audio_turn_started = True
+            return {
                 "type": "audio_start",
                 "turn_id": self._active_audio_turn_id,
             }
-        )
-        self._audio_turn_started = True
 
-    async def _end_audio_turn(self) -> None:
-        if self._active_audio_turn_id is None:
-            return
-        if self._audio_turn_started and not self._audio_turn_ended:
-            await self._send_event(
-                {
-                    "type": "audio_end",
-                    "turn_id": self._active_audio_turn_id,
-                }
-            )
+    async def _reserve_audio_end_event(self) -> dict[str, str] | None:
+        async with self._lock:
+            if self._active_audio_turn_id is None:
+                return None
+            if not self._audio_turn_started or self._audio_turn_ended:
+                return None
             self._audio_turn_ended = True
-
-    async def _stop_active_audio_turn(self) -> None:
-        if self._active_audio_turn_id is None:
-            return
-        await self._send_event(
-            {
-                "type": "audio_control",
-                "action": "stop",
+            return {
+                "type": "audio_end",
                 "turn_id": self._active_audio_turn_id,
             }
-        )
-        self._tomoko_speaking_until = 0.0
-        self._active_audio_turn_id = None
-        self._audio_turn_started = False
-        self._audio_turn_ended = False
+
+    async def _reserve_audio_stop_event(self) -> dict[str, str] | None:
+        async with self._lock:
+            if self._active_audio_turn_id is None:
+                return None
+            turn_id = self._active_audio_turn_id
+            self._tomoko_speaking_until = 0.0
+            self._active_audio_turn_id = None
+            self._audio_turn_started = False
+            self._audio_turn_ended = False
+            return {
+                "type": "audio_control",
+                "action": "stop",
+                "turn_id": turn_id,
+            }
 
 
 def _first_sentence_end_index(text: str) -> int | None:

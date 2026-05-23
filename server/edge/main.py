@@ -185,7 +185,7 @@ async def websocket_session(websocket: WebSocket) -> None:
                 await session.process_audio_chunk(chunk)
                 continue
             if message.get("text") is not None:
-                _handle_client_text_event(session, message["text"])
+                await _handle_client_text_event(session, message["text"])
                 continue
             if message.get("type") == "websocket.disconnect":
                 raise WebSocketDisconnect()
@@ -247,7 +247,7 @@ def _create_default_conversation_log_writer() -> PostgresConversationLogWriter:
     return PostgresConversationLogWriter(config.database.dsn)
 
 
-def _handle_client_text_event(session: TomoroSession, text: str) -> None:
+async def _handle_client_text_event(session: TomoroSession, text: str) -> None:
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
@@ -257,7 +257,7 @@ def _handle_client_text_event(session: TomoroSession, text: str) -> None:
     if event_type not in {"playback_started", "playback_ended"}:
         logger.warning("ignored unknown websocket text event type=%s", event_type)
         return
-    session.handle_playback_telemetry(
+    await session.handle_playback_telemetry(
         PlaybackTelemetry(
             type=event_type,
             turn_id=payload.get("turn_id"),

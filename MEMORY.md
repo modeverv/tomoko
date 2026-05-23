@@ -302,3 +302,14 @@ partial は `suppress_partial` なら UI に送らず、final は `drop` なら 
 
 drop 済み transcript を reason 付きで保存する案もあったが、将来の記憶土台を汚さないことを優先し、現時点では保存しない。
 デバッグ用途には `server.session` の `TomoroSession transcript filter ... action=... reason=...` ログを使う。
+
+### 確定した判断: Phase 6.6.3 は最小 hardening に留める
+kokoro / irodori TTS へ進む前に、`TomoroSession` の audio turn / playback telemetry 周辺だけを
+`asyncio.Lock` で保護する。
+
+現時点の `/ws` 受信ループは `process_audio_chunk()` を await する直列構造なので、真の並行 barge-in にはまだなっていない。
+そのため Phase 6.6.3 では actor/queue 化や reply/TTS task 分離までは行わず、
+`audio_start` / `audio_end` / `audio_control stop` の二重送信防止、`_audio_sequence` 採番、
+`_active_playback_chunks` 更新の保護だけを先に固定する。
+
+ロック内では状態確定だけを行い、`send_event` / `send_audio` / DB / LLM / TTS のような外部 I/O はロック外で実行する。

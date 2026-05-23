@@ -269,7 +269,7 @@ async def test_session_suppresses_followup_during_playback_ended_grace() -> None
         barge_in_detector=BargeInDetector(),
     )
     await session._transition_attention("cooldown")
-    session.handle_playback_telemetry(
+    await session.handle_playback_telemetry(
         PlaybackTelemetry(
             type="playback_ended",
             turn_id="turn-1",
@@ -309,7 +309,7 @@ async def test_session_suppresses_followup_while_playback_chunk_is_active() -> N
         barge_in_detector=BargeInDetector(),
     )
     await session._transition_attention("engaged")
-    session.handle_playback_telemetry(
+    await session.handle_playback_telemetry(
         PlaybackTelemetry(
             type="playback_started",
             turn_id="turn-1",
@@ -349,7 +349,7 @@ async def test_session_keeps_hard_interrupt_while_playback_chunk_is_active() -> 
         barge_in_detector=BargeInDetector(),
     )
     await session._transition_attention("engaged")
-    session.handle_playback_telemetry(
+    await session.handle_playback_telemetry(
         PlaybackTelemetry(
             type="playback_started",
             turn_id="turn-1",
