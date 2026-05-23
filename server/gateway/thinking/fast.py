@@ -32,7 +32,14 @@ class ThinkFastMode(ThinkingMode):
     async def think(
         self, backend: InferenceBackend, thinking_input: ThinkingInput
     ) -> AsyncGenerator[ThinkingEvent, None]:
-        messages = [{"role": "user", "content": thinking_input.text}]
+        messages = [
+            {
+                "role": "assistant" if turn.speaker == "tomoko" else "user",
+                "content": turn.text,
+            }
+            for turn in thinking_input.context
+        ]
+        messages.append({"role": "user", "content": thinking_input.text})
         header_buffer = ""
         header_parsed = False
         async for chunk in backend.chat_stream(self.system_prompt, messages):

@@ -4,7 +4,12 @@ from typing import Protocol
 
 import psycopg
 
-from server.shared.models import AttentionMode, ParticipationMode, Transcript
+from server.shared.models import (
+    AttentionMode,
+    ConversationTurn,
+    ParticipationMode,
+    Transcript,
+)
 
 
 class AmbientLogWriter(Protocol):
@@ -28,6 +33,8 @@ class ConversationLogWriter(Protocol):
     ) -> None: ...
 
     async def write_tomoko_turn(self, *, text: str, emotion: str, device_id: str) -> None: ...
+
+    async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]: ...
 
 
 class PostgresAmbientLogWriter:
@@ -151,6 +158,34 @@ class PostgresConversationLogWriter:
                     ),
                 )
 
+    async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT role, transcript, recorded_at, emotion
+                    FROM conversation_logs
+                    ORDER BY recorded_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = await cur.fetchall()
+
+        turns: list[ConversationTurn] = []
+        for role, transcript, recorded_at, emotion in reversed(rows):
+            if role not in {"user", "tomoko"}:
+                continue
+            turns.append(
+                ConversationTurn(
+                    speaker=role,
+                    text=transcript,
+                    timestamp=recorded_at,
+                    emotion=emotion,
+                )
+            )
+        return turns
+
 
 class NullConversationLogWriter:
     async def write_user_turn(
@@ -165,3 +200,7 @@ class NullConversationLogWriter:
     async def write_tomoko_turn(self, *, text: str, emotion: str, device_id: str) -> None:
         del text, emotion, device_id
         return None
+
+    async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]:
+        del limit
+        return []

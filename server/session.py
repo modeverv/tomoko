@@ -27,6 +27,7 @@ from server.shared.models import (
     AudioChunkOut,
     BargeInContext,
     BargeInDecision,
+    ConversationTurn,
     ParticipationContext,
     PlaybackTelemetry,
     SpeechSegment,
@@ -38,6 +39,7 @@ from server.shared.models import (
 SessionState = Literal["idle", "listening", "processing"]
 
 logger = logging.getLogger(__name__)
+RECENT_CONTEXT_TURN_LIMIT = 12
 
 
 class TomoroSession:
@@ -288,7 +290,7 @@ class TomoroSession:
         thinking_input = ThinkingInput(
             text=transcript.text,
             speaker=transcript.speaker,
-            context=[],
+            context=await self._load_recent_context(transcript),
             emotion="neutral",
             device_id=transcript.device_id,
         )
@@ -588,6 +590,23 @@ class TomoroSession:
         self._latency_first_reply_text_at = None
         self._latency_tts_start_at = None
         self._latency_first_audio_chunk_at = None
+
+    async def _load_recent_context(self, transcript: Transcript) -> list[ConversationTurn]:
+        if self.conversation_log_writer is None:
+            return []
+
+        read_recent_turns = getattr(
+            self.conversation_log_writer,
+            "read_recent_turns",
+            None,
+        )
+        if read_recent_turns is None:
+            return []
+
+        turns = await read_recent_turns(limit=RECENT_CONTEXT_TURN_LIMIT + 1)
+        if turns and turns[-1].speaker == "user" and turns[-1].text == transcript.text:
+            turns = turns[:-1]
+        return turns[-RECENT_CONTEXT_TURN_LIMIT:]
 
     def _elapsed_since_speech_end_ms(self) -> float:
         return _elapsed_ms(self._latency_speech_end_at)

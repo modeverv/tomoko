@@ -21,6 +21,43 @@
 
 ---
 
+## 2026-05-24 セッション18
+
+### やること（開始時に書く）
+- M2 Phase 7: 短期記憶を進められるところまで実装する
+- `conversation_logs` に会話ターンを保存し、`ThinkFastMode` の入力へ直近会話ターンを差し込む
+- 疑問点は人間の希望に従い LOG.md に記録しつつ、破壊的でない範囲は仮実装で進める
+
+### 作業メモ・疑問点（仮実装で進める）
+- Phase 7 の会話ログ schema は PLAN では `(user_text, tomoko_text, timestamp, emotion)` だけ指定されている。実装では将来の device/speaker/attention 分析に備えて `device_id` / `speaker` / `participation_mode` / `attention_mode` / `created_at` も持たせる。ただし短期文脈ではまず `user_text` / `tomoko_text` / `emotion` / `created_at` だけ使う。
+- `TomoroSession` は reply/TTS を background task 化済みなので、会話ログ保存タイミングは `reply_done` 後にする。hard interrupt / cancel された未完了返答は短期記憶に保存しない仮方針で進める。
+
+### 作業メモの訂正
+- 上の schema メモにある `attention_mode` / `created_at` は今回の `conversation_logs` には追加しない。既存 schema は `recorded_at` / `device_id` / `speaker` / `role` / `transcript` / `emotion` / `participation_mode` で足りるため、Phase 7 ではテーブル変更なしで進めた。
+
+### やったこと
+- `ConversationLogWriter.read_recent_turns()` を追加し、PostgreSQL から直近 `conversation_logs` を `ConversationTurn` として読めるようにした
+- `ThinkFastMode` が `ThinkingInput.context` を OpenAI 互換 messages の `user` / `assistant` role として current user message の前に差し込むようにした
+- `TomoroSession` が reply 生成時に直近 12 turn を読み込むようにした
+- user turn は reply task 起動前に保存済みなので、現在の transcript と同じ末尾 user turn は context から除外して重複を避けた
+- `tests/unit/test_phase4_thinking.py` に短期文脈差し込みの unit test を追加した
+- `docs/latency.md` / `PLAN.md` / `MEMORY.md` に Phase 7 の結果を追記した
+
+### 詰まったこと・解決したこと
+- Phase 7 の PLAN は「会話ターンごとに `(user_text, tomoko_text, timestamp, emotion)`」と書いているが、既存実装は `role=user` / `role=tomoko` の行として保存していた
+  → テーブルを作り直さず、role 行を `ConversationTurn` に戻して短期文脈として使う方針にした
+- current user turn を先に DB へ保存するため、そのまま読むと current user message が context と current input の両方に入る
+  → `TomoroSession._load_recent_context()` で末尾の同一 user turn を落とすようにした
+
+### 検証
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m perf --tb=short tests/perf/test_phase5_latency.py`
+
+### 次のセッションでやること
+- Chrome 実セッションで「さっき言った〇〇のことだけど」が文脈付きで返るか確認する
+- M2 Phase 8: embedding / pgvector / `ThinkDeepMode` の設計に進む
+
 ## 初回（設計フェーズ）2026-05-23
 
 ### やったこと

@@ -13,6 +13,7 @@ from server.session import TomoroSession
 from server.shared.inference.backends.base import InferenceBackend
 from server.shared.models import (
     AttentionMode,
+    ConversationTurn,
     ParticipationMode,
     SpeechSegment,
     ThinkingEvent,
@@ -57,6 +58,43 @@ class InMemoryAmbientLogWriter:
         del attention_mode, attended, participation_mode
         self.transcript = transcript
         self.tomoko_participated = tomoko_participated
+
+
+class InMemoryConversationLogWriter:
+    def __init__(self, history: list[ConversationTurn] | None = None) -> None:
+        self.history = history or []
+        self.user_turns: list[tuple[Transcript, ParticipationMode]] = []
+        self.tomoko_turns: list[tuple[str, str]] = []
+
+    async def write_user_turn(
+        self,
+        transcript: Transcript,
+        *,
+        participation_mode: ParticipationMode,
+    ) -> None:
+        self.user_turns.append((transcript, participation_mode))
+        self.history.append(
+            ConversationTurn(
+                speaker="user",
+                text=transcript.text,
+                timestamp=transcript.recorded_at,
+            )
+        )
+
+    async def write_tomoko_turn(self, *, text: str, emotion: str, device_id: str) -> None:
+        del device_id
+        self.tomoko_turns.append((text, emotion))
+        self.history.append(
+            ConversationTurn(
+                speaker="tomoko",
+                text=text,
+                timestamp=datetime.now(UTC),
+                emotion=emotion,
+            )
+        )
+
+    async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]:
+        return self.history[-limit:]
 
 
 class FakeBackend(InferenceBackend):
@@ -115,6 +153,47 @@ async def test_think_fast_wraps_streamed_tokens_in_thinking_events(tmp_path) -> 
     ]
     assert backend.system_prompt == "あなたはトモコです。"
     assert backend.messages == [{"role": "user", "content": "トモコ、聞こえる？"}]
+
+
+@pytest.mark.unit
+async def test_think_fast_includes_recent_conversation_context(tmp_path) -> None:
+    persona = tmp_path / "persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend(["うん"])
+    mode = ThinkFastMode(persona_path=persona)
+
+    events = [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="さっき言ったカレーの続きだけど",
+                speaker=None,
+                context=[
+                    ConversationTurn(
+                        speaker="user",
+                        text="昨日カレーを作ったよ",
+                        timestamp=datetime(2026, 5, 24, 9, 0, tzinfo=UTC),
+                    ),
+                    ConversationTurn(
+                        speaker="tomoko",
+                        text="いいね、少し寝かせるとおいしいよ。",
+                        timestamp=datetime(2026, 5, 24, 9, 1, tzinfo=UTC),
+                        emotion="happy",
+                    ),
+                ],
+                emotion="neutral",
+                device_id="browser",
+            ),
+        )
+    ]
+
+    assert events[-1] == ThinkingEvent(type="done", value="")
+    assert backend.messages == [
+        {"role": "user", "content": "昨日カレーを作ったよ"},
+        {"role": "assistant", "content": "いいね、少し寝かせるとおいしいよ。"},
+        {"role": "user", "content": "さっき言ったカレーの続きだけど"},
+    ]
 
 
 @pytest.mark.unit
@@ -199,6 +278,47 @@ async def test_session_streams_reply_text_after_wake_word() -> None:
     assert {"type": "reply_text", "delta": "、聞こえるよ"} in events
     assert {"type": "reply_done"} in events
     assert {"type": "state", "state": "idle"} in events
+
+
+@pytest.mark.unit
+async def test_session_passes_recent_conversation_context_to_thinking_mode() -> None:
+    events: list[dict[str, str]] = []
+    backend = FakeBackend(["うん、覚えてるよ。"])
+    router = FakeRouter(backend)
+    history = [
+        ConversationTurn(
+            speaker="user",
+            text="昨日カレーを作ったよ",
+            timestamp=datetime(2026, 5, 24, 9, 0, tzinfo=UTC),
+        ),
+        ConversationTurn(
+            speaker="tomoko",
+            text="明日は少し味がなじむかも。",
+            timestamp=datetime(2026, 5, 24, 9, 1, tzinfo=UTC),
+            emotion="happy",
+        ),
+    ]
+    conversation_logs = InMemoryConversationLogWriter(history=history)
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.9] + [0.1] * 13), silence_ms=400),
+        send_event=events.append,
+        transcriber=ConstantTranscriber(),
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=InMemoryAmbientLogWriter(),
+        conversation_log_writer=conversation_logs,
+        router=router,  # type: ignore[arg-type]
+        thinking_mode=ThinkFastMode(),
+    )
+
+    for _ in range(14):
+        await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+    await session._wait_for_reply_task()
+
+    assert backend.messages == [
+        {"role": "user", "content": "昨日カレーを作ったよ"},
+        {"role": "assistant", "content": "明日は少し味がなじむかも。"},
+        {"role": "user", "content": "トモコ、聞こえる？"},
+    ]
 
 
 @pytest.mark.unit

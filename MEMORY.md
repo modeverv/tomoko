@@ -616,3 +616,16 @@ LM Studio 側が MLX runtime を保持し、Tomoko サーバーは SSE chunk を
 
 default `conversation_backend` は `lmstudio_gemma4_e2b` にする。
 fallback は Ollama ではなく `local_gemma4_e2b_mlx` にして、LM Studio が遅い/落ちた場合もローカルGemma系に留める。
+
+### 確定した判断: Phase 7 の短期記憶は conversation_logs の role 行を直近文脈に使う
+M2 Phase 7 の短期記憶は、既存の `conversation_logs` テーブルに保存済みの role 行
+（`role=user` / `role=tomoko`）をそのまま直近会話文脈として使う。
+
+`PostgresConversationLogWriter.read_recent_turns()` は `recorded_at DESC LIMIT N` で取得して時系列順へ戻し、
+`ThinkFastMode` は `ConversationTurn(speaker="tomoko")` を OpenAI 互換 messages の `assistant` role に変換する。
+
+`TomoroSession` は参加判定後に user turn を先に保存するため、reply 生成時に読んだ直近文脈の末尾が
+現在の user transcript と同一なら除外する。これにより current user message は `ThinkingInput.text` として一度だけ渡る。
+
+短期文脈の上限は当面 `RECENT_CONTEXT_TURN_LIMIT = 12` とする。
+hard interrupt や cancel で `reply_done` に到達しなかった Tomoko 返答は `conversation_logs` に保存しない。
