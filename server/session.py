@@ -12,7 +12,7 @@ from server.edge.pipeline.stt import SpeechTranscriber, supports_streaming
 from server.edge.pipeline.stt_filter import TranscriptFilter
 from server.edge.pipeline.vad import VADProcessor
 from server.gateway.audio_turn import AudioTurnController
-from server.gateway.reply_audio import ReplyAudioPipeline
+from server.gateway.reply import ReplyPipeline
 from server.gateway.thinking.base import ThinkingMode
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.shared.db import AmbientLogWriter, ConversationLogWriter
@@ -34,15 +34,6 @@ from server.shared.models import (
 SessionState = Literal["idle", "listening", "processing"]
 
 logger = logging.getLogger(__name__)
-EMOTION_TO_IMAGE = {
-    "neutral": "/assets/images/tomoko-neutral.svg",
-    "happy": "/assets/images/tomoko-happy.svg",
-    "surprised": "/assets/images/tomoko-surprised.svg",
-    "sad": "/assets/images/tomoko-sad.svg",
-    "thinking": "/assets/images/tomoko-thinking.svg",
-    "gentle": "/assets/images/tomoko-gentle.svg",
-    "excited": "/assets/images/tomoko-excited.svg",
-}
 
 
 class TomoroSession:
@@ -270,16 +261,17 @@ class TomoroSession:
             emotion="neutral",
             device_id=transcript.device_id,
         )
-        reply_audio = ReplyAudioPipeline(initial_emotion=thinking_input.emotion)
+        reply = ReplyPipeline(initial_emotion=thinking_input.emotion)
         self._begin_audio_turn()
         async for event in self.thinking_mode.think(backend, thinking_input):
-            for command in reply_audio.handle_event(event):
+            for command in reply.handle_event(event):
                 if command.action == "emotion":
+                    assert command.image is not None
                     await self._send_event(
                         {
                             "type": "emotion",
                             "value": command.value,
-                            "image": _image_for_emotion(command.value),
+                            "image": command.image,
                         }
                     )
                 elif command.action == "text_delta":
@@ -287,11 +279,11 @@ class TomoroSession:
                 elif command.action == "tts_text":
                     await self._flush_tts_text(command.value, style=command.style)
                 elif command.action == "done":
-                    reply_text = reply_audio.reply_text.strip()
+                    reply_text = reply.reply_text.strip()
                     if self.conversation_log_writer is not None and reply_text:
                         await self.conversation_log_writer.write_tomoko_turn(
                             text=reply_text,
-                            emotion=reply_audio.current_emotion,
+                            emotion=reply.current_emotion,
                             device_id=transcript.device_id,
                         )
                     await self._send_event({"type": "reply_done"})
@@ -466,7 +458,3 @@ def _withdraw_decision(transcript: Transcript):
             reason="explicit_withdraw_request",
         )
     return None
-
-
-def _image_for_emotion(emotion: str) -> str:
-    return EMOTION_TO_IMAGE.get(emotion, EMOTION_TO_IMAGE["neutral"])

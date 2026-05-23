@@ -326,3 +326,12 @@ TTS 実行、WebSocket 送信、conversation log 書き込みは `TomoroSession`
 
 この分割後も authoritative な会話 state / attention state は `TomoroSession` が所有し、
 WebSocket エンドポイント追加やクライアント側判断への移動はしない。
+
+### 確定した判断: reply 境界は session -> reply -> audio/emotion/image
+上の `ReplyAudioPipeline` という境界名と配置は、画像や emotion を扱うには音声寄りに見えすぎるため整理した。
+
+`TomoroSession` は `ReplyPipeline` だけを知り、`ReplyPipeline` が内部で
+`ReplyAudioPlanner` / `ReplyEmotionState` / `EmotionImageMapper` を使う。
+
+画像 asset 対応は TTS 変換ではないが reply 表示 event の一部なので、`TomoroSession` 直置きではなく
+reply 配下の `EmotionImageMapper` に閉じ込める。
