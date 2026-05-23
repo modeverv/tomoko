@@ -7,6 +7,8 @@ from server.gateway.thinking.base import ThinkingMode
 from server.shared.inference.backends.base import InferenceBackend
 from server.shared.models import ThinkingEvent, ThinkingInput
 
+EMOTION_PREFIX = "EMOTION:"
+
 
 class ThinkFastMode(ThinkingMode):
     def __init__(self, persona_path: str | Path = "prompts/base_persona.md"):
@@ -22,7 +24,47 @@ class ThinkFastMode(ThinkingMode):
         self, backend: InferenceBackend, thinking_input: ThinkingInput
     ) -> AsyncGenerator[ThinkingEvent, None]:
         messages = [{"role": "user", "content": thinking_input.text}]
+        header_buffer = ""
+        header_parsed = False
         async for chunk in backend.chat_stream(self.system_prompt, messages):
-            if chunk:
+            if not chunk:
+                continue
+
+            if header_parsed:
                 yield ThinkingEvent(type="text_delta", value=chunk)
+                continue
+
+            header_buffer += chunk
+            if "\n" not in header_buffer:
+                if EMOTION_PREFIX.startswith(header_buffer):
+                    continue
+                header_parsed = True
+                yield ThinkingEvent(type="text_delta", value=header_buffer)
+                header_buffer = ""
+                continue
+
+            first_line, remainder = header_buffer.split("\n", 1)
+            emotion = _parse_emotion_line(first_line)
+            if emotion is not None:
+                yield ThinkingEvent(type="emotion", value=emotion)
+                if remainder:
+                    yield ThinkingEvent(type="text_delta", value=remainder)
+            else:
+                yield ThinkingEvent(type="text_delta", value=header_buffer)
+            header_parsed = True
+
+        if not header_parsed and header_buffer:
+            emotion = _parse_emotion_line(header_buffer)
+            if emotion is not None:
+                yield ThinkingEvent(type="emotion", value=emotion)
+            else:
+                yield ThinkingEvent(type="text_delta", value=header_buffer)
         yield ThinkingEvent(type="done", value="")
+
+
+def _parse_emotion_line(line: str) -> str | None:
+    stripped = line.strip()
+    if not stripped.startswith(EMOTION_PREFIX):
+        return None
+    emotion = stripped.removeprefix(EMOTION_PREFIX).strip()
+    return emotion or None

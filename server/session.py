@@ -96,16 +96,20 @@ class TomoroSession:
                         device_id=transcript.device_id,
                     )
                     tts_buffer = ""
+                    current_emotion = thinking_input.emotion
                     async for event in self.thinking_mode.think(backend, thinking_input):
-                        if event.type == "text_delta":
+                        if event.type == "emotion":
+                            current_emotion = event.value
+                            await self._send_event({"type": "emotion", "value": event.value})
+                        elif event.type == "text_delta":
                             await self._send_event({"type": "reply_text", "delta": event.value})
                             tts_buffer += event.value
                             tts_buffer = await self._flush_tts_sentences(
                                 tts_buffer,
-                                style=thinking_input.emotion,
+                                style=current_emotion,
                             )
                         elif event.type == "done":
-                            await self._flush_tts_text(tts_buffer, style=thinking_input.emotion)
+                            await self._flush_tts_text(tts_buffer, style=current_emotion)
                             await self._send_event({"type": "reply_done"})
                 except Exception as e:
                     logger.error("Error generating reply: %s", e)

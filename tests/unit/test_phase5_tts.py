@@ -111,6 +111,32 @@ async def test_session_flushes_tts_on_sentence_punctuation() -> None:
 
 
 @pytest.mark.unit
+async def test_session_keeps_emotion_line_out_of_tts_text() -> None:
+    events: list[dict[str, str]] = []
+    audio_chunks: list[bytes] = []
+    tts = FakeTTSBackend()
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.9] + [0.1] * 13), silence_ms=400),
+        send_event=events.append,
+        send_audio=audio_chunks.append,
+        transcriber=ConstantTranscriber(),
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=InMemoryAmbientLogWriter(),
+        router=FakeRouter(FakeBackend(["EMOTION:happy\n", "うん、聞こえるよ。"])),  # type: ignore[arg-type]
+        thinking_mode=ThinkFastMode(),
+        tts_backend=tts,
+    )
+
+    for _ in range(14):
+        await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+
+    assert tts.inputs == [TTSInput(text="うん、聞こえるよ。", style="happy")]
+    assert audio_chunks == ["audio:うん、聞こえるよ。".encode()]
+    assert {"type": "emotion", "value": "happy"} in events
+    assert {"type": "reply_text", "delta": "うん、聞こえるよ。"} in events
+
+
+@pytest.mark.unit
 async def test_say_backend_invokes_say_and_returns_wav_bytes(monkeypatch) -> None:
     calls: list[tuple[str, ...]] = []
 

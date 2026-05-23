@@ -124,3 +124,10 @@ M1 の `SayBackend` は Chrome `decodeAudioData` 互換性を優先し、16kHz/1
 
 `say` は拡張子 `.wav` だけでは `Opening output file failed: fmt?` になるが、
 `--data-format=LEI16@16000 -o speech.wav` を付けると WAV を生成できる。
+
+### 確定した判断: Phase 6a emotion 行の分離位置
+`EMOTION:<value>` 行の分離は `ThinkFastMode` で行い、`ThinkingEvent(type="emotion")` として
+`TomoroSession` に渡す。
+
+`TomoroSession` は emotion イベントをそのまま WebSocket JSON として DOM に送り、TTS には
+`text_delta` だけを流す。TTS style は直近の emotion を使う。

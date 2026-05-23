@@ -5,6 +5,7 @@ const bytesEl = document.querySelector("#bytes");
 const startButton = document.querySelector("#start");
 const stopButton = document.querySelector("#stop");
 const replyTextEl = document.querySelector("#reply-text");
+const emotionEl = document.querySelector("#emotion");
 
 let audioContext = null;
 let micStream = null;
@@ -34,6 +35,9 @@ function handleJsonEvent(data) {
     setStatus(`participation:${event.mode}`);
     // Clear reply text when new speech starts
     replyTextEl.textContent = "";
+  }
+  if (event.type === "emotion") {
+    emotionEl.textContent = event.value;
   }
   if (event.type === "reply_text") {
     replyTextEl.textContent += event.delta;

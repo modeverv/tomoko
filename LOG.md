@@ -239,3 +239,30 @@
 ### 次のセッションでやること
 - Chrome 実音声で「トモコ」に対して声が返ることを再確認する
 - まだ無音なら Chrome コンソールの `audio-error` と WebSocket バイナリ受信有無を確認する
+
+### 人間確認
+音声出ました。
+codex tomoko: Phase 6a: 感情情報を DOM に出し、TTS に流す本文から emotion 行を分離する を対応して下さい。
+
+## 2026-05-23 セッション10
+
+### やること（開始時に書く）
+- M1 Phase 6a: `EMOTION:<value>` 行を返答本文から分離し、emotion イベントを DOM に表示し、TTS には本文だけを流す
+
+### やったこと
+- `prompts/base_persona.md` に `EMOTION:<emotion>` 形式の出力指示を追加した
+- `ThinkFastMode` でストリーム先頭の emotion 行を分離し、`ThinkingEvent(type="emotion")` を送るようにした
+- `TomoroSession` で emotion イベントを WebSocket JSON として送信し、TTS style に反映した
+- TTS には emotion 行を含めず、本文の `text_delta` だけを流すようにした
+- クライアント DOM に `#emotion` 表示を追加した
+- Phase 6a の unit test を追加し、`docs/latency.md` に perf 再測定を追記した
+
+### 詰まったこと・解決したこと
+- LLM ストリームで `EMOTION:` が複数チャンクに分割される可能性がある
+  → 先頭行だけバッファし、`EMOTION:` の prefix 途中なら待つ実装にした
+- in-app Browser はこの環境で `iab` が利用できず視覚確認はできなかった
+  → `uvicorn` + `curl` で HTML/JS 配信と `#emotion` DOM の存在を確認した
+
+### 次のセッションでやること
+- Chrome 実音声で emotion 表示が返答内容に応じて変わり、音声に `EMOTION:` が読み上げられないことを手動確認する
+- Phase 6b: 静止画切り替えと声のトーンに進む
