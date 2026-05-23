@@ -9,8 +9,7 @@
 
 ## User Instruction
 
-うまくいきました。
-Phase 6b: 静止画切り替えと声のトーンに進む を対応して下さい。画像はプロジクトにasset-factory_for_workディレクトリを切り、その中でpythonで画像生成するか、可能ならあなた自身が画像生成機能持ってるならそれで対応して下さい。
+### Phase 6.5: AttentionMode / 会話と聞き取りの自然遷移 の対応をお願いします。
 
 ## Completion Criteria
 

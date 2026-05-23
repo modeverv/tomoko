@@ -552,3 +552,67 @@ available/ambient + 自発発話候補と強く接続できる話題
 withdrawn
   -> 関連していても入らない
 ```
+
+---
+
+## 2026-05-23 追記: Phase 6.6.0 TurnTaking / BargeInDetector を追加する
+
+Phase 6.5 の AttentionMode だけでは、Tomoko が話している最中の人間発話を自然に扱えない。
+ただし、3年前の Unity 実装のように `isAITalking` 中の録音処理を止める方針は否定する。
+Tomoko 発話中も人間が「ちょっと待って」「違う違う」「待って待って」と割り込むことはあり得るため、
+マイク入力と STT は続けたまま、TTS 中に得られた発話を分類する。
+
+### Phase 6.6.0: TurnTaking / BargeInDetector
+
+**目標**: Tomoko は原則として発話中の文を言い切る。ただし、発話中に緊急度の高い割り込みが入った場合は、
+次の文を送らない、または仕切り直す。相槌やスピーカー回り込みは会話割り込みとして扱わない。
+
+VAD に似た構造で扱う:
+
+```text
+VAD:
+  audio chunk
+    -> speech / silence score
+    -> threshold + duration
+    -> speech_start / speech_end
+
+BargeInDetector:
+  transcript while Tomoko speaking
+    -> echo / backchannel / soft_interrupt / hard_interrupt / new_question score
+    -> keyword + duration/window + hysteresis
+    -> continue / finish_sentence / restart_turn
+```
+
+- [ ] `server/shared/models.py` に `BargeInDecision` DTO を追加する
+  - `kind`: `echo` / `backchannel` / `soft_interrupt` / `hard_interrupt` / `new_question`
+  - `action`: `continue_speaking` / `finish_sentence` / `restart_turn`
+  - `reason`: 判定理由
+- [ ] `server/gateway/turn_taking/barge_in.py` を追加する
+  - embedding は主判定に使わない
+  - TTS 回り込み検出は、再生中時間窓 + 文字列/音素寄り類似度を優先する
+  - semantic embedding は将来の話題関連度の補助に限定する
+- [ ] Tomoko 発話中の transcript を通常の `ParticipationJudge` に直行させず、先に `BargeInDetector` に通す
+- [ ] 分類ルールを最初はルールベースで固定する
+  - `echo`: 直近 Tomoko 発話と文字列類似度が高い
+  - `backchannel`: 「うん」「はい」「へえ」「なるほど」「そうなんだ」
+  - `soft_interrupt`: 「ちょっと待って」「待って」「違う」「それ違う」
+  - `hard_interrupt`: 「待って待って」「違う違う」「ストップ」「やめて」「止めて」
+  - `new_question`: Tomoko 発話中の別質問
+- [ ] ヒステリシスを入れる
+  - Tomoko 発話開始直後の短時間は判定しない
+  - 短すぎる発話は原則 `backchannel` または `continue_speaking`
+  - echo 判定を interrupt 判定より優先する
+  - hard interrupt は反復語や強い停止語を優先する
+- [ ] M1 の `say` は文単位チャンクなので、最初は「再生中チャンクを止める」ではなく「次の文を送らない」で実装する
+- [ ] 将来、クライアントから `playback_started` / `playback_ended` のテレメトリを送る余地を残す
+  - クライアントは判定しない
+  - 再生状態という事実だけを `/ws` に返す
+- [ ] `tests/unit/test_barge_in.py` を追加する
+
+**完了条件**:
+- Tomoko 発話中の相槌では Tomoko が話し続ける
+- Tomoko 発話中の「ちょっと待って」は文末で仕切り直し候補になる
+- Tomoko 発話中の「違う違う」「待って待って」「ストップ」は次の TTS 文を送らず、聞き直しに入る
+- Tomoko 自身の声の回り込みは `echo` として observer 相当に扱われる
+- TTS 中の人間発話をすべて捨てる実装になっていない
+- `pytest -m unit` が通る
