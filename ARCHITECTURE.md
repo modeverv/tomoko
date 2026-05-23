@@ -1,0 +1,1307 @@
+# ARCHITECTURE.md
+
+このドキュメントは Tomoko の全体設計と、なぜその設計にしたのかの理由を残すものです。
+
+## 設計の一言サマリ
+
+**「内面の時間が流れている存在」としての Tomoko を、ノード分散 + PostgreSQL 中央集約で実現する。**
+
+コアロジックは起動後に変わらない。環境（バックエンド・ノード構成）だけが変わる。
+
+---
+
+## ノード構成の全体像
+
+```
+[エッジA キッチン]    [エッジB リビング]    [エッジC 寝室]
+  VAD                   VAD                   VAD
+  STT（whisper）        STT（whisper）        STT（whisper）
+  TTS（irodori）        TTS（irodori）        TTS（irodori）
+  軽量LLM（任意）       軽量LLM（任意）       軽量LLM（任意）
+  話者識別              話者識別              話者識別
+  音量計測              音量計測              音量計測
+       │                     │                     │
+       │ PresenceReport            AmbientLog
+       │ テキストのみ（音声は外に出さない）
+       └─────────────────────┬───────────────────────┘
+                             │
+                             ▼
+              ┌──────────────────────────────┐
+              │ 中央リアルタイムノード          │
+              │  DirectSpeakerResolver        │
+              │  DuplicateSpeechFilter        │
+              │  InferenceRouter              │
+              │  gateway / TomoroSession      │
+              └──────────────┬───────────────┘
+                             │
+                             ▼
+              ┌──────────────────────────────┐
+              │ PostgreSQL（唯一の真実）       │
+              │  presence        誰が今どこに  │
+              │  edge_status     エッジ状態    │
+              │  conversation_logs            │
+              │  ambient_logs                 │
+              │  utterance_candidates         │
+              │  arrival_candidates           │
+              │  emotion_log                  │
+              │  persona_state                │
+              │  diary                        │
+              │  inference_metrics            │
+              └──────────────┬───────────────┘
+                             │
+              ┌──────────────┴───────────────┐
+              │                              │
+┌─────────────▼──────────┐  ┌───────────────▼──────┐
+│ 中央バックグラウンドノード │  │ クラウド（オフロード） │
+│  thinker               │  │  Anthropic API 等     │
+│  journalist            │  │  プライバシー非依存の  │
+│  persona_update        │  │  タスクのみ           │
+│  embedder              │  └──────────────────────┘
+└────────────────────────┘
+```
+
+---
+
+## ノードの責務
+
+### エッジノード（各部屋）
+
+```
+責務:
+  VAD（発話区間検出）
+  STT（音声→テキスト）
+  TTS（テキスト→音声、スピーカーへ）
+  話者識別（pyannote）
+  音量計測
+  PresenceReport を中央DBに書く
+  AmbientLog を中央DBに書く
+
+持たないもの:
+  会話の文脈
+  Tomoroの状態
+  utterance_candidates
+
+起動設定例:
+  CONFIG=config/edge_kitchen.toml python -m server.edge.main
+```
+
+音声データは外に出ない。テキストだけが中央に流れる。
+
+### 中央リアルタイムノード
+
+```
+責務:
+  正規発話元の判定（DirectSpeakerResolver）
+  回り込み除去（DuplicateSpeechFilter）
+  TomoroSession（状態機械）
+  InferenceRouter（LLM選択・切り替え）
+  utterance_candidates からの取り出し
+  返答テキストを正規エッジに送信
+
+起動設定例:
+  CONFIG=config/central_realtime.toml python -m server.gateway.main
+```
+
+### 中央バックグラウンドノード
+
+```
+責務:
+  thinker（候補生成、常駐）
+  journalist（日記、定期）
+  persona_update（会話後）
+  embedder（embedding生成）
+  arrival事前計算（3分ごと）
+
+起動設定例:
+  CONFIG=config/central_background.toml python -m server.thinker.main
+  CONFIG=config/central_background.toml python -m server.journalist.main
+```
+
+---
+
+## 設定ベースの責務切り替え
+
+**コアロジックは一切変わらない。設定ファイルと起動スクリプトだけで責務が変わる。**
+
+```toml
+# config/edge_kitchen.toml
+[node]
+role = "edge"
+device_id = "kitchen"
+
+[inference]
+conversation_backend = "local_gemma_mlx"  # MLX推奨
+stt_backend = "local_whisper"
+tts_backend = "local_irodori"
+conversation_fallback = "central_qwen"    # 詰まったら中央へ
+
+[backends.local_gemma_mlx]
+type = "mlx"
+model = "mlx-community/gemma-3-2b-it-4bit"
+max_latency_ms = 200  # MLXなので低めに設定できる
+
+[backends.central_qwen]
+type = "ollama"
+url = "http://mainmachine:11434"
+model = "qwen2.5:7b"
+max_latency_ms = 800
+```
+
+```toml
+# config/central_realtime.toml
+[node]
+role = "central_realtime"
+
+[inference]
+conversation_backend = "local_qwen_mlx"   # MLX推奨
+tts_backend = "central_irodori"
+conversation_fallback = "cloud_anthropic"
+
+[backends.local_qwen_mlx]
+type = "mlx"
+model = "mlx-community/Qwen2.5-7B-Instruct-4bit"
+max_latency_ms = 300  # Ollamaより閾値を下げられる
+
+[backends.cloud_anthropic]
+type = "anthropic"
+model = "claude-haiku-4-5"
+max_latency_ms = 2000
+privacy_allowed = false
+```
+
+---
+
+## InferenceRouter（コアは変わらない）
+
+```python
+class InferenceRouter:
+    """
+    実測値に基づいてバックエンドを選ぶ。
+    コアロジックはこのクラスしか知らない。
+    gemmaか、qwen7bか、Claudeかはコアの関心外。
+    """
+    def __init__(self, config: NodeConfig):
+        self.backends = {
+            name: BackendFactory.create(spec)
+            for name, spec in config.backends.items()
+        }
+        self.routing = config.inference
+
+    async def select(
+        self,
+        task_type: Literal[
+            "conversation",   # リアルタイム必須
+            "candidate_gen",  # バックグラウンドでいい
+            "diary",          # 深夜でいい
+            "embedding",      # バックグラウンドでいい
+        ],
+        priority: Literal["latency", "privacy", "cost"]
+    ) -> InferenceBackend:
+
+        backend_name = self.routing[task_type + "_backend"]
+        backend = self.backends[backend_name]
+
+        # 実測で閾値超えたらフォールバック
+        metrics = await self.monitor.latest(backend.name)
+        if metrics.latency_ms > backend.max_latency_ms:
+            fallback_name = self.routing.get(task_type + "_fallback")
+            if fallback_name:
+                fallback = self.backends[fallback_name]
+                # プライバシー非許可のバックエンドには会話内容を出さない
+                if priority == "privacy" and not fallback.privacy_allowed:
+                    return backend  # 詰まっても待つ
+                return fallback
+
+        return backend
+```
+
+コアはこれだけ知っている：
+
+```python
+# gateway のどこかで
+backend = await router.select("conversation", "privacy")
+result = await backend.generate(prompt)
+# どのノードで動いているか、何のモデルかは一切知らない
+```
+
+---
+
+## MLX バックエンド（Apple Silicon 専用）
+
+### なぜ MLX が速いか
+
+```
+Ollama（Metal バックエンド）:
+  PyTorch → Metal に変換して動かす
+  変換コストがある
+  メモリ帯域の使い方が最適ではない
+
+MLX:
+  Apple Silicon のユニファイドメモリ専用設計
+  CPU / GPU / Neural Engine が同じメモリを共有
+  変換コストなし、行列演算が Apple Silicon に最適化済み
+```
+
+実測ベースの速度差（目安）：
+
+| モデル | Ollama | MLX | 差 |
+|---|---|---|---|
+| Qwen2.5 7B | 15〜25 tok/s | 40〜60 tok/s | 2〜3倍 |
+| Gemma3 2B | 30〜50 tok/s | 80〜120 tok/s | 2〜3倍 |
+| 14B 量子化 | 8〜12 tok/s | 25〜40 tok/s | 3倍前後 |
+
+### デバイス別の推奨モデル
+
+```
+M4 Max（中央リアルタイムノード）:
+  mlx-community/Qwen2.5-14B-Instruct-4bit
+  大きいモデルが実用速度になる
+
+M1 Pro / M2（中央または中規模エッジ）:
+  mlx-community/Qwen2.5-7B-Instruct-4bit
+
+M2 iPad Air / 小型エッジ:
+  mlx-community/gemma-3-2b-it-4bit
+  TTS + 軽量LLM をエッジで完結できる
+```
+
+モデルは Hugging Face の `mlx-community` にほぼ全主要モデルの量子化済みが揃っている。
+
+### MLXBackend の実装
+
+```python
+# server/shared/inference/backends/mlx.py
+
+class MLXBackend(InferenceBackend):
+    """
+    mlx-lm を直接叩くバックエンド。
+    Ollama を介さないので起動が速い。
+    Apple Silicon 専用。
+    """
+    privacy_allowed: bool = True  # ローカル推論なので常に True
+
+    def __init__(self, model_path: str):
+        from mlx_lm import load
+        self.model, self.tokenizer = load(model_path)
+
+    async def generate(
+        self, prompt: str
+    ) -> AsyncGenerator[str, None]:
+        from mlx_lm import stream_generate
+        for token in stream_generate(
+            self.model,
+            self.tokenizer,
+            prompt=prompt,
+            max_tokens=512,
+        ):
+            yield token
+
+    async def ping(self) -> float:
+        start = time.perf_counter()
+        # 軽いプローブ（1トークンだけ生成）
+        async for _ in self.generate("ping"):
+            break
+        return (time.perf_counter() - start) * 1000
+
+    async def queue_depth(self) -> int:
+        return 0  # インプロセスなのでキューなし
+```
+
+### OllamaBackend との使い分け
+
+| | MLXBackend | OllamaBackend |
+|---|---|---|
+| 速度 | 2〜3倍速い | 普通 |
+| 対応環境 | Apple Silicon のみ | クロスプラットフォーム |
+| モデル管理 | 自分で管理 | `ollama pull` だけ |
+| プロセス | インプロセス | 別プロセス HTTP |
+| メモリ | 直接消費 | Ollama プロセスが管理 |
+| 起動時間 | モデルロードに数秒 | Ollama が常駐していれば即時 |
+
+**M1以降の Apple Silicon では MLX を基本とし、
+非 Apple 環境へのフォールバックとして Ollama を残す**のが推奨。
+
+### BackendFactory での切り替え
+
+```python
+# server/shared/inference/factory.py
+
+class BackendFactory:
+    @staticmethod
+    def create(spec: BackendSpec) -> InferenceBackend:
+        match spec.type:
+            case "mlx":
+                return MLXBackend(model_path=spec.model)
+            case "ollama":
+                return OllamaBackend(url=spec.url, model=spec.model)
+            case "anthropic":
+                return AnthropicBackend(model=spec.model)
+            case _:
+                raise ValueError(f"Unknown backend type: {spec.type}")
+```
+
+設定ファイルの `type = "mlx"` を `type = "ollama"` に変えるだけで切り替わる。
+
+### M1完了後の移行手順
+
+```bash
+# 1. mlx-lm をインストール
+pip install mlx-lm
+
+# 2. モデルをダウンロード
+python -c "from mlx_lm import load; load('mlx-community/Qwen2.5-7B-Instruct-4bit')"
+
+# 3. 設定を切り替える
+# config/central_realtime.toml の conversation_backend を
+# "local_qwen7b"（ollama）→ "local_qwen_mlx"（mlx）に変更
+
+# 4. テストで比較
+pytest -m perf --tb=short  # latency.md に実測値が追記される
+```
+
+**InferenceRouter があるので A/B テストが設定ファイルの切り替えだけでできる。**
+`docs/latency.md` に Ollama と MLX の実測値を並べて判断する。
+
+---
+
+## TTS バックエンド
+
+TTS も `TTSBackend` 抽象を介して差し替え可能にする。
+**M1フェーズは `say`、完了後に `kokoro-mlx` に切り替える。**
+ダメなら VOICEVOX に切り替え可能。抽象があるのでコアは変わらない。
+
+### TTSBackend 抽象
+
+```python
+# server/shared/inference/tts/base.py
+
+class TTSBackend(ABC):
+    @abstractmethod
+    async def synthesize(
+        self,
+        text: str,
+        style: str = "neutral",
+    ) -> AsyncGenerator[bytes, None]: ...
+```
+
+### SayBackend（M1フェーズ採用）
+
+```python
+# server/shared/inference/tts/say.py
+
+class SayBackend(TTSBackend):
+    """
+    macOS say コマンドを使うバックエンド。
+    Apple の Neural Engine に直結、初回チャンクまで 10ms 以下。
+    CPU 負荷ほぼゼロ。M1 フェーズで最速を実現するための選択。
+    感情スタイルは rate で簡易表現。
+    """
+    STYLE_TO_RATE = {
+        "neutral":   175,
+        "happy":     190,
+        "excited":   200,
+        "sad":       155,
+        "thinking":  165,
+        "gentle":    160,
+    }
+
+    def __init__(self, voice: str = "Kyoko"):
+        self.voice = voice  # Kyoko（女性）/ Otoya（男性）
+
+    async def synthesize(
+        self, text: str, style: str = "neutral"
+    ) -> AsyncGenerator[bytes, None]:
+        rate = self.STYLE_TO_RATE.get(style, 175)
+        proc = await asyncio.create_subprocess_exec(
+            "say", "-v", self.voice,
+            "-r", str(rate),
+            "-o", "/tmp/tomoko_say.aiff",
+            text,
+        )
+        await proc.wait()
+        with open("/tmp/tomoko_say.aiff", "rb") as f:
+            yield f.read()
+```
+
+| 特性 | 内容 |
+|---|---|
+| 初回チャンクまで | 10ms 以下 |
+| CPU 負荷 | ほぼゼロ |
+| 感情表現 | rate のみ（簡易） |
+| 対応環境 | macOS 専用 |
+| キャラクター感 | なし（Kyoko は Kyoko） |
+
+### KokoroMLXBackend（本採用予定）
+
+```python
+# server/shared/inference/tts/kokoro_mlx.py
+
+class KokoroMLXBackend(TTSBackend):
+    """
+    kokoro-mlx を使う TTS バックエンド。
+    Apple Silicon 専用。Gapless streaming 対応。
+    PyTorch / transformers 依存なし。
+    日本語は misaki[ja] が必要。
+    """
+    STYLE_TO_VOICE = {
+        "neutral":   "jf_alpha",
+        "happy":     "jf_alpha",
+        "excited":   "jf_alpha",
+        "sad":       "jf_beta",
+        "thinking":  "jf_beta",
+        "gentle":    "jf_beta",
+    }
+
+    def __init__(self, voice: str = "jf_alpha"):
+        from kokoro_mlx import KokoroMLX
+        self.model = KokoroMLX()
+        self.default_voice = voice
+
+    async def synthesize(
+        self, text: str, style: str = "neutral"
+    ) -> AsyncGenerator[bytes, None]:
+        voice = self.STYLE_TO_VOICE.get(style, self.default_voice)
+        loop = asyncio.get_event_loop()
+        for chunk in await loop.run_in_executor(
+            None,
+            lambda: self.model.stream(text, voice=voice)
+        ):
+            yield chunk
+```
+
+| 特性 | 内容 |
+|---|---|
+| 初回チャンクまで | 10〜30ms（MLX） |
+| CPU 負荷 | 低い（Neural Engine） |
+| 感情表現 | ボイス切り替えで表現 |
+| 対応環境 | Apple Silicon 専用 |
+| ライセンス | Apache 2.0 |
+| 日本語 | `pip install misaki[ja]` が必要 |
+
+### 移行手順（M1完了後）
+
+```bash
+# 1. インストール
+pip install kokoro-mlx misaki[ja]
+
+# 2. 設定を切り替えるだけ
+# config/central_realtime.toml の tts_backend を
+# "say" → "kokoro_mlx" に変更
+
+# 3. 日本語品質を確認
+pytest -m perf --tb=short
+# docs/latency.md に say vs kokoro-mlx の実測値が並ぶ
+
+# 4. 品質が厳しければ VOICEVOX に切り替え（同じ抽象なので差し替え可能）
+```
+
+### 設定ファイルでの切り替え
+
+```toml
+# config/central_realtime.toml
+
+# M1フェーズ（say で動かす）
+[inference]
+tts_backend = "say"
+
+[backends.say]
+type = "say"
+voice = "Kyoko"
+
+# M1完了後（kokoro-mlx に切り替え）
+[inference]
+tts_backend = "kokoro_mlx"
+
+[backends.kokoro_mlx]
+type = "kokoro_mlx"
+voice = "jf_alpha"
+max_latency_ms = 50
+```
+
+### TTS 選択の判断フロー
+
+```
+M1フェーズ:
+  say → 最速、まず動かす
+
+M1完了後:
+  kokoro-mlx → 日本語品質を確認
+    OK → そのまま採用
+    NG → VOICEVOX に切り替え（同じ TTSBackend 抽象）
+```
+
+**「ダメなら切り替え可能」が TTSBackend 抽象の存在意義。**
+
+---
+
+## 層間 DTO と オーバーヘッドの設計方針
+
+### 基本原則
+
+各層の境界は `dataclass` で包む。ただし**ホットループ内はプリミティブのまま**。
+
+```
+VAD ホットループ（32ms ごと）: プリミティブ → プリミティブ
+発話終了イベント境界:          np.ndarray → SpeechSegment（DTO）
+STT 完了境界:                  SpeechSegment → Transcript（DTO）
+参加判断境界:                  Transcript → ParticipationDecision（DTO）
+LLM トークン境界:              str → ThinkingEvent（DTO、slots=True）
+TTS 入力境界:                  ThinkingEvent → TTSInput（DTO）
+WebSocket 出力境界:            bytes → AudioChunkOut（DTO）
+```
+
+### DTO 定義（server/shared/models.py に集約）
+
+```python
+# server/shared/models.py
+
+from __future__ import annotations
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Literal
+import numpy as np
+
+
+# VAD → STT（発話終了時のみ生成。数秒に1回）
+@dataclass
+class SpeechSegment:
+    audio: np.ndarray      # float32, 16kHz
+    started_at: datetime
+    ended_at: datetime
+    device_id: str
+    vad_confidence: float
+
+
+# STT → ParticipationJudge / ambient_logs
+@dataclass
+class Transcript:
+    text: str
+    device_id: str
+    speaker: str | None
+    audio_level_db: float
+    recorded_at: datetime
+    is_final: bool
+
+
+# ParticipationJudge → session
+@dataclass
+class ParticipationDecision:
+    should_participate: bool
+    mode: Literal["called", "invited", "observer", "withdraw"]
+    reason: str
+
+
+# session → ThinkingMode
+@dataclass
+class ThinkingInput:
+    text: str
+    speaker: str | None
+    context: list[ConversationTurn]
+    emotion: str
+    device_id: str
+
+
+# ThinkingMode → session（トークンごとに生成。slots=True で軽量化）
+@dataclass(slots=True)
+class ThinkingEvent:
+    type: Literal["emotion", "text_delta", "done"]
+    value: str
+
+
+# session → TTSBackend
+@dataclass
+class TTSInput:
+    text: str
+    style: str
+    voice: str | None = None
+
+
+# TTSBackend → WebSocket
+@dataclass(slots=True)
+class AudioChunkOut:
+    data: bytes
+    sequence: int     # 順序保証
+    is_last: bool
+
+
+# 会話ターン（コンテキストとして ThinkingInput に含まれる）
+@dataclass
+class ConversationTurn:
+    speaker: Literal["user", "tomoko"]
+    text: str
+    timestamp: datetime
+    emotion: str | None = None
+```
+
+### なぜ VAD ホットループはプリミティブのままか
+
+```python
+# NG: 32ms ごとに DTO を生成する
+while True:
+    chunk = mic.read(512)
+    audio_chunk = AudioChunk(          # 31回/秒 生成
+        data=chunk,
+        sample_rate=16000,
+        device_id=self.device_id,
+        timestamp=datetime.now(),      # さらに datetime.now() も毎回
+    )
+    vad.process(audio_chunk)
+
+# OK: VAD 内部はプリミティブで処理、発話終了時だけ DTO に包む
+class SileroVAD:
+    def process_chunk(self, chunk: np.ndarray) -> float:
+        """プリミティブin、プリミティブout。DTOなし。"""
+        return self.model(torch.from_numpy(chunk), 16000).item()
+
+class VADProcessor:
+    def on_speech_end(self, buffer: list[np.ndarray]) -> SpeechSegment:
+        """発話終了時のみ DTO を生成（数秒に1回）。"""
+        return SpeechSegment(
+            audio=np.concatenate(buffer),
+            started_at=self.speech_started_at,
+            ended_at=datetime.now(),   # ここで1回だけ呼ぶ
+            device_id=self.device_id,
+            vad_confidence=self.last_prob,
+        )
+```
+
+### slots=True のメリット
+
+```python
+import sys
+
+@dataclass
+class Normal:
+    type: str
+    value: str
+
+@dataclass(slots=True)
+class Slotted:
+    type: str
+    value: str
+
+sys.getsizeof(Normal("text_delta", "うん"))   # 56 bytes
+sys.getsizeof(Slotted("text_delta", "うん"))  # 48 bytes
+# 生成速度も slots=True の方が速い
+```
+
+トークンレベルで大量生成される `ThinkingEvent` と `AudioChunkOut` は
+`slots=True` を使う。それ以外は通常の `dataclass` で十分。
+
+### ルールまとめ
+
+```
+Rule 1: VAD ホットループ（32ms ごと）内は
+        プリミティブのまま処理する。DTO を作らない。
+
+Rule 2: 発話終了 / STT完了 / 参加判断 / LLM完了 などの
+        「イベント境界」でだけ DTO に包む。
+
+Rule 3: トークン単位で大量生成される DTO は
+        slots=True を使う（ThinkingEvent, AudioChunkOut）。
+
+Rule 4: datetime.now() はホットループ内で呼ばない。
+        タイムスタンプが必要なら境界でだけ取る。
+
+Rule 5: 層をまたぐ時は必ず DTO を経由する。
+        str / bytes / np.ndarray をそのまま層間で渡してはいけない。
+        （VAD 内部のホットパスは例外）
+```
+
+---
+
+```sql
+CREATE TABLE presence (
+    speaker      TEXT NOT NULL,
+    device_id    TEXT NOT NULL,
+    detected_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    confidence   FLOAT NOT NULL,   -- 音量・話者識別確信度から算出
+    PRIMARY KEY (speaker, device_id)
+);
+
+CREATE TABLE edge_status (
+    device_id    TEXT PRIMARY KEY,
+    last_seen    TIMESTAMPTZ NOT NULL,
+    is_active    BOOLEAN DEFAULT TRUE,
+    tts_ready    BOOLEAN DEFAULT FALSE,
+    llm_backend  TEXT   -- このエッジが持つLLMの種類（なければNULL）
+);
+```
+
+### DirectSpeakerResolver（正規発話元の判定）
+
+同じ発話が複数エッジから報告された時、音量最大のエッジを正規とする：
+
+```python
+class DirectSpeakerResolver:
+    async def resolve(
+        self,
+        reports: list[PresenceReport]
+    ) -> PresenceReport:
+        # 同時刻に複数エッジから来た場合、音量最大が正規
+        return max(reports, key=lambda r: r.audio_level_db)
+```
+
+### DuplicateSpeechFilter（回り込み除去）
+
+```python
+DEDUP_WINDOW_MS = 500
+
+class DuplicateSpeechFilter:
+    async def is_duplicate(
+        self,
+        transcript: str,
+        device_id: str,
+        timestamp: datetime,
+    ) -> bool:
+        recent = await db.fetch_recent_ambient_logs(
+            within_ms=DEDUP_WINDOW_MS,
+            exclude_device=device_id,
+        )
+        for log in recent:
+            if text_similarity(transcript, log.transcript) > 0.8:
+                return True  # 回り込みと判定
+        return False
+```
+
+キッチンの音声がリビングに回り込んでも、音量差と時刻差で弾かれる。
+
+### PresenceManager（人間の部屋移動）
+
+```python
+class PresenceManager:
+    async def get_primary_location(self, speaker: str) -> str | None:
+        """話者が今どの部屋にいるか"""
+        recent = await db.fetch_recent_presence(
+            speaker=speaker,
+            within_seconds=30,
+        )
+        if not recent:
+            return None
+        return max(recent, key=lambda p: p.confidence).device_id
+
+    async def has_moved(self, speaker: str) -> tuple[bool, str | None]:
+        current = await self.get_primary_location(speaker)
+        previous = await db.fetch_previous_location(speaker)
+        return (current != previous, previous)
+```
+
+Tomoroはこれを使って：
+
+```
+「あ、リビングに移動してきたんだね」
+「キッチンにいた時の話だけど」
+```
+
+が自然に言えるようになる。
+返答テキストも常に正規エッジ（今話者がいる部屋）のTTSに送られる。
+
+---
+
+## 実測ベースのフォールバック
+
+### inference_metrics テーブル
+
+```sql
+CREATE TABLE inference_metrics (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    measured_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    backend     TEXT NOT NULL,
+    latency_ms  FLOAT NOT NULL,
+    tps         FLOAT,
+    queue_depth INTEGER
+);
+```
+
+### BackendHealthMonitor
+
+```python
+class BackendHealthMonitor:
+    async def measure(self, backend: InferenceBackend) -> InferenceMetrics:
+        start = time.perf_counter()
+        await backend.ping()
+        latency = (time.perf_counter() - start) * 1000
+        metrics = InferenceMetrics(
+            backend=backend.name,
+            latency_ms=latency,
+            queue_depth=await backend.queue_depth(),
+        )
+        await db.insert_inference_metrics(metrics)
+        return metrics
+```
+
+実測値が蓄積されることで：
+
+- 過去5分の中央値が閾値超え → クラウドに切り替え
+- テストで「この構成は成立するか」を再現可能な形で検証できる
+- `docs/latency.md` への自動追記でトレンドが見える
+
+---
+
+## 常時STT と ParticipationJudge
+
+### なぜ常時STTか
+
+ローカル推論なのでプライバシー問題なし。全発話をDBに溜めることで
+Tomoko の「聞いていた記憶」が生まれる。
+
+```
+float32 chunks（常時）
+  → Silero VAD
+  → faster-whisper → ambient_logs に全部書く
+  → DuplicateSpeechFilter（回り込み除去）
+  → ParticipationJudge.judge()
+       ↓ should_participate=True の時だけ
+  → 中央リアルタイムノードへテキスト送信
+  → LLM → 返答テキスト → 正規エッジのTTS → スピーカー
+```
+
+### ambient_logs テーブル
+
+```sql
+CREATE TABLE ambient_logs (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    recorded_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    device_id           TEXT NOT NULL,
+    speaker             TEXT,
+    transcript          TEXT NOT NULL,
+    tomoko_participated BOOLEAN DEFAULT FALSE
+);
+```
+
+### ParticipationJudge（差し替え可能）
+
+```python
+class ParticipationJudge(ABC):
+    @abstractmethod
+    async def judge(self, ctx: ParticipationContext) -> ParticipationDecision: ...
+
+# 最初はこれだけ
+class WakeWordJudge(ParticipationJudge):
+    WAKE_WORDS = ["トモコ", "ともこ", "Tomoko"]
+    async def judge(self, ctx):
+        called = any(w in ctx.transcript for w in self.WAKE_WORDS)
+        return ParticipationDecision(
+            should_participate=called,
+            mode="called" if called else "observer",
+        )
+
+# 後から差し替え
+class LLMJudge(ParticipationJudge): ...
+class HybridJudge(ParticipationJudge): ...
+```
+
+---
+
+## utterance_candidates テーブル（中央プール）
+
+```sql
+CREATE TABLE utterance_candidates (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    seed            TEXT NOT NULL,
+    generated_text  TEXT,
+    generated_audio BYTEA,
+    priority        FLOAT NOT NULL DEFAULT 0.5,
+    urgent          BOOLEAN DEFAULT FALSE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at      TIMESTAMPTZ NOT NULL,
+    spoken_at       TIMESTAMPTZ,
+    dismissed_at    TIMESTAMPTZ,
+    maturity        INTEGER DEFAULT 0,
+    source          TEXT NOT NULL,
+    context_tags    TEXT[] DEFAULT '{}'
+);
+```
+
+maturity:
+- 0: seed のみ（LLM + TTS 必要、500ms〜）
+- 1: テキスト生成済み（TTS のみ、200ms〜）
+- 2: 音声まで生成済み（即発話、10ms〜）
+
+spoken_at / dismissed_at:
+- spoken_at IS NOT NULL → 話せた
+- dismissed_at IS NOT NULL → 話したかったけど期限切れ（日記に使う）
+
+### SelectionStrategy（取り出し戦略）
+
+プールは中央一発。取り出し方だけ差し替えられる：
+
+```python
+class SelectionStrategy(ABC):
+    @abstractmethod
+    def select(
+        self,
+        candidates: list[UtteranceCandidate],
+        context: SessionContext,
+    ) -> UtteranceCandidate | None: ...
+
+class HighestPriority(SelectionStrategy): ...
+class MostRelevantToTopic(SelectionStrategy): ...
+class LightweightFiller(SelectionStrategy): ...
+```
+
+---
+
+## arrival_candidates テーブル（入室用プール）
+
+```sql
+CREATE TABLE arrival_candidates (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    computed_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    valid_until      TIMESTAMPTZ NOT NULL,
+    context_snapshot JSONB NOT NULL,
+    behavior         TEXT NOT NULL,
+    -- "speak_first" / "wait_silent" / "subtle_react"
+    utterance_text   TEXT,
+    utterance_audio  BYTEA,
+    used_at          TIMESTAMPTZ
+);
+```
+
+thinker が3分ごとに作り直す使い捨て前提。
+context_snapshot に時刻・感情・urgent候補・device_id を含める。
+
+事前計算プロンプト：
+
+```
+あなたは今から数分以内に話しかけられる可能性があります。
+その時に最初に発する一言を今考えておいてください。
+
+現在の状況:
+- 時刻: {hour}時{minute}分
+- 前回の会話からの経過: {time_since_last}
+- 今のあなたの感情: {current_emotion}
+- 言いたかったけど言えていないこと: {urgent_seeds}
+- 今日の会話回数: {session_count_today}回
+- 部屋: {device_id}
+
+一言だけ答えてください。自然な日本語で。
+挨拶でも、独り言でも、沈黙（空文字）でも構いません。
+```
+
+---
+
+## journalist の役割
+
+```python
+async def write_diary(date: date):
+    logs       = await db.fetch_conversation_logs(date)
+    ambient    = await db.fetch_ambient_logs(date)  # 聞いていた会話も
+    candidates = await db.fetch_candidates_for_date(date)  # dismissed も含む
+    emotions   = await db.fetch_emotion_log(date)
+    persona    = await db.fetch_current_persona()
+```
+
+日記が記憶になり、記憶が発話を生む：
+
+```
+journalist → diary テーブルに書く
+  ↓
+DiarySource が diary を読む
+  ↓
+utterance_candidates に「続きを話したい」候補が積まれる
+  ↓
+Tomoko が自発的に話し始める
+```
+
+---
+
+## テスト構造
+
+### 3層に分類
+
+```python
+# pyproject.toml
+[tool.pytest.ini_options]
+markers = [
+    "unit: 外部依存なし、常に実行",
+    "integration: 実際のミドルウェアが必要",
+    "perf: レイテンシー計測、手元でのみ",
+]
+```
+
+### Layer 1: ユニットテスト
+
+```python
+# tests/unit/test_router.py
+
+async def test_router_chooses_cloud_when_local_slow():
+    router = InferenceRouter(
+        config=load_config("config/central_realtime.toml"),
+        monitor=MockMonitor({"local_qwen7b": InferenceMetrics(latency_ms=600)})
+    )
+    backend = await router.select("conversation", "latency")
+    assert backend.name == "cloud_anthropic"
+
+async def test_privacy_task_never_leaves_local():
+    router = InferenceRouter(
+        config=load_config("config/central_realtime.toml"),
+        monitor=MockMonitor({"local_qwen7b": InferenceMetrics(latency_ms=600)})
+    )
+    backend = await router.select("conversation", "privacy")
+    assert backend.privacy_allowed == True
+
+async def test_edge_config_uses_local_gemma():
+    config = load_config("config/edge_kitchen.toml")
+    router = InferenceRouter(config, monitor=MockMonitor())
+    backend = await router.select("conversation", "latency")
+    assert backend.model == "gemma3:2b"
+
+async def test_duplicate_speech_detected():
+    filter = DuplicateSpeechFilter(db=MockDB(
+        recent_logs=[AmbientLog(transcript="今日いい天気だね", device_id="living")]
+    ))
+    is_dup = await filter.is_duplicate(
+        transcript="今日いい天気だね",
+        device_id="kitchen",  # 別エッジから同じ発話
+        timestamp=datetime.now(),
+    )
+    assert is_dup == True
+
+async def test_direct_speaker_resolver_picks_loudest():
+    resolver = DirectSpeakerResolver()
+    reports = [
+        PresenceReport(device_id="kitchen", audio_level_db=-20),  # 小さい
+        PresenceReport(device_id="living",  audio_level_db=-10),  # 大きい
+    ]
+    primary = await resolver.resolve(reports)
+    assert primary.device_id == "living"
+```
+
+### Layer 2: 統合テスト
+
+```python
+# tests/integration/test_backends.py
+
+@pytest.mark.integration
+async def test_local_backend_latency():
+    backend = OllamaBackend(url="http://localhost:11434")
+    metrics = await HealthMonitor().measure(backend)
+    assert metrics.latency_ms < 1000
+
+@pytest.mark.integration
+async def test_fallback_to_cloud_when_local_dead():
+    router = InferenceRouter(
+        config=load_config("config/central_realtime.toml"),
+        local=DeadBackend(),
+        cloud=MockCloudBackend(),
+    )
+    backend = await router.select("candidate_gen", "latency")
+    assert backend.name == "cloud_anthropic"
+```
+
+### Layer 3: パフォーマンステスト
+
+```python
+# tests/perf/test_latency.py
+
+@pytest.mark.perf
+async def test_e2e_conversation_latency():
+    """VAD終了 → 最初の音声チャンク まで 800ms 以内"""
+    session = TomoroSession()
+    audio = load_test_audio("test_utterance_ja.wav")
+    start = time.perf_counter()
+    first_chunk = asyncio.Event()
+
+    async def on_chunk(chunk: bytes):
+        if not first_chunk.is_set():
+            first_chunk.set()
+            elapsed = (time.perf_counter() - start) * 1000
+            assert elapsed < 800, f"E2E latency: {elapsed}ms"
+
+    session.on_audio_chunk = on_chunk
+    await session.process_audio(audio)
+    await first_chunk.wait()
+
+@pytest.mark.perf
+async def test_arrival_candidate_freshness():
+    candidate = await db.fetch_latest_fresh_arrival_candidate()
+    assert candidate is not None
+    age = datetime.now() - candidate.computed_at
+    assert age.total_seconds() < 300
+```
+
+実行：
+
+```bash
+pytest -m unit                        # CI で常時
+pytest -m "unit or integration"       # 手元フル検証
+pytest -m perf --tb=short            # レイテンシー計測
+```
+
+---
+
+## イベントプロトコル（エッジ ↔ 中央）
+
+### エッジ → 中央（テキストのみ、音声は外に出ない）
+
+```jsonc
+// 発話報告
+{
+  "type": "speech",
+  "device_id": "kitchen",
+  "speaker": "お父さん",
+  "transcript": "トモコ、今日の夕飯何がいい？",
+  "audio_level_db": -15.2,
+  "timestamp": "2026-05-23T19:30:00Z"
+}
+
+// 存在報告
+{
+  "type": "presence",
+  "device_id": "kitchen",
+  "speaker": "お父さん",
+  "confidence": 0.92
+}
+```
+
+### 中央 → エッジ（返答テキスト）
+
+```jsonc
+// 返答（正規エッジだけに送る）
+{
+  "type": "reply",
+  "text": "カレーはどう？昨日の話の続きだけど",
+  "emotion": "gentle",
+  "target_device": "kitchen"
+}
+```
+
+### ブラウザクライアント ↔ エッジ（既存）
+
+```jsonc
+{"type": "state", "state": "listening"}
+{"type": "emotion", "value": "happy"}
+{"type": "reply_text", "delta": "カレーは"}
+// バイナリ: 音声チャンク
+```
+
+---
+
+## ディレクトリ構成
+
+```
+tomoko-voice/
+├── server/
+│   ├── edge/
+│   │   ├── main.py              エッジエントリ
+│   │   ├── pipeline/
+│   │   │   ├── vad.py           Silero VAD
+│   │   │   ├── stt.py           faster-whisper（常時STT）
+│   │   │   └── tts.py           TTSBackend（say→kokoro-mlx と差し替え）
+│   │   ├── participation/
+│   │   │   ├── base.py          ParticipationJudge 抽象
+│   │   │   ├── wake_word.py     WakeWordJudge
+│   │   │   ├── llm_judge.py     LLMJudge（後から）
+│   │   │   └── hybrid.py        HybridJudge（後から）
+│   │   └── speaker/
+│   │       └── identifier.py    話者識別（pyannote）
+│   │
+│   ├── gateway/
+│   │   ├── main.py              中央リアルタイムエントリ
+│   │   ├── session.py           TomoroSession（状態機械）
+│   │   ├── resolver.py          DirectSpeakerResolver
+│   │   ├── dedup.py             DuplicateSpeechFilter
+│   │   ├── presence.py          PresenceManager
+│   │   └── thinking/
+│   │       ├── base.py          ThinkingMode 抽象
+│   │       ├── fast.py          即応モード
+│   │       └── deep.py          記憶検索モード
+│   │
+│   ├── thinker/
+│   │   ├── main.py              バックグラウンドエントリ
+│   │   ├── arrival.py           入室用事前計算（3分ごと）
+│   │   ├── sources/
+│   │   │   ├── base.py          InformationSource 抽象
+│   │   │   ├── memory.py        記憶連想
+│   │   │   ├── time_based.py    時刻ベース
+│   │   │   └── diary.py         日記からの引き継ぎ
+│   │   ├── evaluator/
+│   │   │   ├── base.py          UtteranceEvaluator 抽象
+│   │   │   └── llm.py           LLM判定
+│   │   ├── selection/
+│   │   │   ├── base.py          SelectionStrategy 抽象
+│   │   │   ├── highest.py       HighestPriority
+│   │   │   ├── relevant.py      MostRelevantToTopic
+│   │   │   └── filler.py        LightweightFiller
+│   │   └── pregenerator.py      事前生成
+│   │
+│   ├── journalist/
+│   │   └── main.py              日記生成（定期実行）
+│   │
+│   └── shared/
+│       ├── db.py                PostgreSQL アクセス
+│       ├── candidate.py         UtteranceCandidate 型
+│       ├── models.py            共通データモデル
+│       ├── inference/
+│       │   ├── router.py        InferenceRouter
+│       │   ├── monitor.py       BackendHealthMonitor
+│       │   ├── backends/
+│       │   │   ├── base.py      InferenceBackend 抽象
+│       │   │   ├── mlx.py       MLXBackend（LLM、Apple Silicon専用）
+│       │   │   ├── ollama.py    OllamaBackend（LLM）
+│       │   │   └── anthropic.py AnthropicBackend（LLM）
+│       │   ├── tts/
+│       │   │   ├── base.py      TTSBackend 抽象
+│       │   │   ├── say.py       SayBackend（macOS say、M1フェーズ）
+│       │   │   └── kokoro_mlx.py KokoroMLXBackend（本採用）
+│       │   └── factory.py       BackendFactory
+│       └── config.py            NodeConfig（TOMLから読む）
+│
+├── config/
+│   ├── edge_kitchen.toml        キッチンエッジ設定
+│   ├── edge_living.toml         リビングエッジ設定
+│   ├── central_realtime.toml   中央リアルタイム設定
+│   └── central_background.toml 中央バックグラウンド設定
+│
+├── client/
+│   ├── index.html
+│   ├── main.js
+│   └── audio-worklet.js
+│
+├── assets/images/
+├── prompts/
+│   ├── base_persona.md
+│   └── persona_history/
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   └── perf/
+├── docs/
+│   └── latency.md              計測ログ
+├── docker-compose.yml
+└── pyproject.toml
+```
+
+---
+
+## 非機能要件
+
+### レイテンシー目標
+
+ユーザーが話し終わってから最初の音が出るまで: **800ms 以内**
+
+| 区間 | 目標 |
+|---|---|
+| VAD 発話終了検知 | 300〜400ms |
+| STT | 100〜200ms |
+| エッジ→中央テキスト送信 | 10ms（LAN内） |
+| LLM 最初のトークン | 100〜200ms |
+| 中央→エッジテキスト送信 | 10ms（LAN内） |
+| TTS 最初のチャンク | 100〜200ms |
+
+maturity=2 の候補を使う自発発話: **10ms 以内**
+
+### プライバシー原則
+
+```
+音声データ:     エッジの外に出ない（絶対）
+テキスト:       ローカルネットワーク内のみ（原則）
+クラウド送信:   プライバシー非依存タスクのみ（候補生成seed等）
+会話内容:       クラウドに出さない（privacy_allowed=false で保証）
+```
+
+### 永続性
+
+全ての会話ログ・候補・日記・presence は PostgreSQL に蓄積。
+明示的な削除はしない。全ては記録として残る。

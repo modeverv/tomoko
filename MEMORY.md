@@ -1,0 +1,64 @@
+# MEMORY.md
+
+セッションをまたいで有効な判断・気づき・未解決疑問を記録する。
+LOG.md が時系列なのに対して、こちらはトピックごとに整理する。
+
+---
+
+## 確定した判断
+
+### アーキテクチャ
+- WebSocket は 1 本のエントリーポイント
+- PostgreSQL が唯一の真実、ノード間通信は DB を介した読み書きのみ
+- pub/sub なし
+- プロセス: edge / gateway / thinker / journalist の分離
+- 音声データはエッジの外に出ない
+
+### VAD
+- 無音閾値: 400ms を基準に実測で調整
+  （300ms だと「えーっと」で誤検出する可能性）
+- ホットループ内はプリミティブ（np.ndarray）のまま処理
+- 発話終了時のみ SpeechSegment に包む
+
+### LLM バックエンド
+- M1フェーズ: Ollama（qwen2.5:7b）で動かす
+- M1完了後: MLX（mlx-community/Qwen2.5-7B-Instruct-4bit）に切り替えて実測比較
+- エッジの軽量LLM: gemma3:2b（MLX）
+
+### TTS バックエンド
+- M1フェーズ: macOS say コマンド（Kyoko）
+- M1完了後: kokoro-mlx（jf_alpha / jf_beta）に切り替えて日本語品質を確認
+- NG なら VOICEVOX に切り替え（TTSBackend 抽象で差し替え可能）
+
+### 感情表現プロトコル
+- 自前プロトコル採用（Phase 6a）
+  ```
+  EMOTION:happy
+  本文テキスト
+  ```
+- partial JSON parser 方式（Phase 6c）は品質が不安定な場合のみ移行
+
+### Git 運用
+- コミットは自由、origin への push は人間のみ
+- テストが通る単位でコミット
+
+---
+
+## 未解決の疑問（人間への確認待ち）
+
+※ 実装中に生じた疑問をここに積む。確認が取れたら「確定した判断」に移す。
+
+---
+
+## 気づき
+
+※ 実装中の重要な発見をここに積む。
+
+---
+
+## 既知の制約・注意事項
+
+- Safari での AudioWorklet 動作に制限がある可能性。M1 は Chrome 専用で割り切る
+- faster-whisper small で日本語精度が不十分な場合は medium に切り替え
+  （レイテンシーへの影響を計測してから判断）
+- kokoro-mlx の日本語ボイス品質は実測するまで不明
