@@ -110,6 +110,10 @@ git add .
 git commit -m "feat(phase-X): ..."
 ```
 
+### 人間の介入
+人間はgithubのマスターブランチでweb画面を見ながら確認する。
+そのため、masterブランチに作業をマージする必要があるときはマージし、マスターブランチをプッシュする。
+
 ---
 
 ## reference/ ディレクトリについて
@@ -442,16 +446,18 @@ git commit -m "feat(vad): Silero VAD ラッパーを追加
 ### 禁止していること
 
 ```bash
-git push origin main    # 絶対禁止
-git push origin master  # 絶対禁止
 git push --force        # 絶対禁止
-git push                # origin への push は全て禁止
 ```
 
-**origin への push は人間だけが行う。**
-LLM がリモートに変更を加えてはいけない。
+#### memo
+git pushは現段階では許可する。
+<!-- git push origin main    # 絶対禁止-->
+<!-- git push origin master  # 絶対禁止-->
+<!--git push                # origin への push は全て禁止-->
+<!--**origin への push は人間だけが行う。**-->
+<!--**LLM がリモートに変更を加えてはいけない。**-->
 
-push が必要だと判断した場合は MEMORY.md に記録して人間に委譲する。
+<!--push が必要だと判断した場合は MEMORY.md に記録して人間に委譲する。-->
 
 ### コミットの粒度
 

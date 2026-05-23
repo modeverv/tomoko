@@ -35,6 +35,7 @@ utterance_candidates という内面のプールが常に流れている
 ```
 
 セットアップが複雑すぎて商品にはなりません。
+また、プライバシー問題があるため、企業が提供するサービスとしても成立が困難です。
 でも**個人エンジニアが自分のために作るからこそできる設計**です。
 その設計思想をコードと ARCHITECTURE.md に残すことに意味があると考えています。
 
@@ -110,4 +111,4 @@ uv run uvicorn server.gateway.main:app --reload
 
 MIT License — 著作権表示を残せば、商用利用を含め自由に使用・改変・再配布できます。
 
-Copyright (c) 2026 phono2
+Copyright (c) 2026 modeverv

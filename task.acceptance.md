@@ -9,7 +9,7 @@
 
 ## User Instruction
 
-M1 phase0の対応をお願いします。
+M1 ## Phase 2: VAD で発話終了を検出 を対応して下さい。
 
 ## Completion Criteria
 
