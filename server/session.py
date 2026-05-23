@@ -20,6 +20,15 @@ SessionState = Literal["idle", "listening", "processing"]
 
 logger = logging.getLogger(__name__)
 TTS_FLUSH_PUNCTUATION = "。！？"
+EMOTION_TO_IMAGE = {
+    "neutral": "/assets/images/tomoko-neutral.svg",
+    "happy": "/assets/images/tomoko-happy.svg",
+    "surprised": "/assets/images/tomoko-surprised.svg",
+    "sad": "/assets/images/tomoko-sad.svg",
+    "thinking": "/assets/images/tomoko-thinking.svg",
+    "gentle": "/assets/images/tomoko-gentle.svg",
+    "excited": "/assets/images/tomoko-excited.svg",
+}
 
 
 class TomoroSession:
@@ -100,7 +109,13 @@ class TomoroSession:
                     async for event in self.thinking_mode.think(backend, thinking_input):
                         if event.type == "emotion":
                             current_emotion = event.value
-                            await self._send_event({"type": "emotion", "value": event.value})
+                            await self._send_event(
+                                {
+                                    "type": "emotion",
+                                    "value": event.value,
+                                    "image": _image_for_emotion(event.value),
+                                }
+                            )
                         elif event.type == "text_delta":
                             await self._send_event({"type": "reply_text", "delta": event.value})
                             tts_buffer += event.value
@@ -167,3 +182,7 @@ def _first_sentence_end_index(text: str) -> int | None:
     if not found:
         return None
     return min(found)
+
+
+def _image_for_emotion(emotion: str) -> str:
+    return EMOTION_TO_IMAGE.get(emotion, EMOTION_TO_IMAGE["neutral"])

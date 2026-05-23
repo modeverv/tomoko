@@ -83,6 +83,38 @@ class FakeTTSBackend(TTSBackend):
 
 
 @pytest.mark.unit
+async def test_session_sends_emotion_image_before_tts_audio() -> None:
+    timeline: list[str] = []
+    tts = FakeTTSBackend()
+
+    async def send_event(event: dict[str, str]) -> None:
+        if event["type"] == "emotion":
+            timeline.append(f"emotion:{event['value']}:{event['image']}")
+
+    async def send_audio(chunk: bytes) -> None:
+        del chunk
+        timeline.append("audio")
+
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.9] + [0.1] * 13), silence_ms=400),
+        send_event=send_event,
+        send_audio=send_audio,
+        transcriber=ConstantTranscriber(),
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=InMemoryAmbientLogWriter(),
+        router=FakeRouter(FakeBackend(["EMOTION:surprised\n", "え、そうなんだ。"])),  # type: ignore[arg-type]
+        thinking_mode=ThinkFastMode(),
+        tts_backend=tts,
+    )
+
+    for _ in range(14):
+        await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+
+    assert timeline == ["emotion:surprised:/assets/images/tomoko-surprised.svg", "audio"]
+    assert tts.inputs == [TTSInput(text="え、そうなんだ。", style="surprised")]
+
+
+@pytest.mark.unit
 async def test_session_flushes_tts_on_sentence_punctuation() -> None:
     events: list[dict[str, str]] = []
     audio_chunks: list[bytes] = []
@@ -132,7 +164,11 @@ async def test_session_keeps_emotion_line_out_of_tts_text() -> None:
 
     assert tts.inputs == [TTSInput(text="うん、聞こえるよ。", style="happy")]
     assert audio_chunks == ["audio:うん、聞こえるよ。".encode()]
-    assert {"type": "emotion", "value": "happy"} in events
+    assert {
+        "type": "emotion",
+        "value": "happy",
+        "image": "/assets/images/tomoko-happy.svg",
+    } in events
     assert {"type": "reply_text", "delta": "うん、聞こえるよ。"} in events
 
 
@@ -158,7 +194,11 @@ async def test_session_keeps_inline_emotion_prefix_out_of_tts_text() -> None:
 
     assert tts.inputs == [TTSInput(text="今日は元気いっぱいだよ！", style="happy")]
     assert audio_chunks == ["audio:今日は元気いっぱいだよ！".encode()]
-    assert {"type": "emotion", "value": "happy"} in events
+    assert {
+        "type": "emotion",
+        "value": "happy",
+        "image": "/assets/images/tomoko-happy.svg",
+    } in events
     assert {"type": "reply_text", "delta": "今日は元気いっぱいだよ！"} in events
     assert {"type": "reply_text", "delta": "EMOTION:happy 今日は元気いっぱいだよ！"} not in events
 
@@ -193,3 +233,35 @@ async def test_say_backend_invokes_say_and_returns_wav_bytes(monkeypatch) -> Non
     assert calls[0][:4] == ("say", "-v", "Kyoko", "-r")
     assert calls[0][4] == "190"
     assert "--data-format=LEI16@16000" in calls[0]
+
+
+@pytest.mark.unit
+async def test_say_backend_maps_all_emotions_to_voice_rates(monkeypatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    class FakeProc:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return b"", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs) -> FakeProc:
+        del kwargs
+        calls.append(tuple(args))
+        output_path = args[args.index("-o") + 1]
+        with open(output_path, "wb") as f:
+            f.write(b"RIFFfakeWAVE")
+        return FakeProc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create_subprocess_exec)
+    backend = SayBackend(voice="Kyoko")
+
+    for style in ["neutral", "happy", "surprised", "sad", "thinking", "gentle", "excited"]:
+        chunks = [
+            chunk
+            async for chunk in backend.synthesize(TTSInput(text="こんにちは。", style=style))
+        ]
+        assert chunks[0].data == b"RIFFfakeWAVE"
+
+    rates = [call[call.index("-r") + 1] for call in calls]
+    assert rates == ["175", "190", "185", "155", "165", "160", "200"]

@@ -15,6 +15,7 @@ class SayBackend(TTSBackend):
     STYLE_TO_RATE = {
         "neutral": 175,
         "happy": 190,
+        "surprised": 185,
         "excited": 200,
         "sad": 155,
         "thinking": 165,

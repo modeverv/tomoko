@@ -22,10 +22,12 @@ logger = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 CLIENT_DIR = ROOT_DIR / "client"
+ASSETS_DIR = ROOT_DIR / "assets"
 CONFIG_PATH = ROOT_DIR / "config" / "central_realtime.toml"
 
 app = FastAPI(title="Tomoko Edge")
 app.mount("/client", StaticFiles(directory=CLIENT_DIR), name="client")
+app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 
 
 @app.get("/")

@@ -6,6 +6,7 @@ const startButton = document.querySelector("#start");
 const stopButton = document.querySelector("#stop");
 const replyTextEl = document.querySelector("#reply-text");
 const emotionEl = document.querySelector("#emotion");
+const tomokoImageEl = document.querySelector("#tomoko-image");
 
 let audioContext = null;
 let micStream = null;
@@ -38,6 +39,9 @@ function handleJsonEvent(data) {
   }
   if (event.type === "emotion") {
     emotionEl.textContent = event.value;
+    if (event.image) {
+      tomokoImageEl.src = event.image;
+    }
   }
   if (event.type === "reply_text") {
     replyTextEl.textContent += event.delta;

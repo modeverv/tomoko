@@ -202,5 +202,9 @@ async def test_session_sends_emotion_event_after_wake_word() -> None:
     for _ in range(14):
         await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
 
-    assert {"type": "emotion", "value": "surprised"} in events
+    assert {
+        "type": "emotion",
+        "value": "surprised",
+        "image": "/assets/images/tomoko-surprised.svg",
+    } in events
     assert {"type": "reply_text", "delta": "え、そうなんだ。"} in events

@@ -39,21 +39,27 @@ button {
 
 .identity {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: 112px minmax(0, 1fr);
   align-items: center;
   gap: 16px;
 }
 
 .portrait {
   display: grid;
-  width: 72px;
-  height: 72px;
+  width: 112px;
+  height: 132px;
   place-items: center;
-  border-radius: 50%;
-  background: #315f68;
-  color: #fffdf8;
-  font-size: 32px;
-  font-weight: 700;
+  overflow: hidden;
+  border: 1px solid #d8d0c5;
+  border-radius: 8px;
+  background: #e9f0ef;
+}
+
+.portrait img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 h1 {
@@ -133,5 +139,21 @@ p {
   .meters div {
     border-color: #353b42;
     background: #1d2126;
+  }
+
+  .portrait {
+    border-color: #353b42;
+    background: #26313a;
+  }
+}
+
+@media (width < 420px) {
+  .identity {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  .portrait {
+    width: 88px;
+    height: 104px;
   }
 }

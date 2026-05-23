@@ -138,3 +138,18 @@ emotion と本文を同じ行で返すケースがあった。
 
 `ThinkFastMode` は `EMOTION:<value>\n本文` だけでなく、許可済み emotion の直後に空白を挟んで本文が続く
 `EMOTION:<value> 本文` も分離対象にする。
+
+### 確定した判断: Phase 6b の静止画切り替え
+Phase 6b の静止画は `assets/images/tomoko-<emotion>.svg` に配置し、
+`TomoroSession` が emotion イベントへ `image` フィールドを追加する。
+
+クライアントは emotion から画像を推測せず、WebSocket で届いた `image` を表示するだけにする。
+これにより状態判定と emotion-to-asset の対応はサーバー側に集約する。
+
+### 確定した判断: Phase 6b の声色
+M1 の TTS は引き続き `SayBackend` なので、声色は `TTSInput.style` に emotion を入れ、
+`say -r` の rate で簡易表現する。
+
+`neutral/happy/surprised/sad/thinking/gentle/excited` はすべて rate にマッピング済み。
+irodori-tts の `voice_style` への実マッピングは、irodori backend を Tomoko リポジトリ内に
+正式実装するタイミングで同じ `TTSInput.style` から行う。
