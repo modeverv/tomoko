@@ -13,6 +13,7 @@ let sourceNode = null;
 let sinkNode = null;
 let websocket = null;
 let bytesSent = 0;
+let nextPlaybackTime = 0;
 
 function setStatus(value) {
   statusEl.textContent = value;
@@ -37,6 +38,20 @@ function handleJsonEvent(data) {
   if (event.type === "reply_text") {
     replyTextEl.textContent += event.delta;
   }
+}
+
+async function playAudioChunk(arrayBuffer) {
+  if (!audioContext) {
+    return;
+  }
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+  const source = audioContext.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(audioContext.destination);
+
+  const startAt = Math.max(audioContext.currentTime + 0.03, nextPlaybackTime);
+  source.start(startAt);
+  nextPlaybackTime = startAt + audioBuffer.duration;
 }
 
 function websocketUrl() {
@@ -70,7 +85,12 @@ async function startSession() {
   websocket.addEventListener("message", (event) => {
     if (typeof event.data === "string") {
       handleJsonEvent(event.data);
+      return;
     }
+    playAudioChunk(event.data).catch((error) => {
+      console.error(error);
+      setStatus("audio-error");
+    });
   });
   websocket.addEventListener("close", () => {
     setStatus("stopped");
@@ -110,6 +130,7 @@ async function stopSession() {
   sourceNode = null;
   sinkNode = null;
   websocket = null;
+  nextPlaybackTime = 0;
   stopButton.disabled = true;
 }
 

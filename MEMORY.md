@@ -108,3 +108,12 @@ TTSBackend 実装時に扱う。
 Phase 1 の配線確認用エコーバックは、Phase 2/3 の実音声テストでは自分の声が返ってきて確認を妨げる。
 Phase 3 以降の `/ws` は float32 入力を受けて VAD/STT/参加判断に使うが、同じバイナリは返さない。
 クライアントは無音 GainNode 接続で AudioWorklet の処理維持だけを行い、サーバーからの JSON イベントを表示する。
+
+### 確定した判断: Phase 5 SayBackend の音声チャンク単位
+macOS `say` はファイル生成型で、M1 Phase 5 では真の PCM 逐次ストリーミングにはしない。
+LLM の `text_delta` を句点・感嘆符・疑問符まで蓄積し、文単位で AIFF を生成して `/ws` のバイナリとして送る。
+クライアントは受信した AIFF を `decodeAudioData` で `AudioBuffer` にし、次の再生時刻へキューイングする。
+
+実測では synthetic VAD/STT/LLM + real `say -v Kyoko` の VAD 終了から最初の音声チャンクまで 664.1ms。
+Ollama cold start を含む実音声 E2E は Phase 4 の既知課題の影響を受けるため、M1 800ms 目標の最終確認は
+LLM warm-up / MLX 切り替え後に再測定する。

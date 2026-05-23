@@ -13,11 +13,13 @@ from server.edge.pipeline.vad import VADProcessor
 from server.gateway.thinking.base import ThinkingMode
 from server.shared.db import AmbientLogWriter
 from server.shared.inference.router import InferenceRouter
-from server.shared.models import SpeechSegment, ThinkingInput
+from server.shared.inference.tts.base import TTSBackend
+from server.shared.models import AudioChunkOut, SpeechSegment, ThinkingInput, TTSInput
 
 SessionState = Literal["idle", "listening", "processing"]
 
 logger = logging.getLogger(__name__)
+TTS_FLUSH_PUNCTUATION = "。！？"
 
 
 class TomoroSession:
@@ -26,21 +28,26 @@ class TomoroSession:
         *,
         vad_processor: VADProcessor,
         send_event: Callable[[dict[str, str]], Any],
+        send_audio: Callable[[bytes], Any] | None = None,
         transcriber: SpeechTranscriber | None = None,
         participation_judge: ParticipationJudge | None = None,
         ambient_log_writer: AmbientLogWriter | None = None,
         router: InferenceRouter | None = None,
         thinking_mode: ThinkingMode | None = None,
+        tts_backend: TTSBackend | None = None,
     ) -> None:
         self.vad_processor = vad_processor
         self.send_event = send_event
+        self.send_audio = send_audio
         self.transcriber = transcriber
         self.participation_judge = participation_judge
         self.ambient_log_writer = ambient_log_writer
         self.router = router
         self.thinking_mode = thinking_mode
+        self.tts_backend = tts_backend
         self.state: SessionState = "idle"
         self.latest_segment: SpeechSegment | None = None
+        self._audio_sequence = 0
 
     async def process_audio_chunk(self, chunk_bytes: bytes) -> SpeechSegment | None:
         chunk = np.frombuffer(chunk_bytes, dtype=np.float32)
@@ -88,10 +95,17 @@ class TomoroSession:
                         emotion="neutral",
                         device_id=transcript.device_id,
                     )
+                    tts_buffer = ""
                     async for event in self.thinking_mode.think(backend, thinking_input):
                         if event.type == "text_delta":
                             await self._send_event({"type": "reply_text", "delta": event.value})
+                            tts_buffer += event.value
+                            tts_buffer = await self._flush_tts_sentences(
+                                tts_buffer,
+                                style=thinking_input.emotion,
+                            )
                         elif event.type == "done":
+                            await self._flush_tts_text(tts_buffer, style=thinking_input.emotion)
                             await self._send_event({"type": "reply_done"})
                 except Exception as e:
                     logger.error("Error generating reply: %s", e)
@@ -110,3 +124,42 @@ class TomoroSession:
         maybe_awaitable = self.send_event(event)
         if inspect.isawaitable(maybe_awaitable):
             await maybe_awaitable
+
+    async def _send_audio_chunk(self, chunk: AudioChunkOut) -> None:
+        if self.send_audio is None:
+            return
+        maybe_awaitable = self.send_audio(chunk.data)
+        if inspect.isawaitable(maybe_awaitable):
+            await maybe_awaitable
+
+    async def _flush_tts_sentences(self, text: str, *, style: str) -> str:
+        remainder = text
+        while True:
+            flush_index = _first_sentence_end_index(remainder)
+            if flush_index is None:
+                return remainder
+            sentence = remainder[: flush_index + 1].strip()
+            remainder = remainder[flush_index + 1 :]
+            await self._flush_tts_text(sentence, style=style)
+
+    async def _flush_tts_text(self, text: str, *, style: str) -> None:
+        if self.tts_backend is None or not text.strip():
+            return
+
+        tts_input = TTSInput(text=text.strip(), style=style)
+        async for chunk in self.tts_backend.synthesize(tts_input):
+            outgoing = AudioChunkOut(
+                data=chunk.data,
+                sequence=self._audio_sequence,
+                is_last=chunk.is_last,
+            )
+            self._audio_sequence += 1
+            await self._send_audio_chunk(outgoing)
+
+
+def _first_sentence_end_index(text: str) -> int | None:
+    indexes = [text.find(punctuation) for punctuation in TTS_FLUSH_PUNCTUATION]
+    found = [index for index in indexes if index >= 0]
+    if not found:
+        return None
+    return min(found)

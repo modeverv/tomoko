@@ -199,3 +199,25 @@
 ### 次のセッションでやること
 - Chrome 実音声で「トモコ」に対して `reply_text` が画面にストリーミング表示されることを手動確認する
 - Phase 5: TTS ストリーミングで声を出す
+
+## 2026-05-23 セッション8
+
+### やること（開始時に書く）
+- M1 Phase 5: `say` ベースの TTSBackend、句読点単位の TTS 起動、WebSocket 音声バイナリ送信、クライアント再生、TTS レイテンシー計測を実装する
+
+### やったこと
+- `TTSInput` / `AudioChunkOut` DTO と `TTSBackend` 抽象を追加した
+- `SayBackend` を追加し、`config/central_realtime.toml` の `tts_backend = "say"` から生成できるようにした
+- `TomoroSession` で LLM の `text_delta` を蓄積し、句点・感嘆符・疑問符で TTS に流すようにした
+- `/ws` で TTS 音声チャンクをバイナリ送信するようにした
+- クライアントで WebSocket バイナリを `decodeAudioData` し、`AudioBufferSourceNode` をスケジューリング再生するようにした
+- Phase 5 の unit test と perf test を追加し、`docs/latency.md` に実測値を追記した
+
+### 詰まったこと・解決したこと
+- macOS `say` は真の逐次 PCM ストリーミングではなく AIFF ファイル生成型なので、M1 では句読点単位で 1 AIFF チャンクとして送る実装にした
+- in-app browser はこの環境では `iab` が利用できず画面の自動確認はできなかった
+  → `curl http://127.0.0.1:8000/` で HTTP 200、unit/perf で WebSocket/TTS 経路を確認した
+
+### 次のセッションでやること
+- Chrome 実音声で「トモコ」に対して声が返ることを手動確認する
+- Phase 6a: 感情情報を DOM に出し、TTS に流す本文から emotion 行を分離する

@@ -15,6 +15,8 @@ from server.session import TomoroSession
 from server.shared.config import NodeConfig
 from server.shared.db import PostgresAmbientLogWriter
 from server.shared.inference.router import InferenceRouter
+from server.shared.inference.tts import create_tts_backend
+from server.shared.inference.tts.base import TTSBackend
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,11 @@ def _create_default_thinking_mode() -> ThinkFastMode:
     return ThinkFastMode(persona_path=ROOT_DIR / "prompts" / "base_persona.md")
 
 
+def _create_default_tts_backend() -> TTSBackend:
+    config = _load_config()
+    return create_tts_backend(config.backends[config.inference.tts_backend])
+
+
 @app.websocket("/ws")
 async def websocket_session(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -52,6 +59,9 @@ async def websocket_session(websocket: WebSocket) -> None:
 
     async def send_event(event: dict[str, str]) -> None:
         await websocket.send_json(event)
+
+    async def send_audio(chunk: bytes) -> None:
+        await websocket.send_bytes(chunk)
 
     vad_processor_factory = getattr(
         app.state, 
@@ -79,14 +89,21 @@ async def websocket_session(websocket: WebSocket) -> None:
         "thinking_mode_factory",
         _create_default_thinking_mode,
     )
+    tts_backend_factory = getattr(
+        app.state,
+        "tts_backend_factory",
+        _create_default_tts_backend,
+    )
     session = TomoroSession(
         vad_processor=vad_processor_factory(),
         send_event=send_event,
+        send_audio=send_audio,
         transcriber=transcriber_factory(),
         participation_judge=participation_judge_factory(),
         ambient_log_writer=ambient_log_writer_factory(),
         router=router_factory(),
         thinking_mode=thinking_mode_factory(),
+        tts_backend=tts_backend_factory(),
     )
     logger.info("phase4 websocket connected")
     try:

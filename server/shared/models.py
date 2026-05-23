@@ -54,3 +54,17 @@ class ThinkingInput:
 class ThinkingEvent:
     type: Literal["emotion", "text_delta", "done"]
     value: str
+
+
+@dataclass
+class TTSInput:
+    text: str
+    style: str
+    voice: str | None = None
+
+
+@dataclass(slots=True)
+class AudioChunkOut:
+    data: bytes
+    sequence: int
+    is_last: bool
