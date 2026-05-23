@@ -1,0 +1,22 @@
+services:
+  postgres:
+    build:
+      context: ./docker/postgres
+    container_name: tomoko-postgres
+    environment:
+      POSTGRES_DB: tomoko
+      POSTGRES_USER: tomoko
+      POSTGRES_PASSWORD: tomoko
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tomoko -d tomoko"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:

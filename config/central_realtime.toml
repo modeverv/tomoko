@@ -1,0 +1,46 @@
+[node]
+role = "central_realtime"
+
+[database]
+dsn = "postgresql://tomoko:tomoko@localhost:5432/tomoko"
+
+[audio]
+sample_rate = 16000
+chunk_ms = 32
+vad_silence_ms = 400
+
+[inference]
+conversation_backend = "local_qwen7b"
+conversation_fallback = "local_qwen_mlx"
+stt_backend = "local_whisper_small"
+vad_backend = "silero_vad"
+tts_backend = "say"
+
+[backends.local_qwen7b]
+type = "ollama"
+url = "http://localhost:11434"
+model = "qwen2.5:7b"
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.local_qwen_mlx]
+type = "mlx"
+model = "mlx-community/Qwen2.5-7B-Instruct-4bit"
+max_latency_ms = 300
+privacy_allowed = true
+
+[backends.local_whisper_small]
+type = "faster_whisper"
+model = "small"
+privacy_allowed = true
+
+[backends.silero_vad]
+type = "silero_vad"
+model = "snakers4/silero-vad"
+privacy_allowed = true
+
+[backends.say]
+type = "say"
+voice = "Kyoko"
+max_latency_ms = 10
+privacy_allowed = true

@@ -41,3 +41,28 @@
 ### 次のセッションでやること
 - Phase 0: 環境構築から開始
 - MEMORY.md に確定済み判断を整理してから実装開始
+
+## 2026-05-23 セッション1
+
+### やること（開始時に書く）
+- M1 Phase 0: Python/uv、PostgreSQL、Ollama/MLX、TTS、STT/VAD、pytest、初期設定ファイルの環境構築
+
+### やったこと
+- `mise.toml` に uv を追加し、Python 3.11.15 + uv 0.11.16 の開発環境を作成
+- `pyproject.toml` / `uv.lock` / pytest markers / ruff 設定を追加
+- `config/central_realtime.toml` を作成し、M1 は Ollama `qwen2.5:7b` + `say` を使う設定にした
+- PostgreSQL 用 `docker-compose.yml` と `docker/postgres/` を追加し、pgvector / PGroonga 拡張を有効化
+- `NodeConfig` の最小 TOML ローダーと Phase 0 unit test を追加
+- Ollama を Homebrew で導入し、`qwen2.5:7b` を pull 済み
+- `mlx-lm` を導入し、`mlx-community/Qwen2.5-7B-Instruct-4bit` のロード確認済み
+- faster-whisper small と Silero VAD のロード確認済み
+- macOS `say -v Kyoko` の音声ファイル生成確認済み
+
+### 詰まったこと・解決したこと
+- Silero VAD のロードに `torchaudio` が必要だったため依存に追加して解決
+- Docker Desktop が未起動だったため起動し、PostgreSQL コンテナの healthcheck と拡張確認まで実施
+- `irodori-tts` は Homebrew/PyPI に無く、ローカルサービスも未起動。公式 GitHub 実装を外部依存としてどう扱うかは人間確認待ち
+
+### 次のセッションでやること
+- `irodori-tts` を外部リポジトリとして導入するか、M1 では `say` のみで進めるか判断する
+- Phase 1: WebSocket 1本で float32 エコーバックを実装する
