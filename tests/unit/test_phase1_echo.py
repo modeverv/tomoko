@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import struct
 
 import numpy as np
@@ -64,9 +65,31 @@ async def test_ws_sends_state_events_on_vad_transitions() -> None:
     assert websocket.sent_bytes == []
 
 
+@pytest.mark.unit
+async def test_ws_accepts_playback_telemetry_text_events() -> None:
+    set_test_vad(VADProcessor(vad=ConstantVAD(0.0)))
+    websocket = FakeWebSocket(
+        [
+            json.dumps(
+                {
+                    "type": "playback_started",
+                    "turn_id": "turn-1",
+                    "audio_context_time": 1.25,
+                    "performance_now_ms": 100.0,
+                }
+            )
+        ]
+    )
+
+    await websocket_session(websocket)  # type: ignore[arg-type]
+
+    assert websocket.accepted is True
+    assert websocket.sent_bytes == []
+
+
 class FakeWebSocket:
-    def __init__(self, chunks: list[bytes]) -> None:
-        self.chunks = chunks
+    def __init__(self, messages: list[bytes | str]) -> None:
+        self.messages = messages
         self.accepted = False
         self.sent_json: list[dict[str, str]] = []
         self.sent_bytes: list[bytes] = []
@@ -74,10 +97,13 @@ class FakeWebSocket:
     async def accept(self) -> None:
         self.accepted = True
 
-    async def receive_bytes(self) -> bytes:
-        if not self.chunks:
+    async def receive(self) -> dict[str, object]:
+        if not self.messages:
             raise WebSocketDisconnect()
-        return self.chunks.pop(0)
+        message = self.messages.pop(0)
+        if isinstance(message, bytes):
+            return {"type": "websocket.receive", "bytes": message}
+        return {"type": "websocket.receive", "text": message}
 
     async def send_json(self, event: dict[str, str]) -> None:
         self.sent_json.append(event)

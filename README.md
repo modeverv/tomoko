@@ -76,14 +76,17 @@ PostgreSQL（全ノードが共有する唯一の真実）
 
 ```bash
 uv sync
-docker compose up -d
+make db-up
 ollama pull qwen2.5:7b
 # Apple Silicon の場合は MLX が 2〜3 倍速い
 # pip install mlx-lm
-uv run uvicorn server.gateway.main:app --reload
+make server
 ```
 
 ブラウザで `http://localhost:8000` を開く。
+
+開発中にコード変更を自動反映したい場合は `make server-reload` を使う。
+サーバーログは `make server` / `make server-reload` を実行しているターミナルに出る。
 
 ## 開発状況
 

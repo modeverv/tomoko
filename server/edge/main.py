@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -18,8 +19,10 @@ from server.shared.db import PostgresAmbientLogWriter, PostgresConversationLogWr
 from server.shared.inference.router import InferenceRouter
 from server.shared.inference.tts import create_tts_backend
 from server.shared.inference.tts.base import TTSBackend
+from server.shared.models import PlaybackTelemetry
 
 logger = logging.getLogger(__name__)
+logging.getLogger("server").setLevel(logging.INFO)
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 CLIENT_DIR = ROOT_DIR / "client"
@@ -123,9 +126,18 @@ async def websocket_session(websocket: WebSocket) -> None:
     logger.info("phase4 websocket connected")
     try:
         while True:
-            chunk = await websocket.receive_bytes()
+            message = await websocket.receive()
+            if message.get("bytes") is not None:
+                chunk = message["bytes"]
+                chunk_count += 1
+                await session.process_audio_chunk(chunk)
+                continue
+            if message.get("text") is not None:
+                _handle_client_text_event(session, message["text"])
+                continue
+            if message.get("type") == "websocket.disconnect":
+                raise WebSocketDisconnect()
             chunk_count += 1
-            await session.process_audio_chunk(chunk)
     except WebSocketDisconnect:
         logger.info("phase4 websocket disconnected after %s chunks", chunk_count)
 
@@ -152,3 +164,32 @@ def _create_default_ambient_log_writer() -> PostgresAmbientLogWriter:
 def _create_default_conversation_log_writer() -> PostgresConversationLogWriter:
     config = _load_config()
     return PostgresConversationLogWriter(config.database.dsn)
+
+
+def _handle_client_text_event(session: TomoroSession, text: str) -> None:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        logger.warning("ignored non-json websocket text event")
+        return
+    event_type = payload.get("type")
+    if event_type not in {"playback_started", "playback_ended"}:
+        logger.warning("ignored unknown websocket text event type=%s", event_type)
+        return
+    session.handle_playback_telemetry(
+        PlaybackTelemetry(
+            type=event_type,
+            turn_id=payload.get("turn_id"),
+            audio_context_time=_optional_float(payload.get("audio_context_time")),
+            performance_now_ms=_optional_float(payload.get("performance_now_ms")),
+        )
+    )
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

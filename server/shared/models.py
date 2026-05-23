@@ -16,6 +16,7 @@ BargeInKind = Literal[
     "new_question",
 ]
 BargeInAction = Literal["continue_speaking", "finish_sentence", "restart_turn"]
+PlaybackEventType = Literal["playback_started", "playback_ended"]
 
 
 @dataclass
@@ -56,6 +57,14 @@ class BargeInDecision:
     kind: BargeInKind
     action: BargeInAction
     reason: str
+
+
+@dataclass(frozen=True)
+class PlaybackTelemetry:
+    type: PlaybackEventType
+    turn_id: str | None
+    audio_context_time: float | None = None
+    performance_now_ms: float | None = None
 
 
 @dataclass(frozen=True)

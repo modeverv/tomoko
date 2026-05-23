@@ -23,6 +23,7 @@ from server.shared.models import (
     AudioChunkOut,
     BargeInContext,
     ParticipationContext,
+    PlaybackTelemetry,
     SpeechSegment,
     ThinkingInput,
     Transcript,
@@ -86,6 +87,8 @@ class TomoroSession:
         self._active_audio_turn_id: str | None = None
         self._audio_turn_started = False
         self._audio_turn_ended = False
+        self._last_playback_started: PlaybackTelemetry | None = None
+        self._last_playback_ended: PlaybackTelemetry | None = None
 
     async def process_audio_chunk(self, chunk_bytes: bytes) -> SpeechSegment | None:
         chunk = np.frombuffer(chunk_bytes, dtype=np.float32)
@@ -228,6 +231,20 @@ class TomoroSession:
                 await self._send_event({"type": "reply_done"})
                 await self._end_audio_turn()
                 self._note_attention_activity()
+
+    def handle_playback_telemetry(self, telemetry: PlaybackTelemetry) -> None:
+        if telemetry.type == "playback_started":
+            self._last_playback_started = telemetry
+        elif telemetry.type == "playback_ended":
+            self._last_playback_ended = telemetry
+        logger.info(
+            "TomoroSession playback telemetry type=%s turn_id=%s "
+            "audio_context_time=%s performance_now_ms=%s",
+            telemetry.type,
+            telemetry.turn_id,
+            telemetry.audio_context_time,
+            telemetry.performance_now_ms,
+        )
 
     async def _transition(self, state: str) -> None:
         if state not in {"idle", "listening", "processing"}:

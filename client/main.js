@@ -1,5 +1,6 @@
 const statusEl = document.querySelector("#status");
 const vadStateEl = document.querySelector("#vad-state");
+const attentionModeEl = document.querySelector("#attention-mode");
 const latencyEl = document.querySelector("#latency");
 const bytesEl = document.querySelector("#bytes");
 const startButton = document.querySelector("#start");
@@ -21,6 +22,20 @@ let playbackSources = [];
 
 function setStatus(value) {
   statusEl.textContent = value;
+}
+
+function sendPlaybackEvent(type, turnId) {
+  if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  websocket.send(
+    JSON.stringify({
+      type,
+      turn_id: turnId,
+      audio_context_time: audioContext?.currentTime ?? null,
+      performance_now_ms: performance.now(),
+    }),
+  );
 }
 
 function handleJsonEvent(data) {
@@ -48,6 +63,10 @@ function handleJsonEvent(data) {
     }
     return;
   }
+  if (event.type === "attention") {
+    attentionModeEl.textContent = event.mode;
+    return;
+  }
   if (event.type === "participation") {
     setStatus(`participation:${event.mode}`);
     // Clear reply text when new speech starts
@@ -73,6 +92,7 @@ function stopPlayback(turnId) {
       continue;
     }
     try {
+      clearTimeout(entry.startedTimer);
       entry.source.stop();
     } catch {
       // Already stopped/ended sources are safe to ignore.
@@ -103,9 +123,18 @@ async function playAudioChunk(arrayBuffer) {
   source.connect(audioContext.destination);
 
   const startAt = Math.max(audioContext.currentTime + 0.03, nextPlaybackTime);
-  const entry = { source, turnId };
+  const startedDelayMs = Math.max(0, (startAt - audioContext.currentTime) * 1000);
+  const entry = {
+    source,
+    turnId,
+    startedTimer: setTimeout(() => {
+      sendPlaybackEvent("playback_started", turnId);
+    }, startedDelayMs),
+  };
   playbackSources.push(entry);
   source.addEventListener("ended", () => {
+    clearTimeout(entry.startedTimer);
+    sendPlaybackEvent("playback_ended", turnId);
     playbackSources = playbackSources.filter((item) => item !== entry);
   });
   source.start(startAt);

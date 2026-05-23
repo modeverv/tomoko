@@ -604,7 +604,7 @@ BargeInDetector:
   - echo 判定を interrupt 判定より優先する
   - hard interrupt は反復語や強い停止語を優先する
 - [x] M1 の `say` は文単位チャンクなので、最初は「再生中チャンクを止める」ではなく「次の文を送らない」で実装する
-- [ ] 将来、クライアントから `playback_started` / `playback_ended` のテレメトリを送る余地を残す
+- [x] 将来、クライアントから `playback_started` / `playback_ended` のテレメトリを送る余地を残す
   - クライアントは判定しない
   - 再生状態という事実だけを `/ws` に返す
 - [x] `tests/unit/test_barge_in.py` を追加する
