@@ -112,3 +112,24 @@
 ### 次のセッションでやること
 - Chrome で `http://127.0.0.1:8000` を開き、マイク許可後に実音声エコーが返ることを手動確認する
 - Phase 2: Silero VAD で発話開始・終了の状態遷移を実装する
+
+## 2026-05-23 セッション4
+
+### やること（開始時に書く）
+- M1 Phase 2: Silero VAD ラッパー、TomoroSession 初版、state イベント送信、クライアント state 表示、状態遷移 unit test を実装する
+
+### やったこと
+- `server/edge/pipeline/vad.py` に `SileroVAD` ラッパーと `VADProcessor` を追加した
+- `server/session.py` に `TomoroSession` 初版を追加し、`idle` / `listening` / `processing` の状態遷移と state イベント送信を実装した
+- 既存 `/ws` に VAD 処理を組み込み、バイナリエコーを維持したまま `{type: "state"}` JSON イベントを送るようにした
+- クライアントに VAD state 表示を追加した
+- `tests/unit/test_vad.py` と WebSocket state イベントテストを追加した
+- `docs/latency.md` に 300 / 400 / 500ms の無音閾値検出タイミングを追記した
+
+### 詰まったこと・解決したこと
+- unit test では Silero 実モデルをロードしないよう、VAD scorer を注入できる設計にした
+- in-app browser の `iab` がこの環境で利用できず画面の自動確認はできなかったため、HTTP 配信は `curl`、WebSocket は TestClient で確認した
+
+### 次のセッションでやること
+- Chrome で `http://127.0.0.1:8000` を開き、マイク許可後に実音声で "listening" / "processing" が表示されることを手動確認する
+- Phase 3: 常時 STT と ParticipationJudge の実装に進む

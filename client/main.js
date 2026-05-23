@@ -1,4 +1,5 @@
 const statusEl = document.querySelector("#status");
+const vadStateEl = document.querySelector("#vad-state");
 const latencyEl = document.querySelector("#latency");
 const bytesEl = document.querySelector("#bytes");
 const startButton = document.querySelector("#start");
@@ -16,6 +17,14 @@ const pendingChunks = [];
 
 function setStatus(value) {
   statusEl.textContent = value;
+}
+
+function handleJsonEvent(data) {
+  const event = JSON.parse(data);
+  if (event.type === "state") {
+    vadStateEl.textContent = event.state;
+    setStatus(event.state);
+  }
 }
 
 function websocketUrl() {
@@ -78,6 +87,7 @@ async function startEcho() {
   });
   websocket.addEventListener("message", (event) => {
     if (typeof event.data === "string") {
+      handleJsonEvent(event.data);
       return;
     }
     recordEchoLatency(event.data.byteLength);

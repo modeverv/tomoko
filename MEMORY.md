@@ -65,6 +65,11 @@ M1 Phase 1 のブラウザ実装では、`MediaStreamSource -> AudioWorkletNode`
 入力音をスピーカーへ出さないため、`AudioWorkletNode -> GainNode(gain=0) -> destination`
 で無音接続して処理を維持する。
 
+### VAD 無音閾値の検出粒度
+M1 Phase 2 の AudioWorklet は 512 samples / 16kHz の 32ms チャンクで処理するため、
+無音閾値はチャンク境界に丸められる。
+合成 scorer の実測では 300ms -> 320ms、400ms -> 416ms、500ms -> 512ms で `processing` に遷移した。
+
 ---
 
 ## 既知の制約・注意事項
