@@ -112,3 +112,7 @@ uv run uvicorn server.gateway.main:app --reload
 MIT License — 著作権表示を残せば、商用利用を含め自由に使用・改変・再配布できます。
 
 Copyright (c) 2026 modeverv
+
+## Made with llm
+
+this project is made with llm and worked through [llm orchestrator](https://github.com/modeverv/llm-orchestrator)
