@@ -28,25 +28,25 @@ M2以降はM1の感触を見てから設計を見直す余地がある。
 
 ## Phase 0: 環境構築
 
-- [ ] Python 3.11+ / uv セットアップ
-- [ ] docker-compose で PostgreSQL 起動（pgvector / PGroonga 拡張入り）
-- [ ] Ollama + `qwen2.5:7b` ダウンロード（最初は Ollama で動かす）
-- [ ] mlx-lm インストール + `mlx-community/Qwen2.5-7B-Instruct-4bit` ダウンロード
+- [x] Python 3.11+ / uv セットアップ
+- [x] docker-compose で PostgreSQL 起動（pgvector / PGroonga 拡張入り）
+- [x] Ollama + `qwen2.5:7b` ダウンロード（最初は Ollama で動かす）
+- [x] mlx-lm インストール + `mlx-community/Qwen2.5-7B-Instruct-4bit` ダウンロード
   ```bash
   pip install mlx-lm
   python -c "from mlx_lm import load; load('mlx-community/Qwen2.5-7B-Instruct-4bit')"
   ```
-- [ ] TTS の準備
+- [x] TTS の準備
   - M1フェーズ: macOS `say` コマンドが動くことを確認（追加インストール不要）
     ```bash
     say -v Kyoko "こんにちは、トモコです"
     ```
   - M1完了後に切り替える: `pip install kokoro-mlx misaki[ja]`（今はまだ不要）
-- [ ] irodori-tts をローカルで起動確認
-- [ ] faster-whisper の small モデルをダウンロード
-- [ ] Silero VAD を torch.hub からロードできることを確認
-- [ ] pytest + pytest-asyncio セットアップ
-- [ ] `config/central_realtime.toml` を最初の設定として作成
+- [x] irodori-tts をローカルで起動確認
+- [x] faster-whisper の small モデルをダウンロード
+- [x] Silero VAD を torch.hub からロードできることを確認
+- [x] pytest + pytest-asyncio セットアップ
+- [x] `config/central_realtime.toml` を最初の設定として作成
   - 最初は `type = "ollama"` で動かす
   - M1 完了後に `type = "mlx"` に切り替えて `pytest -m perf` で比較
 
@@ -58,9 +58,9 @@ M2以降はM1の感触を見てから設計を見直す余地がある。
 
 **目標**: マイクの音をサーバーに送り、そのまま返して再生する。配線だけ確認。
 
-- [ ] `client/audio-worklet.js`: AudioWorklet で float32 を 32ms チャンクで取得
-- [ ] `client/main.js`: WebSocket で送信、受信バイナリを AudioContext で再生
-- [ ] `server/edge/main.py` 初版: `/ws` でバイナリをそのまま送り返す
+- [x] `client/audio-worklet.js`: AudioWorklet で float32 を 32ms チャンクで取得
+- [x] `client/main.js`: WebSocket で送信、受信バイナリを AudioContext で再生
+- [x] `server/edge/main.py` 初版: `/ws` でバイナリをそのまま送り返す
 
 **完了条件**: 自分の声がエコーで返ってくる。レイテンシーを実測して `docs/latency.md` にメモ。
 
@@ -68,13 +68,13 @@ M2以降はM1の感触を見てから設計を見直す余地がある。
 
 ## Phase 2: VAD で発話終了を検出
 
-- [ ] `server/edge/pipeline/vad.py`: Silero VAD ラッパー
-- [ ] TomoroSession 初版
+- [x] `server/edge/pipeline/vad.py`: Silero VAD ラッパー
+- [x] TomoroSession 初版
   - state: `idle` / `listening` / `processing`
   - 400ms 連続無音で `processing` に遷移
   - 状態遷移時に `{type: "state"}` を送信
-- [ ] クライアントで state を表示（デバッグ用）
-- [ ] `tests/unit/test_vad.py`: 状態遷移のユニットテスト
+- [x] クライアントで state を表示（デバッグ用）
+- [x] `tests/unit/test_vad.py`: 状態遷移のユニットテスト
 
 **完了条件**: 話し始めると "listening"、止まると "processing"。
 無音閾値を 300 / 400 / 500ms で実測してメモ。
@@ -83,11 +83,11 @@ M2以降はM1の感触を見てから設計を見直す余地がある。
 
 ## Phase 3: 常時STT + 参加判断
 
-- [ ] `ambient_logs` テーブル作成
-- [ ] `server/edge/pipeline/stt.py`: 常時 STT、ambient_logs に書く
-- [ ] `server/edge/participation/base.py`: `ParticipationJudge` 抽象
-- [ ] `server/edge/participation/wake_word.py`: `WakeWordJudge`
-- [ ] `tests/unit/test_participation.py`
+- [x] `ambient_logs` テーブル作成
+- [x] `server/edge/pipeline/stt.py`: 常時 STT、ambient_logs に書く
+- [x] `server/edge/participation/base.py`: `ParticipationJudge` 抽象
+- [x] `server/edge/participation/wake_word.py`: `WakeWordJudge`
+- [x] `tests/unit/test_participation.py`
 
 ```python
 async def test_wake_word_triggers():
@@ -107,15 +107,15 @@ async def test_no_wake_word_stays_observer():
 
 ## Phase 4: LLM ストリーミングで返答テキスト
 
-- [ ] `server/shared/inference/backends/base.py`: `InferenceBackend` 抽象
-- [ ] `server/shared/inference/backends/ollama.py`: `OllamaBackend`
-- [ ] `server/shared/inference/router.py`: `InferenceRouter` 初版
-- [ ] `server/shared/config.py`: `NodeConfig`（TOML から読む）
-- [ ] `server/gateway/thinking/base.py`: `ThinkingMode` 抽象
-- [ ] `server/gateway/thinking/fast.py`: `ThinkFastMode`
-- [ ] `prompts/base_persona.md`: Tomoko の基本人格
-- [ ] `{type: "reply_text", delta: ...}` を順次送信
-- [ ] `tests/unit/test_router.py`
+- [x] `server/shared/inference/backends/base.py`: `InferenceBackend` 抽象
+- [x] `server/shared/inference/backends/ollama.py`: `OllamaBackend`
+- [x] `server/shared/inference/router.py`: `InferenceRouter` 初版
+- [x] `server/shared/config.py`: `NodeConfig`（TOML から読む）
+- [x] `server/gateway/thinking/base.py`: `ThinkingMode` 抽象
+- [x] `server/gateway/thinking/fast.py`: `ThinkFastMode`
+- [x] `prompts/base_persona.md`: Tomoko の基本人格
+- [x] `{type: "reply_text", delta: ...}` を順次送信
+- [x] `tests/unit/test_router.py`
 
 ```python
 async def test_router_reads_config():
@@ -144,15 +144,15 @@ async def test_privacy_stays_local():
 
 ### M1フェーズ: SayBackend
 
-- [ ] `server/shared/inference/tts/base.py`: `TTSBackend` 抽象
-- [ ] `server/shared/inference/tts/say.py`: `SayBackend`
+- [x] `server/shared/inference/tts/base.py`: `TTSBackend` 抽象
+- [x] `server/shared/inference/tts/say.py`: `SayBackend`
   - macOS `say` コマンドを叩く
   - 初回チャンクまで 10ms 以下、CPU 負荷ほぼゼロ
   - emotion → rate のマッピングで簡易感情表現
-- [ ] session で LLM トークンを蓄積、句読点（。！？）で TTS に流す
-- [ ] 音声チャンクをバイナリで WebSocket 送信
-- [ ] クライアントで AudioBufferSourceNode をスケジューリングして途切れなく再生
-- [ ] `config/central_realtime.toml` に `tts_backend = "say"` を設定
+- [x] session で LLM トークンを蓄積、句読点（。！？）で TTS に流す
+- [x] 音声チャンクをバイナリで WebSocket 送信
+- [x] クライアントで AudioBufferSourceNode をスケジューリングして途切れなく再生
+- [x] `config/central_realtime.toml` に `tts_backend = "say"` を設定
 
 ### パフォーマンステスト
 
@@ -186,10 +186,10 @@ EMOTION:happy
 うん、洗濯日和！
 ```
 
-- [ ] `prompts/base_persona.md` に出力フォーマット指示を追加
-- [ ] `ThinkFastMode` で最初の改行前後を分岐して emotion 送信
-- [ ] TTS には改行以降だけ流す
-- [ ] クライアントで `textContent = ev.value`
+- [x] `prompts/base_persona.md` に出力フォーマット指示を追加
+- [x] `ThinkFastMode` で最初の改行前後を分岐して emotion 送信
+- [x] TTS には改行以降だけ流す
+- [x] クライアントで `textContent = ev.value`
 
 **完了条件**: 話の内容に応じて "happy" / "surprised" などが画面に出る。
 
@@ -215,8 +215,8 @@ EMOTION:happy
 
 （M1完了後の仕上げ）
 
-- [ ] `assets/images/` に立ち絵を配置
-- [ ] emotion イベントに `image` フィールドを追加（必ず音声より先に送る）
+- [x] `assets/images/` に立ち絵を配置
+- [x] emotion イベントに `image` フィールドを追加（必ず音声より先に送る）
 
 ---
 
@@ -495,29 +495,29 @@ async def test_edge_config_uses_gemma():
 **目標**: wake word 後は自然に会話が続き、会話が収束したら ambient 聞き取りに戻る。
 常時 STT は続けるが、Tomoko が会話として注意を向けていたかどうかを明示的に分ける。
 
-- [ ] `server/shared/models.py` に `AttentionMode` / `ParticipationContext` の必要フィールドを追加する
+- [x] `server/shared/models.py` に `AttentionMode` / `ParticipationContext` の必要フィールドを追加する
   - `attention_mode`: `ambient` / `engaged` / `cooldown` / `withdrawn`
   - `attended`: Tomoko が会話として注意を向けていたか
   - `participation_mode`: `called` / `invited` / `observer` / `withdraw`
-- [ ] `TomoroSession` に `attention_mode` を集約する
+- [x] `TomoroSession` に `attention_mode` を集約する
   - wake word で `ambient -> engaged`
   - `engaged` 中は wake word なしの継続発話にも返答できる
   - Tomoko の返答完了後、一定時間の無発話で `engaged -> cooldown`
   - `cooldown` 中に関連発話があれば `engaged` に戻る
   - 一定時間何もなければ `cooldown -> ambient`
   - 「静かにして」「今は入らないで」系で `withdrawn`
-- [ ] `ParticipationJudge` を `attention_mode` 前提で判定できる形に拡張する
+- [x] `ParticipationJudge` を `attention_mode` 前提で判定できる形に拡張する
   - `ambient`: wake word か強い呼びかけ以外は原則 `observer`
   - `engaged`: 直前会話の続きなら `invited`
   - `cooldown`: 関連発話なら `invited`、無関係なら `observer`
   - `withdrawn`: 原則 `withdraw`
-- [ ] `ambient_logs` に `attention_mode` / `attended` / `participation_mode` を保存する
-- [ ] `conversation_logs` は `attended=true` の会話ターンだけを保存する
-- [ ] 「聞いてなかった」扱いの応答方針をテストで固定する
+- [x] `ambient_logs` に `attention_mode` / `attended` / `participation_mode` を保存する
+- [x] `conversation_logs` は `attended=true` の会話ターンだけを保存する
+- [x] 「聞いてなかった」扱いの応答方針をテストで固定する
   - 内部的に `ambient_logs` へ記録されていても、`attended=false` の発話は直近会話文脈として使わない
   - 後からその話題を振られた場合は「その時はちゃんと聞いてなかった」と返せる余地を残す
-- [ ] 状態遷移時は必ず `log.info` で記録する
-- [ ] `tests/unit/test_attention_mode.py` を追加する
+- [x] 状態遷移時は必ず `log.info` で記録する
+- [x] `tests/unit/test_attention_mode.py` を追加する
 
 **完了条件**:
 - 「トモコ」で呼ぶと `engaged` になり、続く発話は wake word なしでも返答対象になる
@@ -583,31 +583,31 @@ BargeInDetector:
     -> continue / finish_sentence / restart_turn
 ```
 
-- [ ] `server/shared/models.py` に `BargeInDecision` DTO を追加する
+- [x] `server/shared/models.py` に `BargeInDecision` DTO を追加する
   - `kind`: `echo` / `backchannel` / `soft_interrupt` / `hard_interrupt` / `new_question`
   - `action`: `continue_speaking` / `finish_sentence` / `restart_turn`
   - `reason`: 判定理由
-- [ ] `server/gateway/turn_taking/barge_in.py` を追加する
+- [x] `server/gateway/turn_taking/barge_in.py` を追加する
   - embedding は主判定に使わない
   - TTS 回り込み検出は、再生中時間窓 + 文字列/音素寄り類似度を優先する
   - semantic embedding は将来の話題関連度の補助に限定する
-- [ ] Tomoko 発話中の transcript を通常の `ParticipationJudge` に直行させず、先に `BargeInDetector` に通す
-- [ ] 分類ルールを最初はルールベースで固定する
+- [x] Tomoko 発話中の transcript を通常の `ParticipationJudge` に直行させず、先に `BargeInDetector` に通す
+- [x] 分類ルールを最初はルールベースで固定する
   - `echo`: 直近 Tomoko 発話と文字列類似度が高い
   - `backchannel`: 「うん」「はい」「へえ」「なるほど」「そうなんだ」
   - `soft_interrupt`: 「ちょっと待って」「待って」「違う」「それ違う」
   - `hard_interrupt`: 「待って待って」「違う違う」「ストップ」「やめて」「止めて」
   - `new_question`: Tomoko 発話中の別質問
-- [ ] ヒステリシスを入れる
+- [x] ヒステリシスを入れる
   - Tomoko 発話開始直後の短時間は判定しない
   - 短すぎる発話は原則 `backchannel` または `continue_speaking`
   - echo 判定を interrupt 判定より優先する
   - hard interrupt は反復語や強い停止語を優先する
-- [ ] M1 の `say` は文単位チャンクなので、最初は「再生中チャンクを止める」ではなく「次の文を送らない」で実装する
+- [x] M1 の `say` は文単位チャンクなので、最初は「再生中チャンクを止める」ではなく「次の文を送らない」で実装する
 - [ ] 将来、クライアントから `playback_started` / `playback_ended` のテレメトリを送る余地を残す
   - クライアントは判定しない
   - 再生状態という事実だけを `/ws` に返す
-- [ ] `tests/unit/test_barge_in.py` を追加する
+- [x] `tests/unit/test_barge_in.py` を追加する
 
 **完了条件**:
 - Tomoko 発話中の相槌では Tomoko が話し続ける
@@ -615,4 +615,32 @@ BargeInDetector:
 - Tomoko 発話中の「違う違う」「待って待って」「ストップ」は次の TTS 文を送らず、聞き直しに入る
 - Tomoko 自身の声の回り込みは `echo` として observer 相当に扱われる
 - TTS 中の人間発話をすべて捨てる実装になっていない
+- `pytest -m unit` が通る
+
+---
+
+## 2026-05-23 追記: Phase 6.6.1 AudioPlaybackControl を追加する
+
+Phase 6.6.0 の BargeInDetector は hard interrupt を分類できるが、すでにクライアントへ送った音声の停止はできない。
+TTS バックエンドを `say` から kokoro / irodori に変える前に、サーバー主導の基本再生制御プロトコルを作る。
+
+### Phase 6.6.1: AudioPlaybackControl
+
+**目標**: サーバーが「どの返答音声を開始したか」「どの返答音声を終えたか」「どの返答音声を止めるか」を
+WebSocket JSON イベントで明示し、クライアントは命令に従って再生中/予約済み音声を止められるようにする。
+
+- [x] 返答ごとに `turn_id` を発行する
+- [x] 最初の音声バイナリより前に `{"type":"audio_start","turn_id":"..."}` を送る
+- [x] 返答音声の送信完了後に `{"type":"audio_end","turn_id":"..."}` を送る
+- [x] hard interrupt で `{"type":"audio_control","action":"stop","turn_id":"..."}` を送る
+- [x] クライアントは再生中/予約済みの `AudioBufferSourceNode` を `turn_id` ごとに保持する
+- [x] `audio_control: stop` を受けたら対象 turn の source を `stop()` し、`nextPlaybackTime` を現在時刻へ戻す
+- [x] WebSocket の順序保証を前提に、binary audio chunk は直前の `audio_start.turn_id` に属すると扱う
+- [x] TCP 的な sequence 並べ替えは実装しない
+
+**完了条件**:
+- `audio_start` が音声バイナリより先に届く
+- `audio_end` が返答完了時に届く
+- hard interrupt 時に `audio_control stop` が届く
+- クライアントがサーバー命令だけで再生中/予約済み音声を停止できる
 - `pytest -m unit` が通る

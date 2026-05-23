@@ -16,6 +16,8 @@ let sinkNode = null;
 let websocket = null;
 let bytesSent = 0;
 let nextPlaybackTime = 0;
+let currentAudioTurnId = null;
+let playbackSources = [];
 
 function setStatus(value) {
   statusEl.textContent = value;
@@ -23,6 +25,20 @@ function setStatus(value) {
 
 function handleJsonEvent(data) {
   const event = JSON.parse(data);
+  if (event.type === "audio_start") {
+    currentAudioTurnId = event.turn_id;
+    return;
+  }
+  if (event.type === "audio_end") {
+    if (currentAudioTurnId === event.turn_id) {
+      currentAudioTurnId = null;
+    }
+    return;
+  }
+  if (event.type === "audio_control") {
+    stopPlayback(event.turn_id ?? null);
+    return;
+  }
   if (event.type === "state") {
     vadStateEl.textContent = event.state;
     if (event.state === "idle" && statusEl.textContent.startsWith("participation:")) {
@@ -48,6 +64,31 @@ function handleJsonEvent(data) {
   }
 }
 
+function stopPlayback(turnId) {
+  const shouldStop = (entry) => turnId === null || entry.turnId === turnId;
+  const remaining = [];
+  for (const entry of playbackSources) {
+    if (!shouldStop(entry)) {
+      remaining.push(entry);
+      continue;
+    }
+    try {
+      entry.source.stop();
+    } catch {
+      // Already stopped/ended sources are safe to ignore.
+    }
+  }
+  playbackSources = remaining;
+  if (!turnId || currentAudioTurnId === turnId) {
+    currentAudioTurnId = null;
+  }
+  if (audioContext) {
+    nextPlaybackTime = audioContext.currentTime;
+  } else {
+    nextPlaybackTime = 0;
+  }
+}
+
 async function playAudioChunk(arrayBuffer) {
   if (!audioContext) {
     return;
@@ -57,10 +98,16 @@ async function playAudioChunk(arrayBuffer) {
   }
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
   const source = audioContext.createBufferSource();
+  const turnId = currentAudioTurnId;
   source.buffer = audioBuffer;
   source.connect(audioContext.destination);
 
   const startAt = Math.max(audioContext.currentTime + 0.03, nextPlaybackTime);
+  const entry = { source, turnId };
+  playbackSources.push(entry);
+  source.addEventListener("ended", () => {
+    playbackSources = playbackSources.filter((item) => item !== entry);
+  });
   source.start(startAt);
   nextPlaybackTime = startAt + audioBuffer.duration;
 }
@@ -142,6 +189,8 @@ async function stopSession() {
   sinkNode = null;
   websocket = null;
   nextPlaybackTime = 0;
+  currentAudioTurnId = null;
+  playbackSources = [];
   stopButton.disabled = true;
 }
 

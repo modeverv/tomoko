@@ -8,6 +8,14 @@ import numpy as np
 
 AttentionMode = Literal["ambient", "engaged", "cooldown", "withdrawn"]
 ParticipationMode = Literal["called", "invited", "observer", "withdraw"]
+BargeInKind = Literal[
+    "echo",
+    "backchannel",
+    "soft_interrupt",
+    "hard_interrupt",
+    "new_question",
+]
+BargeInAction = Literal["continue_speaking", "finish_sentence", "restart_turn"]
 
 
 @dataclass
@@ -33,6 +41,20 @@ class Transcript:
 class ParticipationDecision:
     should_participate: bool
     mode: ParticipationMode
+    reason: str
+
+
+@dataclass(frozen=True)
+class BargeInContext:
+    transcript: str
+    recent_tomoko_text: str
+    speaking_elapsed_ms: float
+
+
+@dataclass(frozen=True)
+class BargeInDecision:
+    kind: BargeInKind
+    action: BargeInAction
     reason: str
 
 

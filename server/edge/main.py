@@ -11,6 +11,7 @@ from server.edge.participation.wake_word import WakeWordJudge
 from server.edge.pipeline.stt import SpeechTranscriber, create_stt_transcriber
 from server.edge.pipeline.vad import create_vad_processor
 from server.gateway.thinking.fast import ThinkFastMode
+from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.session import TomoroSession
 from server.shared.config import NodeConfig
 from server.shared.db import PostgresAmbientLogWriter, PostgresConversationLogWriter
@@ -101,6 +102,11 @@ async def websocket_session(websocket: WebSocket) -> None:
         "tts_backend_factory",
         _create_default_tts_backend,
     )
+    barge_in_detector_factory = getattr(
+        app.state,
+        "barge_in_detector_factory",
+        BargeInDetector,
+    )
     session = TomoroSession(
         vad_processor=vad_processor_factory(),
         send_event=send_event,
@@ -112,6 +118,7 @@ async def websocket_session(websocket: WebSocket) -> None:
         router=router_factory(),
         thinking_mode=thinking_mode_factory(),
         tts_backend=tts_backend_factory(),
+        barge_in_detector=barge_in_detector_factory(),
     )
     logger.info("phase4 websocket connected")
     try:

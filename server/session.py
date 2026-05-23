@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import inspect
 import logging
+import struct
+import time
+import uuid
 from collections.abc import Callable
 from typing import Any, Literal
 
@@ -11,12 +14,14 @@ from server.edge.participation.base import ParticipationJudge
 from server.edge.pipeline.stt import SpeechTranscriber
 from server.edge.pipeline.vad import VADProcessor
 from server.gateway.thinking.base import ThinkingMode
+from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.shared.db import AmbientLogWriter, ConversationLogWriter
 from server.shared.inference.router import InferenceRouter
 from server.shared.inference.tts.base import TTSBackend
 from server.shared.models import (
     AttentionMode,
     AudioChunkOut,
+    BargeInContext,
     ParticipationContext,
     SpeechSegment,
     ThinkingInput,
@@ -53,6 +58,7 @@ class TomoroSession:
         router: InferenceRouter | None = None,
         thinking_mode: ThinkingMode | None = None,
         tts_backend: TTSBackend | None = None,
+        barge_in_detector: BargeInDetector | None = None,
         engaged_timeout_ms: int = 8000,
         cooldown_timeout_ms: int = 8000,
     ) -> None:
@@ -66,6 +72,7 @@ class TomoroSession:
         self.router = router
         self.thinking_mode = thinking_mode
         self.tts_backend = tts_backend
+        self.barge_in_detector = barge_in_detector
         self.state: SessionState = "idle"
         self.attention_mode: AttentionMode = "ambient"
         self.latest_segment: SpeechSegment | None = None
@@ -73,6 +80,12 @@ class TomoroSession:
         self._attention_idle_ms = 0.0
         self._engaged_timeout_ms = engaged_timeout_ms
         self._cooldown_timeout_ms = cooldown_timeout_ms
+        self._recent_tomoko_text = ""
+        self._tomoko_speaking_started_at: float | None = None
+        self._tomoko_speaking_until = 0.0
+        self._active_audio_turn_id: str | None = None
+        self._audio_turn_started = False
+        self._audio_turn_ended = False
 
     async def process_audio_chunk(self, chunk_bytes: bytes) -> SpeechSegment | None:
         chunk = np.frombuffer(chunk_bytes, dtype=np.float32)
@@ -93,6 +106,36 @@ class TomoroSession:
 
         transcript = await self.transcriber.transcribe(segment)
         previous_attention = self.attention_mode
+        barge_in_decision = self._classify_barge_in(transcript)
+        if barge_in_decision is not None:
+            await self._send_event(
+                {
+                    "type": "barge_in",
+                    "kind": barge_in_decision.kind,
+                    "action": barge_in_decision.action,
+                }
+            )
+            logger.info(
+                "TomoroSession barge-in kind=%s action=%s reason=%s",
+                barge_in_decision.kind,
+                barge_in_decision.action,
+                barge_in_decision.reason,
+            )
+            if barge_in_decision.action == "restart_turn":
+                await self._stop_active_audio_turn()
+            if barge_in_decision.action == "continue_speaking":
+                if self.ambient_log_writer is not None:
+                    await self.ambient_log_writer.write(
+                        transcript,
+                        tomoko_participated=False,
+                        attention_mode=previous_attention,
+                        attended=False,
+                        participation_mode="observer",
+                    )
+                self.vad_processor.reset()
+                await self._transition("idle")
+                return
+
         decision = _withdraw_decision(transcript)
         if decision is None and self.participation_judge is not None:
             decision = await self.participation_judge.judge(
@@ -155,6 +198,7 @@ class TomoroSession:
         tts_buffer = ""
         reply_text = ""
         current_emotion = thinking_input.emotion
+        self._begin_audio_turn()
         async for event in self.thinking_mode.think(backend, thinking_input):
             if event.type == "emotion":
                 current_emotion = event.value
@@ -182,6 +226,7 @@ class TomoroSession:
                         device_id=transcript.device_id,
                     )
                 await self._send_event({"type": "reply_done"})
+                await self._end_audio_turn()
                 self._note_attention_activity()
 
     async def _transition(self, state: str) -> None:
@@ -248,6 +293,8 @@ class TomoroSession:
 
         tts_input = TTSInput(text=text.strip(), style=style)
         async for chunk in self.tts_backend.synthesize(tts_input):
+            await self._ensure_audio_turn_started()
+            self._mark_tomoko_speaking(text=tts_input.text, audio_data=chunk.data)
             outgoing = AudioChunkOut(
                 data=chunk.data,
                 sequence=self._audio_sequence,
@@ -255,6 +302,79 @@ class TomoroSession:
             )
             self._audio_sequence += 1
             await self._send_audio_chunk(outgoing)
+
+    def _classify_barge_in(self, transcript: Transcript):
+        if self.barge_in_detector is None or not self._is_tomoko_speaking():
+            return None
+        started_at = self._tomoko_speaking_started_at
+        speaking_elapsed_ms = 0.0
+        if started_at is not None:
+            speaking_elapsed_ms = max(0.0, (time.monotonic() - started_at) * 1000)
+        return self.barge_in_detector.classify(
+            BargeInContext(
+                transcript=transcript.text,
+                recent_tomoko_text=self._recent_tomoko_text,
+                speaking_elapsed_ms=speaking_elapsed_ms,
+            )
+        )
+
+    def _is_tomoko_speaking(self) -> bool:
+        return time.monotonic() <= self._tomoko_speaking_until
+
+    def _mark_tomoko_speaking(self, *, text: str, audio_data: bytes) -> None:
+        now = time.monotonic()
+        duration = _wav_duration_seconds(audio_data)
+        if duration is None:
+            duration = max(0.6, len(text) * 0.12)
+        self._recent_tomoko_text = _append_recent_text(self._recent_tomoko_text, text)
+        self._tomoko_speaking_started_at = now
+        self._tomoko_speaking_until = max(self._tomoko_speaking_until, now) + duration + 0.5
+
+    def _begin_audio_turn(self) -> None:
+        self._active_audio_turn_id = uuid.uuid4().hex
+        self._audio_turn_started = False
+        self._audio_turn_ended = False
+
+    async def _ensure_audio_turn_started(self) -> None:
+        if self._active_audio_turn_id is None:
+            self._begin_audio_turn()
+        if self._audio_turn_started:
+            return
+        assert self._active_audio_turn_id is not None
+        await self._send_event(
+            {
+                "type": "audio_start",
+                "turn_id": self._active_audio_turn_id,
+            }
+        )
+        self._audio_turn_started = True
+
+    async def _end_audio_turn(self) -> None:
+        if self._active_audio_turn_id is None:
+            return
+        if self._audio_turn_started and not self._audio_turn_ended:
+            await self._send_event(
+                {
+                    "type": "audio_end",
+                    "turn_id": self._active_audio_turn_id,
+                }
+            )
+            self._audio_turn_ended = True
+
+    async def _stop_active_audio_turn(self) -> None:
+        if self._active_audio_turn_id is None:
+            return
+        await self._send_event(
+            {
+                "type": "audio_control",
+                "action": "stop",
+                "turn_id": self._active_audio_turn_id,
+            }
+        )
+        self._tomoko_speaking_until = 0.0
+        self._active_audio_turn_id = None
+        self._audio_turn_started = False
+        self._audio_turn_ended = False
 
 
 def _first_sentence_end_index(text: str) -> int | None:
@@ -267,6 +387,41 @@ def _first_sentence_end_index(text: str) -> int | None:
 
 def _image_for_emotion(emotion: str) -> str:
     return EMOTION_TO_IMAGE.get(emotion, EMOTION_TO_IMAGE["neutral"])
+
+
+def _append_recent_text(previous: str, text: str, max_chars: int = 240) -> str:
+    combined = f"{previous}{text}"
+    if len(combined) <= max_chars:
+        return combined
+    return combined[-max_chars:]
+
+
+def _wav_duration_seconds(audio_data: bytes) -> float | None:
+    if len(audio_data) < 44 or audio_data[:4] != b"RIFF" or audio_data[8:12] != b"WAVE":
+        return None
+    offset = 12
+    sample_rate: int | None = None
+    channels: int | None = None
+    bits_per_sample: int | None = None
+    data_size: int | None = None
+    while offset + 8 <= len(audio_data):
+        chunk_id = audio_data[offset : offset + 4]
+        chunk_size = struct.unpack_from("<I", audio_data, offset + 4)[0]
+        chunk_start = offset + 8
+        chunk_end = chunk_start + chunk_size
+        if chunk_id == b"fmt " and chunk_size >= 16 and chunk_end <= len(audio_data):
+            channels = struct.unpack_from("<H", audio_data, chunk_start + 2)[0]
+            sample_rate = struct.unpack_from("<I", audio_data, chunk_start + 4)[0]
+            bits_per_sample = struct.unpack_from("<H", audio_data, chunk_start + 14)[0]
+        elif chunk_id == b"data":
+            data_size = chunk_size
+        offset = chunk_end + (chunk_size % 2)
+    if not sample_rate or not channels or not bits_per_sample or data_size is None:
+        return None
+    bytes_per_second = sample_rate * channels * (bits_per_sample / 8)
+    if bytes_per_second <= 0:
+        return None
+    return data_size / bytes_per_second
 
 
 def _withdraw_decision(transcript: Transcript):

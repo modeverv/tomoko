@@ -104,8 +104,12 @@ async def test_session_sends_emotion_image_before_tts_audio() -> None:
     tts = FakeTTSBackend()
 
     async def send_event(event: dict[str, str]) -> None:
+        if event["type"] == "audio_start":
+            timeline.append(f"audio_start:{event['turn_id']}")
         if event["type"] == "emotion":
             timeline.append(f"emotion:{event['value']}:{event['image']}")
+        if event["type"] == "audio_end":
+            timeline.append(f"audio_end:{event['turn_id']}")
 
     async def send_audio(chunk: bytes) -> None:
         del chunk
@@ -126,7 +130,13 @@ async def test_session_sends_emotion_image_before_tts_audio() -> None:
     for _ in range(14):
         await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
 
-    assert timeline == ["emotion:surprised:/assets/images/tomoko-surprised.svg", "audio"]
+    assert timeline[0] == "emotion:surprised:/assets/images/tomoko-surprised.svg"
+    assert timeline[1].startswith("audio_start:")
+    assert timeline[2] == "audio"
+    assert timeline[3].startswith("audio_end:")
+    assert timeline[1].removeprefix("audio_start:") == timeline[3].removeprefix(
+        "audio_end:"
+    )
     assert tts.inputs == [TTSInput(text="え、そうなんだ。", style="surprised")]
 
 

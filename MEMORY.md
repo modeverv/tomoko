@@ -196,3 +196,21 @@ VAD が audio chunk を speech/silence に分類するのに対し、BargeInDete
 speaker echo 判定では semantic embedding を主判定にしない。
 会話は原理的に相手の発話と意味的に関連するため、embedding 類似度を主判定にすると自然な返答を echo と誤判定しやすい。
 最初は AEC、TTS 再生中の時間窓、文字列/音素寄り類似度、割り込みキーワード、ヒステリシスで判定する。
+
+### 確定した判断: AEC だけでは MacBook 回り込み対策として不十分
+Chrome の `echoCancellation` / `noiseSuppression` を有効化しても、MacBook スピーカーから出た Tomoko 音声が
+内蔵マイクに回り込み、STT/参加判定に入るケースが残った。
+
+Phase 6.6.0 の初期実装では、クライアント側 AEC に加えてサーバー側で TTS 再生時間窓を推定し、
+その窓内の transcript を `BargeInDetector` に通す。
+直近 Tomoko 発話と文字列的に近い transcript は `echo` として `observer` 相当に扱い、
+「違う違う」「待って待って」「ストップ」などの hard interrupt は通常の参加判定へ進める。
+
+### 確定した判断: Phase 6.6.1 AudioPlaybackControl
+TTS バックエンドが `say` / kokoro / irodori のどれでも、実際の再生停止はクライアント側の
+`AudioBufferSourceNode` を止める必要がある。
+そのため、サーバー主導の `audio_start` / `audio_end` / `audio_control stop` を WebSocket JSON イベントとして追加する。
+
+単一 WebSocket 上ではメッセージ順序が保証されるため、TCP 的な sequence 並べ替えは実装しない。
+binary audio chunk は直前の `audio_start.turn_id` に属すると扱う。
+`turn_id` は並べ替えではなく、stop / cancel / stale chunk discard のために使う。
