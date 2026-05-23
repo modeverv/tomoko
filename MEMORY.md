@@ -313,3 +313,16 @@ kokoro / irodori TTS へ進む前に、`TomoroSession` の audio turn / playback
 `_active_playback_chunks` 更新の保護だけを先に固定する。
 
 ロック内では状態確定だけを行い、`send_event` / `send_audio` / DB / LLM / TTS のような外部 I/O はロック外で実行する。
+
+### 確定した判断: Phase 6.6.4 TomoroSession 責務分割
+`TomoroSession` は会話状態機械のオーケストレーターとして残し、audio turn / playback telemetry の細部は
+`AudioTurnController` に切り出す。
+
+`AudioTurnController` は `turn_id`、audio sequence、active playback chunk、speaker echo grace を所有するが、
+参加判断、attention 遷移、WebSocket I/O は持たない。
+
+`ReplyAudioPipeline` は `ThinkingEvent` を emotion / reply text / TTS flush command に変換するだけの helper とし、
+TTS 実行、WebSocket 送信、conversation log 書き込みは `TomoroSession` 側で行う。
+
+この分割後も authoritative な会話 state / attention state は `TomoroSession` が所有し、
+WebSocket エンドポイント追加やクライアント側判断への移動はしない。

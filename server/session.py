@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 import inspect
 import logging
-import struct
-import time
-import uuid
 from collections.abc import Callable
 from typing import Any, Literal
 
@@ -15,6 +11,8 @@ from server.edge.participation.base import ParticipationJudge
 from server.edge.pipeline.stt import SpeechTranscriber, supports_streaming
 from server.edge.pipeline.stt_filter import TranscriptFilter
 from server.edge.pipeline.vad import VADProcessor
+from server.gateway.audio_turn import AudioTurnController
+from server.gateway.reply_audio import ReplyAudioPipeline
 from server.gateway.thinking.base import ThinkingMode
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.shared.db import AmbientLogWriter, ConversationLogWriter
@@ -36,16 +34,6 @@ from server.shared.models import (
 SessionState = Literal["idle", "listening", "processing"]
 
 logger = logging.getLogger(__name__)
-TTS_FLUSH_PUNCTUATION = "。！？"
-EMOTION_TO_IMAGE = {
-    "neutral": "/assets/images/tomoko-neutral.svg",
-    "happy": "/assets/images/tomoko-happy.svg",
-    "surprised": "/assets/images/tomoko-surprised.svg",
-    "sad": "/assets/images/tomoko-sad.svg",
-    "thinking": "/assets/images/tomoko-thinking.svg",
-    "gentle": "/assets/images/tomoko-gentle.svg",
-    "excited": "/assets/images/tomoko-excited.svg",
-}
 
 
 class TomoroSession:
@@ -83,22 +71,16 @@ class TomoroSession:
         self.state: SessionState = "idle"
         self.attention_mode: AttentionMode = "ambient"
         self.latest_segment: SpeechSegment | None = None
-        self._audio_sequence = 0
         self._attention_idle_ms = 0.0
         self._engaged_timeout_ms = engaged_timeout_ms
         self._cooldown_timeout_ms = cooldown_timeout_ms
-        self._recent_tomoko_text = ""
-        self._tomoko_speaking_started_at: float | None = None
-        self._tomoko_speaking_until = 0.0
-        self._active_audio_turn_id: str | None = None
-        self._audio_turn_started = False
-        self._audio_turn_ended = False
-        self._last_playback_started: PlaybackTelemetry | None = None
-        self._last_playback_ended: PlaybackTelemetry | None = None
-        self._active_playback_chunks: set[tuple[str | None, int | None]] = set()
-        self._playback_echo_until = 0.0
-        self._playback_echo_grace_ms = playback_echo_grace_ms
-        self._lock = asyncio.Lock()
+        self.audio_turns = AudioTurnController(
+            playback_echo_grace_ms=playback_echo_grace_ms
+        )
+
+    @property
+    def _playback_echo_grace_ms(self) -> int:
+        return self.audio_turns.playback_echo_grace_ms
 
     async def process_audio_chunk(self, chunk_bytes: bytes) -> SpeechSegment | None:
         chunk = np.frombuffer(chunk_bytes, dtype=np.float32)
@@ -279,53 +261,37 @@ class TomoroSession:
             emotion="neutral",
             device_id=transcript.device_id,
         )
-        tts_buffer = ""
-        reply_text = ""
-        current_emotion = thinking_input.emotion
+        reply_audio = ReplyAudioPipeline(initial_emotion=thinking_input.emotion)
         self._begin_audio_turn()
         async for event in self.thinking_mode.think(backend, thinking_input):
-            if event.type == "emotion":
-                current_emotion = event.value
-                await self._send_event(
-                    {
-                        "type": "emotion",
-                        "value": event.value,
-                        "image": _image_for_emotion(event.value),
-                    }
-                )
-            elif event.type == "text_delta":
-                await self._send_event({"type": "reply_text", "delta": event.value})
-                reply_text += event.value
-                tts_buffer += event.value
-                tts_buffer = await self._flush_tts_sentences(
-                    tts_buffer,
-                    style=current_emotion,
-                )
-            elif event.type == "done":
-                await self._flush_tts_text(tts_buffer, style=current_emotion)
-                if self.conversation_log_writer is not None and reply_text.strip():
-                    await self.conversation_log_writer.write_tomoko_turn(
-                        text=reply_text.strip(),
-                        emotion=current_emotion,
-                        device_id=transcript.device_id,
+            for command in reply_audio.handle_event(event):
+                if command.action == "emotion":
+                    assert command.image is not None
+                    await self._send_event(
+                        {
+                            "type": "emotion",
+                            "value": command.value,
+                            "image": command.image,
+                        }
                     )
-                await self._send_event({"type": "reply_done"})
-                await self._end_audio_turn()
-                self._note_attention_activity()
+                elif command.action == "text_delta":
+                    await self._send_event({"type": "reply_text", "delta": command.value})
+                elif command.action == "tts_text":
+                    await self._flush_tts_text(command.value, style=command.style)
+                elif command.action == "done":
+                    reply_text = reply_audio.reply_text.strip()
+                    if self.conversation_log_writer is not None and reply_text:
+                        await self.conversation_log_writer.write_tomoko_turn(
+                            text=reply_text,
+                            emotion=reply_audio.current_emotion,
+                            device_id=transcript.device_id,
+                        )
+                    await self._send_event({"type": "reply_done"})
+                    await self._end_audio_turn()
+                    self._note_attention_activity()
 
     async def handle_playback_telemetry(self, telemetry: PlaybackTelemetry) -> None:
-        async with self._lock:
-            chunk_key = (telemetry.turn_id, telemetry.chunk_id)
-            if telemetry.type == "playback_started":
-                self._last_playback_started = telemetry
-                self._active_playback_chunks.add(chunk_key)
-            elif telemetry.type == "playback_ended":
-                self._last_playback_ended = telemetry
-                self._active_playback_chunks.discard(chunk_key)
-                self._playback_echo_until = max(
-                    self._playback_echo_until,
-                    time.monotonic() + self._playback_echo_grace_ms / 1000,
-                )
+        await self.audio_turns.handle_playback_telemetry(telemetry)
         logger.info(
             "TomoroSession playback telemetry type=%s turn_id=%s "
             "chunk_id=%s scheduled_audio_time=%s sent_audio_time=%s "
@@ -387,16 +353,6 @@ class TomoroSession:
         if inspect.isawaitable(maybe_awaitable):
             await maybe_awaitable
 
-    async def _flush_tts_sentences(self, text: str, *, style: str) -> str:
-        remainder = text
-        while True:
-            flush_index = _first_sentence_end_index(remainder)
-            if flush_index is None:
-                return remainder
-            sentence = remainder[: flush_index + 1].strip()
-            remainder = remainder[flush_index + 1 :]
-            await self._flush_tts_text(sentence, style=style)
-
     async def _flush_tts_text(self, text: str, *, style: str) -> None:
         if self.tts_backend is None or not text.strip():
             return
@@ -417,15 +373,11 @@ class TomoroSession:
             self._is_tomoko_speaking() or in_active_playback or in_playback_echo_grace
         ):
             return None
-        started_at = self._tomoko_speaking_started_at
-        speaking_elapsed_ms = 0.0
-        if started_at is not None:
-            speaking_elapsed_ms = max(0.0, (time.monotonic() - started_at) * 1000)
         decision = self.barge_in_detector.classify(
             BargeInContext(
                 transcript=transcript.text,
-                recent_tomoko_text=self._recent_tomoko_text,
-                speaking_elapsed_ms=speaking_elapsed_ms,
+                recent_tomoko_text=self.audio_turns.recent_tomoko_text,
+                speaking_elapsed_ms=self.audio_turns.speaking_elapsed_ms,
             )
         )
         if in_active_playback and decision.kind != "hard_interrupt":
@@ -443,38 +395,22 @@ class TomoroSession:
         return decision
 
     def _is_tomoko_speaking(self) -> bool:
-        return time.monotonic() <= self._tomoko_speaking_until
+        return self.audio_turns.is_tomoko_speaking()
 
     def _is_playback_echo_grace_active(self) -> bool:
-        return time.monotonic() <= self._playback_echo_until
+        return self.audio_turns.is_playback_echo_grace_active()
 
     def _is_client_playback_active(self) -> bool:
-        return bool(self._active_playback_chunks)
+        return self.audio_turns.is_client_playback_active()
 
     async def _reserve_audio_chunk(self, *, text: str, chunk: AudioChunkOut) -> AudioChunkOut:
-        async with self._lock:
-            self._mark_tomoko_speaking(text=text, audio_data=chunk.data)
-            outgoing = AudioChunkOut(
-                data=chunk.data,
-                sequence=self._audio_sequence,
-                is_last=chunk.is_last,
-            )
-            self._audio_sequence += 1
-            return outgoing
+        return await self.audio_turns.reserve_audio_chunk(text=text, chunk=chunk)
 
     def _mark_tomoko_speaking(self, *, text: str, audio_data: bytes) -> None:
-        now = time.monotonic()
-        duration = _wav_duration_seconds(audio_data)
-        if duration is None:
-            duration = max(0.6, len(text) * 0.12)
-        self._recent_tomoko_text = _append_recent_text(self._recent_tomoko_text, text)
-        self._tomoko_speaking_started_at = now
-        self._tomoko_speaking_until = max(self._tomoko_speaking_until, now) + duration + 0.5
+        self.audio_turns._mark_tomoko_speaking(text=text, audio_data=audio_data)
 
     def _begin_audio_turn(self) -> None:
-        self._active_audio_turn_id = uuid.uuid4().hex
-        self._audio_turn_started = False
-        self._audio_turn_ended = False
+        self.audio_turns.begin_turn()
 
     async def _ensure_audio_turn_started(self) -> None:
         event = await self._reserve_audio_start_event()
@@ -495,91 +431,13 @@ class TomoroSession:
         await self._send_event(event)
 
     async def _reserve_audio_start_event(self) -> dict[str, str] | None:
-        async with self._lock:
-            if self._active_audio_turn_id is None:
-                self._begin_audio_turn()
-            if self._audio_turn_started:
-                return None
-            assert self._active_audio_turn_id is not None
-            self._audio_turn_started = True
-            return {
-                "type": "audio_start",
-                "turn_id": self._active_audio_turn_id,
-            }
+        return await self.audio_turns.reserve_start_event()
 
     async def _reserve_audio_end_event(self) -> dict[str, str] | None:
-        async with self._lock:
-            if self._active_audio_turn_id is None:
-                return None
-            if not self._audio_turn_started or self._audio_turn_ended:
-                return None
-            self._audio_turn_ended = True
-            return {
-                "type": "audio_end",
-                "turn_id": self._active_audio_turn_id,
-            }
+        return await self.audio_turns.reserve_end_event()
 
     async def _reserve_audio_stop_event(self) -> dict[str, str] | None:
-        async with self._lock:
-            if self._active_audio_turn_id is None:
-                return None
-            turn_id = self._active_audio_turn_id
-            self._tomoko_speaking_until = 0.0
-            self._active_audio_turn_id = None
-            self._audio_turn_started = False
-            self._audio_turn_ended = False
-            return {
-                "type": "audio_control",
-                "action": "stop",
-                "turn_id": turn_id,
-            }
-
-
-def _first_sentence_end_index(text: str) -> int | None:
-    indexes = [text.find(punctuation) for punctuation in TTS_FLUSH_PUNCTUATION]
-    found = [index for index in indexes if index >= 0]
-    if not found:
-        return None
-    return min(found)
-
-
-def _image_for_emotion(emotion: str) -> str:
-    return EMOTION_TO_IMAGE.get(emotion, EMOTION_TO_IMAGE["neutral"])
-
-
-def _append_recent_text(previous: str, text: str, max_chars: int = 240) -> str:
-    combined = f"{previous}{text}"
-    if len(combined) <= max_chars:
-        return combined
-    return combined[-max_chars:]
-
-
-def _wav_duration_seconds(audio_data: bytes) -> float | None:
-    if len(audio_data) < 44 or audio_data[:4] != b"RIFF" or audio_data[8:12] != b"WAVE":
-        return None
-    offset = 12
-    sample_rate: int | None = None
-    channels: int | None = None
-    bits_per_sample: int | None = None
-    data_size: int | None = None
-    while offset + 8 <= len(audio_data):
-        chunk_id = audio_data[offset : offset + 4]
-        chunk_size = struct.unpack_from("<I", audio_data, offset + 4)[0]
-        chunk_start = offset + 8
-        chunk_end = chunk_start + chunk_size
-        if chunk_id == b"fmt " and chunk_size >= 16 and chunk_end <= len(audio_data):
-            channels = struct.unpack_from("<H", audio_data, chunk_start + 2)[0]
-            sample_rate = struct.unpack_from("<I", audio_data, chunk_start + 4)[0]
-            bits_per_sample = struct.unpack_from("<H", audio_data, chunk_start + 14)[0]
-        elif chunk_id == b"data":
-            data_size = chunk_size
-        offset = chunk_end + (chunk_size % 2)
-    if not sample_rate or not channels or not bits_per_sample or data_size is None:
-        return None
-    bytes_per_second = sample_rate * channels * (bits_per_sample / 8)
-    if bytes_per_second <= 0:
-        return None
-    return data_size / bytes_per_second
+        return await self.audio_turns.reserve_stop_event()
 
 
 def _withdraw_decision(transcript: Transcript):

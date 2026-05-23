@@ -1459,3 +1459,31 @@ conversation_logs:
 
 これは嘘ではなく、人格として注意を向けていなかったという意味である。
 常時 STT と人格上の注意を分けることで、聞き耳を立て続ける不自然さを避ける。
+
+---
+
+## 2026-05-23 追記: TomoroSession の責務境界
+
+Phase 6.6.4 以降、`TomoroSession` は会話状態機械のオーケストレーターとして扱う。
+すべてを `TomoroSession` に直接実装し続けると、状態遷移、TTS、playback telemetry、barge-in が
+同じメソッド群に混ざり、3年前の Unity 実装と同じように見通しが悪くなるためである。
+
+ただし、「状態機械を分散させない」という原則は維持する。
+分離するのは副責務の機械的な詳細であり、会話参加や attention の authoritative state は
+引き続き `TomoroSession` が所有する。
+
+### 所有ルール
+
+| コンポーネント | 所有するもの | 所有しないもの |
+|---|---|---|
+| `TomoroSession` | `state` / `attention_mode` / 参加判断の流れ / WebSocket 送信順序 | audio turn の細部、句読点 flush の細部 |
+| `AudioTurnController` | `turn_id` / audio sequence / playback active chunk / echo grace | participation 判定、attention 遷移、WebSocket I/O |
+| `ReplyAudioPipeline` | `ThinkingEvent` から reply text / emotion / TTS flush command への変換 | TTS 実行、WebSocket I/O、attention / participation 判定 |
+
+### 重要な制約
+
+- WebSocket エンドポイントは増やさない。すべて既存 `/ws` の event / binary chunk として流す。
+- クライアントに判断ロジックを移さない。クライアントは playback telemetry という事実だけを返す。
+- `AudioTurnController` は送るべき event / chunk metadata を返すだけで、`send_event` / `send_audio` を呼ばない。
+- `ReplyAudioPipeline` は変換だけを行い、`TTSBackend` を直接呼ばない。
+- `TomoroSession` の public entrypoint は当面 `process_audio_chunk` と `handle_playback_telemetry` に限定する。
