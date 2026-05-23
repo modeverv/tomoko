@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -10,7 +13,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from server.edge.participation.wake_word import WakeWordJudge
-from server.edge.pipeline.stt import SpeechTranscriber, create_stt_transcriber
+from server.edge.pipeline.stt import (
+    SpeechTranscriber,
+    create_stt_transcriber,
+    warm_up_transcriber,
+)
 from server.edge.pipeline.vad import create_vad_processor
 from server.gateway.thinking.fast import ThinkFastMode
 from server.gateway.turn_taking.barge_in import BargeInDetector
@@ -65,7 +72,14 @@ CLIENT_DIR = ROOT_DIR / "client"
 ASSETS_DIR = ROOT_DIR / "assets"
 CONFIG_PATH = ROOT_DIR / "config" / "central_realtime.toml"
 
-app = FastAPI(title="Tomoko Edge")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    await _warm_up_app()
+    yield
+
+
+app = FastAPI(title="Tomoko Edge", lifespan=lifespan)
 app.mount("/client", StaticFiles(directory=CLIENT_DIR), name="client")
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 
@@ -190,6 +204,35 @@ def _create_default_transcriber() -> SpeechTranscriber:
     if config.inference.stt_backend is None:
         raise ValueError("stt_backend is not configured")
     return create_stt_transcriber(config.backends[config.inference.stt_backend])
+
+
+async def _warm_up_app() -> None:
+    if getattr(app.state, "skip_warm_up", False):
+        logger.info("startup warm-up skipped")
+        return
+
+    config = _load_config()
+    if config.inference.stt_backend is None:
+        logger.info("startup warm-up skipped: stt_backend is not configured")
+        return
+
+    backend_name = config.inference.stt_backend
+    spec = config.backends[backend_name]
+    started_at = time.perf_counter()
+    logger.info(
+        "startup warm-up started target=stt backend=%s type=%s model=%s",
+        backend_name,
+        spec.type,
+        spec.model,
+    )
+    transcriber_factory = getattr(app.state, "transcriber_factory", _create_default_transcriber)
+    await warm_up_transcriber(transcriber_factory())
+    elapsed_ms = (time.perf_counter() - started_at) * 1000
+    logger.info(
+        "startup warm-up completed target=stt backend=%s elapsed_ms=%.1f",
+        backend_name,
+        elapsed_ms,
+    )
 
 
 def _create_default_ambient_log_writer() -> PostgresAmbientLogWriter:

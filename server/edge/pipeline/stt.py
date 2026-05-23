@@ -19,6 +19,10 @@ class SpeechTranscriber(Protocol):
     async def transcribe(self, segment: SpeechSegment) -> Transcript: ...
 
 
+class WarmableSpeechTranscriber(SpeechTranscriber, Protocol):
+    async def warm_up(self) -> None: ...
+
+
 class StreamingSpeechTranscriber(SpeechTranscriber, Protocol):
     async def process_stream_chunk(
         self,
@@ -55,6 +59,9 @@ class FasterWhisperSTT:
             recorded_at=segment.ended_at,
             is_final=True,
         )
+
+    async def warm_up(self) -> None:
+        return None
 
     def _transcribe_text(self, audio: np.ndarray) -> str:
         segments, _info = self.model.transcribe(
@@ -97,6 +104,18 @@ class MlxWhisperSTT:
             recorded_at=segment.ended_at,
             is_final=True,
         )
+
+    async def warm_up(self) -> None:
+        now = datetime.now(UTC)
+        segment = SpeechSegment(
+            audio=np.zeros(16000, dtype=np.float32),
+            started_at=now,
+            ended_at=now,
+            device_id="warmup",
+            vad_confidence=0.0,
+        )
+        await self.transcribe(segment)
+        self.reset_stream()
 
     async def process_stream_chunk(
         self,
@@ -182,6 +201,11 @@ def supports_streaming(transcriber: SpeechTranscriber | None) -> bool:
     )
 
 
+async def warm_up_transcriber(transcriber: SpeechTranscriber | None) -> None:
+    if transcriber is not None and hasattr(transcriber, "warm_up"):
+        await transcriber.warm_up()
+
+
 def _audio_level_db(audio: np.ndarray) -> float:
     if audio.size == 0:
         return -120.0
@@ -215,3 +239,6 @@ class NullTranscriber:
             recorded_at=datetime.now(UTC),
             is_final=True,
         )
+
+    async def warm_up(self) -> None:
+        return None

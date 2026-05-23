@@ -7,7 +7,11 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from server.edge.pipeline.stt import MlxWhisperSTT, create_stt_transcriber
+from server.edge.pipeline.stt import (
+    FasterWhisperSTT,
+    MlxWhisperSTT,
+    create_stt_transcriber,
+)
 from server.shared.config import BackendSpec
 from server.shared.models import SpeechSegment
 
@@ -58,6 +62,44 @@ async def test_mlx_whisper_transcribes_via_temp_wav(monkeypatch: pytest.MonkeyPa
     assert calls[0]["path_or_hf_repo"] == "mlx-community/whisper-small-mlx"
     assert calls[0]["language"] == "ja"
     assert calls[0]["initial_prompt"] == "ともこ"
+
+
+@pytest.mark.unit
+async def test_faster_whisper_warm_up_is_noop() -> None:
+    transcriber = FasterWhisperSTT.__new__(FasterWhisperSTT)
+
+    await transcriber.warm_up()
+
+
+@pytest.mark.unit
+async def test_mlx_whisper_warm_up_runs_one_transcription(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_transcribe(audio_path: str, **kwargs: object) -> dict[str, str]:
+        calls.append({"audio_path": audio_path, **kwargs})
+        return {"text": ""}
+
+    monkeypatch.setitem(
+        sys.modules,
+        "mlx_whisper",
+        SimpleNamespace(transcribe=fake_transcribe),
+    )
+    transcriber = MlxWhisperSTT(streaming=True)
+    transcriber._stream_buffer = [np.ones(2, dtype=np.float32)]
+    transcriber._stream_samples = 2
+    transcriber._stream_samples_since_emit = 2
+    transcriber._last_stream_text = "old"
+
+    await transcriber.warm_up()
+
+    assert len(calls) == 1
+    assert calls[0]["path_or_hf_repo"] == "mlx-community/whisper-small-mlx"
+    assert transcriber._stream_buffer == []
+    assert transcriber._stream_samples == 0
+    assert transcriber._stream_samples_since_emit == 0
+    assert transcriber._last_stream_text == ""
 
 
 @pytest.mark.unit

@@ -282,3 +282,13 @@ MLX backend は `streaming=true` の場合、VAD が `listening` の間に一定
 2026-05-23 の `make bench-stt` 実測では、同じ `say` 生成音声に対して faster-whisper small が `measured_ms=977.5`、
 MLX Whisper small が warm 後 `measured_ms=102.1`。ただし MLX 初回はモデル取得/cache込みで `warm_ms=13404.8`。
 実運用では起動直後の warm-up が必要。
+
+### 確定した判断: 起動時 warm-up は FastAPI lifespan に集約する
+サーバー起動時の初期化処理は FastAPI lifespan に集約し、WebSocket 接続前に実行する。
+
+STT backend は `warm_up()` を持てる。
+`FasterWhisperSTT` はインスタンス生成時点で model load が済むため `warm_up()` は no-op、
+`MlxWhisperSTT` は短い無音 `SpeechSegment` を一度 transcribe して、初回のモデル解決/cache/compile コストを払う。
+
+2026-05-23 のキャッシュ済み `_warm_up_app()` 実測では `elapsed_ms=2015.5`。
+この時間はサーバー startup に乗るが、初回発話の STT レイテンシーに乗せないための意図的な前払いとする。
