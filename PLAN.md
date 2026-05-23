@@ -217,7 +217,6 @@ EMOTION:happy
 
 - [ ] `assets/images/` に立ち絵を配置
 - [ ] emotion イベントに `image` フィールドを追加（必ず音声より先に送る）
-- [ ] irodori-tts の voice_style を emotion にマッピング
 
 ---
 
