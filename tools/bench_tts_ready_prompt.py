@@ -9,6 +9,7 @@ import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -17,6 +18,8 @@ from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer  # noqa
 from server.gateway.thinking.fast import EMOTION_PREFIX, EMOTIONS  # noqa: E402
 from server.shared.config import NodeConfig  # noqa: E402
 from server.shared.inference.router import InferenceRouter  # noqa: E402
+
+DEFAULT_GEMMA_MODEL = "mlx-community/gemma-4-e2b-it-4bit"
 
 TTS_READY_PROMPT = """
 
@@ -112,10 +115,12 @@ async def run_bench(
     samples: list[str],
     include_baseline: bool,
     include_tts_ready: bool,
+    backend_name: str,
+    gemma_model: str,
 ) -> list[PromptBenchRow]:
-    config = NodeConfig.load(ROOT / "config" / "central_realtime.toml")
-    router = InferenceRouter(config=config)
-    backend = await router.select("conversation", preference="privacy")
+    backend = await _create_backend(backend_name=backend_name, gemma_model=gemma_model)
+    if hasattr(backend, "warm_up"):
+        await backend.warm_up()
     base_prompt = (ROOT / "prompts" / "base_persona.md").read_text(encoding="utf-8")
 
     variants: list[tuple[str, str]] = []
@@ -181,6 +186,69 @@ async def _run_one(
     )
 
 
+async def _create_backend(*, backend_name: str, gemma_model: str):
+    if backend_name == "ollama":
+        config = NodeConfig.load(ROOT / "config" / "central_realtime.toml")
+        router = InferenceRouter(config=config)
+        return await router.select("conversation", preference="privacy")
+    if backend_name == "gemma_mlx":
+        return GemmaMLXBenchBackend(model_name=gemma_model)
+    raise ValueError(f"unknown backend: {backend_name}")
+
+
+class GemmaMLXBenchBackend:
+    def __init__(self, *, model_name: str) -> None:
+        self.model_name = model_name
+        self._model: Any | None = None
+        self._tokenizer: Any | None = None
+
+    async def chat_stream(self, system_prompt: str, messages: list[dict[str, str]]):
+        model, tokenizer = self._load()
+        prompt = _build_chat_prompt(tokenizer, system_prompt, messages)
+        from mlx_vlm import stream_generate
+
+        for response in stream_generate(
+            model,
+            tokenizer,
+            prompt,
+            max_tokens=180,
+            temperature=0.0,
+        ):
+            yield getattr(response, "text", "")
+
+    async def warm_up(self) -> None:
+        async for _chunk in self.chat_stream(
+            "あなたは日本語で短く答えるアシスタントです。",
+            [{"role": "user", "content": "短く返事して。"}],
+        ):
+            pass
+
+    def _load(self) -> tuple[Any, Any]:
+        if self._model is None or self._tokenizer is None:
+            from mlx_vlm import load
+
+            self._model, self._tokenizer = load(self.model_name)
+        return self._model, self._tokenizer
+
+
+def _build_chat_prompt(
+    tokenizer: Any,
+    system_prompt: str,
+    messages: list[dict[str, str]],
+) -> str:
+    chat_messages = [{"role": "system", "content": system_prompt}] + messages
+    if hasattr(tokenizer, "apply_chat_template"):
+        return tokenizer.apply_chat_template(
+            chat_messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+    rendered = "\n".join(
+        f"{message['role']}:\n{message['content']}" for message in chat_messages
+    )
+    return f"{rendered}\nassistant:\n"
+
+
 def write_outputs(rows: list[PromptBenchRow], output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     jsonl_path = output_dir / "results.jsonl"
@@ -238,12 +306,16 @@ async def async_main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", default="logs/tts-ready-prompt-bench")
     parser.add_argument("--variant", choices=["all", "baseline", "tts_ready"], default="all")
+    parser.add_argument("--backend", choices=["ollama", "gemma_mlx"], default="ollama")
+    parser.add_argument("--gemma-model", default=DEFAULT_GEMMA_MODEL)
     args = parser.parse_args()
 
     rows = await run_bench(
         samples=SAMPLES,
         include_baseline=args.variant in {"all", "baseline"},
         include_tts_ready=args.variant in {"all", "tts_ready"},
+        backend_name=args.backend,
+        gemma_model=args.gemma_model,
     )
     write_outputs(rows, Path(args.output_dir))
 
