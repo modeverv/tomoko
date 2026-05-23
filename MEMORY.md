@@ -292,3 +292,13 @@ STT backend は `warm_up()` を持てる。
 
 2026-05-23 のキャッシュ済み `_warm_up_app()` 実測では `elapsed_ms=2015.5`。
 この時間はサーバー startup に乗るが、初回発話の STT レイテンシーに乗せないための意図的な前払いとする。
+
+### 確定した判断: STT hallucination は参加判定前に filter する
+Phase 6.6.1.2 の `WakeWordJudge` 側 low confidence follow-up だけでは、partial 表示や `ambient_logs` へ
+Whisper hallucination が流れる問題は残る。
+
+Phase 6.6.2 では `TranscriptFilter` を `TomoroSession` の STT transcript 入口に置き、
+partial は `suppress_partial` なら UI に送らず、final は `drop` なら participation 判定にも `ambient_logs` にも進めない。
+
+drop 済み transcript を reason 付きで保存する案もあったが、将来の記憶土台を汚さないことを優先し、現時点では保存しない。
+デバッグ用途には `server.session` の `TomoroSession transcript filter ... action=... reason=...` ログを使う。

@@ -12,6 +12,7 @@ import numpy as np
 
 from server.edge.participation.base import ParticipationJudge
 from server.edge.pipeline.stt import SpeechTranscriber, supports_streaming
+from server.edge.pipeline.stt_filter import TranscriptFilter
 from server.edge.pipeline.vad import VADProcessor
 from server.gateway.thinking.base import ThinkingMode
 from server.gateway.turn_taking.barge_in import BargeInDetector
@@ -61,6 +62,7 @@ class TomoroSession:
         thinking_mode: ThinkingMode | None = None,
         tts_backend: TTSBackend | None = None,
         barge_in_detector: BargeInDetector | None = None,
+        transcript_filter: TranscriptFilter | None = None,
         engaged_timeout_ms: int = 8000,
         cooldown_timeout_ms: int = 8000,
         playback_echo_grace_ms: int = 1200,
@@ -76,6 +78,7 @@ class TomoroSession:
         self.thinking_mode = thinking_mode
         self.tts_backend = tts_backend
         self.barge_in_detector = barge_in_detector
+        self.transcript_filter = transcript_filter
         self.state: SessionState = "idle"
         self.attention_mode: AttentionMode = "ambient"
         self.latest_segment: SpeechSegment | None = None
@@ -123,6 +126,12 @@ class TomoroSession:
             self.attention_mode,
             self.state,
         )
+        filter_decision = self._filter_transcript(transcript, is_partial=False)
+        if filter_decision.action == "drop":
+            self.vad_processor.reset()
+            self._reset_transcriber_stream()
+            await self._transition("idle")
+            return
         previous_attention = self.attention_mode
         barge_in_decision = self._classify_barge_in(transcript)
         if barge_in_decision is not None:
@@ -223,12 +232,33 @@ class TomoroSession:
             self.attention_mode,
             self.state,
         )
+        filter_decision = self._filter_transcript(partial, is_partial=True)
+        if filter_decision.action != "accept":
+            return
         await self._send_event(
             {
                 "type": "transcript_partial",
                 "text": partial.text,
             }
         )
+
+    def _filter_transcript(self, transcript: Transcript, *, is_partial: bool):
+        if self.transcript_filter is None:
+            from server.shared.models import TranscriptFilterDecision
+
+            return TranscriptFilterDecision(action="accept", reason="not_configured")
+        decision = self.transcript_filter.evaluate(transcript, is_partial=is_partial)
+        logger.info(
+            "TomoroSession transcript filter text=%r action=%s reason=%s "
+            "audio_level_db=%s attention_mode=%s is_partial=%s",
+            transcript.text,
+            decision.action,
+            decision.reason,
+            transcript.audio_level_db,
+            self.attention_mode,
+            is_partial,
+        )
+        return decision
 
     def _reset_transcriber_stream(self) -> None:
         if supports_streaming(self.transcriber):

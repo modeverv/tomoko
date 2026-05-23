@@ -17,6 +17,7 @@ BargeInKind = Literal[
 ]
 BargeInAction = Literal["continue_speaking", "finish_sentence", "restart_turn"]
 PlaybackEventType = Literal["playback_started", "playback_ended"]
+TranscriptFilterAction = Literal["accept", "suppress_partial", "drop"]
 
 
 @dataclass
@@ -68,6 +69,12 @@ class PlaybackTelemetry:
     sent_audio_time: float | None = None
     audio_context_time: float | None = None
     performance_now_ms: float | None = None
+
+
+@dataclass(frozen=True)
+class TranscriptFilterDecision:
+    action: TranscriptFilterAction
+    reason: str
 
 
 @dataclass(frozen=True)

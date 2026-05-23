@@ -18,6 +18,7 @@ from server.edge.pipeline.stt import (
     create_stt_transcriber,
     warm_up_transcriber,
 )
+from server.edge.pipeline.stt_filter import TranscriptFilter
 from server.edge.pipeline.vad import create_vad_processor
 from server.gateway.thinking.fast import ThinkFastMode
 from server.gateway.turn_taking.barge_in import BargeInDetector
@@ -172,6 +173,7 @@ async def websocket_session(websocket: WebSocket) -> None:
         thinking_mode=thinking_mode_factory(),
         tts_backend=tts_backend_factory(),
         barge_in_detector=barge_in_detector_factory(),
+        transcript_filter=TranscriptFilter(),
     )
     logger.info("phase4 websocket connected")
     try:

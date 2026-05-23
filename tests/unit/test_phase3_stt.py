@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from server.edge.participation.wake_word import WakeWordJudge
+from server.edge.pipeline.stt_filter import TranscriptFilter
 from server.edge.pipeline.vad import VADProcessor
 from server.session import TomoroSession
 from server.shared.models import AttentionMode, ParticipationMode, SpeechSegment, Transcript
@@ -23,8 +24,9 @@ class SequenceVAD:
 
 
 class ConstantTranscriber:
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, *, audio_level_db: float = -20.0) -> None:
         self.text = text
+        self.audio_level_db = audio_level_db
         self.segments: list[SpeechSegment] = []
 
     async def transcribe(self, segment: SpeechSegment) -> Transcript:
@@ -33,7 +35,7 @@ class ConstantTranscriber:
             text=self.text,
             device_id=segment.device_id,
             speaker=None,
-            audio_level_db=-20.0,
+            audio_level_db=self.audio_level_db,
             recorded_at=datetime.now(UTC),
             is_final=True,
         )
@@ -42,6 +44,7 @@ class ConstantTranscriber:
 class StreamingTranscriber(ConstantTranscriber):
     def __init__(self, text: str) -> None:
         super().__init__(text)
+        self.partial_text = "途中です"
         self.reset_count = 0
         self.partial_sent = False
 
@@ -57,7 +60,7 @@ class StreamingTranscriber(ConstantTranscriber):
             return None
         self.partial_sent = True
         return Transcript(
-            text="途中です",
+            text=self.partial_text,
             device_id=device_id,
             speaker=None,
             audio_level_db=-20.0,
@@ -148,3 +151,46 @@ async def test_session_emits_streaming_partial_transcript() -> None:
 
     assert {"type": "transcript_partial", "text": "途中です"} in events
     assert transcriber.reset_count == 1
+
+
+@pytest.mark.unit
+async def test_session_drops_filtered_final_transcript_before_participation() -> None:
+    events: list[dict[str, str]] = []
+    ambient_logs = InMemoryAmbientLogWriter()
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.9] + [0.1] * 13), silence_ms=400),
+        send_event=events.append,
+        transcriber=ConstantTranscriber("今日は また また また また また また"),
+        transcript_filter=TranscriptFilter(),
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=ambient_logs,
+    )
+
+    session.attention_mode = "engaged"
+    for _ in range(14):
+        await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+
+    assert ambient_logs.rows == []
+    assert {"type": "participation", "mode": "invited"} not in events
+    assert events[-1] == {"type": "state", "state": "idle"}
+
+
+@pytest.mark.unit
+async def test_session_suppresses_filtered_partial_transcript() -> None:
+    events: list[dict[str, str]] = []
+    transcriber = StreamingTranscriber("今日いい天気だね")
+    transcriber.partial_text = "ご視聴ありがとうございました"
+    ambient_logs = InMemoryAmbientLogWriter()
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.9] + [0.1] * 13), silence_ms=400),
+        send_event=events.append,
+        transcriber=transcriber,
+        transcript_filter=TranscriptFilter(),
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=ambient_logs,
+    )
+
+    for _ in range(14):
+        await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+
+    assert {"type": "transcript_partial", "text": "ご視聴ありがとうございました"} not in events
