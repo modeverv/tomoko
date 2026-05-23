@@ -1305,3 +1305,157 @@ maturity=2 の候補を使う自発発話: **10ms 以内**
 
 全ての会話ログ・候補・日記・presence は PostgreSQL に蓄積。
 明示的な削除はしない。全ては記録として残る。
+
+---
+
+## 2026-05-23 追記: AttentionMode と「聞いていた/聞いてなかった」の分離
+
+### 背景
+
+M1 の現状は、常時 STT で全発話を `ambient_logs` に保存し、`WakeWordJudge` が
+「トモコ」を含む発話だけに反応する。
+
+このまま M2 の短期記憶へ進むと、次の境界が曖昧になる:
+
+- どの発話を会話文脈として扱うか
+- どの発話を記憶に入れるか
+- wake word 後の続き発話をどこまで Tomoko 宛てとみなすか
+- wake word 外で自然に入る時、それが乱入か参加か
+- 「あ、聞いてなかった」をどう表現するか
+
+そのため、`TomoroSession` に音声処理の `state` とは別の `attention_mode` を持たせる。
+これは 3年前の Unity 実装で `isRecording` / `isCommunicating` / `isAITalking` が分散した反省を踏まえ、
+会話参加の状態を一箇所に集約するための設計である。
+
+### 概念モデル
+
+音声処理としては常時聞いている。ただし、人格として会話に注意を向けていたかは別に扱う。
+
+```text
+recorded
+  音声として聞こえ、STT され、ambient_logs に保存された
+
+attended
+  Tomoko が会話として注意を向けていた
+
+remembered
+  後から会話記憶として使ってよい
+```
+
+「あ、聞いてなかった」は、マイクや STT が失敗したという意味ではない。
+`recorded=true` でも `attended=false` の発話はあり得る。
+この時、DB には残っているが、Tomoko の主観では会話として受け取っていない。
+
+### AttentionMode
+
+`TomoroSession` は次の `attention_mode` を持つ。
+
+```python
+AttentionMode = Literal[
+    "ambient",   # 聞こえているが参加していない
+    "engaged",   # 呼ばれた/話しかけられたので会話中
+    "cooldown",  # 会話終了直後の短い猶予
+    "withdrawn", # 今は入らない
+]
+```
+
+状態の意味:
+
+| mode | 意味 | 参加判断 |
+|---|---|---|
+| `ambient` | 常時 STT はするが、基本は返答しない | wake word または強い呼びかけで参加 |
+| `engaged` | wake word 後の会話中 | 続き発話なら wake word なしで返答 |
+| `cooldown` | 会話が終わりそうな猶予 | 関連発話なら `engaged` に戻る |
+| `withdrawn` | 明示的に引いている | 原則返答しない |
+
+### 遷移
+
+```text
+ambient
+  wake word / 強い呼びかけ
+    -> engaged
+
+engaged
+  継続発話
+    -> engaged
+  Tomoko の返答完了後、一定時間無発話
+    -> cooldown
+  「静かにして」「今は入らないで」
+    -> withdrawn
+
+cooldown
+  関連発話
+    -> engaged
+  一定時間無発話
+    -> ambient
+
+withdrawn
+  明示的な呼び戻し
+    -> engaged
+  一定時間経過
+    -> ambient
+```
+
+状態遷移は必ず `TomoroSession` 内で行い、遷移時は `log.info` に残す。
+クライアントは `attention_mode` を判定しない。表示が必要な場合も WebSocket の JSON イベントを描画するだけにする。
+
+### ParticipationDecision との関係
+
+`ParticipationDecision.mode` は既存の `called` / `invited` / `observer` / `withdraw` を使う。
+`attention_mode` は参加判断の前提、`ParticipationDecision` はその発話に対する判断結果である。
+
+```text
+ambient + wake word
+  -> ParticipationDecision(mode="called", should_participate=True)
+  -> attention_mode = engaged
+
+engaged + 続き発話
+  -> ParticipationDecision(mode="invited", should_participate=True)
+  -> attention_mode = engaged
+
+ambient + 無関係な発話
+  -> ParticipationDecision(mode="observer", should_participate=False)
+  -> attention_mode = ambient
+
+withdrawn + 関連発話
+  -> ParticipationDecision(mode="withdraw", should_participate=False)
+  -> attention_mode = withdrawn
+```
+
+将来の `LLMJudge` / `HybridJudge` は、発話テキストだけでなく `attention_mode` を入力に含める。
+これにより、wake word 外で会話に入る時も「返せそうだから返す」ではなく、
+今入ってよい状態かどうかを前提に判断できる。
+
+### ログと記憶の境界
+
+`ambient_logs` は聞こえた発話を記録する場所なので、`attention_mode` にかかわらず保存する。
+ただし、次のメタ情報を持たせる。
+
+```sql
+attention_mode     TEXT NOT NULL
+attended           BOOLEAN NOT NULL DEFAULT FALSE
+participation_mode TEXT NOT NULL
+```
+
+`conversation_logs` は `attended=true` の会話ターンだけを保存する。
+M2 の短期記憶と M3 以降の日記・自発発話は、この境界を前提にする。
+
+```text
+ambient_logs:
+  聞こえていたことの記録。Tomoko の主観として会話参加していないものも含む。
+
+conversation_logs:
+  Tomoko が注意を向け、会話として参加したターンの記録。
+```
+
+### 「聞いてなかった」の扱い
+
+`attended=false` の発話は、直近会話文脈には入れない。
+後からその話題を振られた時、Tomoko は必要なら次のように振る舞える。
+
+```text
+「ごめん、その時はちゃんと聞いてなかった」
+```
+
+これは嘘ではなく、人格として注意を向けていなかったという意味である。
+常時 STT と人格上の注意を分けることで、聞き耳を立て続ける不自然さを避ける。

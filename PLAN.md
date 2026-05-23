@@ -475,3 +475,80 @@ async def test_edge_config_uses_gemma():
 - 話者識別（pyannote）の本格導入
 - 家族ごとの関係性データベース
 - ロボティクス基盤への移植（Optimus 等が現実になった時）
+
+---
+
+## 2026-05-23 追記: Phase 7 の前に Phase 6.5 を追加する
+
+上の M2 では Phase 6b の次に Phase 7「短期記憶」へ進む計画になっているが、この順序は否定する。
+短期記憶へ進む前に、wake word 後の自然な会話継続と ambient 聞き取りへの復帰を扱う
+**Phase 6.5: AttentionMode / 参加モード状態機械**を先に実装する。
+
+理由:
+- `ambient_logs` と `conversation_logs` の境界を先に決めないと、記憶に入れるべき発話が曖昧になる
+- 将来の wake word 外参加は、今 Tomoko が会話中か、聞いているだけか、入ってよい空気かを前提に判定する必要がある
+- 3年前の Unity 実装のように `isRecording` / `isCommunicating` / `isAITalking` が分散すると、後から自然な参加判断を足せない
+- 「あ、聞いてなかった」は、音声処理の失敗ではなく `attended=false` の人格表現として扱う必要がある
+
+### Phase 6.5: AttentionMode / 会話と聞き取りの自然遷移
+
+**目標**: wake word 後は自然に会話が続き、会話が収束したら ambient 聞き取りに戻る。
+常時 STT は続けるが、Tomoko が会話として注意を向けていたかどうかを明示的に分ける。
+
+- [ ] `server/shared/models.py` に `AttentionMode` / `ParticipationContext` の必要フィールドを追加する
+  - `attention_mode`: `ambient` / `engaged` / `cooldown` / `withdrawn`
+  - `attended`: Tomoko が会話として注意を向けていたか
+  - `participation_mode`: `called` / `invited` / `observer` / `withdraw`
+- [ ] `TomoroSession` に `attention_mode` を集約する
+  - wake word で `ambient -> engaged`
+  - `engaged` 中は wake word なしの継続発話にも返答できる
+  - Tomoko の返答完了後、一定時間の無発話で `engaged -> cooldown`
+  - `cooldown` 中に関連発話があれば `engaged` に戻る
+  - 一定時間何もなければ `cooldown -> ambient`
+  - 「静かにして」「今は入らないで」系で `withdrawn`
+- [ ] `ParticipationJudge` を `attention_mode` 前提で判定できる形に拡張する
+  - `ambient`: wake word か強い呼びかけ以外は原則 `observer`
+  - `engaged`: 直前会話の続きなら `invited`
+  - `cooldown`: 関連発話なら `invited`、無関係なら `observer`
+  - `withdrawn`: 原則 `withdraw`
+- [ ] `ambient_logs` に `attention_mode` / `attended` / `participation_mode` を保存する
+- [ ] `conversation_logs` は `attended=true` の会話ターンだけを保存する
+- [ ] 「聞いてなかった」扱いの応答方針をテストで固定する
+  - 内部的に `ambient_logs` へ記録されていても、`attended=false` の発話は直近会話文脈として使わない
+  - 後からその話題を振られた場合は「その時はちゃんと聞いてなかった」と返せる余地を残す
+- [ ] 状態遷移時は必ず `log.info` で記録する
+- [ ] `tests/unit/test_attention_mode.py` を追加する
+
+**完了条件**:
+- 「トモコ」で呼ぶと `engaged` になり、続く発話は wake word なしでも返答対象になる
+- 会話が途切れると `cooldown` を経て `ambient` に戻る
+- `ambient` の発話は STT/ambient_logs には残るが、会話文脈には入らない
+- `conversation_logs` には Tomoko が注意を向けた会話だけが保存される
+- `pytest -m unit` が通る
+
+### 将来の wake word 外参加への接続
+
+Phase 6.5 では高度な LLM 参加判定までは実装しない。
+ただし、将来の Phase 16 `LLMJudge` / `HybridJudge` はこの `attention_mode` を前提にする。
+
+最終的には次のように判定する:
+
+```text
+ambient + 関連度低い
+  -> 聞いていただけ
+
+ambient + 強い呼びかけ/名前/質問
+  -> engaged
+
+engaged + 継続発話
+  -> wake word なしで返答
+
+cooldown + 関連発話
+  -> invited として復帰
+
+available/ambient + 自発発話候補と強く接続できる話題
+  -> 自然に一言だけ入る
+
+withdrawn
+  -> 関連していても入らない
+```

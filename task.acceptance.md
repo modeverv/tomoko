@@ -9,7 +9,8 @@
 
 ## User Instruction
 
-M1  Phase 4: LLM ストリーミングで返答テキストを実装して下さい。
+うまくいきました。
+Phase 6b: 静止画切り替えと声のトーンに進む を対応して下さい。画像はプロジクトにasset-factory_for_workディレクトリを切り、その中でpythonで画像生成するか、可能ならあなた自身が画像生成機能持ってるならそれで対応して下さい。
 
 ## Completion Criteria
 
