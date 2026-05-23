@@ -9,11 +9,7 @@
 
 ## User Instruction
 
-participation:called は確認できなかった。ambient_logsには
-「ともこ、聞こえますか？」と何回か発話したが
-「ともく」や「聞こえますか？」記録されているようである。
-モデルの精度だろうか？それともなにか設定があるのだろうか？
-この辺りを調べて修正してほしい。
+M1  Phase 4: LLM ストリーミングで返答テキストを実装して下さい。
 
 ## Completion Criteria
 

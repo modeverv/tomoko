@@ -10,7 +10,9 @@ import numpy as np
 from server.edge.participation.base import ParticipationContext, ParticipationJudge
 from server.edge.pipeline.stt import SpeechTranscriber
 from server.edge.pipeline.vad import VADProcessor
+from server.gateway.thinking.base import ThinkingMode
 from server.shared.db import AmbientLogWriter
+from server.shared.inference.router import InferenceRouter
 from server.shared.models import SpeechSegment
 
 SessionState = Literal["idle", "listening", "processing"]
@@ -27,12 +29,16 @@ class TomoroSession:
         transcriber: SpeechTranscriber | None = None,
         participation_judge: ParticipationJudge | None = None,
         ambient_log_writer: AmbientLogWriter | None = None,
+        router: InferenceRouter | None = None,
+        thinking_mode: ThinkingMode | None = None,
     ) -> None:
         self.vad_processor = vad_processor
         self.send_event = send_event
         self.transcriber = transcriber
         self.participation_judge = participation_judge
         self.ambient_log_writer = ambient_log_writer
+        self.router = router
+        self.thinking_mode = thinking_mode
         self.state: SessionState = "idle"
         self.latest_segment: SpeechSegment | None = None
 
@@ -71,6 +77,14 @@ class TomoroSession:
                 decision.reason,
             )
             await self._send_event({"type": "participation", "mode": decision.mode})
+            
+            if self.router is not None and self.thinking_mode is not None:
+                try:
+                    backend = await self.router.select("conversation")
+                    async for chunk in self.thinking_mode.think(backend, transcript.text):
+                        await self._send_event({"type": "reply_text", "delta": chunk})
+                except Exception as e:
+                    logger.error("Error generating reply: %s", e)
 
         self.vad_processor.reset()
         await self._transition("idle")

@@ -10,9 +10,11 @@ from fastapi.staticfiles import StaticFiles
 from server.edge.participation.wake_word import WakeWordJudge
 from server.edge.pipeline.stt import SpeechTranscriber, create_stt_transcriber
 from server.edge.pipeline.vad import create_vad_processor
+from server.gateway.thinking.fast import ThinkFastMode
 from server.session import TomoroSession
 from server.shared.config import NodeConfig
 from server.shared.db import PostgresAmbientLogWriter
+from server.shared.inference.router import InferenceRouter
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,16 @@ async def index() -> FileResponse:
 def _create_default_vad_processor():
     config = _load_config()
     return create_vad_processor(silence_ms=config.audio.vad_silence_ms)
+
+
+def _create_default_router() -> InferenceRouter:
+    config = _load_config()
+    return InferenceRouter(config=config)
+
+
+def _create_default_thinking_mode() -> ThinkFastMode:
+    return ThinkFastMode(persona_path=ROOT_DIR / "prompts" / "base_persona.md")
+
 
 @app.websocket("/ws")
 async def websocket_session(websocket: WebSocket) -> None:
@@ -57,21 +69,33 @@ async def websocket_session(websocket: WebSocket) -> None:
         "ambient_log_writer_factory",
         _create_default_ambient_log_writer,
     )
+    router_factory = getattr(
+        app.state,
+        "router_factory",
+        _create_default_router,
+    )
+    thinking_mode_factory = getattr(
+        app.state,
+        "thinking_mode_factory",
+        _create_default_thinking_mode,
+    )
     session = TomoroSession(
         vad_processor=vad_processor_factory(),
         send_event=send_event,
         transcriber=transcriber_factory(),
         participation_judge=participation_judge_factory(),
         ambient_log_writer=ambient_log_writer_factory(),
+        router=router_factory(),
+        thinking_mode=thinking_mode_factory(),
     )
-    logger.info("phase3 websocket connected")
+    logger.info("phase4 websocket connected")
     try:
         while True:
             chunk = await websocket.receive_bytes()
             chunk_count += 1
             await session.process_audio_chunk(chunk)
     except WebSocketDisconnect:
-        logger.info("phase3 websocket disconnected after %s chunks", chunk_count)
+        logger.info("phase4 websocket disconnected after %s chunks", chunk_count)
 
 
 def _load_config() -> NodeConfig:
