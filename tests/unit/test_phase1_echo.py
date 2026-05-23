@@ -31,6 +31,8 @@ class SequenceVAD:
 
 def set_test_vad(processor: VADProcessor) -> None:
     app.state.vad_processor_factory = lambda: processor
+    app.state.transcriber_factory = lambda: None
+    app.state.ambient_log_writer_factory = lambda: None
 
 
 @pytest.mark.unit

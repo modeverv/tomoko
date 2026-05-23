@@ -115,6 +115,13 @@ class VADProcessor:
             segment=segment,
         )
 
+    def reset(self) -> None:
+        self.state = "idle"
+        self._buffer = []
+        self._silent_samples = 0
+        self._started_at = None
+        self._max_speech_probability = 0.0
+
 
 def create_vad_processor() -> VADProcessor:
     return VADProcessor(vad=SileroVAD(), silence_ms=400)

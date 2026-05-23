@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 
 import numpy as np
 
@@ -13,3 +14,20 @@ class SpeechSegment:
     ended_at: datetime
     device_id: str
     vad_confidence: float
+
+
+@dataclass
+class Transcript:
+    text: str
+    device_id: str
+    speaker: str | None
+    audio_level_db: float
+    recorded_at: datetime
+    is_final: bool
+
+
+@dataclass
+class ParticipationDecision:
+    should_participate: bool
+    mode: Literal["called", "invited", "observer", "withdraw"]
+    reason: str

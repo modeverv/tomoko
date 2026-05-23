@@ -133,3 +133,25 @@
 ### 次のセッションでやること
 - Chrome で `http://127.0.0.1:8000` を開き、マイク許可後に実音声で "listening" / "processing" が表示されることを手動確認する
 - Phase 3: 常時 STT と ParticipationJudge の実装に進む
+
+## 2026-05-23 セッション5
+
+### やること（開始時に書く）
+- M1 Phase 3: 常時 STT、ambient_logs、ParticipationJudge / WakeWordJudge、参加判断 unit test を実装する
+
+### やったこと
+- `ambient_logs` テーブル DDL を追加し、既存ローカル PostgreSQL にも適用した
+- `Transcript` / `ParticipationDecision` DTO を追加した
+- `FasterWhisperSTT` ラッパーを追加し、発話終了後に `SpeechSegment` を文字起こしする流れを実装した
+- `ParticipationJudge` 抽象と `WakeWordJudge` を追加した
+- `TomoroSession` に STT → ambient_logs → 参加判断 → idle 復帰の処理を追加した
+- Wake word と常時 STT 経路の unit test を追加した
+- Phase 3 の参加判断・DB 書き込みレイテンシーを `docs/latency.md` に追記した
+
+### 詰まったこと・解決したこと
+- 初期化済み PostgreSQL には新しい docker init SQL が自動適用されないため、同じ DDL を手元 DB に直接適用して確認した
+- faster-whisper の同期 transcribe がイベントループを塞がないよう、`asyncio.to_thread` に逃がした
+
+### 次のセッションでやること
+- Chrome 実音声で「トモコ」が `participation` イベントを出し、それ以外が `ambient_logs` にのみ残ることを手動確認する
+- Phase 4: LLM ストリーミングで返答テキストを実装する
