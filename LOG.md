@@ -66,3 +66,29 @@
 ### 次のセッションでやること
 - `irodori-tts` を外部リポジトリとして導入するか、M1 では `say` のみで進めるか判断する
 - Phase 1: WebSocket 1本で float32 エコーバックを実装する
+
+## 2026-05-23 セッション2
+
+### やること（開始時に書く）
+- M1 Phase 0 の残対応確認。環境構築項目を再検証し、未完了項目が実作業で解消可能なら対応する
+
+### やったこと
+- Phase 0 の環境を再検証した
+  - Python 3.11.15 / uv 0.11.16 は `mise exec -- uv ...` で利用可能
+  - PostgreSQL コンテナは healthy、`vector` / `pgroonga` 拡張を確認
+  - Ollama `qwen2.5:7b` が pull 済みであることを確認
+  - `mlx_lm` / faster-whisper small / Silero VAD / macOS `say -v Kyoko` を確認
+- `pyproject.toml` に混入していた不正な依存指定を削除し、`uv run pytest -m unit` が通る状態に戻した
+- PEP 508 として壊れた依存指定を検出する unit test を追加した
+- 公式 `Aratako/Irodori-TTS-Server` を隣接ディレクトリ `../Irodori-TTS-Server` に clone し、`uv sync` と `GET /health` 200 応答を確認した
+
+### 詰まったこと・解決したこと
+- 通常の shell PATH では `uv` が見えなかった
+  → Tomoko リポジトリ内では `mise exec -- uv ...` を使えば動作することを確認
+- `uv run pytest -m unit` が `pyproject.toml` の `pytest=*` / `pytest-asyncio=*` で失敗した
+  → 不正行を削除し、PEP 508 検証テストを追加して再発を検出できるようにした
+- irodori は PyPI/Homebrew パッケージではなく、公式 OpenAI 互換サーバーを外部サービスとして扱うのが現時点の最小導入と判断した
+
+### 次のセッションでやること
+- Phase 1: WebSocket 1本で float32 エコーバックを実装する
+- irodori の音声合成実推論は M1 完了後、または TTSBackend 実装時にモデルロード時間と品質を測る

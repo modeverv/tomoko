@@ -67,3 +67,17 @@ M1 Phase 0 の項目に「irodori-tts をローカルで起動確認」がある
 - faster-whisper small で日本語精度が不十分な場合は medium に切り替え
   （レイテンシーへの影響を計測してから判断）
 - kokoro-mlx の日本語ボイス品質は実測するまで不明
+
+---
+
+## 2026-05-23 追記
+
+### 確定した判断: irodori-tts の Phase 0 導入形態
+上の「未解決の疑問」にある irodori-tts 導入形態は、Phase 0 では Tomoko リポジトリ内に
+サブモジュールや vendored code を追加しない方針で解決した。
+
+公式の `Aratako/Irodori-TTS-Server` を Tomoko の隣接ディレクトリ
+`../Irodori-TTS-Server` に外部サービスとして clone し、`uv sync` と
+`GET /health` の 200 応答まで確認済み。
+モデル preload は無効で、音声合成モデル本体のロードと実推論は M1 完了後または
+TTSBackend 実装時に扱う。
