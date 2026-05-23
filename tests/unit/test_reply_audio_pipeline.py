@@ -17,7 +17,7 @@ def test_reply_audio_pipeline_emits_emotion_before_tts_text() -> None:
 
     assert emotion_commands[0].action == "emotion"
     assert emotion_commands[0].value == "happy"
-    assert emotion_commands[0].image == "/assets/images/tomoko-happy.svg"
+    assert emotion_commands[0].style == "happy"
     assert [command.action for command in text_commands] == ["text_delta", "tts_text"]
     assert text_commands[1].value == "うん、聞こえるよ。"
     assert text_commands[1].style == "happy"

@@ -6,15 +6,6 @@ from typing import Literal
 from server.shared.models import ThinkingEvent
 
 TTS_FLUSH_PUNCTUATION = "。！？"
-EMOTION_TO_IMAGE = {
-    "neutral": "/assets/images/tomoko-neutral.svg",
-    "happy": "/assets/images/tomoko-happy.svg",
-    "surprised": "/assets/images/tomoko-surprised.svg",
-    "sad": "/assets/images/tomoko-sad.svg",
-    "thinking": "/assets/images/tomoko-thinking.svg",
-    "gentle": "/assets/images/tomoko-gentle.svg",
-    "excited": "/assets/images/tomoko-excited.svg",
-}
 
 ReplyAudioAction = Literal["emotion", "text_delta", "tts_text", "done"]
 
@@ -24,7 +15,6 @@ class ReplyAudioCommand:
     action: ReplyAudioAction
     value: str
     style: str = "neutral"
-    image: str | None = None
 
 
 class ReplyAudioPipeline:
@@ -43,7 +33,6 @@ class ReplyAudioPipeline:
                     action="emotion",
                     value=event.value,
                     style=self.current_emotion,
-                    image=image_for_emotion(event.value),
                 )
             ]
 
@@ -85,10 +74,6 @@ class ReplyAudioPipeline:
             return commands
 
         return []
-
-
-def image_for_emotion(emotion: str) -> str:
-    return EMOTION_TO_IMAGE.get(emotion, EMOTION_TO_IMAGE["neutral"])
 
 
 def _split_flushable_sentences(text: str) -> tuple[list[str], str]:
