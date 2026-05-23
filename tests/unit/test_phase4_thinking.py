@@ -131,6 +131,34 @@ async def test_think_fast_extracts_emotion_line_before_text(tmp_path) -> None:
 
 
 @pytest.mark.unit
+async def test_think_fast_extracts_emotion_prefix_without_newline(tmp_path) -> None:
+    persona = tmp_path / "persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend(["EMOTION:happy 今日は元気いっぱいだよ！"])
+    mode = ThinkFastMode(persona_path=persona)
+
+    events = [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="トモコ、聞こえる？",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+            ),
+        )
+    ]
+
+    assert events == [
+        ThinkingEvent(type="emotion", value="happy"),
+        ThinkingEvent(type="text_delta", value="今日は元気いっぱいだよ！"),
+        ThinkingEvent(type="done", value=""),
+    ]
+
+
+@pytest.mark.unit
 async def test_session_streams_reply_text_after_wake_word() -> None:
     events: list[dict[str, str]] = []
     backend = FakeBackend(["うん", "、聞こえるよ"])

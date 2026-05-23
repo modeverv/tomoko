@@ -8,6 +8,15 @@ from server.shared.inference.backends.base import InferenceBackend
 from server.shared.models import ThinkingEvent, ThinkingInput
 
 EMOTION_PREFIX = "EMOTION:"
+EMOTIONS = {
+    "neutral",
+    "happy",
+    "surprised",
+    "sad",
+    "thinking",
+    "gentle",
+    "excited",
+}
 
 
 class ThinkFastMode(ThinkingMode):
@@ -36,7 +45,18 @@ class ThinkFastMode(ThinkingMode):
 
             header_buffer += chunk
             if "\n" not in header_buffer:
-                if EMOTION_PREFIX.startswith(header_buffer):
+                inline_emotion = _parse_inline_emotion_header(header_buffer)
+                if inline_emotion is not None:
+                    emotion, remainder = inline_emotion
+                    yield ThinkingEvent(type="emotion", value=emotion)
+                    if remainder:
+                        yield ThinkingEvent(type="text_delta", value=remainder)
+                    header_parsed = True
+                    header_buffer = ""
+                    continue
+                if EMOTION_PREFIX.startswith(header_buffer) or header_buffer.startswith(
+                    EMOTION_PREFIX
+                ):
                     continue
                 header_parsed = True
                 yield ThinkingEvent(type="text_delta", value=header_buffer)
@@ -67,4 +87,24 @@ def _parse_emotion_line(line: str) -> str | None:
     if not stripped.startswith(EMOTION_PREFIX):
         return None
     emotion = stripped.removeprefix(EMOTION_PREFIX).strip()
-    return emotion or None
+    if emotion not in EMOTIONS:
+        return None
+    return emotion
+
+
+def _parse_inline_emotion_header(text: str) -> tuple[str, str] | None:
+    if not text.startswith(EMOTION_PREFIX):
+        return None
+
+    rest = text.removeprefix(EMOTION_PREFIX).lstrip()
+    if not rest:
+        return None
+
+    parts = rest.split(maxsplit=1)
+    if len(parts) != 2:
+        return None
+
+    emotion, remainder = parts
+    if emotion not in EMOTIONS:
+        return None
+    return emotion, remainder

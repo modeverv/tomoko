@@ -137,6 +137,33 @@ async def test_session_keeps_emotion_line_out_of_tts_text() -> None:
 
 
 @pytest.mark.unit
+async def test_session_keeps_inline_emotion_prefix_out_of_tts_text() -> None:
+    events: list[dict[str, str]] = []
+    audio_chunks: list[bytes] = []
+    tts = FakeTTSBackend()
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.9] + [0.1] * 13), silence_ms=400),
+        send_event=events.append,
+        send_audio=audio_chunks.append,
+        transcriber=ConstantTranscriber(),
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=InMemoryAmbientLogWriter(),
+        router=FakeRouter(FakeBackend(["EMOTION:happy 今日は元気いっぱいだよ！"])),  # type: ignore[arg-type]
+        thinking_mode=ThinkFastMode(),
+        tts_backend=tts,
+    )
+
+    for _ in range(14):
+        await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+
+    assert tts.inputs == [TTSInput(text="今日は元気いっぱいだよ！", style="happy")]
+    assert audio_chunks == ["audio:今日は元気いっぱいだよ！".encode()]
+    assert {"type": "emotion", "value": "happy"} in events
+    assert {"type": "reply_text", "delta": "今日は元気いっぱいだよ！"} in events
+    assert {"type": "reply_text", "delta": "EMOTION:happy 今日は元気いっぱいだよ！"} not in events
+
+
+@pytest.mark.unit
 async def test_say_backend_invokes_say_and_returns_wav_bytes(monkeypatch) -> None:
     calls: list[tuple[str, ...]] = []
 

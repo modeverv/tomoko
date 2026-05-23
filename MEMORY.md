@@ -131,3 +131,10 @@ M1 の `SayBackend` は Chrome `decodeAudioData` 互換性を優先し、16kHz/1
 
 `TomoroSession` は emotion イベントをそのまま WebSocket JSON として DOM に送り、TTS には
 `text_delta` だけを流す。TTS style は直近の emotion を使う。
+
+### 気づき: LLM が emotion 行の改行を落とす場合がある
+Chrome 手動確認で `EMOTION:happy 今日は...` のように、LLM がプロンプトで指定した改行を入れずに
+emotion と本文を同じ行で返すケースがあった。
+
+`ThinkFastMode` は `EMOTION:<value>\n本文` だけでなく、許可済み emotion の直後に空白を挟んで本文が続く
+`EMOTION:<value> 本文` も分離対象にする。
