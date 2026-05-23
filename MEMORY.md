@@ -59,6 +59,12 @@ M1 Phase 0 の項目に「irodori-tts をローカルで起動確認」がある
 
 ※ 実装中の重要な発見をここに積む。
 
+### AudioWorkletNode の処理維持
+M1 Phase 1 のブラウザ実装では、`MediaStreamSource -> AudioWorkletNode` だけで止めると
+ブラウザによっては音声グラフが pull されず `process()` が継続しない可能性がある。
+入力音をスピーカーへ出さないため、`AudioWorkletNode -> GainNode(gain=0) -> destination`
+で無音接続して処理を維持する。
+
 ---
 
 ## 既知の制約・注意事項

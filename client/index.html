@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tomoko</title>
+    <link rel="stylesheet" href="/client/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="panel" aria-labelledby="title">
+        <div class="identity">
+          <div class="portrait" aria-hidden="true">T</div>
+          <div>
+            <h1 id="title">Tomoko</h1>
+            <p id="status">idle</p>
+          </div>
+        </div>
+
+        <div class="meters" aria-label="Audio status">
+          <div>
+            <span>Echo</span>
+            <strong id="latency">--</strong>
+          </div>
+          <div>
+            <span>Sent</span>
+            <strong id="bytes">0</strong>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="start" type="button">Start</button>
+          <button id="stop" type="button" disabled>Stop</button>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/client/main.js"></script>
+  </body>
+</html>

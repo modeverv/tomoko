@@ -3,8 +3,8 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-from packaging.requirements import Requirement
 import pytest
+from packaging.requirements import Requirement
 
 from server.shared.config import NodeConfig
 

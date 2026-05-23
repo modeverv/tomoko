@@ -1,0 +1,137 @@
+:root {
+  color-scheme: light dark;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f7f4ee;
+  color: #1d2228;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  padding: 24px;
+}
+
+.panel {
+  display: grid;
+  width: min(100%, 440px);
+  gap: 24px;
+  padding: 28px;
+  border: 1px solid #d8d0c5;
+  border-radius: 8px;
+  background: #fffdf8;
+  box-shadow: 0 18px 42px rgb(29 34 40 / 12%);
+}
+
+.identity {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+}
+
+.portrait {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  place-items: center;
+  border-radius: 50%;
+  background: #315f68;
+  color: #fffdf8;
+  font-size: 32px;
+  font-weight: 700;
+}
+
+h1 {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.05;
+}
+
+p {
+  margin: 8px 0 0;
+  color: #5f6670;
+}
+
+.meters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.meters div {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid #e3ded6;
+  border-radius: 8px;
+  background: #f6f0e7;
+}
+
+.meters span {
+  color: #67717b;
+  font-size: 13px;
+}
+
+.meters strong {
+  overflow-wrap: anywhere;
+  font-size: 18px;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.controls button {
+  min-height: 44px;
+  border: 1px solid #1f4d55;
+  border-radius: 8px;
+  background: #315f68;
+  color: white;
+  cursor: pointer;
+}
+
+.controls button:disabled {
+  border-color: #c7cbd0;
+  background: #d9dde1;
+  color: #777f88;
+  cursor: not-allowed;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    background: #191b1f;
+    color: #f7f4ee;
+  }
+
+  .panel {
+    border-color: #353b42;
+    background: #22262c;
+  }
+
+  p,
+  .meters span {
+    color: #b4bdc8;
+  }
+
+  .meters div {
+    border-color: #353b42;
+    background: #1d2126;
+  }
+}

@@ -92,3 +92,23 @@
 ### 次のセッションでやること
 - Phase 1: WebSocket 1本で float32 エコーバックを実装する
 - irodori の音声合成実推論は M1 完了後、または TTSBackend 実装時にモデルロード時間と品質を測る
+
+## 2026-05-23 セッション3
+
+### やること（開始時に書く）
+- M1 Phase 1: WebSocket 1本で float32 エコーバックを実装する
+
+### やったこと
+- `server/edge/main.py` を追加し、`/ws` で受け取ったバイナリを変換せずそのまま返す Phase 1 エコーバックを実装した
+- `client/audio-worklet.js` で AudioWorklet から 32ms チャンクの float32 を取得する実装を追加した
+- `client/main.js` / `client/index.html` / `client/styles.css` を追加し、マイク入力を WebSocket に送り、返ってきた float32 を AudioContext で再生する最小画面を作った
+- `/ws` のバイナリエコーを検証する unit test を追加した
+- `docs/latency.md` にローカル `/ws` echo round trip の実測値を追記した
+
+### 詰まったこと・解決したこと
+- AudioWorkletNode は音声グラフ上で接続されていないと処理が止まる可能性があるため、無音 GainNode 経由で destination に接続して処理を維持するようにした
+- in-app browser の `iab` がこの環境で利用できず画面の自動確認はできなかったため、HTTP 配信は `curl`、WebSocket は TestClient と実測スクリプトで確認した
+
+### 次のセッションでやること
+- Chrome で `http://127.0.0.1:8000` を開き、マイク許可後に実音声エコーが返ることを手動確認する
+- Phase 2: Silero VAD で発話開始・終了の状態遷移を実装する
