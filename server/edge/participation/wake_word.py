@@ -5,7 +5,16 @@ from server.shared.models import ParticipationDecision
 
 
 class WakeWordJudge(ParticipationJudge):
-    WAKE_WORDS = ("トモコ", "ともこ", "tomoko")
+    WAKE_WORDS = (
+        "トモコ", 
+        "ともこ", 
+        "tomoko", 
+        "ともく", 
+        "トモク", 
+        "tomoku",
+        "智子",
+        "朋子"
+    )
 
     async def judge(self, ctx: ParticipationContext) -> ParticipationDecision:
         normalized = ctx.transcript.casefold()

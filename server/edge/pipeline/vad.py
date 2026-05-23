@@ -123,5 +123,5 @@ class VADProcessor:
         self._max_speech_probability = 0.0
 
 
-def create_vad_processor() -> VADProcessor:
-    return VADProcessor(vad=SileroVAD(), silence_ms=400)
+def create_vad_processor(silence_ms: int = 400) -> VADProcessor:
+    return VADProcessor(vad=SileroVAD(), silence_ms=silence_ms)

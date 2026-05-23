@@ -21,7 +21,11 @@ function handleJsonEvent(data) {
   const event = JSON.parse(data);
   if (event.type === "state") {
     vadStateEl.textContent = event.state;
-    setStatus(event.state);
+    if (event.state === "idle" && statusEl.textContent.startsWith("participation:")) {
+      // Keep participation status visible until the next speech starts
+    } else {
+      setStatus(event.state);
+    }
     return;
   }
   if (event.type === "participation") {

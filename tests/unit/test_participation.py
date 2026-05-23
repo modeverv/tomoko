@@ -34,3 +34,18 @@ async def test_wake_word_accepts_latin_name() -> None:
 
     assert result.should_participate is True
     assert result.mode == "called"
+
+
+@pytest.mark.unit
+async def test_wake_word_misrecognitions() -> None:
+    judge = WakeWordJudge()
+
+    for phrase in [
+        "ともく、聞こえますか",
+        "トモク、起きて",
+        "智子さん",
+        "朋子、元気？",
+    ]:
+        result = await judge.judge(ParticipationContext(transcript=phrase))
+        assert result.should_participate is True
+        assert result.mode == "called"

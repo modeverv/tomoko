@@ -9,7 +9,11 @@
 
 ## User Instruction
 
-M1 ## Phase 2: VAD で発話終了を検出 を対応して下さい。
+participation:called は確認できなかった。ambient_logsには
+「ともこ、聞こえますか？」と何回か発話したが
+「ともく」や「聞こえますか？」記録されているようである。
+モデルの精度だろうか？それともなにか設定があるのだろうか？
+この辺りを調べて修正してほしい。
 
 ## Completion Criteria
 

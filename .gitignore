@@ -4,3 +4,5 @@ __pycache__/
 .ruff_cache/
 *.pyc
 .DS_Store
+.idea
+

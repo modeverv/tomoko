@@ -29,6 +29,10 @@ async def index() -> FileResponse:
     return FileResponse(CLIENT_DIR / "index.html")
 
 
+def _create_default_vad_processor():
+    config = _load_config()
+    return create_vad_processor(silence_ms=config.audio.vad_silence_ms)
+
 @app.websocket("/ws")
 async def websocket_session(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -37,7 +41,11 @@ async def websocket_session(websocket: WebSocket) -> None:
     async def send_event(event: dict[str, str]) -> None:
         await websocket.send_json(event)
 
-    vad_processor_factory = getattr(app.state, "vad_processor_factory", create_vad_processor)
+    vad_processor_factory = getattr(
+        app.state, 
+        "vad_processor_factory", 
+        _create_default_vad_processor
+    )
     transcriber_factory = getattr(app.state, "transcriber_factory", _create_default_transcriber)
     participation_judge_factory = getattr(
         app.state,

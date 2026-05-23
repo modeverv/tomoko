@@ -41,7 +41,11 @@ class FasterWhisperSTT:
         )
 
     def _transcribe_text(self, audio: np.ndarray) -> str:
-        segments, _info = self.model.transcribe(audio, language=self.language)
+        segments, _info = self.model.transcribe(
+            audio, 
+            language=self.language,
+            initial_prompt="ともこ"
+        )
         return "".join(part.text.strip() for part in segments).strip()
 
 
