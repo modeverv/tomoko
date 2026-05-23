@@ -47,6 +47,27 @@ def test_reply_audio_pipeline_flushes_sentence_then_final_remainder() -> None:
 
 
 @pytest.mark.unit
+def test_reply_audio_pipeline_flushes_soft_boundary_without_tiny_vocative() -> None:
+    pipeline = ReplyPipeline()
+
+    first = pipeline.handle_event(ThinkingEvent(type="text_delta", value="トモコ、"))
+    second = pipeline.handle_event(
+        ThinkingEvent(type="text_delta", value="today の meeting は 3pm からだから、")
+    )
+    third = pipeline.handle_event(
+        ThinkingEvent(type="text_delta", value="schedule を確認して。")
+    )
+
+    assert [command.action for command in first] == ["text_delta"]
+    assert ("tts_text", "トモコ、today の meeting は 3pm からだから、") in [
+        (command.action, command.value) for command in second
+    ]
+    assert ("tts_text", "schedule を確認して。") in [
+        (command.action, command.value) for command in third
+    ]
+
+
+@pytest.mark.unit
 def test_reply_audio_pipeline_removes_english_delta_before_display_but_keeps_tts_text() -> None:
     pipeline = ReplyPipeline()
 

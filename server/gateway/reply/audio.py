@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 TTS_FLUSH_PUNCTUATION = "。！？"
+TTS_SOFT_FLUSH_PUNCTUATION = "、，"
+MIN_SOFT_FLUSH_CHARS = 10
 
 
 class ReplyAudioPlanner:
@@ -34,8 +36,14 @@ def _split_flushable_sentences(text: str) -> tuple[list[str], str]:
 
 
 def _first_sentence_end_index(text: str) -> int | None:
-    indexes = [text.find(punctuation) for punctuation in TTS_FLUSH_PUNCTUATION]
-    found = [index for index in indexes if index >= 0]
+    hard_indexes = [text.find(punctuation) for punctuation in TTS_FLUSH_PUNCTUATION]
+    soft_indexes = [
+        index
+        for index, char in enumerate(text)
+        if char in TTS_SOFT_FLUSH_PUNCTUATION
+        if index + 1 >= MIN_SOFT_FLUSH_CHARS
+    ]
+    found = [index for index in hard_indexes + soft_indexes if index >= 0]
     if not found:
         return None
     return min(found)

@@ -552,3 +552,14 @@ Kokoro の方が出力音声クオリティは明確に良かった。
 
 Kokoro 実測は first chunk 112.8ms / TTS total 166.6ms / 2 chunks。
 Gemma 正規化込みの初回音声は、おおむね 211.1ms + 112.8ms = 323.9ms。
+
+### 確定した判断: Kokoro文節flushでは短すぎる呼びかけを単独出力しない
+Kokoro + Gemma の文節ごとサンプルでは、`トモコ、` だけを単独TTSに渡すと末尾に謎の「イ」っぽい音が付いた。
+これは短すぎる呼びかけ断片を単独の `generate_stream()` 入力にしたことが原因と判断する。
+
+`ReplyAudioPlanner` は日本語読点も soft flush 対象にするが、10文字未満の断片ではflushしない。
+これにより `トモコ、` は次の文節と結合され、
+`トモコ、today の meeting は 3pm からだから、` が最初のTTS単位になる。
+
+採用後サンプルでは first chunk 75.6ms / TTS total 191.6ms / 3 chunks。
+短すぎる単独呼びかけを避けつつ、文単位より細かいレイテンシーを狙える。
