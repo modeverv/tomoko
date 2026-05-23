@@ -47,7 +47,7 @@ def test_reply_audio_pipeline_flushes_sentence_then_final_remainder() -> None:
 
 
 @pytest.mark.unit
-def test_reply_audio_pipeline_flushes_soft_boundary_without_tiny_vocative() -> None:
+def test_reply_audio_pipeline_does_not_flush_japanese_comma_boundaries() -> None:
     pipeline = ReplyPipeline()
 
     first = pipeline.handle_event(ThinkingEvent(type="text_delta", value="トモコ、"))
@@ -59,10 +59,8 @@ def test_reply_audio_pipeline_flushes_soft_boundary_without_tiny_vocative() -> N
     )
 
     assert [command.action for command in first] == ["text_delta"]
-    assert ("tts_text", "トモコ、today の meeting は 3pm からだから、") in [
-        (command.action, command.value) for command in second
-    ]
-    assert ("tts_text", "schedule を確認して。") in [
+    assert [command.action for command in second] == ["text_delta"]
+    assert ("tts_text", "トモコ、today の meeting は 3pm からだから、schedule を確認して。") in [
         (command.action, command.value) for command in third
     ]
 

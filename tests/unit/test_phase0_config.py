@@ -12,16 +12,18 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.unit
-def test_central_realtime_config_uses_ollama_for_m1() -> None:
+def test_central_realtime_config_uses_gemma_mlx_for_main_conversation() -> None:
     config = NodeConfig.load(ROOT / "config" / "central_realtime.toml")
 
     assert config.node.role == "central_realtime"
-    assert config.inference.conversation_backend == "local_qwen7b"
+    assert config.inference.conversation_backend == "local_gemma4_e2b_mlx"
+    assert config.inference.conversation_fallback == "local_qwen7b"
     assert config.inference.tts_backend == "kokoro_mlx"
+    assert config.inference.speech_normalizer_enabled is False
 
-    backend = config.backends["local_qwen7b"]
-    assert backend.type == "ollama"
-    assert backend.model == "qwen2.5:7b"
+    backend = config.backends["local_gemma4_e2b_mlx"]
+    assert backend.type == "gemma_mlx"
+    assert backend.model == "mlx-community/gemma-4-e2b-it-4bit"
     assert backend.privacy_allowed is True
 
     tts_backend = config.backends["kokoro_mlx"]

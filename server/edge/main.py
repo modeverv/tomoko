@@ -97,8 +97,13 @@ def _create_default_vad_processor():
 
 
 def _create_default_router() -> InferenceRouter:
+    cached_router = getattr(app.state, "_default_router", None)
+    if cached_router is not None:
+        return cached_router
     config = _load_config()
-    return InferenceRouter(config=config)
+    router = InferenceRouter(config=config)
+    app.state._default_router = router
+    return router
 
 
 def _create_default_thinking_mode() -> ThinkFastMode:
@@ -122,6 +127,10 @@ def _create_default_speech_normalizer() -> ReplySpeechNormalizer:
     normalizer = ReplySpeechNormalizer()
     app.state._default_speech_normalizer = normalizer
     return normalizer
+
+
+def _is_speech_normalizer_enabled() -> bool:
+    return _load_config().inference.speech_normalizer_enabled
 
 
 @app.websocket("/ws")
@@ -171,11 +180,7 @@ async def websocket_session(websocket: WebSocket) -> None:
         "tts_backend_factory",
         _create_default_tts_backend,
     )
-    speech_normalizer_factory = getattr(
-        app.state,
-        "speech_normalizer_factory",
-        _create_default_speech_normalizer,
-    )
+    speech_normalizer_factory = getattr(app.state, "speech_normalizer_factory", None)
     barge_in_detector_factory = getattr(
         app.state,
         "barge_in_detector_factory",
@@ -192,7 +197,15 @@ async def websocket_session(websocket: WebSocket) -> None:
         router=router_factory(),
         thinking_mode=thinking_mode_factory(),
         tts_backend=tts_backend_factory(),
-        speech_normalizer=speech_normalizer_factory(),
+        speech_normalizer=(
+            speech_normalizer_factory()
+            if speech_normalizer_factory is not None
+            else (
+                _create_default_speech_normalizer()
+                if _is_speech_normalizer_enabled()
+                else None
+            )
+        ),
         barge_in_detector=barge_in_detector_factory(),
         transcript_filter=TranscriptFilter(),
     )
@@ -275,6 +288,30 @@ async def _warm_up_app() -> None:
         elapsed_ms,
     )
 
+    conversation_backend_name = config.inference.conversation_backend
+    conversation_spec = config.backends[conversation_backend_name]
+    started_at = time.perf_counter()
+    logger.info(
+        "startup warm-up started target=conversation backend=%s type=%s model=%s",
+        conversation_backend_name,
+        conversation_spec.type,
+        conversation_spec.model,
+    )
+    router_factory = getattr(app.state, "router_factory", _create_default_router)
+    conversation_backend = await router_factory().select("conversation", "privacy")
+    warm_up = getattr(conversation_backend, "warm_up", None)
+    if warm_up is not None:
+        await warm_up()
+    elapsed_ms = (time.perf_counter() - started_at) * 1000
+    logger.info(
+        "startup warm-up completed target=conversation backend=%s elapsed_ms=%.1f",
+        conversation_backend.name,
+        elapsed_ms,
+    )
+
+    if not config.inference.speech_normalizer_enabled:
+        logger.info("startup warm-up skipped target=tts_text_normalizer disabled=true")
+        return
     speech_normalizer_factory = getattr(
         app.state,
         "speech_normalizer_factory",

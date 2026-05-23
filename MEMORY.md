@@ -586,3 +586,18 @@ first body は 312.1ms / 385.2ms に悪化した。
 混入あり入力では、`qwen2.5:7b` + Gemma正規化より Gemma単体の方が構成が単純で、
 初回音声も `約205ms + Kokoro 75〜115ms` 程度を期待できる。
 一方、混入なしの純日本語では Qwen が正規化を飛ばせるため、Qwen + Kokoro の方が速い可能性がある。
+
+### 確定した判断: メイン会話推論は Gemma 4 E2B MLX にする
+ユーザー判断により、メイン会話推論は `mlx-community/gemma-4-e2b-it-4bit` を `mlx-vlm` 経由で使う。
+Kokoro は `kokoro_mlx` のまま使い、TTS直前のGemma正規化は無効化する。
+英語混入は許容し、構成の単純さとGemmaのプロンプト追従を優先する。
+
+`ReplyAudioPlanner` は読点による文節flushをやめ、`。！？` の sentence flush だけに戻す。
+これにより `トモコ、` のような短すぎる断片がKokoroへ渡らず、文節分割由来の音声破綻を避ける。
+
+実 warm-up では STT 1356.5ms、Kokoro 277.8ms、Gemma conversation 3751.6ms。
+起動時に `InferenceRouter` をキャッシュして、warm-up済み Gemma backend をWebSocketセッションでも再利用する。
+
+注意点として、`mlx-vlm.stream_generate()` は `asyncio.to_thread` 上では MLX の thread-local stream エラーになった。
+現時点の Gemma会話backendは同じスレッドで同期消費する。
+reply生成は background task だが、MLX生成中にイベントループをどの程度塞ぐかは実セッションで確認する。

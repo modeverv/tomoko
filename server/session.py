@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import time
 from collections.abc import Callable
 from contextlib import suppress
 from typing import Any, Literal
@@ -86,6 +87,11 @@ class TomoroSession:
         self._reply_task: asyncio.Task[None] | None = None
         self._tts_worker_task: asyncio.Task[None] | None = None
         self._tts_queue: asyncio.Queue[tuple[str, str] | None] | None = None
+        self._latency_speech_end_at: float | None = None
+        self._latency_reply_start_at: float | None = None
+        self._latency_first_reply_text_at: float | None = None
+        self._latency_tts_start_at: float | None = None
+        self._latency_first_audio_chunk_at: float | None = None
 
     @property
     def _playback_echo_grace_ms(self) -> int:
@@ -109,15 +115,27 @@ class TomoroSession:
         if self.transcriber is None:
             return
 
+        self._reset_latency_probe()
+        self._latency_speech_end_at = time.perf_counter()
+        logger.info(
+            "TomoroSession latency speech_end segment_ms=%.1f attention_mode=%s state=%s",
+            (segment.ended_at - segment.started_at).total_seconds() * 1000,
+            self.attention_mode,
+            self.state,
+        )
+        stt_started_at = time.perf_counter()
         transcript = await self.transcriber.transcribe(segment)
+        stt_elapsed_ms = (time.perf_counter() - stt_started_at) * 1000
         logger.info(
             "TomoroSession transcript text=%r speaker=%s audio_level_db=%s "
-            "attention_mode=%s state=%s",
+            "attention_mode=%s state=%s stt_elapsed_ms=%.1f speech_end_to_transcript_ms=%.1f",
             transcript.text,
             transcript.speaker,
             transcript.audio_level_db,
             self.attention_mode,
             self.state,
+            stt_elapsed_ms,
+            self._elapsed_since_speech_end_ms(),
         )
         filter_decision = self._filter_transcript(transcript, is_partial=False)
         if filter_decision.action == "drop":
@@ -261,6 +279,12 @@ class TomoroSession:
             return
 
         backend = await self.router.select("conversation", "privacy")
+        self._latency_reply_start_at = time.perf_counter()
+        logger.info(
+            "TomoroSession latency reply_start backend=%s speech_end_to_reply_start_ms=%.1f",
+            backend.name,
+            self._elapsed_since_speech_end_ms(),
+        )
         thinking_input = ThinkingInput(
             text=transcript.text,
             speaker=transcript.speaker,
@@ -287,6 +311,16 @@ class TomoroSession:
                             }
                         )
                     elif command.action == "text_delta":
+                        if self._latency_first_reply_text_at is None:
+                            self._latency_first_reply_text_at = time.perf_counter()
+                            logger.info(
+                                "TomoroSession latency first_reply_text "
+                                "backend=%s speech_end_to_first_reply_text_ms=%.1f "
+                                "reply_start_to_first_reply_text_ms=%.1f",
+                                backend.name,
+                                self._elapsed_since_speech_end_ms(),
+                                self._elapsed_since_reply_start_ms(),
+                            )
                         logger.info("TomoroSession reply_text delta=%r", command.value)
                         await self._send_event({"type": "reply_text", "delta": command.value})
                     elif command.action == "tts_text":
@@ -433,8 +467,32 @@ class TomoroSession:
         if self.speech_normalizer is not None:
             speech_text = await self.speech_normalizer.normalize(speech_text)
 
+        if self._latency_tts_start_at is None:
+            self._latency_tts_start_at = time.perf_counter()
+            logger.info(
+                "TomoroSession latency tts_start "
+                "speech_end_to_tts_start_ms=%.1f first_reply_text_to_tts_start_ms=%.1f "
+                "text=%r",
+                self._elapsed_since_speech_end_ms(),
+                self._elapsed_since_first_reply_text_ms(),
+                speech_text,
+            )
+
         tts_input = TTSInput(text=speech_text, style=style)
         async for chunk in self.tts_backend.synthesize(tts_input):
+            if self._latency_first_audio_chunk_at is None:
+                self._latency_first_audio_chunk_at = time.perf_counter()
+                logger.info(
+                    "TomoroSession latency first_audio_chunk "
+                    "speech_end_to_first_audio_ms=%.1f "
+                    "reply_start_to_first_audio_ms=%.1f "
+                    "tts_start_to_first_audio_ms=%.1f text=%r bytes=%s",
+                    self._elapsed_since_speech_end_ms(),
+                    self._elapsed_since_reply_start_ms(),
+                    self._elapsed_since_tts_start_ms(),
+                    tts_input.text,
+                    len(chunk.data),
+                )
             await self._ensure_audio_turn_started()
             outgoing = await self._reserve_audio_chunk(
                 text=tts_input.text,
@@ -524,6 +582,25 @@ class TomoroSession:
     async def _reserve_audio_stop_event(self) -> dict[str, str] | None:
         return await self.audio_turns.reserve_stop_event()
 
+    def _reset_latency_probe(self) -> None:
+        self._latency_speech_end_at = None
+        self._latency_reply_start_at = None
+        self._latency_first_reply_text_at = None
+        self._latency_tts_start_at = None
+        self._latency_first_audio_chunk_at = None
+
+    def _elapsed_since_speech_end_ms(self) -> float:
+        return _elapsed_ms(self._latency_speech_end_at)
+
+    def _elapsed_since_reply_start_ms(self) -> float:
+        return _elapsed_ms(self._latency_reply_start_at)
+
+    def _elapsed_since_first_reply_text_ms(self) -> float:
+        return _elapsed_ms(self._latency_first_reply_text_at)
+
+    def _elapsed_since_tts_start_ms(self) -> float:
+        return _elapsed_ms(self._latency_tts_start_at)
+
 
 def _withdraw_decision(transcript: Transcript):
     text = transcript.text
@@ -543,3 +620,9 @@ def _withdraw_decision(transcript: Transcript):
             reason="explicit_withdraw_request",
         )
     return None
+
+
+def _elapsed_ms(started_at: float | None) -> float:
+    if started_at is None:
+        return 0.0
+    return (time.perf_counter() - started_at) * 1000
