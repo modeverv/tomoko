@@ -221,3 +221,21 @@
 ### 次のセッションでやること
 - Chrome 実音声で「トモコ」に対して声が返ることを手動確認する
 - Phase 6a: 感情情報を DOM に出し、TTS に流す本文から emotion 行を分離する
+
+## 2026-05-23 セッション9
+
+### やること（開始時に書く）
+- M1 Phase 5 の手動確認で「返答テキストは来るが音声が再生されない」問題を切り分け、テスト先行で修正する
+
+### やったこと
+- Chrome の `decodeAudioData` 互換性を優先し、`SayBackend` の出力を AIFF から 16kHz/16bit RIFF/WAVE に変更した
+- クライアントで音声チャンク再生前に `AudioContext.resume()` を呼ぶようにした
+- Phase 5 の unit/perf test を WAV 前提に更新した
+
+### 詰まったこと・解決したこと
+- `say -o speech.wav` だけでは `Opening output file failed: fmt?` で WAV を生成できなかった
+  → `--data-format=LEI16@16000 -o speech.wav` を指定すると RIFF/WAVE を生成できることを確認した
+
+### 次のセッションでやること
+- Chrome 実音声で「トモコ」に対して声が返ることを再確認する
+- まだ無音なら Chrome コンソールの `audio-error` と WebSocket バイナリ受信有無を確認する

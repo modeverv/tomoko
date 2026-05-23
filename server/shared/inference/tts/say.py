@@ -35,13 +35,14 @@ class SayBackend(TTSBackend):
         rate = self.STYLE_TO_RATE.get(tts_input.style, self.STYLE_TO_RATE["neutral"])
         voice = tts_input.voice or self.voice
         with tempfile.TemporaryDirectory(prefix="tomoko-say-") as tmp_dir:
-            output_path = Path(tmp_dir) / "speech.aiff"
+            output_path = Path(tmp_dir) / "speech.wav"
             proc = await asyncio.create_subprocess_exec(
                 "say",
                 "-v",
                 voice,
                 "-r",
                 str(rate),
+                "--data-format=LEI16@16000",
                 "-o",
                 str(output_path),
                 tts_input.text,

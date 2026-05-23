@@ -111,7 +111,7 @@ async def test_session_flushes_tts_on_sentence_punctuation() -> None:
 
 
 @pytest.mark.unit
-async def test_say_backend_invokes_say_and_returns_aiff_bytes(monkeypatch) -> None:
+async def test_say_backend_invokes_say_and_returns_wav_bytes(monkeypatch) -> None:
     calls: list[tuple[str, ...]] = []
 
     class FakeProc:
@@ -125,7 +125,7 @@ async def test_say_backend_invokes_say_and_returns_aiff_bytes(monkeypatch) -> No
         calls.append(tuple(args))
         output_path = args[args.index("-o") + 1]
         with open(output_path, "wb") as f:
-            f.write(b"FORMfake-aiff")
+            f.write(b"RIFFfakeWAVE")
         return FakeProc()
 
     monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create_subprocess_exec)
@@ -136,6 +136,7 @@ async def test_say_backend_invokes_say_and_returns_aiff_bytes(monkeypatch) -> No
         async for chunk in backend.synthesize(TTSInput(text="こんにちは。", style="happy"))
     ]
 
-    assert chunks == [AudioChunkOut(data=b"FORMfake-aiff", sequence=0, is_last=True)]
+    assert chunks == [AudioChunkOut(data=b"RIFFfakeWAVE", sequence=0, is_last=True)]
     assert calls[0][:4] == ("say", "-v", "Kyoko", "-r")
     assert calls[0][4] == "190"
+    assert "--data-format=LEI16@16000" in calls[0]

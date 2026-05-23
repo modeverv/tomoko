@@ -68,7 +68,8 @@ async def test_e2e_latency_under_800ms_with_say_backend() -> None:
         nonlocal first_audio_ms
         if first_audio_ms is None:
             first_audio_ms = (time.perf_counter() - start) * 1000
-        assert chunk.startswith(b"FORM")
+        assert chunk.startswith(b"RIFF")
+        assert b"WAVE" in chunk[:32]
 
     session = TomoroSession(
         vad_processor=VADProcessor(vad=SequenceVAD([0.9] + [0.1] * 13), silence_ms=400),

@@ -44,6 +44,9 @@ async function playAudioChunk(arrayBuffer) {
   if (!audioContext) {
     return;
   }
+  if (audioContext.state === "suspended") {
+    await audioContext.resume();
+  }
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
   const source = audioContext.createBufferSource();
   source.buffer = audioBuffer;
