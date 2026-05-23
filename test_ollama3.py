@@ -1,5 +1,7 @@
 import asyncio
+
 from ollama import AsyncClient
+
 
 async def main():
     try:

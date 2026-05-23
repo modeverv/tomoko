@@ -1,7 +1,9 @@
 import asyncio
+
 from ollama import AsyncClient
 
+
 async def main():
-    print(getattr(AsyncClient, "chat"))
+    print(AsyncClient.chat)
 
 asyncio.run(main())

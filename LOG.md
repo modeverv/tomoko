@@ -177,3 +177,25 @@
 ### 次のセッションでやること
 - Chrome 実音声で「トモコ」が `participation:called` 表示になり、それ以外が `ambient_logs` にのみ残ることを確認する
 - Phase 4: LLM ストリーミングで返答テキストを実装する
+
+## 2026-05-23 セッション7
+
+### やること（開始時に書く）
+- M1 Phase 4: LLM ストリーミングで返答テキストが完了しているか確認し、未完了箇所があればテスト先行で対応する
+
+### やったこと
+- `ThinkingInput` / `ThinkingEvent` DTO を追加し、`ThinkFastMode` から token delta を DTO で返すようにした
+- `TomoroSession` で参加判定後に `InferenceRouter` 経由で LLM backend を選び、`reply_text` delta を WebSocket に順次送信する経路を確認した
+- `InferenceRouter` に実測 latency による fallback と privacy 時の非 private fallback 禁止を追加した
+- Phase 4 の thinking/session/router unit test を追加した
+- Ollama `qwen2.5:7b` の初回 text delta レイテンシーを測定し、`docs/latency.md` に記録した
+
+### 詰まったこと・解決したこと
+- 既存実装は `ThinkingMode -> session` が `str` 直渡しだった
+  → `ThinkingEvent` DTO に包み、`reply_done` も明示イベントにした
+- Ollama cold start 込みの初回 delta が 17931.7ms と大きい
+  → Phase 4 の機能完了とは別に、M1 800ms 目標には warm-up / MLX / 事前生成の検討が必要
+
+### 次のセッションでやること
+- Chrome 実音声で「トモコ」に対して `reply_text` が画面にストリーミング表示されることを手動確認する
+- Phase 5: TTS ストリーミングで声を出す

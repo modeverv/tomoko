@@ -13,7 +13,7 @@ from server.edge.pipeline.vad import VADProcessor
 from server.gateway.thinking.base import ThinkingMode
 from server.shared.db import AmbientLogWriter
 from server.shared.inference.router import InferenceRouter
-from server.shared.models import SpeechSegment
+from server.shared.models import SpeechSegment, ThinkingInput
 
 SessionState = Literal["idle", "listening", "processing"]
 
@@ -80,9 +80,19 @@ class TomoroSession:
             
             if self.router is not None and self.thinking_mode is not None:
                 try:
-                    backend = await self.router.select("conversation")
-                    async for chunk in self.thinking_mode.think(backend, transcript.text):
-                        await self._send_event({"type": "reply_text", "delta": chunk})
+                    backend = await self.router.select("conversation", "privacy")
+                    thinking_input = ThinkingInput(
+                        text=transcript.text,
+                        speaker=transcript.speaker,
+                        context=[],
+                        emotion="neutral",
+                        device_id=transcript.device_id,
+                    )
+                    async for event in self.thinking_mode.think(backend, thinking_input):
+                        if event.type == "text_delta":
+                            await self._send_event({"type": "reply_text", "delta": event.value})
+                        elif event.type == "done":
+                            await self._send_event({"type": "reply_done"})
                 except Exception as e:
                     logger.error("Error generating reply: %s", e)
 

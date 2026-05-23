@@ -1,8 +1,11 @@
-import os
-from pathlib import Path
+from __future__ import annotations
+
 from collections.abc import AsyncGenerator
-from server.shared.inference.backends.base import InferenceBackend
+from pathlib import Path
+
 from server.gateway.thinking.base import ThinkingMode
+from server.shared.inference.backends.base import InferenceBackend
+from server.shared.models import ThinkingEvent, ThinkingInput
 
 
 class ThinkFastMode(ThinkingMode):
@@ -16,8 +19,10 @@ class ThinkFastMode(ThinkingMode):
         return "あなたはトモコです。短く答えてください。"
 
     async def think(
-        self, backend: InferenceBackend, transcript: str
-    ) -> AsyncGenerator[str, None]:
-        messages = [{"role": "user", "content": transcript}]
+        self, backend: InferenceBackend, thinking_input: ThinkingInput
+    ) -> AsyncGenerator[ThinkingEvent, None]:
+        messages = [{"role": "user", "content": thinking_input.text}]
         async for chunk in backend.chat_stream(self.system_prompt, messages):
-            yield chunk
+            if chunk:
+                yield ThinkingEvent(type="text_delta", value=chunk)
+        yield ThinkingEvent(type="done", value="")

@@ -31,3 +31,26 @@ class ParticipationDecision:
     should_participate: bool
     mode: Literal["called", "invited", "observer", "withdraw"]
     reason: str
+
+
+@dataclass
+class ConversationTurn:
+    speaker: Literal["user", "tomoko"]
+    text: str
+    timestamp: datetime
+    emotion: str | None = None
+
+
+@dataclass
+class ThinkingInput:
+    text: str
+    speaker: str | None
+    context: list[ConversationTurn]
+    emotion: str
+    device_id: str
+
+
+@dataclass(slots=True)
+class ThinkingEvent:
+    type: Literal["emotion", "text_delta", "done"]
+    value: str

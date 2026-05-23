@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import Any
+
 from server.shared.config import NodeConfig
 from server.shared.inference.backends.base import InferenceBackend
 from server.shared.inference.backends.ollama import OllamaBackend
@@ -10,7 +14,7 @@ class InferenceMetrics:
 
 
 class InferenceRouter:
-    def __init__(self, config: NodeConfig, monitor: "MockMonitor | None" = None) -> None:
+    def __init__(self, config: NodeConfig, monitor: Any | None = None) -> None:
         self.config = config
         self.monitor = monitor
         self.backends: dict[str, InferenceBackend] = {}
@@ -28,16 +32,43 @@ class InferenceRouter:
 
     async def select(self, role: str, preference: str = "latency") -> InferenceBackend:
         if role == "conversation":
-            # For simplicity in Phase 4, return the configured conversation_backend.
-            # In the future, preference and monitor might be used to select fallback dynamically.
             backend_name = self.config.inference.conversation_backend
-            if backend_name in self.backends:
-                return self.backends[backend_name]
-            
-            # If default not available, try to find another privacy allowed one if privacy preference
-            if preference == "privacy":
-                for backend in self.backends.values():
-                    if backend.privacy_allowed:
-                        return backend
-            raise ValueError(f"No suitable backend found for role: {role}")
+            backend = self._get_backend(backend_name, role, preference)
+            fallback = await self._fallback_if_needed(backend_name, preference)
+            return fallback or backend
         raise ValueError(f"Unknown role: {role}")
+
+    def _get_backend(
+        self, backend_name: str, role: str, preference: str
+    ) -> InferenceBackend:
+        if backend_name in self.backends:
+            backend = self.backends[backend_name]
+            if preference == "privacy" and not backend.privacy_allowed:
+                for candidate in self.backends.values():
+                    if candidate.privacy_allowed:
+                        return candidate
+            return backend
+        raise ValueError(f"No suitable backend found for role: {role}")
+
+    async def _fallback_if_needed(
+        self, backend_name: str, preference: str
+    ) -> InferenceBackend | None:
+        if self.monitor is None:
+            return None
+
+        spec = self.config.backends[backend_name]
+        if spec.max_latency_ms is None:
+            return None
+
+        metrics = await self.monitor.latest(backend_name)
+        if metrics is None or metrics.latency_ms <= spec.max_latency_ms:
+            return None
+
+        fallback_name = self.config.inference.conversation_fallback
+        if fallback_name is None or fallback_name not in self.backends:
+            return None
+
+        fallback = self.backends[fallback_name]
+        if preference == "privacy" and not fallback.privacy_allowed:
+            return None
+        return fallback

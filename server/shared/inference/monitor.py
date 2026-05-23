@@ -1,13 +1,15 @@
-from collections.abc import AsyncGenerator
-from typing import Any
+from __future__ import annotations
 
-from server.shared.inference.backends.base import InferenceBackend
+from typing import Any
 
 
 class InferenceRouterProto:
-    async def select(self, role: str, preference: str = "latency") -> InferenceBackend: ...
+    async def select(self, role: str, preference: str = "latency") -> object: ...
 
 
 class MockMonitor:
     def __init__(self, metrics: dict[str, Any] | None = None) -> None:
         self.metrics = metrics or {}
+
+    async def latest(self, backend_name: str) -> Any | None:
+        return self.metrics.get(backend_name)

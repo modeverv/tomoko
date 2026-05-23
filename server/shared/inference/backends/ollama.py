@@ -1,7 +1,8 @@
-import httpx
+from __future__ import annotations
+
 from collections.abc import AsyncGenerator
+
 from ollama import AsyncClient
-from typing import Any
 
 from server.shared.inference.backends.base import InferenceBackend
 
@@ -18,13 +19,13 @@ class OllamaBackend(InferenceBackend):
         self, system_prompt: str, messages: list[dict[str, str]]
     ) -> AsyncGenerator[str, None]:
         formatted_messages = [{"role": "system", "content": system_prompt}] + messages
-        
+
         response = await self.client.chat(
             model=self.model,
-            messages=formatted_messages, # type: ignore
+            messages=formatted_messages,  # type: ignore[arg-type]
             stream=True,
         )
-        async for part in response: # type: ignore
+        async for part in response:  # type: ignore[union-attr]
             if hasattr(part, "message") and part.message and hasattr(part.message, "content"):
                 yield part.message.content
             elif isinstance(part, dict):
