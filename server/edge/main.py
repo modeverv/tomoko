@@ -30,7 +30,7 @@ async def index() -> FileResponse:
 
 
 @app.websocket("/ws")
-async def websocket_echo(websocket: WebSocket) -> None:
+async def websocket_session(websocket: WebSocket) -> None:
     await websocket.accept()
     chunk_count = 0
 
@@ -62,7 +62,6 @@ async def websocket_echo(websocket: WebSocket) -> None:
             chunk = await websocket.receive_bytes()
             chunk_count += 1
             await session.process_audio_chunk(chunk)
-            await websocket.send_bytes(chunk)
     except WebSocketDisconnect:
         logger.info("phase3 websocket disconnected after %s chunks", chunk_count)
 

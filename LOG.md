@@ -155,3 +155,25 @@
 ### 次のセッションでやること
 - Chrome 実音声で「トモコ」が `participation` イベントを出し、それ以外が `ambient_logs` にのみ残ることを手動確認する
 - Phase 4: LLM ストリーミングで返答テキストを実装する
+
+## 2026-05-23 セッション6
+
+### やること（開始時に書く）
+- Phase 2 の Chrome 手動確認結果を受けて、手動テストを妨げるエコーバック再生を止める
+- M1 Phase 3 実装済み範囲を再確認し、常時 STT と ParticipationJudge の unit test が通る状態にする
+
+### やったこと
+- `/ws` が受け取った float32 バイナリを返送しないようにし、Phase 1 のエコーバックを停止した
+- クライアントからエコー再生と往復レイテンシー計測を削除し、`participation` JSON イベントを status に出すようにした
+- WebSocket unit test を「バイナリを受けるが返さない」「state JSON は送る」前提へ更新した
+- Phase 3 実装済みの常時 STT / ambient_logs / WakeWordJudge 経路を unit test で再確認した
+
+### 詰まったこと・解決したこと
+- Chrome / in-app browser の自動接続はこの環境では利用できなかった
+  → 既存 uvicorn reload サーバーと `curl http://127.0.0.1:8000/` でページ配信は確認済み。実マイク確認はユーザー側 Chrome で行う
+- `mise exec -- ruff` は PATH 上に `ruff` が無かった
+  → `mise exec -- uv run ruff check .` で確認した
+
+### 次のセッションでやること
+- Chrome 実音声で「トモコ」が `participation:called` 表示になり、それ以外が `ambient_logs` にのみ残ることを確認する
+- Phase 4: LLM ストリーミングで返答テキストを実装する

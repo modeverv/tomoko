@@ -11,9 +11,7 @@ let workletNode = null;
 let sourceNode = null;
 let sinkNode = null;
 let websocket = null;
-let nextPlayTime = 0;
 let bytesSent = 0;
-const pendingChunks = [];
 
 function setStatus(value) {
   statusEl.textContent = value;
@@ -24,6 +22,10 @@ function handleJsonEvent(data) {
   if (event.type === "state") {
     vadStateEl.textContent = event.state;
     setStatus(event.state);
+    return;
+  }
+  if (event.type === "participation") {
+    setStatus(`participation:${event.mode}`);
   }
 }
 
@@ -32,40 +34,10 @@ function websocketUrl() {
   return `${protocol}//${window.location.host}/ws`;
 }
 
-function enqueueSentChunk(buffer) {
-  pendingChunks.push({
-    byteLength: buffer.byteLength,
-    sentAt: performance.now(),
-  });
-}
-
-function recordEchoLatency(byteLength) {
-  const sent = pendingChunks.shift();
-  if (!sent || sent.byteLength !== byteLength) {
-    return;
-  }
-  const latencyMs = Math.round(performance.now() - sent.sentAt);
-  latencyEl.textContent = `${latencyMs} ms`;
-}
-
-function schedulePlayback(buffer) {
-  const samples = new Float32Array(buffer);
-  const audioBuffer = audioContext.createBuffer(1, samples.length, audioContext.sampleRate);
-  audioBuffer.copyToChannel(samples, 0);
-
-  const player = audioContext.createBufferSource();
-  player.buffer = audioBuffer;
-  player.connect(audioContext.destination);
-
-  const now = audioContext.currentTime;
-  nextPlayTime = Math.max(nextPlayTime, now + 0.02);
-  player.start(nextPlayTime);
-  nextPlayTime += audioBuffer.duration;
-}
-
-async function startEcho() {
+async function startSession() {
   startButton.disabled = true;
   setStatus("starting");
+  latencyEl.textContent = "-";
 
   audioContext = new AudioContext({ sampleRate: 16000 });
   await audioContext.audioWorklet.addModule("/client/audio-worklet.js");
@@ -82,16 +54,13 @@ async function startEcho() {
   websocket = new WebSocket(websocketUrl());
   websocket.binaryType = "arraybuffer";
   websocket.addEventListener("open", () => {
-    setStatus("echoing");
+    setStatus("connected");
     stopButton.disabled = false;
   });
   websocket.addEventListener("message", (event) => {
     if (typeof event.data === "string") {
       handleJsonEvent(event.data);
-      return;
     }
-    recordEchoLatency(event.data.byteLength);
-    schedulePlayback(event.data);
   });
   websocket.addEventListener("close", () => {
     setStatus("stopped");
@@ -108,7 +77,6 @@ async function startEcho() {
     if (websocket.readyState !== WebSocket.OPEN) {
       return;
     }
-    enqueueSentChunk(buffer);
     websocket.send(buffer);
     bytesSent += buffer.byteLength;
     bytesEl.textContent = `${bytesSent}`;
@@ -118,7 +86,7 @@ async function startEcho() {
   workletNode.connect(sinkNode).connect(audioContext.destination);
 }
 
-async function stopEcho() {
+async function stopSession() {
   workletNode?.disconnect();
   sourceNode?.disconnect();
   sinkNode?.disconnect();
@@ -132,13 +100,11 @@ async function stopEcho() {
   sourceNode = null;
   sinkNode = null;
   websocket = null;
-  nextPlayTime = 0;
-  pendingChunks.length = 0;
   stopButton.disabled = true;
 }
 
 startButton.addEventListener("click", () => {
-  startEcho().catch((error) => {
+  startSession().catch((error) => {
     console.error(error);
     setStatus("error");
     startButton.disabled = false;
@@ -146,7 +112,7 @@ startButton.addEventListener("click", () => {
 });
 
 stopButton.addEventListener("click", () => {
-  stopEcho().catch((error) => {
+  stopSession().catch((error) => {
     console.error(error);
     setStatus("error");
   });

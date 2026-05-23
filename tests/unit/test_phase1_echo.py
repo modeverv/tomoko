@@ -4,9 +4,9 @@ import struct
 
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
+from fastapi import WebSocketDisconnect
 
-from server.edge.main import app
+from server.edge.main import app, websocket_session
 from server.edge.pipeline.vad import VADProcessor
 
 
@@ -36,50 +36,50 @@ def set_test_vad(processor: VADProcessor) -> None:
 
 
 @pytest.mark.unit
-def test_ws_echoes_float32_binary_without_conversion() -> None:
+async def test_ws_consumes_float32_binary_without_echoing_it() -> None:
     set_test_vad(VADProcessor(vad=ConstantVAD(0.0)))
     samples = [0.0, 0.25, -0.5, 1.0]
     payload = struct.pack("<4f", *samples)
+    websocket = FakeWebSocket([payload])
 
-    with TestClient(app) as client:
-        with client.websocket_connect("/ws") as websocket:
-            websocket.send_bytes(payload)
+    await websocket_session(websocket)  # type: ignore[arg-type]
 
-            echoed = websocket.receive_bytes()
-
-    assert echoed == payload
+    assert websocket.accepted is True
+    assert websocket.sent_bytes == []
 
 
 @pytest.mark.unit
-def test_ws_echoes_multiple_chunks_in_order() -> None:
-    set_test_vad(VADProcessor(vad=ConstantVAD(0.0)))
-    first = struct.pack("<3f", 0.1, 0.2, 0.3)
-    second = struct.pack("<3f", -0.1, -0.2, -0.3)
-
-    with TestClient(app) as client:
-        with client.websocket_connect("/ws") as websocket:
-            websocket.send_bytes(first)
-            websocket.send_bytes(second)
-
-            assert websocket.receive_bytes() == first
-            assert websocket.receive_bytes() == second
-
-
-@pytest.mark.unit
-def test_ws_sends_state_events_on_vad_transitions() -> None:
+async def test_ws_sends_state_events_on_vad_transitions() -> None:
     set_test_vad(VADProcessor(vad=SequenceVAD([0.9] + [0.1] * 13), silence_ms=400))
     chunk = np.ones(512, dtype=np.float32).tobytes()
+    websocket = FakeWebSocket([chunk] * 14)
 
-    with TestClient(app) as client:
-        with client.websocket_connect("/ws") as websocket:
-            websocket.send_bytes(chunk)
-            assert websocket.receive_json() == {"type": "state", "state": "listening"}
-            assert websocket.receive_bytes() == chunk
+    await websocket_session(websocket)  # type: ignore[arg-type]
 
-            for _ in range(12):
-                websocket.send_bytes(chunk)
-                assert websocket.receive_bytes() == chunk
+    assert websocket.sent_json == [
+        {"type": "state", "state": "listening"},
+        {"type": "state", "state": "processing"},
+    ]
+    assert websocket.sent_bytes == []
 
-            websocket.send_bytes(chunk)
-            assert websocket.receive_json() == {"type": "state", "state": "processing"}
-            assert websocket.receive_bytes() == chunk
+
+class FakeWebSocket:
+    def __init__(self, chunks: list[bytes]) -> None:
+        self.chunks = chunks
+        self.accepted = False
+        self.sent_json: list[dict[str, str]] = []
+        self.sent_bytes: list[bytes] = []
+
+    async def accept(self) -> None:
+        self.accepted = True
+
+    async def receive_bytes(self) -> bytes:
+        if not self.chunks:
+            raise WebSocketDisconnect()
+        return self.chunks.pop(0)
+
+    async def send_json(self, event: dict[str, str]) -> None:
+        self.sent_json.append(event)
+
+    async def send_bytes(self, chunk: bytes) -> None:
+        self.sent_bytes.append(chunk)
