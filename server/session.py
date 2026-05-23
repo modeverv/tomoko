@@ -15,6 +15,7 @@ from server.edge.pipeline.stt_filter import TranscriptFilter
 from server.edge.pipeline.vad import VADProcessor
 from server.gateway.audio_turn import AudioTurnController
 from server.gateway.reply import ReplyPipeline
+from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
 from server.gateway.thinking.base import ThinkingMode
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.shared.db import AmbientLogWriter, ConversationLogWriter
@@ -52,6 +53,7 @@ class TomoroSession:
         router: InferenceRouter | None = None,
         thinking_mode: ThinkingMode | None = None,
         tts_backend: TTSBackend | None = None,
+        speech_normalizer: ReplySpeechNormalizer | None = None,
         barge_in_detector: BargeInDetector | None = None,
         transcript_filter: TranscriptFilter | None = None,
         engaged_timeout_ms: int = 8000,
@@ -68,6 +70,7 @@ class TomoroSession:
         self.router = router
         self.thinking_mode = thinking_mode
         self.tts_backend = tts_backend
+        self.speech_normalizer = speech_normalizer
         self.barge_in_detector = barge_in_detector
         self.transcript_filter = transcript_filter
         self.state: SessionState = "idle"
@@ -284,6 +287,7 @@ class TomoroSession:
                             }
                         )
                     elif command.action == "text_delta":
+                        logger.info("TomoroSession reply_text delta=%r", command.value)
                         await self._send_event({"type": "reply_text", "delta": command.value})
                     elif command.action == "tts_text":
                         await tts_queue.put((command.value, command.style))
@@ -425,7 +429,11 @@ class TomoroSession:
         if self.tts_backend is None or not text.strip():
             return
 
-        tts_input = TTSInput(text=text.strip(), style=style)
+        speech_text = text.strip()
+        if self.speech_normalizer is not None:
+            speech_text = await self.speech_normalizer.normalize(speech_text)
+
+        tts_input = TTSInput(text=speech_text, style=style)
         async for chunk in self.tts_backend.synthesize(tts_input):
             await self._ensure_audio_turn_started()
             outgoing = await self._reserve_audio_chunk(

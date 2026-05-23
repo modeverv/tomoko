@@ -59,3 +59,31 @@ model = "mlx-community/Kokoro-82M-bf16"
 voice = "jf_alpha"
 max_latency_ms = 200
 privacy_allowed = true
+
+[backends.irodori_mlx]
+type = "irodori_mlx"
+model = "mlx-community/Irodori-TTS-500M-v3-8bit"
+voice = "none"
+max_latency_ms = 3500
+privacy_allowed = true
+
+[backends.irodori_mlx_stream]
+type = "irodori_mlx_stream"
+model = "mlx-community/Irodori-TTS-500M-v3-8bit"
+voice = "none"
+max_latency_ms = 500
+privacy_allowed = true
+
+[backends.qwen3_tts_mlx_small]
+type = "qwen3_mlx"
+model = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit"
+voice = "none"
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.qwen3_tts_mlx_large]
+type = "qwen3_mlx"
+model = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
+voice = "none"
+max_latency_ms = 1200
+privacy_allowed = true

@@ -9,6 +9,8 @@ dependencies = [
     "faster-whisper>=1.1.0",
     "kokoro-mlx>=0.1.1",
     "misaki[ja]>=0.9.4",
+    "mlx-audio",
+    "mlx-vlm>=0.5.0",
     "numpy>=2.0.0",
     "ollama>=0.5.0",
     "packaging>=24.0",
@@ -53,3 +55,6 @@ exclude = ["reference"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.uv.sources]
+mlx-audio = { git = "https://github.com/Blaizzy/mlx-audio.git" }

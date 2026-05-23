@@ -44,3 +44,42 @@ def test_reply_audio_pipeline_flushes_sentence_then_final_remainder() -> None:
         ("done", ""),
     ]
     assert pipeline.reply_text == "うん。聞こえるよ"
+
+
+@pytest.mark.unit
+def test_reply_audio_pipeline_removes_english_delta_before_display_but_keeps_tts_text() -> None:
+    pipeline = ReplyPipeline()
+
+    first = pipeline.handle_event(
+        ThinkingEvent(type="text_delta", value=" hear you, 何か")
+    )
+    second = pipeline.handle_event(
+        ThinkingEvent(type="text_delta", value="ありますか？")
+    )
+
+    assert [(command.action, command.value) for command in first] == [
+        ("text_delta", "何か")
+    ]
+    assert [(command.action, command.value) for command in second] == [
+        ("text_delta", "ありますか？"),
+        ("tts_text", "hear you, 何かありますか？"),
+    ]
+    assert pipeline.reply_text == "何かありますか？"
+
+
+@pytest.mark.unit
+def test_reply_audio_pipeline_removes_split_english_terms() -> None:
+    pipeline = ReplyPipeline()
+
+    commands = []
+    for delta in ["「", "ブル", "ーム", "の", " TAX", "ON", "OM", "Y", "」", "です。"]:
+        commands.extend(pipeline.handle_event(ThinkingEvent(type="text_delta", value=delta)))
+
+    assert pipeline.reply_text == "「ブルームの」です。"
+    display_values = [
+        command.value for command in commands if command.action == "text_delta"
+    ]
+    assert all("TAXONOMY" not in value for value in display_values)
+    assert ("tts_text", "「ブルームの TAXONOMY」です。") in [
+        (command.action, command.value) for command in commands
+    ]

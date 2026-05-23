@@ -29,6 +29,26 @@ def test_central_realtime_config_uses_ollama_for_m1() -> None:
     assert tts_backend.model == "mlx-community/Kokoro-82M-bf16"
     assert tts_backend.voice == "jf_alpha"
 
+    irodori_backend = config.backends["irodori_mlx"]
+    assert irodori_backend.type == "irodori_mlx"
+    assert irodori_backend.model == "mlx-community/Irodori-TTS-500M-v3-8bit"
+    assert irodori_backend.voice == "none"
+
+    irodori_stream_backend = config.backends["irodori_mlx_stream"]
+    assert irodori_stream_backend.type == "irodori_mlx_stream"
+    assert irodori_stream_backend.model == "mlx-community/Irodori-TTS-500M-v3-8bit"
+    assert irodori_stream_backend.voice == "none"
+
+    qwen_small_backend = config.backends["qwen3_tts_mlx_small"]
+    assert qwen_small_backend.type == "qwen3_mlx"
+    assert qwen_small_backend.model == "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit"
+    assert qwen_small_backend.voice == "none"
+
+    qwen_large_backend = config.backends["qwen3_tts_mlx_large"]
+    assert qwen_large_backend.type == "qwen3_mlx"
+    assert qwen_large_backend.model == "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
+    assert qwen_large_backend.voice == "none"
+
 
 @pytest.mark.unit
 def test_phase0_pytest_markers_are_registered() -> None:

@@ -367,3 +367,188 @@ TTS worker が順次 `TTSBackend.synthesize()` を streaming 消費して、audi
 
 hard interrupt では reply task / TTS worker を cancel し、既存の `audio_control stop` を送って
 生成中 TTS とクライアント再生の両方を止める。
+
+### 確定した判断: Kokoro MLX 日本語G2Pは pyopenjtalk 経路を使う
+`misaki[ja]` は `unidic` パッケージを依存として入れるが、辞書本体の `mecabrc` は別途存在しない場合がある。
+実ログでは kokoro TTS が `fugashi` / `unidic` 初期化に失敗し、音声 chunk を送れなかった。
+
+Tomoko の `KokoroMLXBackend` は、日本語 voice (`jf_` / `jm_`) では kokoro に `language="ja"` を明示し、
+kokoro 内部の日本語 phonemizer を `misaki.ja.JAG2P(version="pyopenjtalk")` に差し替える。
+これにより `unidic` 辞書本体に依存せず、日本語テキストから RIFF/WAVE chunk を生成できる。
+
+バージョンアップ、壊れた時は
+```
+uv lock --upgrade-package kokoro-mlx
+uv sync
+mise exec -- uv run pytest -m unit
+mise exec -- uv run pytest -m integration
+mise exec -- uv run pytest -m perf --tb=short
+make server-debug
+```
+してあとは動作確認で多分直せる。
+
+### 確定した判断: Kokoro MLX voice は存在確認して fallback する
+`mlx-community/Kokoro-82M-bf16` の手元 snapshot には `jf_beta.safetensors` が存在しない。
+一方、初期の emotion mapping では `sad` / `thinking` / `gentle` を `jf_beta` に割り当てていたため、
+それらの emotion になった返答だけ `Voice file not found` でTTS生成が落ち、音声が出なかった。
+
+`KokoroMLXBackend` は `list_voices()` で利用可能 voice を確認し、選ばれた voice が無ければ
+`config/central_realtime.toml` の既定 voice（現時点では `jf_alpha`）へフォールバックする。
+emotion による表現は当面 speed mapping で維持する。
+
+### 気づき: 英語・中国語混入はまずSTT hallucinationとして扱う
+実ログでは `因为`、`washed`、`TTTT...`、`cave cave cave` のような英語・中国語混入が
+`TomoroSession transcript` / `partial transcript` として出ていた。
+これは少なくとも入力側の MLX Whisper hallucination であり、返答本文が多言語化している証拠ではない。
+
+ただし混入 transcript が `attention_engaged_followup` に流れると、LLM が入力言語に引っ張られる可能性がある。
+低音量のASCII-only transcriptは `TranscriptFilter` で `low_audio_ascii_text` として落とす。
+また `prompts/base_persona.md` では本文を必ず日本語だけで返すよう明示する。
+
+### 確定した判断: reply 境界で日本語以外の出力を除去する
+上の「英語・中国語混入はまずSTT hallucinationとして扱う」という判断は、返答本文側の英語混入には不足していた。
+
+2026-05-24 の `logs/server-debug.log` では、`gallery gallery...` や `llllllll...` は STT filter で drop/suppress されていたが、
+`hear you`、`TAXONOMY`、`Goes from remembering to evaluating.` は `TomoroSession reply_text delta` として出ていた。
+つまり少なくとも一部は LLM 返答本文由来である。
+
+プロンプト指示だけでは守り切れないため、`ReplyPipeline` に `ReplyTextSanitizer` を置き、
+表示用 `reply_text` と TTS 用 `tts_text` の両方へ流す前に ASCII 英字などの日本語外文字を除去する。
+これによりクライアントへ判断ロジックを移さず、単一 `/ws` のままサーバー側 reply 境界で出力契約を守る。
+
+### 確定した判断: Irodori は mlx-audio 版 v3 を Tomoko の TTSBackend として使う
+`Irodori-TTS-Server` は OpenAI 互換 HTTP で使えるが、README 上も内部 streaming は未実装で、
+実体も MLX ではなく PyTorch/MPS 経路だった。
+このため Tomoko の `irodori_mlx` backend は HTTP server wrapper ではなく、
+GitHub 最新の `mlx-audio` から `mlx_audio.tts.utils.load_model()` を使って
+`mlx-community/Irodori-TTS-500M-v3-8bit` を直接ロードする。
+
+Irodori v3 の `stream=True` は現時点の mlx-audio 実装では `NotImplementedError` なので、
+Tomoko 側では既存の sentence flush / TTS queue により文単位で逐次生成する。
+生成結果は `/ws` binary 互換を維持するため RIFF/WAVE に包んで `AudioChunkOut` として送る。
+
+実測ではキャッシュ済み短文 `こんにちは。` が 2959.1ms、1 chunk、126,764 bytes。
+Kokoro より遅いが、日本語専用品質確認のため `config/central_realtime.toml` の default TTS backend は
+`irodori_mlx` に切り替える。
+
+### 確定した判断: Irodori v2 へは streaming 目的では切り替えない
+GitHub 最新 `mlx-audio` の Irodori 実装では、`Model.generate(..., stream=True)` が
+v2/v3 共通の `irodori_tts.py` 内で `NotImplementedError("Irodori-TTS streaming is not yet implemented.")`
+を投げる。
+
+つまり v2 に切り替えても真の streaming は得られない。
+v3 は自動 duration prediction と sway sampling があり、v3 README でも recommended とされているため、
+レイテンシー目的で v2 へ下げる判断は現時点ではしない。
+
+### 確定した判断: 起動時に TTS も warm-up する
+上の Irodori MLX backend は起動後初回生成でモデルロードと最初の短文生成コストが乗る。
+このため FastAPI lifespan の `_warm_up_app()` で、STT に続いて設定済み TTS backend の `warm_up()` も実行する。
+
+`_create_default_tts_backend()` は `app.state._default_tts_backend` に backend instance を保持し、
+warm-up 済み backend を `/ws` session でも再利用する。
+
+2026-05-24 の cached warm-up 実測では STT 1262.1ms、Irodori MLX TTS 2831.9ms。
+
+### 確定した判断: レイテンシー優先時は Irodori MLX を短い単位に分割して streaming する
+mlx-audio の Irodori v2/v3 は `stream=True` が未実装なので、モデル内部から生成途中の音声を受け取る
+真の streaming は現時点では使えない。
+
+ただし v3 は `seconds` を明示すると duration predictor をスキップできる。
+warm-up 済みの `mlx-community/Irodori-TTS-500M-v3-8bit` では、`num_steps=6` と sway sampling にすると
+短い発話単位の生成が 100ms 前後まで下がる。
+
+このため、通常会話の default TTS は `irodori_mlx_stream` とする。
+これは text を日本語句読点と最大文字数で短く分割し、各単位を Irodori MLX v3 で逐次生成して
+`AudioChunkOut` として出た順に `/ws` へ流す backend である。
+
+既存の `irodori_mlx` は品質寄りの単発 backend として残す。
+`irodori_mlx_stream` は内部 diffusion streaming ではないが、Tomoko の TTS backend としては
+先頭音声を早く返せる実用的な streaming とみなす。
+
+### 確定した判断: Qwen3-TTS MLX は比較候補として残す
+Qwen3-TTS は `mlx-audio` の `stream=True` が使えるため、Irodori より素直な streaming backend にできる。
+Tomoko では `qwen3_mlx` backend として実装し、`lang_code="Japanese"`、emotion style は `instruct` と
+`speed` に変換する。
+
+比較対象として次の2つを設定に残す。
+
+- `qwen3_tts_mlx_small`: `mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit`
+- `qwen3_tts_mlx_large`: `mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16`
+
+キャッシュ済みベンチでは、`うん、わかった。少し待ってね。` に対して
+small は first chunk 142.6ms / total 545.3ms、large は first chunk 216.7ms / total 820.5ms。
+Irodori stream は first chunk 96.6ms / total 192.7ms で最速だった。
+
+自然さは自動判定できないため、`artifacts/tts-bench-cached/` の WAV を聞いて判断する。
+default TTS はレイテンシー優先で `irodori_mlx_stream` のままにする。
+
+### 確定した判断: TTS用のLLM日本語化は Gemma 4 E2B MLX で実験可能
+LLM 返答や STT 由来の文に英語が混じる前提で、TTS に渡す直前だけ軽量 LLM で読み上げ用日本語へ正規化する実験を追加した。
+
+`mlx_lm` では複数の Gemma 4 E2B 変換が重み不一致でロードできなかったため、
+現時点では `mlx-vlm` 経由で `mlx-community/gemma-4-e2b-it-4bit` を使う。
+これは MLX 上で動き、短い TTS 正規化では warm 後 first text 162.7〜243.6ms、total 166.5〜247.3ms だった。
+
+例:
+`トモコ、today の meeting は 3pm からだから、schedule を確認して。`
+→ `トモコ今日の会議は午後三時からだからスケジュールを確認して`
+
+詳細は `logs/tts-text-normalizer/gemma4-e2b/summary.md` に保存した。
+
+### 確定した判断: TTS直前だけGemmaで日本語化する
+Irodori stream は warm-up 済み x1 の短文で first chunk 約96.6ms、total 約192.7msだった。
+Gemma 4 E2B の TTS 用日本語化は、起動時 warm-up 後の実測で約163.2msだった。
+
+このため default TTS は `irodori_mlx_stream` x1 のまま維持し、TTS 直前にだけ
+`ReplySpeechNormalizer` を挟む。
+表示用 `reply_text` は従来どおり `ReplyTextSanitizer` で日本語契約を守るが、
+TTS 用 buffer には生の text delta を保持し、英字・時刻・日本語以外の文字体系を検出した時だけ
+`mlx-vlm` + `mlx-community/gemma-4-e2b-it-4bit` で読み上げ用日本語へ変換する。
+
+混入なしの日本語は Gemma を通さないので Irodori x1 のレイテンシーを維持する。
+混入ありは warm-up 後の Gemma 約163ms + Irodori stream 約193ms で、おおむね360ms台を見込む。
+初回ロード 3秒台は FastAPI startup warm-up で前払いする。
+
+### 確定した判断: Irodori stream は品質寄りに x1.5 へ調整する
+x1 と x1.2 の `irodori_mlx_stream` + asuka 参照音声は、Gemma 正規化後の長め文で品質が厳しかった。
+末尾切れや詰まり感を避けるため、stream unit の `seconds` 推定に品質用スケール x1.5 を掛ける。
+
+2026-05-24 のサンプルでは、同じ正規化文が x1.2 の4.68秒から x1.5 の5.88秒に伸びた。
+TTS 実測は first chunk 463.0ms / total 1264.6ms。
+レイテンシーは悪化するが、会話品質確認を優先して default は x1.5 とする。
+
+### 気づき: Kokoro MLX もGemma正規化で英語混じり音声長が短くなる
+英語混じり文をそのまま `KokoroMLXBackend` に渡すと、`jf_alpha` で 13.25秒の音声になった。
+同じ文を Gemma 4 E2B で TTS 用日本語へ正規化してから渡すと、7.175秒になった。
+
+Kokoro 側の実測は raw mixed が 293.9ms、Gemma 正規化後が 142.9ms。
+どちらも1 chunkで返っており、この長さでは `generate_stream()` が体感上の複数chunk streaming にはなっていない。
+英語混じり対策としては、Kokoro に戻す場合でも Gemma 正規化を前段に置く価値がある。
+
+### 気づき: Kokoro向けGemma正規化は句読点を保持する必要がある
+2026-05-24 の Kokoro 再確認では、全文を一度に Gemma 正規化すると
+`トモコ今日の会議は午後三時からだからスケジュールを確認して終わったらすぐに教えて`
+のように句読点が消え、TTS 用の文章としては一続きになった。
+
+実際の Tomoko 経路に近く、句点ごとに flush してから正規化すると、
+`トモコ今日の会議は午後三時からだからスケジュールを確認して` と
+`終わったらすぐに教えて` の2つに分かれ、Kokoro は2 chunkで返った。
+Kokoroの音質は Irodori stream asuka より良いため、今後Kokoroを戻すなら、
+Gemma正規化プロンプトに句読点保持・補完を明示し、必要なら読点や文字数でもflushする方針が有力。
+
+### 確定した判断: default TTS は Kokoro + Gemma句読点保持正規化に戻す
+Irodori stream + asuka は duration を x1.5 まで伸ばしても音声品質が厳しく、
+Kokoro の方が出力音声クオリティは明確に良かった。
+問題は Kokoro ではなく、Gemma 正規化が句読点を落として読み上げ文を一続きにしていたことだった。
+
+このため default TTS は `kokoro_mlx` に戻し、`ReplySpeechNormalizer` のプロンプトは
+「文数と順序を保つ」「句読点を保持・補完する」「文末句読点を付ける」を明示する。
+また、モデルが句点を落とした場合はサーバー側で文末句読点を補完する。
+
+採用後サンプルでは、英語混じり2文が次のように正規化された。
+
+- `トモコ、今日の会議は午後三時からだから、スケジュールを確認して。`
+- `終わったらすぐに教えて。`
+
+Kokoro 実測は first chunk 112.8ms / TTS total 166.6ms / 2 chunks。
+Gemma 正規化込みの初回音声は、おおむね 211.1ms + 112.8ms = 323.9ms。

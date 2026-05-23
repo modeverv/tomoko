@@ -58,6 +58,16 @@ def test_filter_drops_low_audio_otsukaresama() -> None:
 
 
 @pytest.mark.unit
+def test_filter_drops_low_audio_ascii_only_word() -> None:
+    decision = TranscriptFilter().evaluate(
+        _transcript("washed", audio_level_db=-29.0)
+    )
+
+    assert decision.action == "drop"
+    assert decision.reason == "low_audio_ascii_text"
+
+
+@pytest.mark.unit
 def test_filter_accepts_normal_speech() -> None:
     decision = TranscriptFilter().evaluate(
         _transcript("MLXにすると速くなっている気がする")

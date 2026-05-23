@@ -947,3 +947,114 @@ M1 Phase 5 の「M1完了後: KokoroMLXBackend に切り替え」は、`say` を
 - Kokoro MLX は streaming chunk を生成次第 WebSocket binary として送れる
 - barge-in hard interrupt で生成中 TTS と playback の両方を止められる
 - `pytest -m unit` が通る
+
+### 2026-05-24 追記: Irodori MLX TTS 実装結果
+
+日本語品質改善のため、Kokoro MLX に加えて Irodori v3 の MLX backend を追加した。
+最初に `Irodori-TTS-Server` の OpenAI 互換 HTTP wrapper を試したが、これは mlx-audio 版ではなく
+内部 streaming も未実装だったため採用しない。
+
+- `mlx-audio` を GitHub 最新から依存追加した
+  - `mlx-audio @ git+https://github.com/Blaizzy/mlx-audio.git`
+- `server/shared/inference/tts/irodori_mlx.py` を追加した
+  - `mlx_audio.tts.utils.load_model()` で `mlx-community/Irodori-TTS-500M-v3-8bit` をロードする
+  - Irodori v3 の生成結果を RIFF/WAVE に包んで `AudioChunkOut` として返す
+  - `voice` は `"none"` なら reference audio なし、パスなら `ref_audio` として渡す
+  - emotion style は `duration_scale` の簡易マッピングで反映する
+- `config/central_realtime.toml` の `tts_backend` を `irodori_mlx` に切り替えた
+- mlx-audio の Irodori v3 は `stream=True` が現時点で未実装のため、Tomoko 側では sentence flush / TTS queue による文単位逐次生成とする
+- 実モデル smoke で `こんにちは。` から RIFF/WAVE chunk が返ることを確認した
+- キャッシュ済み短文合成は 2959.1ms、1 chunk、126,764 bytes
+- `tests/unit/test_irodori_mlx_tts.py` を追加した
+- `ruff check .` と `pytest -m unit` が通過した
+
+### 2026-05-24 追記: Irodori streaming / startup warm-up 確認結果
+
+上の Irodori MLX TTS は、MLX + Irodori v3 ではあるが、Irodori モデル内部の真の streaming ではない。
+GitHub 最新 `mlx-audio` の Irodori 実装では、v2/v3 共通の `Model.generate(..., stream=True)` が
+`NotImplementedError` になるため、v2 へ切り替えても streaming は得られない。
+
+- v2 への切り替えは現時点では行わない
+  - v3 は README 上 recommended
+  - v3 は automatic duration prediction と sway sampling がある
+  - v2 にしても streaming 不可
+- `TTSBackend.warm_up()` を追加した
+- FastAPI lifespan の `_warm_up_app()` で STT に続いて TTS backend も warm-up する
+- `_create_default_tts_backend()` は backend instance を `app.state._default_tts_backend` に保持し、warm-up 済み instance を `/ws` で再利用する
+- cached warm-up 実測は STT 1262.1ms / Irodori MLX TTS 2831.9ms
+- `ruff check .` と `pytest -m unit` が通過した
+
+### 2026-05-24 追記: Irodori MLX streaming backend 実装結果
+
+上の「Irodori モデル内部の真の streaming は未実装」という判断は維持する。
+ただし、mlx-audio の Irodori v3 は `seconds` を明示すると duration predictor をスキップでき、
+短い発話単位なら warm-up 後に 100ms 前後で RIFF/WAVE chunk を返せる。
+
+そのため、`irodori_mlx` とは別にレイテンシー優先の `irodori_mlx_stream` backend を追加した。
+
+- `server/shared/inference/tts/irodori_mlx_stream.py` を追加した
+  - `mlx_audio.tts.utils.load_model()` で同じ `mlx-community/Irodori-TTS-500M-v3-8bit` をロードする
+  - text を日本語句読点と最大文字数で短い発話単位に分割する
+  - 各単位を `seconds` 明示、`num_steps=6`、sway sampling で生成する
+  - 生成できた単位から `AudioChunkOut` として逐次 yield する
+- 既存 `irodori_mlx` は品質寄りの単発 backend として残した
+- `config/central_realtime.toml` の default TTS backend を `irodori_mlx_stream` に切り替えた
+- warm-up 済み実測で `うん、わかった。少し待ってね。` は first chunk 107.0ms、total 206.9ms、2 chunk
+- `tests/unit/test_irodori_mlx_stream_tts.py` を追加した
+- `ruff check .` と `pytest -m unit` が通過した
+
+制約:
+- これは Irodori 内部の diffusion / vocoder が生成途中で audio を吐く streaming ではない
+- Tomoko の TTS backend 境界で、短い Irodori v3 生成を複数回走らせて先頭音声を早く返す方式である
+
+### 2026-05-24 追記: Qwen3-TTS MLX backend と比較ベンチ
+
+Irodori 以外の MLX ローカル日本語 TTS 候補として、`mlx-audio` の Qwen3-TTS backend を追加した。
+
+- `server/shared/inference/tts/qwen3_mlx.py` を追加した
+  - `mlx_audio.tts.utils.load_model()` で Qwen3-TTS MLX model をロードする
+  - `Model.generate(..., stream=True)` を使う
+  - 同期 generator は worker thread で消費し、chunk が出るたび `AudioChunkOut` として返す
+  - `lang_code="Japanese"` を固定し、emotion style は `instruct` と `speed` に変換する
+- `config/central_realtime.toml` に2つの backend を追加した
+  - `qwen3_tts_mlx_small`: `mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit`
+  - `qwen3_tts_mlx_large`: `mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16`
+- `tools/bench_tts_backends.py` を追加した
+  - `irodori_mlx` / `irodori_mlx_stream` / `qwen3_tts_mlx_small` / `qwen3_tts_mlx_large` を同じ文で測る
+  - warm-up、first chunk、total、chunk 数、音声長を出す
+  - 聞き比べ用 WAV を `artifacts/tts-bench-cached/` に保存する
+
+キャッシュ済み実測、文は `うん、わかった。少し待ってね。`:
+
+| backend | warm-up | first chunk | total | chunks | audio |
+|---|---:|---:|---:|---:|---:|
+| `irodori_mlx` | 2933.0ms | 659.2ms | 659.2ms | 1 | 3520.0ms |
+| `irodori_mlx_stream` | 1310.8ms | 96.6ms | 192.7ms | 2 | 1360.0ms |
+| `qwen3_tts_mlx_small` | 511.8ms | 142.6ms | 545.3ms | 8 | 2480.0ms |
+| `qwen3_tts_mlx_large` | 544.2ms | 216.7ms | 820.5ms | 8 | 2480.0ms |
+
+現時点では default backend は `irodori_mlx_stream` のままにする。
+理由は first chunk と total が最短で、Tomoko の会話レイテンシー目標に最も近いためである。
+ただし自然さは自動評価できないので、保存した WAV を人間が聞いて判断する。
+
+### 2026-05-24 追記: TTS直前Gemma日本語化の実装結果
+
+Irodori stream x1 を default のまま維持し、英字・時刻・日本語以外の文字体系がTTS文に混じった時だけ
+Gemma 4 E2B で読み上げ用日本語へ正規化する。
+
+- `server/gateway/reply/speech_normalizer.py` を追加した
+  - default model は `mlx-community/gemma-4-e2b-it-4bit`
+  - runner は `mlx-vlm`
+  - 混入検出がない純日本語は即時 return し、Gemma を呼ばない
+  - 混入ありの文だけ TTS 用日本語へ変換する
+- `TomoroSession._flush_tts_text()` に正規化を挟み、TTS backend へ渡す直前にだけ変換する
+- `ReplyPipeline` は表示用には従来どおり sanitizing 済み delta を使うが、TTS buffer には raw delta を保持する
+  - これにより、英語を削り落としてからTTSへ渡すのではなく、Gemma が `today` / `3pm` などを日本語化できる
+- `_warm_up_app()` で `ReplySpeechNormalizer.warm_up()` も実行し、Gemma 初回ロードと初回生成を起動時に前払いする
+- `irodori_mlx_stream` の duration 推定は x1 に戻した
+- 実測 smoke:
+  - cold: 3756.2ms
+  - warm: 163.2ms
+  - `トモコ、today の meeting は 3pm からだよ。`
+  - `トモコ、今日の会議は午後三時からですよ。`
+- `ruff check .` と `pytest -m unit` が通過した

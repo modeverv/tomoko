@@ -5,6 +5,7 @@ from typing import Literal
 
 from server.gateway.reply.audio import ReplyAudioPlanner
 from server.gateway.reply.display import ReplyDisplayPlanner
+from server.gateway.reply.text import ReplyTextSanitizer
 from server.shared.models import ThinkingEvent
 
 ReplyAction = Literal["emotion", "text_delta", "tts_text", "done"]
@@ -28,6 +29,7 @@ class ReplyPipeline:
     ) -> None:
         self.display = ReplyDisplayPlanner(initial_emotion=initial_emotion)
         self.audio = ReplyAudioPlanner()
+        self.text = ReplyTextSanitizer()
         self.reply_text = ""
 
     @property
@@ -47,21 +49,25 @@ class ReplyPipeline:
             ]
 
         if event.type == "text_delta":
-            self.reply_text += event.value
-            commands = [
-                ReplyCommand(
-                    action="text_delta",
-                    value=event.value,
-                    style=self.current_emotion,
+            raw_delta = event.value
+            delta = self.text.sanitize_delta(raw_delta)
+            commands: list[ReplyCommand] = []
+            if delta:
+                self.reply_text += delta
+                commands.append(
+                    ReplyCommand(
+                        action="text_delta",
+                        value=delta,
+                        style=self.current_emotion,
+                    )
                 )
-            ]
             commands.extend(
                 ReplyCommand(
                     action="tts_text",
                     value=sentence,
                     style=self.current_emotion,
                 )
-                for sentence in self.audio.append_delta(event.value)
+                for sentence in self.audio.append_delta(raw_delta)
             )
             return commands
 

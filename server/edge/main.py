@@ -20,6 +20,7 @@ from server.edge.pipeline.stt import (
 )
 from server.edge.pipeline.stt_filter import TranscriptFilter
 from server.edge.pipeline.vad import create_vad_processor
+from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
 from server.gateway.thinking.fast import ThinkFastMode
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.session import TomoroSession
@@ -105,8 +106,22 @@ def _create_default_thinking_mode() -> ThinkFastMode:
 
 
 def _create_default_tts_backend() -> TTSBackend:
+    cached_backend = getattr(app.state, "_default_tts_backend", None)
+    if cached_backend is not None:
+        return cached_backend
     config = _load_config()
-    return create_tts_backend(config.backends[config.inference.tts_backend])
+    backend = create_tts_backend(config.backends[config.inference.tts_backend])
+    app.state._default_tts_backend = backend
+    return backend
+
+
+def _create_default_speech_normalizer() -> ReplySpeechNormalizer:
+    cached_normalizer = getattr(app.state, "_default_speech_normalizer", None)
+    if cached_normalizer is not None:
+        return cached_normalizer
+    normalizer = ReplySpeechNormalizer()
+    app.state._default_speech_normalizer = normalizer
+    return normalizer
 
 
 @app.websocket("/ws")
@@ -156,6 +171,11 @@ async def websocket_session(websocket: WebSocket) -> None:
         "tts_backend_factory",
         _create_default_tts_backend,
     )
+    speech_normalizer_factory = getattr(
+        app.state,
+        "speech_normalizer_factory",
+        _create_default_speech_normalizer,
+    )
     barge_in_detector_factory = getattr(
         app.state,
         "barge_in_detector_factory",
@@ -172,6 +192,7 @@ async def websocket_session(websocket: WebSocket) -> None:
         router=router_factory(),
         thinking_mode=thinking_mode_factory(),
         tts_backend=tts_backend_factory(),
+        speech_normalizer=speech_normalizer_factory(),
         barge_in_detector=barge_in_detector_factory(),
         transcript_filter=TranscriptFilter(),
     )
@@ -233,6 +254,38 @@ async def _warm_up_app() -> None:
     logger.info(
         "startup warm-up completed target=stt backend=%s elapsed_ms=%.1f",
         backend_name,
+        elapsed_ms,
+    )
+
+    tts_backend_name = config.inference.tts_backend
+    tts_spec = config.backends[tts_backend_name]
+    started_at = time.perf_counter()
+    logger.info(
+        "startup warm-up started target=tts backend=%s type=%s model=%s",
+        tts_backend_name,
+        tts_spec.type,
+        tts_spec.model,
+    )
+    tts_backend_factory = getattr(app.state, "tts_backend_factory", _create_default_tts_backend)
+    await tts_backend_factory().warm_up()
+    elapsed_ms = (time.perf_counter() - started_at) * 1000
+    logger.info(
+        "startup warm-up completed target=tts backend=%s elapsed_ms=%.1f",
+        tts_backend_name,
+        elapsed_ms,
+    )
+
+    speech_normalizer_factory = getattr(
+        app.state,
+        "speech_normalizer_factory",
+        _create_default_speech_normalizer,
+    )
+    started_at = time.perf_counter()
+    logger.info("startup warm-up started target=tts_text_normalizer model=gemma4-e2b")
+    await speech_normalizer_factory().warm_up()
+    elapsed_ms = (time.perf_counter() - started_at) * 1000
+    logger.info(
+        "startup warm-up completed target=tts_text_normalizer elapsed_ms=%.1f",
         elapsed_ms,
     )
 

@@ -29,6 +29,7 @@ class TranscriptFilter:
     )
     LOW_AUDIO_DB = -24.0
     LOW_AUDIO_SHORT_MAX_CHARS = 20
+    LOW_AUDIO_ASCII_DB = -24.0
 
     def evaluate(
         self,
@@ -65,6 +66,11 @@ class TranscriptFilter:
             and len(normalized) <= self.LOW_AUDIO_SHORT_MAX_CHARS
         ):
             return "low_audio_short_text"
+        if (
+            transcript.audio_level_db <= self.LOW_AUDIO_ASCII_DB
+            and _looks_like_ascii_only_text(text)
+        ):
+            return "low_audio_ascii_text"
         if _looks_like_mixed_language_loop(text):
             return "mixed_language_loop"
         if any(hint in normalized for hint in self.REPETITION_HINTS):
@@ -90,6 +96,15 @@ def _looks_like_mixed_language_loop(text: str) -> bool:
     counts = Counter(ascii_words)
     most_common_count = counts.most_common(1)[0][1]
     return most_common_count >= 3 and len(counts) <= 3
+
+
+def _looks_like_ascii_only_text(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if not re.fullmatch(r"[A-Za-z][A-Za-z\s'.,!?-]*", stripped):
+        return False
+    return not _contains_wake_word(stripped)
 
 
 def _looks_like_repetition_loop(text: str) -> bool:
