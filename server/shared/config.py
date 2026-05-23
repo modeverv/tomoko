@@ -30,6 +30,9 @@ class BackendSpec:
     voice: str | None = None
     max_latency_ms: int | None = None
     privacy_allowed: bool = True
+    streaming: bool = False
+    stream_interval_ms: int = 1000
+    stream_min_audio_ms: int = 1000
 
 
 @dataclass(frozen=True)

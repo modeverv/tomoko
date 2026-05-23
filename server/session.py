@@ -11,7 +11,7 @@ from typing import Any, Literal
 import numpy as np
 
 from server.edge.participation.base import ParticipationJudge
-from server.edge.pipeline.stt import SpeechTranscriber
+from server.edge.pipeline.stt import SpeechTranscriber, supports_streaming
 from server.edge.pipeline.vad import VADProcessor
 from server.gateway.thinking.base import ThinkingMode
 from server.gateway.turn_taking.barge_in import BargeInDetector
@@ -100,6 +100,8 @@ class TomoroSession:
         result = self.vad_processor.process_chunk(chunk)
         if result.state_changed_to is not None:
             await self._transition(result.state_changed_to)
+        if result.segment is None and self.state == "listening":
+            await self._maybe_emit_partial_transcript(chunk)
         if result.segment is None and self.state == "idle":
             await self._advance_attention_idle(len(chunk))
         if result.segment is not None:
@@ -149,6 +151,7 @@ class TomoroSession:
                         participation_mode="observer",
                     )
                 self.vad_processor.reset()
+                self._reset_transcriber_stream()
                 await self._transition("idle")
                 return
 
@@ -197,7 +200,40 @@ class TomoroSession:
                     logger.error("Error generating reply: %s", e)
 
         self.vad_processor.reset()
+        self._reset_transcriber_stream()
         await self._transition("idle")
+
+    async def _maybe_emit_partial_transcript(self, chunk: np.ndarray) -> None:
+        if not supports_streaming(self.transcriber):
+            return
+        assert self.transcriber is not None
+        partial = await self.transcriber.process_stream_chunk(  # type: ignore[attr-defined]
+            chunk,
+            device_id=self.vad_processor.device_id,
+            sample_rate=self.vad_processor.sample_rate,
+        )
+        if partial is None:
+            return
+        logger.info(
+            "TomoroSession partial transcript text=%r speaker=%s audio_level_db=%s "
+            "attention_mode=%s state=%s",
+            partial.text,
+            partial.speaker,
+            partial.audio_level_db,
+            self.attention_mode,
+            self.state,
+        )
+        await self._send_event(
+            {
+                "type": "transcript_partial",
+                "text": partial.text,
+            }
+        )
+
+    def _reset_transcriber_stream(self) -> None:
+        if supports_streaming(self.transcriber):
+            assert self.transcriber is not None
+            self.transcriber.reset_stream()  # type: ignore[attr-defined]
 
     async def _reply_to(self, transcript: Transcript) -> None:
         if self.router is None or self.thinking_mode is None:

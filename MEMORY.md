@@ -270,3 +270,15 @@ active playback chunk 区間も speaker echo 保護区間として扱う。
 また、低信頼 observer 発話では attention idle を延長しない。
 attention の無音 decay は `TomoroSession.state == "idle"` の無音 chunk だけで積算し、発話中や VAD の無音待ちを
 ambient 復帰カウントに混ぜない。
+
+### 確定した判断: STT backend は faster-whisper と MLX Whisper を設定で切り替える
+STT は `config/central_realtime.toml` の `inference.stt_backend` で切り替える。
+`local_whisper_small` は従来の faster-whisper small、`local_whisper_mlx_small` は
+`mlx-community/whisper-small-mlx` を使う MLX Whisper backend とする。
+
+MLX backend は `streaming=true` の場合、VAD が `listening` の間に一定間隔で accumulated audio を transcribe し、
+`transcript_partial` を送る。発話終了時の最終 transcript は従来通り `SpeechSegment -> Transcript` の境界で処理する。
+
+2026-05-23 の `make bench-stt` 実測では、同じ `say` 生成音声に対して faster-whisper small が `measured_ms=977.5`、
+MLX Whisper small が warm 後 `measured_ms=102.1`。ただし MLX 初回はモデル取得/cache込みで `warm_ms=13404.8`。
+実運用では起動直後の warm-up が必要。

@@ -39,6 +39,36 @@ class ConstantTranscriber:
         )
 
 
+class StreamingTranscriber(ConstantTranscriber):
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        self.reset_count = 0
+        self.partial_sent = False
+
+    async def process_stream_chunk(
+        self,
+        chunk: np.ndarray,
+        *,
+        device_id: str,
+        sample_rate: int,
+    ) -> Transcript | None:
+        del chunk, sample_rate
+        if self.partial_sent:
+            return None
+        self.partial_sent = True
+        return Transcript(
+            text="途中です",
+            device_id=device_id,
+            speaker=None,
+            audio_level_db=-20.0,
+            recorded_at=datetime.now(UTC),
+            is_final=False,
+        )
+
+    def reset_stream(self) -> None:
+        self.reset_count += 1
+
+
 class InMemoryAmbientLogWriter:
     def __init__(self) -> None:
         self.rows: list[tuple[Transcript, bool]] = []
@@ -98,3 +128,23 @@ async def test_session_emits_participation_event_for_wake_word() -> None:
     assert ambient_logs.rows[0][1] is True
     assert {"type": "participation", "mode": "called"} in events
     assert events[-1] == {"type": "state", "state": "idle"}
+
+
+@pytest.mark.unit
+async def test_session_emits_streaming_partial_transcript() -> None:
+    events: list[dict[str, str]] = []
+    transcriber = StreamingTranscriber("今日いい天気だね")
+    ambient_logs = InMemoryAmbientLogWriter()
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.9] + [0.1] * 13), silence_ms=400),
+        send_event=events.append,
+        transcriber=transcriber,
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=ambient_logs,
+    )
+
+    for _ in range(14):
+        await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+
+    assert {"type": "transcript_partial", "text": "途中です"} in events
+    assert transcriber.reset_count == 1

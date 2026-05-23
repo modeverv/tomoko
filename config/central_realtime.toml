@@ -12,7 +12,7 @@ vad_silence_ms = 400
 [inference]
 conversation_backend = "local_qwen7b"
 conversation_fallback = "local_qwen_mlx"
-stt_backend = "local_whisper_small"
+stt_backend = "local_whisper_mlx_small"
 vad_backend = "silero_vad"
 tts_backend = "say"
 
@@ -33,6 +33,14 @@ privacy_allowed = true
 type = "faster_whisper"
 model = "small"
 privacy_allowed = true
+
+[backends.local_whisper_mlx_small]
+type = "mlx_whisper"
+model = "mlx-community/whisper-small-mlx"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
 
 [backends.silero_vad]
 type = "silero_vad"
