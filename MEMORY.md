@@ -1104,3 +1104,16 @@ docker-compose への thinker service 追加は、現時点では行わない。
 Tomoko アプリ用 Docker image / Dockerfile がまだなく、Apple Silicon / MLX / LM Studio 前提の runtime を
 Linux container service として半端に定義すると運用実体とずれる。
 M4 のインフラ安定化で app image 方針を決めた後に追加する。
+
+### 確定した判断: Phase 9 全体の完了判定
+Phase 9 全体の完了判定では、docker-compose への thinker service 追加を不足として扱わない。
+現行の compose は PostgreSQL service のみで、Tomoko アプリ用 Docker image / Dockerfile が未定のため、
+service 化は M4 のインフラ安定化で app image 方針を決めてから行う。
+
+Phase 9 は、候補プール schema / DTO / store、deterministic source、LLM evaluator、arrival precompute、
+local thinker process loop が動き、`make thinker-once` と Phase 9 の unit / integration / perf 検証が通ることで完了とみなす。
+
+### 気づき: Phase 9 integration test は既存候補データから隔離する
+`utterance_candidates` / `arrival_candidates` は実運用データが残る共有テーブルなので、integration test は
+fetch 結果全体の先頭だけを前提にしない。
+テスト自身が挿入した ID / device_id / context_tags で絞り、開始時と終了時にテスト用 row を削除して隔離する。

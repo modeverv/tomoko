@@ -4,6 +4,38 @@
 
 ---
 
+## 2026-05-24 セッション51
+
+### やること（開始時に書く）
+- Phase 9 全体の完了条件を確認する
+- Phase 9.0〜9.4 の実装、テスト、PLAN 上の未チェック項目を突き合わせる
+- 不足があれば対応し、`pytest -m unit` など必要な検証を行う
+
+### やったこと
+- Phase 9.0〜9.4 の完了条件、実装結果、実ファイル、テストを突き合わせた
+- Phase 9.4 の docker-compose service 追加は、現行 compose / app image 方針が未定のため M4 に送る項目であり、Phase 9 の不足として扱わないことを `PLAN.md` / `MEMORY.md` に追記した
+- `tests/integration/test_phase90_candidates_db.py` が既存候補データに干渉されて落ちる問題を修正した
+  - テスト用 `device_id` / `context_tags` で隔離した
+  - 開始時と終了時にテスト用 row を削除し、commit するようにした
+  - 既存 fresh arrival candidate と競合しないよう、テスト時刻を将来固定値にした
+
+### 詰まったこと・解決したこと
+- Phase 9.0 integration test が、実 DB に残っていた active / fresh candidate を先頭候補として拾って失敗した
+  → store の全体 fetch 契約は維持し、テスト側を自分が挿入した row に限定して検証するよう修正した
+
+### 次のセッションでやること
+- Phase 10 に進む場合は、`TomoroSession` から candidate / arrival を消費する境界をテストで固定する
+- docker-compose service 化は M4 で app image 方針が決まってから扱う
+
+### 検証
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase90_candidates_db.py tests/integration/test_phase94_thinker_smoke.py`
+- `mise exec -- uv run pytest -m perf --tb=short tests/perf/test_phase93_arrival_precompute_latency.py`
+- `mise exec -- uv run python background-process/run_thinker.py --help`
+- `make thinker-once`
+- `git diff --check`
+
 ## 2026-05-24 セッション50
 
 ### やること（開始時に書く）

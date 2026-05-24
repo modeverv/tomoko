@@ -1238,6 +1238,22 @@ async def test_arrival_candidate_freshness():
     assert candidate.computed_at <= now < candidate.valid_until
 ```
 
+### 2026-05-24 Phase 9 全体確認結果
+
+Phase 9.4 の「docker-compose への thinker service 追加は最後に行う」という未チェック項目は、Phase 9 の不足としては扱わない。
+この項目は、現行の `docker/docker-compose.yml` が PostgreSQL service のみであり、Tomoko アプリ用 Docker image / Dockerfile がまだないため、
+M4 のインフラ安定化で app image 方針を決めてから実施する項目として扱う。
+
+したがって Phase 9 全体の完了判定は、候補プール schema / DTO / store、deterministic source、LLM evaluator、
+arrival precompute、local thinker process loop が動き、`make thinker-once` と Phase 9 の unit / integration / perf 検証が通ることで満たす。
+
+確認結果:
+- `utterance_candidates` には `make thinker-once` で seed-only candidate が保存される
+- `arrival_candidates` には `make thinker-once` で fresh candidate が保存される
+- thinker は `background-process/run_thinker.py` / `make thinker` / `make thinker-once` の local background process として動く
+- online `/ws` 経路と `TomoroSession` からの候補消費は Phase 10 に残す
+- Redis / pub-sub / EventBus は導入していない
+
 ---
 
 ## Phase 10: 自発発話 + 入室時の初手

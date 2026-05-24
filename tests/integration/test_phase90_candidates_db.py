@@ -18,9 +18,24 @@ async def test_postgres_candidate_store_round_trip() -> None:
     async with await psycopg.AsyncConnection.connect(dsn) as conn:
         async with conn.cursor() as cur:
             await cur.execute(open(ddl, encoding="utf-8").read())
+            await cur.execute(
+                """
+                DELETE FROM utterance_candidates
+                WHERE source = 'integration'
+                  AND 'phase90_integration' = ANY(context_tags)
+                """
+            )
+            await cur.execute(
+                """
+                DELETE FROM arrival_candidates
+                WHERE device_id = 'phase90-integration'
+                """
+            )
+        await conn.commit()
 
     store = PostgresCandidateStore(dsn)
-    now = datetime(2026, 5, 24, 12, 0, tzinfo=UTC)
+    now = datetime(2099, 5, 24, 12, 0, tzinfo=UTC)
+    device_id = "phase90-integration"
     inserted_ids: list[object] = []
     arrival_ids: list[object] = []
 
@@ -31,7 +46,7 @@ async def test_postgres_candidate_store_round_trip() -> None:
             priority=0.1,
             created_at=now - timedelta(minutes=2),
             expires_at=now + timedelta(minutes=5),
-            context_tags=("test",),
+            context_tags=("phase90_integration",),
         )
         high = await store.insert_utterance_candidate(
             seed="優先候補",
@@ -41,7 +56,7 @@ async def test_postgres_candidate_store_round_trip() -> None:
             expires_at=now + timedelta(minutes=5),
             generated_text="今なら少し話せそう。",
             maturity=1,
-            context_tags=("test", "priority"),
+            context_tags=("phase90_integration", "priority"),
         )
         expired = await store.insert_utterance_candidate(
             seed="期限切れ候補",
@@ -55,13 +70,14 @@ async def test_postgres_candidate_store_round_trip() -> None:
         dismissed_count = await store.mark_expired_utterance_candidates(now)
         assert dismissed_count >= 1
 
-        active = await store.fetch_active_utterance_candidates(now=now, limit=10)
+        active = await store.fetch_active_utterance_candidates(now=now, limit=1000)
+        active = [candidate for candidate in active if candidate.id in {low.id, high.id}]
         active_ids = [candidate.id for candidate in active]
         assert active_ids[:2] == [high.id, low.id]
         assert expired.id not in active_ids
         assert active[0].generated_text == "今なら少し話せそう。"
         assert active[0].maturity == 1
-        assert active[0].context_tags == ("test", "priority")
+        assert active[0].context_tags == ("phase90_integration", "priority")
 
         await store.mark_utterance_spoken(high.id, spoken_at=now)
         active_after_spoken = await store.fetch_active_utterance_candidates(
@@ -72,7 +88,7 @@ async def test_postgres_candidate_store_round_trip() -> None:
 
         arrival = await store.insert_arrival_candidate(
             context_snapshot=ArrivalContextSnapshot(
-                device_id="kitchen",
+                device_id=device_id,
                 computed_at=now,
                 local_time="12:00",
                 session_count_today=2,
@@ -87,7 +103,7 @@ async def test_postgres_candidate_store_round_trip() -> None:
 
         fresh = await store.fetch_latest_fresh_arrival_candidate(
             now=now,
-            device_id="kitchen",
+            device_id=device_id,
         )
         assert fresh == arrival
         assert fresh.context_snapshot.persona_hint == "昼前に買い物の話をした"
@@ -96,7 +112,7 @@ async def test_postgres_candidate_store_round_trip() -> None:
         assert (
             await store.fetch_latest_fresh_arrival_candidate(
                 now=now,
-                device_id="kitchen",
+                device_id=device_id,
             )
             is None
         )
@@ -113,3 +129,4 @@ async def test_postgres_candidate_store_round_trip() -> None:
                         "DELETE FROM arrival_candidates WHERE id = ANY(%s)",
                         (arrival_ids,),
                     )
+            await conn.commit()
