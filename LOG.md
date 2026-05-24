@@ -21,6 +21,23 @@
 
 ---
 
+## 2026-05-24 セッション31
+
+### やること（開始時に書く）
+- LLM オーケストラツールが投入する `task.md` / `task.acceptance.md` / `summary.md` を git 管理対象から外す
+- `.gitignore` に追加し、今後追跡されないようにする
+
+### やったこと
+- `.gitignore` に `task.md` / `task.acceptance.md` / `summary.md` を追加した
+- `git rm --cached task.md task.acceptance.md summary.md` を実行し、ローカルファイルを残したまま git 管理対象から外した
+
+### 詰まったこと・解決したこと
+- 3ファイルはいずれも tracked だった
+  → index からだけ削除し、以後は ignored file として扱うようにした
+
+### 次のセッションでやること
+- 追加対応なし
+
 ## 2026-05-24 セッション30
 
 ### やること（開始時に書く）
