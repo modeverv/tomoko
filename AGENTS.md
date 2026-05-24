@@ -227,6 +227,27 @@ M2 Phase 8.5 以降は、会話のまとまりを `conversation_sessions` で表
 - JSON schema を変える場合は loader / migration を用意し、古い snapshot を読めるようにする
 - これらは原本ではなく、`conversation_logs` / `conversation_sessions` から再生成可能な解釈ログとして扱う
 
+### 8. LLM に渡す文脈は ContextSnapshotBuilder で組み立てる
+
+短期記憶、長期記憶、セッション要約、用語集、人格スナップショットを `ThinkingMode` が個別に読む設計にしない。
+M2 Phase 8.8 以降は、LLM に渡す文脈を `ContextSnapshotBuilder` で一箇所に集約する。
+
+- `TomoroSession` は状態遷移と active session ID を決める
+- `ContextSnapshotBuilder` は読み取り専用で、DB から必要な文脈を予算内に組み立てる
+- `ThinkingMode` は `TomokoContextSnapshot` DTO を使って返答する
+- builder は session 開始/終了、persona 更新、要約生成などの副作用を持たない
+- `depth` は `fast` / `normal` / `deep` / `reflective` を基本にする
+- online 会話では `fast` / `normal` / 必要時の `deep` までにし、`reflective` は background worker 用にする
+- snapshot build の elapsed ms と採用した source counts をログに残す
+- perf test で `fast` / `normal` / `deep` の絶対ラウンドトリップ目標を固定する
+- context build は `ContextBuildPolicy.max_build_ms` に従う best-effort runtime とする
+- timeout は応答失敗ではなく degraded context として扱う
+- same session recent turns を baseline とし、長期記憶・用語集・人格 slice は optional enrichment とする
+- 複数 source は deadline 付き parallel DB I/O として読み、返却順ではなく priority / relevance / recency / salience / token budget で assemble する
+- `ContextBuildTrace` を必ず返し、budget / elapsed / skipped source / stage timings / cache hit / source error をログに出せるようにする
+- 単一サーバー運用では Redis を導入せず、process-local TTL cache は DB read の speed-up に限定して使う
+- cache は source of truth ではない。active session / attention / playback / barge-in など authoritative state は cache しない
+
 ## コード規約
 
 ### Python

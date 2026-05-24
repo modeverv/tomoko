@@ -474,6 +474,157 @@ versioned JSONB snapshot として保存する。
 - JSONB は PostgreSQL で検索でき、プログラム内ではモデルクラスとして扱える
 - `pytest -m unit` が通る
 
+## Phase 8.8: ContextSnapshotBuilder 初段
+
+短期記憶、長期記憶、session summary、用語集、人格スナップショットを `ThinkingMode` が直接読み分ける設計は、
+今後の実装が増えるほどレイテンシーとテスト範囲を管理しづらくする。
+この Phase では、LLM に渡す文脈を組み立てる読み取り専用の `ContextSnapshotBuilder` を追加する。
+
+**目標**: Tomoko のメイン対話推論に渡す文脈取得を一箇所に集約し、depth ごとの絶対ラウンドトリップ速度を perf test で固定する。
+長期運用で DB 上のログ・要約・embedding・人格 snapshot が増えても、context 生成時間を固定予算内に収める。
+
+- [ ] `TomokoContextSnapshot` DTO を追加する
+  - `depth`
+  - `recent_turns`
+  - `session_summaries`
+  - `memory_hits`
+  - `lexicon_terms`
+  - `persona_slice`
+  - `token_budget_hint`
+  - `build_elapsed_ms`
+  - `source_counts`
+- [ ] `ContextBuildPolicy` を追加する
+  - `depth`
+  - `max_build_ms`
+  - `max_prompt_tokens`
+  - `max_same_session_turns`
+  - `max_recent_turns`
+  - `max_session_summaries`
+  - `max_memory_hits`
+  - `max_lexicon_terms`
+  - `allow_turn_memory_search`
+  - `allow_persona_slice`
+- [ ] `ContextBuildTrace` を追加する
+  - `budget_ms`
+  - `elapsed_ms`
+  - `timed_out`
+  - `included_counts`
+  - `skipped_sources`
+  - `stage_timings_ms`
+  - `cache_hits`
+  - `source_errors`
+- [ ] `ContextDepth = fast | normal | deep | reflective` を追加する
+  - `fast`: active session の直近 turn
+  - `normal`: fast + 関連 session summary + 関連 lexicon 少量
+  - `deep`: normal + turn embedding / session 内代表 turn
+  - `reflective`: 日記・人格更新用。online 対話では使わない
+- [ ] `ContextSnapshotBuilder` を追加する
+  - 読み取り専用にする
+  - session 開始/終了、summary 生成、persona update、lexicon update はしない
+  - DB row / JSONB をそのまま返さず、DTO / モデルクラスへ変換する
+- [ ] context build を時間予算付き best-effort にする
+  - `max_build_ms` を超えたら未完了 source は skipped として打ち切る
+  - timeout は応答失敗ではなく degraded context として扱う
+  - 同一 session の recent turns を baseline とし、長期記憶・用語集・人格 slice は optional enrichment とする
+- [ ] context source を parallel DB I/O で読む
+  - same session recent turns
+  - recent completed turns
+  - session summary vector search
+  - turn embedding vector search
+  - persona state
+  - lexicon snapshot
+  - 返却順ではなく priority / relevance / recency / token budget で assemble する
+- [ ] `ContextSnapshotBuilder` 内部に process-local TTL cache を追加できる境界を作る
+  - 初段では no-op / disabled でもよい
+  - cache は DB read の speed-up のみ。source of truth にはしない
+  - cache hit / miss / age_ms / ttl_ms を trace に出せるようにする
+  - Redis は導入しない。単一サーバー運用中は process-local cache で十分とする
+- [ ] 初段の fallback 動作を実装する
+  - Phase 8.5 未実装でも既存 `read_recent_turns()` で `fast` が動く
+  - Phase 8.6 未実装なら `session_summaries=[]`
+  - Phase 8.7 未実装なら `lexicon_terms=[]` / `persona_slice=None`
+  - 既存 Phase 8 の `conversation_embeddings` は `deep` で使える
+- [ ] `TomoroSession` から context 読み込みを builder に寄せる
+  - active `conversation_session_id` と transcript を渡す
+  - `should_use_deep_memory()` 相当の判断は depth 選択へ寄せる
+  - `ThinkingInput` には snapshot または snapshot から変換した context を渡す
+- [ ] `ThinkingMode` の DB 依存を増やさない
+  - `ThinkFastMode` / `ThinkDeepMode` は snapshot DTO を使う
+  - DB / memory store / JSONB loader の詳細を import しない
+- [ ] ログを追加する
+  - depth
+  - elapsed_ms
+  - source_counts
+  - token_budget_hint
+- [ ] unit test を追加する
+  - `fast` が active session の recent turns を優先する
+  - active session がない時に既存 recent turns fallback が効く
+  - 未実装 source は空 list / None で返る
+  - builder が DB 更新系 method を呼ばない
+  - budget 超過時に optional source が skipped になり、snapshot 自体は返る
+  - same session recent turns が返る限り degraded context として応答可能
+  - parallel source の返却順に依存せず、assemble 後の priority が安定する
+  - cache hit 時も `ContextBuildTrace` に source / age_ms / ttl_ms が残る
+- [ ] perf test を追加する
+  - `pytest -m perf tests/perf/test_context_snapshot_latency.py`
+  - `fast` は 20ms 以内
+  - `normal` は 50ms 以内
+  - `deep` は 100ms 以内
+  - timeout / degraded path も perf test で観測する
+
+**完了条件**:
+- LLM に渡す文脈取得が `ContextSnapshotBuilder` 経由になる
+- `fast` / `normal` / `deep` の snapshot build latency を perf test で測れる
+- 記憶や人格情報が増えても、オンライン文脈取得の予算を一箇所で管理できる
+- context build が timeout しても、最低限の same session context で応答継続できる
+- context build trace により、遅延原因が DB / index / query / cache / retrieval strategy / PC 性能のどこにあるか分析できる
+- `pytest -m unit` が通る
+
+## Phase 8.8.1: ContextSnapshotBuilder 運用 hardening
+
+Phase 8.8 の初段実装後、長期運用に耐えるための計測・劣化運転・cache 境界を固める。
+
+- [ ] `ContextBuildTrace` を `docs/latency.md` または debug log に出す
+  - `depth`
+  - `budget_ms`
+  - `elapsed_ms`
+  - `timed_out`
+  - `included_counts`
+  - `skipped_sources`
+  - `stage_timings_ms`
+  - `cache_hits`
+- [ ] source ごとの timeout / cancellation を実装する
+  - `same_session` は required
+  - `recent_turns` は preferred
+  - `session_summary_search` / `turn_memory_search` / `persona_slice` / `lexicon_terms` は optional
+- [ ] DB connection pool を context build の parallelism と合わせて調整する
+  - 1 response あたりの最大 parallel query 数を設定値にする
+  - pool starvation が trace で分かるようにする
+- [ ] process-local TTL cache を必要最小限で有効化する
+  - `persona_state`
+  - `lexicon_snapshot`
+  - `recent_turns`
+  - `same_session_turns`
+  - `session_summary_search`
+  - authoritative state は cache しない
+- [ ] stale / cancelled result を捨てる
+  - `session_id`
+  - `turn_id`
+  - `context_build_id`
+  - deadline 超過後に戻った result は prompt に入れない
+- [ ] regression test を追加する
+  - 遅い optional query がある場合でも `max_build_ms` 内に snapshot が返る
+  - cache が古くなったら DB へ fallback する
+  - cache miss と DB timeout が区別して trace される
+  - 同じ入力で parallel query の完了順が変わっても final snapshot の優先順位が安定する
+
+**完了条件**:
+- context build は non-blocking / parallel / budgeted に動く
+- timeout は応答失敗ではなく degraded context として扱われる
+- trace によりチューニング対象を局所化できる
+- 単一サーバー運用では Redis なしで process-local TTL cache による高速化余地がある
+- `pytest -m unit` と `pytest -m perf tests/perf/test_context_snapshot_latency.py` が通る
+
 ### ✅ M2 完了条件
 
 ```
@@ -482,6 +633,7 @@ versioned JSONB snapshot として保存する。
   → 「先週話してた〇〇、その後どうなった？」が通じる
   → 会話セッション単位の summary / embedding から関連会話を引ける
   → 用語集・人格スナップショットの version 差分から変化を追跡できる
+  → ContextSnapshotBuilder の perf test で文脈取得レイテンシーを監視できる
 ```
 
 ---

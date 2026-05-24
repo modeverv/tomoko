@@ -31,6 +31,7 @@
               │  DirectSpeakerResolver        │
               │  DuplicateSpeechFilter        │
               │  InferenceRouter              │
+              │  ContextSnapshotBuilder       │
               │  gateway / TomoroSession      │
               └──────────────┬───────────────┘
                              │
@@ -99,6 +100,7 @@
   正規発話元の判定（DirectSpeakerResolver）
   回り込み除去（DuplicateSpeechFilter）
   TomoroSession（状態機械）
+  ContextSnapshotBuilder（LLM に渡す文脈の組み立て）
   InferenceRouter（LLM選択・切り替え）
   utterance_candidates からの取り出し
   返答テキストを正規エッジに送信
@@ -1905,3 +1907,365 @@ current transcript
 
 JSONB snapshot は分析と再現性のための保存形式であり、LLM prompt にそのまま全量投入しない。
 必要な subset をモデルクラスに読み込み、プロンプト用 DTO に変換する。
+
+---
+
+## 2026-05-24 追記: ContextSnapshotBuilder
+
+記憶・要約・用語集・人格スナップショットが増えるほど、各 `ThinkingMode` が個別に DB を読む設計は
+レイテンシーとテスト範囲の両方を悪化させる。
+そのため、LLM に渡す文脈は `ContextSnapshotBuilder` で一箇所に組み立てる。
+
+### 役割分担
+
+```text
+TomoroSession
+  state / attention_mode / active conversation_session_id を決める
+        │
+        ▼
+ContextSnapshotBuilder
+  depth と token / latency budget に従って文脈を読む
+        │
+        ▼
+ThinkingMode
+  TomokoContextSnapshot を prompt messages に変換して応答する
+```
+
+`ContextSnapshotBuilder` は読み取り専用である。
+session 開始/終了、summary 生成、persona update、lexicon update などの副作用を持たない。
+これにより、文脈取得のレイテンシーと正しさを単独でテストできる。
+
+### 長期運用における context build の原則
+
+Tomoko は長期運用すると `conversation_logs` / `conversation_embeddings` /
+`conversation_sessions` / `persona_lexicon_versions` / `persona_state_versions` が増え続ける。
+しかし、メイン対話 LLM の応答開始前に使える context 生成時間は増やしてはいけない。
+
+そのため `ContextSnapshotBuilder` は「全記憶を成功するまで読む処理」ではなく、
+**時間予算つきの best-effort context runtime** として扱う。
+
+```text
+原本:
+  PostgreSQL に増え続けてよい
+
+索引:
+  embedding / summary / lexicon / persona snapshot として再生成可能
+
+応答前 context:
+  latency budget / token budget / depth に従って固定時間内に構築する
+```
+
+context build が時間切れになっても、オンライン応答全体を失敗にしない。
+同一会話セッションの直近文脈を baseline とし、長期記憶・人格・用語集は
+時間内に取れた場合だけ応答品質を上げる optional enrichment として扱う。
+
+```text
+required:
+  same session recent turns
+
+preferred:
+  recent completed turns
+  related session summaries
+
+optional:
+  turn-level memory hits
+  lexicon terms
+  persona slice
+  diary hints
+```
+
+これにより、記憶量が増えてもメイン応答 LLM に渡す context 生成時間の上限を固定できる。
+PC の性能が上がった場合は、設計を変えずに `ContextBuildPolicy` の budget / top-K /
+token budget だけを広げる。
+
+### parallel DB I/O
+
+PostgreSQL が唯一の真実であり、context 生成は DB 以外の権威ある状態を読まない。
+その前提では、context build は複数の DB read を直列に積むのではなく、
+時間制限付きの parallel DB I/O として実行する。
+
+```text
+ContextSnapshotBuilder
+  ├─ same_session_recent_turns query
+  ├─ recent_completed_turns query
+  ├─ session_summary_vector_search query
+  ├─ turn_embedding_vector_search query
+  ├─ persona_state query
+  └─ lexicon_snapshot query
+
+deadline に到達したら未完了 query は cancel / ignore し、
+返ってきた候補だけで snapshot を assemble する。
+```
+
+並列に返ってきた結果は、返却順ではなく次の順で再評価してから prompt context に入れる。
+
+```text
+1. same session 優先
+2. attended=true / completed turn 優先
+3. relevance
+4. recency
+5. salience
+6. token budget
+7. deduplication
+```
+
+これにより、取得源を増やしても応答前の最大待ち時間を増やさずに済む。
+遅い取得源は trace に残し、DB / index / query / PC 性能 / retrieval strategy のどれが悪いかを
+局所化して分析する。
+
+### ContextBuildPolicy
+
+`ContextSnapshotBuilder` は設定可能な policy を受け取る。
+
+```python
+@dataclass(frozen=True)
+class ContextBuildPolicy:
+    depth: ContextDepth
+    max_build_ms: int
+    max_prompt_tokens: int
+    max_same_session_turns: int
+    max_recent_turns: int
+    max_session_summaries: int
+    max_memory_hits: int
+    max_lexicon_terms: int
+    allow_turn_memory_search: bool
+    allow_persona_slice: bool
+```
+
+初期値は conservative にし、性能改善や実測に応じて広げる。
+policy は「Tomoko の賢さ」と「応答速度」のトレードオフを調整するための制御点である。
+
+### ContextBuildTrace
+
+context build は必ず trace を返す。
+trace は DB には必須保存しないが、少なくとも debug / latency log へ出せるようにする。
+
+```python
+@dataclass
+class ContextBuildTrace:
+    budget_ms: int
+    elapsed_ms: float
+    timed_out: bool
+    depth: ContextDepth
+    included_counts: dict[str, int]
+    skipped_sources: list[str]
+    stage_timings_ms: dict[str, float]
+    cache_hits: dict[str, bool]
+    source_errors: dict[str, str]
+```
+
+ログ例:
+
+```json
+{
+  "event": "context_build_completed",
+  "depth": "normal",
+  "budget_ms": 50,
+  "elapsed_ms": 48.7,
+  "timed_out": true,
+  "included": {
+    "same_session_turns": 8,
+    "recent_turns": 2,
+    "session_summaries": 1,
+    "memory_hits": 0,
+    "lexicon_terms": 0
+  },
+  "skipped": ["turn_memory_search", "persona_slice"],
+  "stage_timings_ms": {
+    "same_session": 6.2,
+    "recent_turns": 8.1,
+    "session_summary_search": 31.4
+  }
+}
+```
+
+trace により、次を切り分ける。
+
+```text
+DB が遅い
+pgvector / index が効いていない
+connection pool が足りない
+retrieval strategy が欲張りすぎ
+PC の性能が不足している
+そもそも取得した context が応答品質に効いていない
+cache TTL が短すぎる / 長すぎる
+```
+
+context build timeout は failure ではなく degraded response とする。
+最低限 same session recent turns が取れていれば応答は継続する。
+
+### process-local TTL cache
+
+単一サーバーインスタンスで運用している間は、Redis を入れずに
+`ContextSnapshotBuilder` 内部の process-local TTL cache で高速化してよい。
+
+ただし cache は source of truth ではなく、DB read の speed-up に限定する。
+
+```text
+DB:
+  唯一の真実
+
+process-local TTL cache:
+  直近の DB read 結果を短時間だけ再利用する最適化
+```
+
+cache してよいもの:
+
+```text
+latest persona state
+latest lexicon snapshot
+recent completed turns
+same session turns
+session summary search result
+query embedding result
+```
+
+cache しないもの:
+
+```text
+conversation_logs への書き込み
+active session の authoritative state
+attention_mode の authoritative state
+playback / barge-in の現在状態
+hard interrupt 判定
+```
+
+TTL の初期値は短くする。
+
+```text
+same_session_turns: 0.5〜2秒
+recent_turns: 1〜5秒
+persona_state: 5〜30秒
+lexicon_snapshot: 30〜300秒
+session_summary_search: 5〜30秒
+```
+
+cache hit / miss / age_ms / ttl_ms は `ContextBuildTrace` に含める。
+将来サーバーインスタンスが複数になったり、background worker と realtime node 間で
+共有 cache が必要になった時点で Redis 等を検討する。
+
+### non-blocking / parallel / state の境界
+
+Tomoko のオンライン経路では、non-blocking I/O、parallel retrieval、状態機械が同時に動く。
+非同期処理は順序を崩すが、状態遷移は順序に依存するため、
+状態更新の入口は `TomoroSession` に寄せる。
+
+```text
+外部イベント
+  WebSocket binary
+  playback telemetry
+  transcript finalized
+  LLM delta
+  TTS chunk
+  timeout
+        │
+        ▼
+TomoroSession
+  authoritative state / attention_mode / session_id / turn_id を更新
+        │
+        ▼
+Command
+  DB read/write
+  context build
+  LLM generation
+  TTS generation
+  WebSocket send
+```
+
+`TomoroSession` は現時点では複雑さを一手に引き受ける管制塔として残す。
+ただし、巨大クラス化を目的にするのではなく、現実の依存関係を集約して観察し、
+安定した境界から順に小さな component へ切り出す。
+
+切り出し候補:
+
+```text
+AttentionStateMachine
+PlaybackTracker / AudioTurnController
+ConversationSessionManager
+TurnLifecycleManager
+BargeInDetector
+ContextSnapshotBuilder
+ReplyPipeline
+```
+
+状態を持つものと、判定だけを行うものは分ける。
+authoritative な会話 state / attention state は引き続き `TomoroSession` が所有する。
+
+### DTO
+
+```python
+ContextDepth = Literal["fast", "normal", "deep", "reflective"]
+
+@dataclass
+class TomokoContextSnapshot:
+    depth: ContextDepth
+    recent_turns: list[ConversationTurn]
+    session_summaries: list[SessionSummaryHit]
+    memory_hits: list[MemoryHit]
+    lexicon_terms: list[LexiconTerm]
+    persona_slice: PersonaPromptSlice | None
+    token_budget_hint: int
+    build_elapsed_ms: float
+    source_counts: dict[str, int]
+    trace: ContextBuildTrace
+```
+
+`TomokoContextSnapshot` は DB row や JSONB をそのまま露出しない。
+JSONB snapshot は `PersonaLexiconSnapshot` / `PersonaStateSnapshot` のモデルクラスへ変換し、
+さらに prompt 用の subset として `LexiconTerm` / `PersonaPromptSlice` に落とす。
+
+### depth
+
+| depth | 用途 | 読むもの | online |
+|---|---|---|---|
+| `fast` | 通常の即応 | active session の直近 completed turn | yes |
+| `normal` | 通常 + 軽い記憶 | fast + 関連 session summary + 関連 lexicon 少量 | yes |
+| `deep` | 記憶 cue / 長め相談 | normal + turn embedding / session 内代表 turn | yes（必要時のみ） |
+| `reflective` | 日記・人格更新 | raw logs / summaries / lexicon / persona を広めに読む | no |
+
+online 会話の default は `fast` または `normal` とする。
+`deep` は記憶 cue や長めの相談文でのみ使い、`reflective` は background worker 専用にする。
+
+### 初段実装
+
+初段では Phase 8.5/8.6/8.7 の全要素が未実装でも動くようにする。
+
+```text
+fast:
+  active_session_id があれば同一 session の recent turns
+  なければ既存 read_recent_turns(limit=N)
+
+normal:
+  fast + completed session summaries があれば summary search
+  summary 未実装なら空 list
+
+deep:
+  normal + 既存 conversation_embeddings search
+```
+
+これにより、`ThinkFastMode` / `ThinkDeepMode` は段階的に DB 詳細から切り離せる。
+
+### レイテンシー目標
+
+context snapshot はメイン対話推論の前段なので、絶対ラウンドトリップ時間を固定して監視する。
+
+| depth | 目標 |
+|---|---:|
+| `fast` | 20ms 以内 |
+| `normal` | 50ms 以内 |
+| `deep` | 100ms 以内 |
+
+perf test 例:
+
+```bash
+pytest -m perf tests/perf/test_context_snapshot_latency.py
+```
+
+ログには少なくとも次を残す。
+
+```text
+ContextSnapshotBuilder depth=normal elapsed_ms=34.2
+recent_turns=8 session_summaries=2 memory_hits=0 lexicon_terms=3
+```
+
+この値が悪化した時点で、記憶や人格の追加がオンライン会話レイテンシーを侵食していると判断できる。
