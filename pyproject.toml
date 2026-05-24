@@ -45,6 +45,7 @@ mlx-tts = [
 testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
+norecursedirs = ["tests/manual"]
 markers = [
     "unit: external dependencies are mocked or avoided; always run",
     "integration: requires local middleware or model runtimes",

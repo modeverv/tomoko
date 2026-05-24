@@ -73,7 +73,7 @@ async def main() -> None:
     parser.add_argument("--voice", default=None)
     parser.add_argument(
         "--output-dir",
-        default="artifacts/tts-bench",
+        default="logs/tts-bench",
     )
     args = parser.parse_args()
 

@@ -21,6 +21,45 @@
 
 ---
 
+## 2026-05-24 セッション28
+
+### やること（開始時に書く）
+- TTS ベンチ出力スクリプトの出力先を git 管理外の `logs/` 配下へ変更する
+- `artifacts/` ディレクトリを削除する
+- `artifacts/` 配下の WAV を git 管理対象から外す
+
+### やったこと
+- `tools/bench_tts_backends.py` の default 出力先を `artifacts/tts-bench` から `logs/tts-bench` に変更した
+- `.gitignore` に `artifacts/` を追加し、再作成されても git 管理対象にならないようにした
+- `git rm -r artifacts` で tracked WAV 8 ファイルを削除し、git 管理対象から外した
+- `docs/latency.md` の TTS ベンチ WAV 保存先を `logs/tts-bench/` に更新した
+- `PLAN.md` / `MEMORY.md` に、過去の `artifacts/` 保存運用を否定して `logs/` 配下へ補正する判断を追記した
+
+### 詰まったこと・解決したこと
+- `artifacts/` は実体としても git index としても不要な生成物だった
+  → 出力先を `logs/` に変更し、既存 tracked WAV は削除した
+
+### 次のセッションでやること
+- 追加対応なし
+
+## 2026-05-24 セッション27
+
+### やること（開始時に書く）
+- ルートディレクトリにある `test_ollama*.py` を `tests/` 配下へ移動する
+- pytest / ruff の対象として問題なく扱われることを確認する
+- ルートディレクトリの見通しを良くする
+
+### やったこと
+- ルート直下の `test_ollama*.py` 7 ファイルを `tests/manual/ollama/` に移動した
+- これらは pytest 形式の unit test ではなくトップレベル実行される手動確認スクリプトだったため、`pyproject.toml` の pytest 設定で `tests/manual` を collection 対象から外した
+
+### 詰まったこと・解決したこと
+- `test_ollama*.py` を `tests/` 直下へ置くと pytest collection 時に実行される可能性があった
+  → `tests/manual/ollama/` に置き、通常の `pytest -m unit` では拾わない形にした
+
+### 次のセッションでやること
+- 追加対応なし
+
 ## 2026-05-24 セッション26
 
 ### やること（開始時に書く）
