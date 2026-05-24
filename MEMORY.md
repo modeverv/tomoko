@@ -928,3 +928,12 @@ stale として捨てる。
 
 `artifacts/` はプログラムが生成する成果物置き場であり、リポジトリのルートに置いて git 管理する対象ではない。
 `_tools/bench_tts_backends.py` の出力先は `logs/tts-bench/` とし、WAV は git 管理外のローカル生成物として扱う。
+
+### 確定した判断: 会話体験品質は人間評価と機械メトリクスの対応で最適化する
+自然な会話相手らしさは、単一の数式や latency だけで評価しない。
+
+将来の最適化フェーズでは、人間がターン単位またはセッション単位で体験品質を評価し、
+同じ単位で latency / VAD / STT / LLM / TTS / attention / barge-in / memory / context build の観測値を残す。
+人間評価をゴールドとして、相関・回帰・特徴量重要度から各部品の寄与とトレードオフを分析する。
+
+評価設計の初期案は `_docs/evaluation.md` に置く。

@@ -10,6 +10,29 @@
 ## YYYY-MM-DD セッションN
 
 ### やったこと
+- `_docs/evaluation.md` を追加した
+  - 会話体験スコアを responsiveness / attended_feeling / turn_taking / interruption / memory / persona / recovery に分解した
+  - 人間評価 JSON と機械ログ JSONL の初期案を置いた
+  - 相関だけでなく回帰・特徴量重要度・失敗事例分析で最適化する方針を書いた
+- `MEMORY.md` に、会話体験品質は人間評価と機械メトリクスの対応で最適化する判断を追記した
+
+### 詰まったこと・解決したこと
+- コード実装ではなく将来の評価設計なので、unit test は追加しなかった
+- Markdown 差分に trailing whitespace がないことを `git diff --check` で確認した
+
+### 次のセッションでやること
+- 評価実装へ進む場合は、`logs/evals/*.jsonl` の出力 DTO と `turn_id` / `session_id` の join 方針から着手する
+```
+
+---
+
+## 2026-05-24 セッション36
+
+### やること（開始時に書く）
+- 将来の最適化フェーズで使う会話体験評価設計を `_docs/evaluation.md` として追加する
+- 人間評価と機械メトリクスを結び、設定調整を定量化できる形にする
+
+### やったこと
 -
 
 ### 詰まったこと・解決したこと
@@ -17,9 +40,6 @@
 
 ### 次のセッションでやること
 -
-```
-
----
 
 ## 2026-05-24 セッション35
 
