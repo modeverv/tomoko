@@ -21,6 +21,64 @@
 
 ---
 
+## 2026-05-24 セッション35
+
+### やること（開始時に書く）
+- `Makefile` に `db-stop` / `db-down` / `db-dump` を追加する
+- `db-stop` / `db-up` / `db-down` / `db-dump` を実際に動作確認する
+
+### やったこと
+- `Makefile` に `db-stop` を追加した
+  - `$(COMPOSE) stop postgres`
+  - コンテナ停止のみ。volume は残す
+- `Makefile` に `db-down` を追加した
+  - `$(COMPOSE) down`
+  - コンテナと network を削除する。volume は削除しない
+- `Makefile` に `db-dump` を追加した
+  - `docker exec tomoko-postgres pg_dump -U tomoko -d tomoko`
+  - `logs/db-dumps/tomoko-YYYYMMDD-HHMMSS.sql` に保存する
+
+### 詰まったこと・解決したこと
+- dump は git 管理対象にしたくない
+  → 既存で ignore 済みの `logs/` 配下に保存するようにした
+- `db-down` 後に DB が戻るか不安が残る
+  → `db-down` 後に `db-up` し、既存テーブルが見えることを確認した
+
+### 検証
+- `make db-dump`
+- `make db-stop`
+- `make db-up`
+- `make db-down`
+- `make db-up`
+- `docker exec tomoko-postgres psql -U tomoko -d tomoko -c "\\dt"`
+
+### 次のセッションでやること
+- 追加対応なし
+
+## 2026-05-24 セッション34
+
+### やること（開始時に書く）
+- ルートの `docker-compose.yml` を `docker/` 配下へ移動できるか確認する
+- 移動する場合は `Makefile` の `db-up` が壊れないよう compose file の指定を更新する
+
+### やったこと
+- `docker-compose.yml` を `docker/docker-compose.yml` に移動した
+- `Makefile` に `COMPOSE = docker compose --project-directory . -f docker/docker-compose.yml` を追加した
+- `db-up` は `$(COMPOSE) up -d postgres` を使うようにした
+- `ARCHITECTURE.md` の構成図を `docker/docker-compose.yml` 前提に更新した
+
+### 詰まったこと・解決したこと
+- compose file を単純に `docker/` 配下へ移すと相対パスや compose project 名が変わる可能性がある
+  → `--project-directory .` を付け、build context / bind mount / volume project 名をルート基準のまま維持した
+
+### 検証
+- `docker compose --project-directory . -f docker/docker-compose.yml config`
+- `make db-up`
+- `git diff --check`
+
+### 次のセッションでやること
+- 追加対応なし
+
 ## 2026-05-24 セッション33
 
 ### やること（開始時に書く）
