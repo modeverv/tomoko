@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -23,6 +23,8 @@ ConversationLogStatus = Literal["completed", "interrupted", "cancelled", "error"
 SummaryStatus = Literal["not_ready", "pending", "processing", "completed", "error"]
 PersonaVersionStatus = Literal["completed", "error"]
 ContextDepth = Literal["fast", "normal", "deep", "reflective"]
+VadState = Literal["idle", "listening", "processing"]
+PlaybackState = Literal["idle", "speaking", "client_playing", "echo_grace"]
 
 
 @dataclass
@@ -74,6 +76,46 @@ class PlaybackTelemetry:
     sent_audio_time: float | None = None
     audio_context_time: float | None = None
     performance_now_ms: float | None = None
+
+
+@dataclass(frozen=True)
+class TomoroRuntimeState:
+    attention_mode: AttentionMode
+    vad_state: VadState
+    playback_state: PlaybackState
+    active_session_id: UUID | None
+    active_turn_id: str | None
+    speaking_turn_id: str | None
+    context_build_id: UUID | None
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(frozen=True)
+class SessionEvent:
+    type: str
+    payload: dict[str, Any] = field(default_factory=dict)
+    occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(frozen=True)
+class StateEmission:
+    type: str
+    payload: dict[str, Any]
+    state_snapshot: TomoroRuntimeState
+    occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(frozen=True)
+class SessionCommand:
+    type: str
+    payload: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class TransitionResult:
+    state: TomoroRuntimeState
+    emissions: list[StateEmission] = field(default_factory=list)
+    commands: list[SessionCommand] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

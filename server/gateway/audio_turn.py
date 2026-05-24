@@ -35,10 +35,30 @@ class AudioTurnController:
         return self._recent_tomoko_text
 
     @property
+    def active_turn_id(self) -> str | None:
+        return self._active_audio_turn_id
+
+    @property
+    def speaking_turn_id(self) -> str | None:
+        if self.is_tomoko_speaking():
+            return self._active_audio_turn_id
+        return None
+
+    @property
     def speaking_elapsed_ms(self) -> float:
         if self._tomoko_speaking_started_at is None:
             return 0.0
         return max(0.0, (time.monotonic() - self._tomoko_speaking_started_at) * 1000)
+
+    @property
+    def playback_state(self) -> str:
+        if self.is_client_playback_active():
+            return "client_playing"
+        if self.is_tomoko_speaking():
+            return "speaking"
+        if self.is_playback_echo_grace_active():
+            return "echo_grace"
+        return "idle"
 
     def begin_turn(self) -> None:
         self._active_audio_turn_id = uuid.uuid4().hex

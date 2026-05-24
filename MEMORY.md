@@ -1015,3 +1015,19 @@ cancel して prompt へ入れない。
 1 response あたりの context source 実行並列数は `ContextBuildPolicy.max_parallel_sources` で制限する。
 現時点では Redis や外部 queue は導入せず、単一サーバー運用の範囲で process-local cache と policy による
 parallelism 制御に留める。
+
+### 確定した判断: Phase 8.8.5 TomoroSession 状態管理の最小足場
+`TomoroSession` は本格 EventBus / event sourcing / 外部 pub-sub ではなく、まず内部だけを
+event-shaped runtime にする。
+
+`TomoroRuntimeState` / `SessionEvent` / `StateEmission` / `SessionCommand` / `TransitionResult` を DTO として追加し、
+`get_now_state()` と `post_event()` / `_reduce()` の入口を作った。
+
+初段では playback telemetry を `post_event()` 経由に寄せ、`playback_started` / `playback_ended` で
+active playback chunk と echo grace を更新する。
+transcript finalized は reducer 入口を用意し、active playback 中の echo と hard interrupt が
+`TransitionResult` の emissions / commands として観測できるところまでに留める。
+
+既存の実会話処理はまだ全面 command runner 化しない。
+DB write / context build / LLM / TTS / WebSocket send の実行分離は、M3 の自発発話や arrival で競合が増えてから
+event queue / drain loop と一緒に厚くする。

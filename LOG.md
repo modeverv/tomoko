@@ -4,6 +4,39 @@
 
 ---
 
+## 2026-05-24 セッション43
+
+### やること（開始時に書く）
+- M2 Phase 8.8.5: TomoroSession 状態管理の最小足場を実装する
+- `SessionEvent` / `TomoroRuntimeState` / `StateEmission` / `SessionCommand` / `TransitionResult` の DTO と `post_event()` / `_reduce()` の入口を追加する
+- 既存挙動を壊さず、playback telemetry などの状態変更入口を event-shaped runtime へ寄せる regression test を追加する
+- `pytest -m unit` で確認する
+
+### やったこと
+- `server/shared/models.py` に `TomoroRuntimeState` / `SessionEvent` / `StateEmission` / `SessionCommand` / `TransitionResult` を追加した
+- `TomoroSession.get_now_state()` と `post_event()` / `_reduce()` の最小入口を追加した
+- playback telemetry を `post_event()` 経由に寄せ、`handle_playback_telemetry()` は薄い互換入口にした
+- transcript finalized の reducer 入口を追加し、active playback 中の echo と hard interrupt を `TransitionResult` として観測できるようにした
+- `AudioTurnController` に runtime snapshot 用の read-only property を追加した
+- `tests/unit/test_phase885_session_runtime.py` を追加した
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` を更新した
+
+### 詰まったこと・解決したこと
+- 既存の実会話処理を一気に command runner 化すると変更範囲が大きすぎる
+  → Phase 8.8.5 では playback telemetry の実処理だけを `post_event()` 経由にし、transcript finalized は reducer で判断を観測できる最小足場に留めた
+- `AudioTurnController` の内部状態を runtime snapshot で読む必要があった
+  → 状態変更 API は増やさず、read-only property だけを追加した
+
+### 次のセッションでやること
+- M3 の自発発話や arrival で競合が増えたら、`post_event()` の先に event queue / drain loop と command runner を追加する
+- transcript finalized の既存 async 処理を command 実行に移す場合は、DB write / LLM / TTS / WebSocket send を段階的に `SessionCommand` 化する
+
+### 検証
+- `mise exec -- uv run ruff check server/shared/models.py server/gateway/audio_turn.py server/session.py tests/unit/test_phase885_session_runtime.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase885_session_runtime.py tests/unit/test_session_concurrency.py tests/unit/test_barge_in.py`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m perf --tb=short tests/perf/test_phase5_latency.py`
+
 ## テンプレート
 
 ```

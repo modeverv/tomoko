@@ -40,11 +40,16 @@ from server.shared.models import (
     ParticipationContext,
     ParticipationMode,
     PlaybackTelemetry,
+    SessionCommand,
+    SessionEvent,
     SessionSummaryHit,
     SpeechSegment,
+    StateEmission,
     ThinkingInput,
     TomokoContextSnapshot,
+    TomoroRuntimeState,
     Transcript,
+    TransitionResult,
     TTSInput,
 )
 from server.shared.persona import PersonaSnapshotStore
@@ -122,6 +127,7 @@ class TomoroSession:
         self._latency_first_audio_chunk_at: float | None = None
         self._reply_cancel_status: ConversationLogStatus | None = None
         self.active_conversation_session_id: UUID | None = None
+        self._context_build_id: UUID | None = None
 
     @property
     def _playback_echo_grace_ms(self) -> int:
@@ -140,6 +146,120 @@ class TomoroSession:
             self.latest_segment = result.segment
             await self._handle_finished_speech(result.segment)
         return result.segment
+
+    def get_now_state(self) -> TomoroRuntimeState:
+        """Return a read-only snapshot of the authoritative runtime state."""
+        return TomoroRuntimeState(
+            attention_mode=self.attention_mode,
+            vad_state=self.state,
+            playback_state=self.audio_turns.playback_state,  # type: ignore[arg-type]
+            active_session_id=self.active_conversation_session_id,
+            active_turn_id=self.audio_turns.active_turn_id,
+            speaking_turn_id=self.audio_turns.speaking_turn_id,
+            context_build_id=self._context_build_id,
+        )
+
+    async def post_event(self, event: SessionEvent) -> TransitionResult:
+        """Apply a session event through the minimal event-shaped runtime."""
+        result = self._reduce(event)
+        for command in result.commands:
+            if command.type == "record_playback_telemetry":
+                telemetry = command.payload.get("telemetry")
+                if isinstance(telemetry, PlaybackTelemetry):
+                    await self.audio_turns.handle_playback_telemetry(telemetry)
+        if event.type in {"playback_started", "playback_ended"}:
+            return self._transition_result(
+                event.type,
+                payload=_playback_payload(event),
+                commands=result.commands,
+            )
+        return result
+
+    def _reduce(self, event: SessionEvent) -> TransitionResult:
+        if event.type in {"playback_started", "playback_ended"}:
+            telemetry = _playback_telemetry_from_event(event)
+            return self._transition_result(
+                event.type,
+                payload=_playback_payload(event),
+                commands=[
+                    SessionCommand(
+                        type="record_playback_telemetry",
+                        payload={"telemetry": telemetry},
+                    )
+                ],
+            )
+        if event.type == "transcript_finalized":
+            return self._reduce_transcript_finalized(event)
+        return TransitionResult(state=self.get_now_state())
+
+    def _reduce_transcript_finalized(self, event: SessionEvent) -> TransitionResult:
+        transcript = event.payload.get("transcript")
+        if not isinstance(transcript, Transcript):
+            return TransitionResult(state=self.get_now_state())
+        decision = self._classify_barge_in(transcript)
+        if decision is None:
+            return self._transition_result(
+                "transcript_finalized",
+                payload={"text": transcript.text},
+            )
+        commands: list[SessionCommand] = []
+        if decision.action == "continue_speaking":
+            commands.append(
+                SessionCommand(
+                    type="write_ambient_observer",
+                    payload={
+                        "transcript": transcript,
+                        "reason": decision.reason,
+                    },
+                )
+            )
+        elif decision.action == "restart_turn":
+            commands.extend(
+                [
+                    SessionCommand(
+                        type="cancel_reply_generation",
+                        payload={"status": "interrupted"},
+                    ),
+                    SessionCommand(type="send_audio_control_stop"),
+                    SessionCommand(
+                        type="save_tomoko_turn",
+                        payload={"status": "interrupted"},
+                    ),
+                    SessionCommand(
+                        type="start_reply_generation",
+                        payload={"transcript": transcript},
+                    ),
+                ]
+            )
+        return self._transition_result(
+            "barge_in_resolved",
+            payload={
+                "kind": decision.kind,
+                "action": decision.action,
+                "reason": decision.reason,
+            },
+            commands=commands,
+        )
+
+    def _transition_result(
+        self,
+        emission_type: str,
+        *,
+        payload: dict[str, Any] | None = None,
+        commands: list[SessionCommand] | None = None,
+    ) -> TransitionResult:
+        state = self.get_now_state()
+        return TransitionResult(
+            state=state,
+            emissions=[
+                StateEmission(
+                    type=emission_type,
+                    payload=payload or {},
+                    state_snapshot=state,
+                )
+            ],
+            commands=commands or [],
+        )
 
     async def _handle_finished_speech(self, segment: SpeechSegment) -> None:
         if self.transcriber is None:
@@ -417,7 +537,19 @@ class TomoroSession:
                 self._tts_queue = None
 
     async def handle_playback_telemetry(self, telemetry: PlaybackTelemetry) -> None:
-        await self.audio_turns.handle_playback_telemetry(telemetry)
+        await self.post_event(
+            SessionEvent(
+                type=telemetry.type,
+                payload={
+                    "turn_id": telemetry.turn_id,
+                    "chunk_id": telemetry.chunk_id,
+                    "scheduled_audio_time": telemetry.scheduled_audio_time,
+                    "sent_audio_time": telemetry.sent_audio_time,
+                    "audio_context_time": telemetry.audio_context_time,
+                    "performance_now_ms": telemetry.performance_now_ms,
+                },
+            )
+        )
         logger.info(
             "TomoroSession playback telemetry type=%s turn_id=%s "
             "chunk_id=%s scheduled_audio_time=%s sent_audio_time=%s "
@@ -856,6 +988,51 @@ def _withdraw_decision(transcript: Transcript):
             reason="explicit_withdraw_request",
         )
     return None
+
+
+def _playback_telemetry_from_event(event: SessionEvent) -> PlaybackTelemetry:
+    if event.type not in {"playback_started", "playback_ended"}:
+        raise ValueError(f"not a playback event: {event.type}")
+    return PlaybackTelemetry(
+        type=event.type,  # type: ignore[arg-type]
+        turn_id=_optional_str_payload(event.payload.get("turn_id")),
+        chunk_id=_optional_int_payload(event.payload.get("chunk_id")),
+        scheduled_audio_time=_optional_float_payload(
+            event.payload.get("scheduled_audio_time")
+        ),
+        sent_audio_time=_optional_float_payload(event.payload.get("sent_audio_time")),
+        audio_context_time=_optional_float_payload(
+            event.payload.get("audio_context_time")
+        ),
+        performance_now_ms=_optional_float_payload(
+            event.payload.get("performance_now_ms")
+        ),
+    )
+
+
+def _playback_payload(event: SessionEvent) -> dict[str, Any]:
+    return {
+        "turn_id": event.payload.get("turn_id"),
+        "chunk_id": event.payload.get("chunk_id"),
+    }
+
+
+def _optional_str_payload(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _optional_int_payload(value: object) -> int | None:
+    if value is None:
+        return None
+    return int(value)
+
+
+def _optional_float_payload(value: object) -> float | None:
+    if value is None:
+        return None
+    return float(value)
 
 
 def _elapsed_ms(started_at: float | None) -> float:
