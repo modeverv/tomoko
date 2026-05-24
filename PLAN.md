@@ -1862,6 +1862,27 @@ async def test_privacy_never_goes_to_cloud():
 ---
 
 ## Phase 14: エッジ分離 + 回り込み除去
+edgeと中央の通信プロトコルはwebsocketとする。
+下記とする。
+```
+edge Python
+-> gateway Python に WebSocket 接続
+-> speech / presence / playback telemetry を JSON で送る
+-> 切れたら再接続
+-> 切断中の古い speech は基本捨てる
+
+gateway Python
+-> device_id ごとに接続管理
+-> event_id / transcript_id で重複排除
+-> observed_at が古すぎる event は捨てる
+-> TomoroSession に渡すのは fresh な text event だけ
+```
+- heartbeat: 5秒ごとに ping 的な JSON を送る
+- reconnect: 0.5s → 1s → 2s → 5s 上限で再接続
+- event_id: UUID で重複処理を防ぐ
+- observed_at: 古い発話を復旧後に処理しない
+
+--- 
 
 - [ ] `server/edge/main.py` をエッジ専用に整理
   - STT 結果をテキストで中央に送信（音声は外に出さない）
@@ -1931,38 +1952,6 @@ async def test_loudest_edge_is_primary():
 - 二重 STT / 回り込みが duplicate として抑制される
 - 音声 bytes が中央 DB / gateway に流れない
 - `pytest -m unit tests/unit/test_phase14_edge_split.py` が通る
-
-#### Phase 14 実装結果: 2026-05-24
-
-Phase 14 は、まず DB 契約と純粋判定器まで実装した。
-完全な edge / gateway 間 protocol 分離はまだ行わない。
-ブラウザは引き続き dumb client のままとし、判断ロジックは Python 側に残す。
-
-実装済み:
-- `presence_reports` / `edge_status` DDL
-- `PresenceReport` / `EdgeStatus` DTO
-- `InMemoryPresenceStore` / `PostgresPresenceStore`
-- `DirectSpeakerResolver`
-- `DuplicateSpeechFilter`
-- `PresenceManager`
-- `config/edge_kitchen.toml`
-- `make edge-kitchen` / `make gateway`
-
-境界:
-- presence / edge_status は `device_id` / `audio_level_db` / `observed_at` / `transcript_id` / optional transcript text だけを保存する
-- 音声 bytes は `presence_reports` / `edge_status` に保存しない
-- DirectSpeakerResolver は DB write を持たない純粋判定器
-- DuplicateSpeechFilter は時間窓、device 差、文字列類似度で duplicate を判定し、embedding 類似度を主判定にしない
-- hard interrupt keyword は duplicate より優先する
-
-未実装:
-- edge / gateway 間の独立 WebSocket protocol
-- STT 後 text event を gateway へ送る実 network adapter
-- central gateway process からの `TomoroSession` 完全分離
-
-検証:
-- `pytest -m unit tests/unit/test_phase14_edge_split.py`
-- `pytest -m integration tests/integration/test_phase14_presence_db.py`
 
 ---
 
