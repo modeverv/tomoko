@@ -26,7 +26,11 @@ from server.gateway.thinking.fast import ThinkFastMode
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.session import TomoroSession
 from server.shared.config import NodeConfig
-from server.shared.db import PostgresAmbientLogWriter, PostgresConversationLogWriter
+from server.shared.db import (
+    PostgresAmbientLogWriter,
+    PostgresConversationLogWriter,
+    PostgresConversationSessionStore,
+)
 from server.shared.inference.embedding import EmbeddingBackend, create_embedding_backend
 from server.shared.inference.router import InferenceRouter
 from server.shared.inference.tts import create_tts_backend
@@ -220,6 +224,11 @@ async def websocket_session(websocket: WebSocket) -> None:
         "memory_store_factory",
         _create_default_memory_store,
     )
+    conversation_session_store_factory = getattr(
+        app.state,
+        "conversation_session_store_factory",
+        _create_default_conversation_session_store,
+    )
     barge_in_detector_factory = getattr(
         app.state,
         "barge_in_detector_factory",
@@ -233,6 +242,7 @@ async def websocket_session(websocket: WebSocket) -> None:
         participation_judge=participation_judge_factory(),
         ambient_log_writer=ambient_log_writer_factory(),
         conversation_log_writer=conversation_log_writer_factory(),
+        conversation_session_store=conversation_session_store_factory(),
         router=router_factory(),
         thinking_mode=thinking_mode_factory(),
         deep_thinking_mode=deep_thinking_mode_factory(),
@@ -402,6 +412,11 @@ def _create_default_ambient_log_writer() -> PostgresAmbientLogWriter:
 def _create_default_conversation_log_writer() -> PostgresConversationLogWriter:
     config = _load_config()
     return PostgresConversationLogWriter(config.database.dsn)
+
+
+def _create_default_conversation_session_store() -> PostgresConversationSessionStore:
+    config = _load_config()
+    return PostgresConversationSessionStore(config.database.dsn)
 
 
 async def _handle_client_text_event(session: TomoroSession, text: str) -> None:

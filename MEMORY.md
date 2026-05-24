@@ -937,3 +937,15 @@ stale として捨てる。
 人間評価をゴールドとして、相関・回帰・特徴量重要度から各部品の寄与とトレードオフを分析する。
 
 評価設計の初期案は `_docs/evaluation.md` に置く。
+
+### 確定した判断: Phase 8.5 の会話セッション境界実装
+`conversation_sessions` を会話のまとまりとして追加し、`conversation_logs.conversation_session_id` で role 行を紐づける。
+既存ログは過去 session を推定せず NULL のまま維持する。
+
+オンライン経路の `TomoroSession` は session の開始・終了だけを担当する。
+最初の参加発話で active session を作り、follow-up 中は再利用する。
+`cooldown -> ambient` では `end_reason='attention_timeout'`、`withdrawn` では `end_reason='withdrawn'` として閉じ、
+閉じた session は `summary_status='pending'` にする。
+
+短期文脈は active session の completed turn を優先し、足りない場合だけ最近の completed turn で補う。
+`ThinkingInput.context` の DTO 契約と WebSocket protocol は変更しない。

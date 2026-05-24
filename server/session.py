@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from typing import Any, Literal
+from uuid import UUID
 
 import numpy as np
 
@@ -20,7 +21,7 @@ from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
 from server.gateway.thinking.base import ThinkingMode
 from server.gateway.thinking.selector import should_use_deep_memory
 from server.gateway.turn_taking.barge_in import BargeInDetector
-from server.shared.db import AmbientLogWriter, ConversationLogWriter
+from server.shared.db import AmbientLogWriter, ConversationLogWriter, ConversationSessionStore
 from server.shared.inference.embedding.base import EmbeddingBackend
 from server.shared.inference.router import InferenceRouter
 from server.shared.inference.tts.base import TTSBackend
@@ -33,6 +34,7 @@ from server.shared.models import (
     ConversationLogStatus,
     ConversationTurn,
     ParticipationContext,
+    ParticipationMode,
     PlaybackTelemetry,
     SpeechSegment,
     ThinkingInput,
@@ -58,6 +60,7 @@ class TomoroSession:
         participation_judge: ParticipationJudge | None = None,
         ambient_log_writer: AmbientLogWriter | None = None,
         conversation_log_writer: ConversationLogWriter | None = None,
+        conversation_session_store: ConversationSessionStore | None = None,
         router: InferenceRouter | None = None,
         thinking_mode: ThinkingMode | None = None,
         deep_thinking_mode: ThinkingMode | None = None,
@@ -78,6 +81,7 @@ class TomoroSession:
         self.participation_judge = participation_judge
         self.ambient_log_writer = ambient_log_writer
         self.conversation_log_writer = conversation_log_writer
+        self.conversation_session_store = conversation_session_store
         self.router = router
         self.thinking_mode = thinking_mode
         self.deep_thinking_mode = deep_thinking_mode
@@ -106,6 +110,7 @@ class TomoroSession:
         self._latency_tts_start_at: float | None = None
         self._latency_first_audio_chunk_at: float | None = None
         self._reply_cancel_status: ConversationLogStatus | None = None
+        self.active_conversation_session_id: UUID | None = None
 
     @property
     def _playback_echo_grace_ms(self) -> int:
@@ -220,10 +225,14 @@ class TomoroSession:
                 decision.mode,
                 decision.reason,
             )
+            await self._ensure_conversation_session(
+                device_id=transcript.device_id,
+                start_reason=decision.mode,
+            )
             await self._transition_attention("engaged")
             await self._send_event({"type": "participation", "mode": decision.mode})
             if self.conversation_log_writer is not None:
-                conversation_log_id = await self.conversation_log_writer.write_user_turn(
+                conversation_log_id = await self._write_user_turn(
                     transcript,
                     participation_mode=decision.mode,
                 )
@@ -436,6 +445,10 @@ class TomoroSession:
         self._note_attention_activity()
         logger.info("TomoroSession attention changed from %s to %s", old_mode, mode)
         await self._send_event({"type": "attention", "mode": mode})
+        if mode == "ambient" and old_mode == "cooldown":
+            await self._close_conversation_session(end_reason="attention_timeout")
+        elif mode == "withdrawn":
+            await self._close_conversation_session(end_reason="withdrawn")
 
     def _note_attention_activity(self) -> None:
         self._attention_idle_ms = 0.0
@@ -664,10 +677,91 @@ class TomoroSession:
         if read_recent_turns is None:
             return []
 
-        turns = await read_recent_turns(limit=RECENT_CONTEXT_TURN_LIMIT + 1)
-        if turns and turns[-1].speaker == "user" and turns[-1].text == transcript.text:
-            turns = turns[:-1]
-        return turns[-RECENT_CONTEXT_TURN_LIMIT:]
+        current_session_id = self.active_conversation_session_id
+        session_turns: list[ConversationTurn] = []
+        if current_session_id is not None:
+            read_session_turns = getattr(
+                self.conversation_log_writer,
+                "read_recent_turns_for_session",
+                None,
+            )
+            if read_session_turns is not None:
+                session_turns = await read_session_turns(
+                    conversation_session_id=current_session_id,
+                    limit=RECENT_CONTEXT_TURN_LIMIT + 1,
+                )
+                session_turns = _drop_current_user_turn(session_turns, transcript)
+
+        if len(session_turns) >= RECENT_CONTEXT_TURN_LIMIT:
+            return session_turns[-RECENT_CONTEXT_TURN_LIMIT:]
+
+        recent_turns = await read_recent_turns(limit=RECENT_CONTEXT_TURN_LIMIT + 1)
+        recent_turns = _drop_current_user_turn(recent_turns, transcript)
+        supplement_limit = RECENT_CONTEXT_TURN_LIMIT - len(session_turns)
+        supplement = [
+            turn
+            for turn in recent_turns
+            if not _same_context_turn_exists(turn, session_turns)
+        ][-supplement_limit:]
+        return (supplement + session_turns)[-RECENT_CONTEXT_TURN_LIMIT:]
+
+    async def _ensure_conversation_session(
+        self,
+        *,
+        device_id: str,
+        start_reason: str,
+    ) -> UUID | None:
+        if self.active_conversation_session_id is not None:
+            return self.active_conversation_session_id
+        if self.conversation_session_store is None:
+            return None
+        session_id = await self.conversation_session_store.create_session(
+            device_id=device_id,
+            start_reason=start_reason,
+        )
+        self.active_conversation_session_id = session_id
+        logger.info(
+            "TomoroSession conversation session started id=%s reason=%s device_id=%s",
+            session_id,
+            start_reason,
+            device_id,
+        )
+        return session_id
+
+    async def _close_conversation_session(self, *, end_reason: str) -> None:
+        session_id = self.active_conversation_session_id
+        if session_id is None:
+            return
+        if self.conversation_session_store is not None:
+            await self.conversation_session_store.close_session(
+                session_id,
+                end_reason=end_reason,
+            )
+        self.active_conversation_session_id = None
+        logger.info(
+            "TomoroSession conversation session closed id=%s reason=%s",
+            session_id,
+            end_reason,
+        )
+
+    async def _write_user_turn(
+        self,
+        transcript: Transcript,
+        *,
+        participation_mode: ParticipationMode,
+    ) -> UUID | None:
+        assert self.conversation_log_writer is not None
+        write_user_turn = self.conversation_log_writer.write_user_turn
+        if _accepts_keyword(write_user_turn, "conversation_session_id"):
+            return await write_user_turn(
+                transcript,
+                participation_mode=participation_mode,
+                conversation_session_id=self.active_conversation_session_id,
+            )
+        return await write_user_turn(
+            transcript,
+            participation_mode=participation_mode,
+        )
 
     async def _write_tomoko_turn(
         self,
@@ -679,12 +773,22 @@ class TomoroSession:
     ) -> None:
         if self.conversation_log_writer is None:
             return
-        conversation_log_id = await self.conversation_log_writer.write_tomoko_turn(
-            text=text,
-            emotion=emotion,
-            device_id=device_id,
-            status=status,
-        )
+        write_tomoko_turn = self.conversation_log_writer.write_tomoko_turn
+        if _accepts_keyword(write_tomoko_turn, "conversation_session_id"):
+            conversation_log_id = await write_tomoko_turn(
+                text=text,
+                emotion=emotion,
+                device_id=device_id,
+                status=status,
+                conversation_session_id=self.active_conversation_session_id,
+            )
+        else:
+            conversation_log_id = await write_tomoko_turn(
+                text=text,
+                emotion=emotion,
+                device_id=device_id,
+                status=status,
+            )
         if status == "completed" and conversation_log_id is not None:
             self._schedule_conversation_embedding(
                 conversation_log_id=conversation_log_id,
@@ -770,3 +874,32 @@ def _elapsed_ms(started_at: float | None) -> float:
     if started_at is None:
         return 0.0
     return (time.perf_counter() - started_at) * 1000
+
+
+def _drop_current_user_turn(
+    turns: list[ConversationTurn],
+    transcript: Transcript,
+) -> list[ConversationTurn]:
+    if turns and turns[-1].speaker == "user" and turns[-1].text == transcript.text:
+        return turns[:-1]
+    return turns
+
+
+def _same_context_turn_exists(
+    turn: ConversationTurn,
+    others: list[ConversationTurn],
+) -> bool:
+    return any(
+        other.speaker == turn.speaker
+        and other.text == turn.text
+        and other.timestamp == turn.timestamp
+        for other in others
+    )
+
+
+def _accepts_keyword(callable_obj: Callable[..., Any], keyword: str) -> bool:
+    signature = inspect.signature(callable_obj)
+    return keyword in signature.parameters or any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )

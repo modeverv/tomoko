@@ -26,6 +26,44 @@
 
 ---
 
+## 2026-05-24 セッション37
+
+### やること（開始時に書く）
+- M2 Phase 8.5: 会話セッション境界を実装する
+- `conversation_sessions` と `conversation_logs.conversation_session_id` を追加する
+- `TomoroSession` で active conversation session を開始・終了し、同一 session の文脈を優先して読む
+
+### やったこと
+- `docker/postgres/init/004_conversation_sessions.sql` を追加した
+  - `conversation_sessions` を作成し、summary fields と `summary_embedding vector(384)` を同じ行に持たせた
+  - `conversation_logs.conversation_session_id` と session / recorded_at index を追加した
+- `PostgresConversationSessionStore` を追加した
+  - session 開始と終了を DB に保存する
+  - 終了時に `summary_status='pending'` へ進める
+- `TomoroSession` に `active_conversation_session_id` を追加した
+  - 最初の参加発話で session を開始する
+  - follow-up では同じ active session を再利用する
+  - `cooldown -> ambient` と `withdrawn` で session を閉じる
+- user / tomoko turn 保存時に active session ID を紐づけるようにした
+- 短期文脈読み出しを、同一 session 優先 + 不足分だけ recent completed turn で補完する形にした
+- `tests/unit/test_phase85_conversation_sessions.py` を追加した
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` を更新した
+
+### 詰まったこと・解決したこと
+- 既存 unit test の in-memory `ConversationLogWriter` は `conversation_session_id` 引数を持たないものが多い
+  → `TomoroSession` 側で writer の signature を見て、対応している writer にだけ keyword を渡す互換レイヤにした
+- `conversation_sessions` の DDL は既存 `conversation_logs` 作成後に外部キーを張る必要がある
+  → `004_conversation_sessions.sql` として追加し、ローカル PostgreSQL に適用して確認した
+
+### 次のセッションでやること
+- Phase 8.6 に進む場合は、online 経路では要約を呼ばず、`summary_status='pending'` の session を background worker が拾うテストから始める
+
+### 検証
+- `docker exec -i tomoko-postgres psql -U tomoko -d tomoko < docker/postgres/init/004_conversation_sessions.sql`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m perf --tb=short tests/perf/test_phase5_latency.py`
+
 ## 2026-05-24 セッション36
 
 ### やること（開始時に書く）

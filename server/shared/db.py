@@ -32,6 +32,7 @@ class ConversationLogWriter(Protocol):
         transcript: Transcript,
         *,
         participation_mode: ParticipationMode,
+        conversation_session_id: UUID | None = None,
     ) -> UUID | None: ...
 
     async def write_tomoko_turn(
@@ -41,9 +42,23 @@ class ConversationLogWriter(Protocol):
         emotion: str,
         device_id: str,
         status: ConversationLogStatus = "completed",
+        conversation_session_id: UUID | None = None,
     ) -> UUID | None: ...
 
     async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]: ...
+
+    async def read_recent_turns_for_session(
+        self,
+        *,
+        conversation_session_id: UUID,
+        limit: int,
+    ) -> list[ConversationTurn]: ...
+
+
+class ConversationSessionStore(Protocol):
+    async def create_session(self, *, device_id: str, start_reason: str) -> UUID: ...
+
+    async def close_session(self, session_id: UUID, *, end_reason: str) -> None: ...
 
 
 class PostgresAmbientLogWriter:
@@ -115,6 +130,7 @@ class PostgresConversationLogWriter:
         transcript: Transcript,
         *,
         participation_mode: ParticipationMode,
+        conversation_session_id: UUID | None = None,
     ) -> UUID | None:
         async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
             async with conn.cursor() as cur:
@@ -127,9 +143,10 @@ class PostgresConversationLogWriter:
                         role,
                         transcript,
                         emotion,
-                        participation_mode
+                        participation_mode,
+                        conversation_session_id
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
                     (
@@ -140,6 +157,7 @@ class PostgresConversationLogWriter:
                         transcript.text,
                         None,
                         participation_mode,
+                        conversation_session_id,
                     ),
                 )
                 row = await cur.fetchone()
@@ -152,6 +170,7 @@ class PostgresConversationLogWriter:
         emotion: str,
         device_id: str,
         status: ConversationLogStatus = "completed",
+        conversation_session_id: UUID | None = None,
     ) -> UUID | None:
         async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
             async with conn.cursor() as cur:
@@ -164,9 +183,10 @@ class PostgresConversationLogWriter:
                         transcript,
                         emotion,
                         participation_mode,
-                        status
+                        status,
+                        conversation_session_id
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
                     (
@@ -177,6 +197,7 @@ class PostgresConversationLogWriter:
                         emotion,
                         "invited",
                         status,
+                        conversation_session_id,
                     ),
                 )
                 row = await cur.fetchone()
@@ -211,6 +232,83 @@ class PostgresConversationLogWriter:
             )
         return turns
 
+    async def read_recent_turns_for_session(
+        self,
+        *,
+        conversation_session_id: UUID,
+        limit: int,
+    ) -> list[ConversationTurn]:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT role, transcript, recorded_at, emotion
+                    FROM conversation_logs
+                    WHERE status = 'completed'
+                      AND conversation_session_id = %s
+                    ORDER BY recorded_at DESC
+                    LIMIT %s
+                    """,
+                    (conversation_session_id, limit),
+                )
+                rows = await cur.fetchall()
+
+        turns: list[ConversationTurn] = []
+        for role, transcript, recorded_at, emotion in reversed(rows):
+            if role not in {"user", "tomoko"}:
+                continue
+            turns.append(
+                ConversationTurn(
+                    speaker=role,
+                    text=transcript,
+                    timestamp=recorded_at,
+                    emotion=emotion,
+                )
+            )
+        return turns
+
+
+class PostgresConversationSessionStore:
+    def __init__(self, dsn: str) -> None:
+        self.dsn = dsn
+
+    async def create_session(self, *, device_id: str, start_reason: str) -> UUID:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO conversation_sessions (
+                        device_id,
+                        start_reason,
+                        summary_status
+                    )
+                    VALUES (%s, %s, 'not_ready')
+                    RETURNING id
+                    """,
+                    (device_id, start_reason),
+                )
+                row = await cur.fetchone()
+                if row is None:
+                    raise RuntimeError("conversation session insert returned no id")
+                return row[0]
+
+    async def close_session(self, session_id: UUID, *, end_reason: str) -> None:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE conversation_sessions
+                    SET ended_at = COALESCE(ended_at, now()),
+                        end_reason = COALESCE(end_reason, %s),
+                        summary_status = CASE
+                            WHEN summary_status = 'not_ready' THEN 'pending'
+                            ELSE summary_status
+                        END
+                    WHERE id = %s
+                    """,
+                    (end_reason, session_id),
+                )
+
 
 class NullConversationLogWriter:
     async def write_user_turn(
@@ -218,8 +316,9 @@ class NullConversationLogWriter:
         transcript: Transcript,
         *,
         participation_mode: ParticipationMode,
+        conversation_session_id: UUID | None = None,
     ) -> UUID | None:
-        del transcript, participation_mode
+        del transcript, participation_mode, conversation_session_id
         return None
 
     async def write_tomoko_turn(
@@ -229,10 +328,30 @@ class NullConversationLogWriter:
         emotion: str,
         device_id: str,
         status: ConversationLogStatus = "completed",
+        conversation_session_id: UUID | None = None,
     ) -> UUID | None:
-        del text, emotion, device_id, status
+        del text, emotion, device_id, status, conversation_session_id
         return None
 
     async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]:
         del limit
         return []
+
+    async def read_recent_turns_for_session(
+        self,
+        *,
+        conversation_session_id: UUID,
+        limit: int,
+    ) -> list[ConversationTurn]:
+        del conversation_session_id, limit
+        return []
+
+
+class NullConversationSessionStore:
+    async def create_session(self, *, device_id: str, start_reason: str) -> UUID:
+        del device_id, start_reason
+        raise RuntimeError("NullConversationSessionStore cannot create sessions")
+
+    async def close_session(self, session_id: UUID, *, end_reason: str) -> None:
+        del session_id, end_reason
+        return None
