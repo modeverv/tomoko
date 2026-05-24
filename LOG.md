@@ -4,6 +4,47 @@
 
 ---
 
+## 2026-05-25 セッション6
+
+### やること（開始時に書く）
+- `lfm2.5-1.2b-jp-mlx` の `MLXLMBackend` 実モデル latency を実測する
+- cold model load / warm-up / warm first text delta / total を測り、`_docs/latency.md` と `MEMORY.md` に追記する
+- 実行構成の切り替えは必要最小限にし、Phase 10.5 の session runtime 実装には触れない
+
+### やったこと
+- 最初の `lfm2.5-1.2b-jp-mlx` model id では Hugging Face repo が見つからないことを確認した
+- 公式 MLX repo id `LiquidAI/LFM2.5-1.2B-JP-MLX-bf16` に `config/central_realtime.toml` を補正した
+- `MLXLMBackend` の `mlx_lm.stream_generate()` 呼び出しを、現行 `mlx-lm` API に合わせて `sampler=make_sampler(...)` 方式へ修正した
+- `conversation_backend` を `local_lfm25_12b_jp_mlx` に切り替えた
+- LFM backend 単体の cold / warm latency を `logs/lfm25-mlx-latency-smoke.json` に保存した
+- FastAPI startup warm-up 経路で STT / TTS / LFM conversation / embedding の warm-up 時間を測り、`logs/lfm25-startup-warmup-smoke.log` に保存した
+- `MEMORY.md` / `_docs/latency.md` に実 repo id と実測値を追記した
+
+### 詰まったこと・解決したこと
+- `lfm2.5-1.2b-jp-mlx` は短い呼び名としては通じるが、`mlx_lm.load()` に渡せる repo id ではなかった
+  → 公式ページで確認できる `LiquidAI/LFM2.5-1.2B-JP-MLX-bf16` を採用した
+- `stream_generate(..., temperature=0.0)` は現行 `mlx-lm` で `generate_step()` に通らなかった
+  → `make_sampler(temp=0.0)` を作って `sampler=` として渡す形に修正した
+
+### 次のセッションでやること
+- Chrome 実セッションで `TomoroSession latency first_reply_text` と `first_audio_chunk` を確認し、体感品質と E2E を記録する
+
+### 検証
+- LFM backend smoke: cold first delta 4435.9ms / total 4485.4ms、warm first delta avg 26.6ms / total avg 76.0ms
+- Startup warm-up: STT 2318.7ms、Kokoro 662.8ms、LFM conversation 3398.9ms、embedding 7291.9ms、total 13673.4ms
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+
+### 追記: ユーザー指定の LM Studio community 4bit 版へ切り替え
+- ユーザー指定により `local_lfm25_12b_jp_mlx.model` を `lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit` に変更した
+- Hugging Face model card で MLX / 4-bit / `mlx_lm` 利用可能であることを確認した
+- LFM 4bit backend 単体の cold / warm latency を `logs/lfm25-4bit-mlx-latency-smoke.json` に保存した
+- FastAPI startup warm-up 経路の結果を `logs/lfm25-4bit-startup-warmup-smoke.log` に保存した
+- LFM 4bit smoke: cold first delta 19022.9ms / total 19041.4ms、warm first delta avg 20.6ms / total avg 39.0ms
+- Startup warm-up: STT 1936.1ms、Kokoro 321.6ms、LFM 4bit conversation 3478.3ms、embedding 7085.3ms、total 12822.4ms
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+
 ## 2026-05-25 セッション5
 
 ### やること（開始時に書く）

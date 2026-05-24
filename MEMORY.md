@@ -1346,3 +1346,19 @@ Phase 10.5 の開始理由は、runtime state / command payload では
 priority policy は `TomoroSession` に閉じ込める。
 hard interrupt は active playback echo より優先し、withdrawn は follow-up / initiative を抑制し、
 human transcript 後に遅れて届く initiative / arrival result は `not_speakable` または `stale_result` に倒す。
+
+### 確定した判断: LFM 2.5 1.2B JP MLX の実 repo id と採用
+上の「`lfm2.5-1.2b-jp-mlx` を使う」という表記は、人間向けの短い呼び名としては維持できるが、
+Hugging Face / `mlx_lm.load()` に渡す repo id としては誤りだったため否定する。
+
+一度 `LiquidAI/LFM2.5-1.2B-JP-MLX-bf16` で実測したが、ユーザー指定により
+`lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit` を正式採用する。
+Hugging Face の model card でも MLX 4-bit 版として案内されており、`mlx_lm.load()` で利用できる。
+
+`config/central_realtime.toml` の `local_lfm25_12b_jp_mlx.model` は
+`lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit` とし、`conversation_backend` は
+`local_lfm25_12b_jp_mlx` のまま維持する。
+
+キャッシュ済み実測では、プロセス内 cold load + generate の first delta は 19022.9ms、total は 19041.4ms。
+同一 backend instance の warm 生成は first delta 20.6ms、total 39.0ms 平均だった。
+FastAPI startup warm-up 経路では LFM conversation warm-up が 3478.3ms で、WebSocket 接続前に前払いできる。

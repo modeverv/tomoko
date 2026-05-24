@@ -84,13 +84,14 @@ def _stream_generate(
     max_tokens: int,
 ):
     from mlx_lm import stream_generate
+    from mlx_lm.sample_utils import make_sampler
 
     yield from stream_generate(
         model,
         tokenizer,
         prompt,
         max_tokens=max_tokens,
-        temperature=0.0,
+        sampler=make_sampler(temp=0.0),
     )
 
 

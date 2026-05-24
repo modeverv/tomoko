@@ -28,7 +28,7 @@ async def test_mlx_lm_backend_streams_with_chat_template() -> None:
     prompts: list[str] = []
 
     def load_model(model_name: str):
-        assert model_name == "lfm2.5-1.2b-jp-mlx"
+        assert model_name == "lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit"
         return object(), FakeTokenizer()
 
     def stream_generate(_model, _tokenizer, prompt: str, max_tokens: int):
@@ -39,7 +39,7 @@ async def test_mlx_lm_backend_streams_with_chat_template() -> None:
 
     backend = MLXLMBackend(
         name="local_lfm",
-        model="lfm2.5-1.2b-jp-mlx",
+        model="lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit",
         model_loader=load_model,
         stream_generator=stream_generate,
     )
@@ -69,11 +69,11 @@ async def test_mlx_lm_backend_warm_up_uses_streaming_path() -> None:
 
     backend = MLXLMBackend(
         name="local_lfm",
-        model="lfm2.5-1.2b-jp-mlx",
+        model="lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit",
         model_loader=load_model,
         stream_generator=stream_generate,
     )
 
     await backend.warm_up()
 
-    assert calls == ["lfm2.5-1.2b-jp-mlx"]
+    assert calls == ["lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit"]
