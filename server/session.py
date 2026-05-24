@@ -45,6 +45,7 @@ from server.shared.models import (
     SessionEvent,
     SessionSummaryHit,
     SpeechSegment,
+    StartReason,
     StateEmission,
     ThinkingInput,
     TomokoContextSnapshot,
@@ -136,6 +137,7 @@ class TomoroSession:
         self._candidate_request_sequence = 0
         self._active_initiative_request_id: str | None = None
         self._active_arrival_request_id: str | None = None
+        self._last_start_reason: StartReason | None = None
 
     @property
     def _playback_echo_grace_ms(self) -> int:
@@ -165,6 +167,7 @@ class TomoroSession:
             active_turn_id=self.audio_turns.active_turn_id,
             speaking_turn_id=self.audio_turns.speaking_turn_id,
             context_build_id=self._context_build_id,
+            last_start_reason=self._last_start_reason,
         )
 
     async def post_event(self, event: SessionEvent) -> TransitionResult:
@@ -251,6 +254,7 @@ class TomoroSession:
                     type="fetch_initiative_candidate",
                     payload={
                         "reason": "initiative",
+                        "start_reason": "initiative",
                         "request_id": self._new_candidate_request_id("initiative"),
                     },
                 )
@@ -277,6 +281,7 @@ class TomoroSession:
                     type="fetch_arrival_candidate",
                     payload={
                         "reason": "arrival",
+                        "start_reason": "arrival",
                         "device_id": event.payload.get("device_id"),
                         "request_id": self._new_candidate_request_id("arrival"),
                     },
@@ -338,6 +343,7 @@ class TomoroSession:
                 ],
             )
 
+        self._set_start_reason("initiative")
         return self._transition_result(
             "initiative_reply_requested",
             payload={"candidate_id": candidate.id},
@@ -349,6 +355,7 @@ class TomoroSession:
                         "text": candidate.generated_text,
                         "generated_audio": candidate.generated_audio,
                         "reason": "initiative",
+                        "start_reason": "initiative",
                         "started_by": "initiative",
                     },
                 ),
@@ -358,6 +365,7 @@ class TomoroSession:
                         "candidate_id": candidate.id,
                         "spoken_at": event.occurred_at,
                         "reason": "initiative",
+                        "start_reason": "initiative",
                     },
                 ),
             ],
@@ -402,6 +410,7 @@ class TomoroSession:
                 "arrival_candidate_id": candidate.id,
                 "used_at": event.occurred_at,
                 "reason": "arrival",
+                "start_reason": "arrival",
             },
         )
         if candidate.behavior == "wait_silent":
@@ -426,6 +435,7 @@ class TomoroSession:
                 commands=[mark_used],
             )
 
+        self._set_start_reason("arrival")
         return self._transition_result(
             "arrival_reply_requested",
             payload={"arrival_candidate_id": candidate.id},
@@ -437,6 +447,7 @@ class TomoroSession:
                         "text": candidate.utterance_text,
                         "generated_audio": candidate.utterance_audio,
                         "reason": "arrival",
+                        "start_reason": "arrival",
                         "started_by": "arrival",
                     },
                 ),
@@ -473,6 +484,9 @@ class TomoroSession:
             else self._active_arrival_request_id
         )
         return str(request_id) != active_request_id
+
+    def _set_start_reason(self, reason: StartReason) -> None:
+        self._last_start_reason = reason
 
     def _reduce_transcript_finalized(self, event: SessionEvent) -> TransitionResult:
         transcript = event.payload.get("transcript")
@@ -644,6 +658,8 @@ class TomoroSession:
             await self._transition_attention("withdrawn")
 
         if decision is not None and decision.should_participate:
+            start_reason = _start_reason_from_participation_mode(decision.mode)
+            self._set_start_reason(start_reason)
             logger.info(
                 "TomoroSession participation mode=%s reason=%s",
                 decision.mode,
@@ -651,7 +667,7 @@ class TomoroSession:
             )
             await self._ensure_conversation_session(
                 device_id=transcript.device_id,
-                start_reason=decision.mode,
+                start_reason=start_reason,
             )
             await self._transition_attention("engaged")
             await self._send_event({"type": "participation", "mode": decision.mode})
@@ -1324,6 +1340,14 @@ def _withdraw_decision(transcript: Transcript):
             reason="explicit_withdraw_request",
         )
     return None
+
+
+def _start_reason_from_participation_mode(mode: ParticipationMode) -> StartReason:
+    if mode == "called":
+        return "wake_word"
+    if mode == "invited":
+        return "followup"
+    raise ValueError(f"participation mode does not start a reply: {mode}")
 
 
 def _playback_telemetry_from_event(event: SessionEvent) -> PlaybackTelemetry:

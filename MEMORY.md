@@ -1331,3 +1331,18 @@ LFM は causal LM 系の MLX model として `mlx_lm.load()` / `mlx_lm.stream_ge
 `config/central_realtime.toml` には `local_lfm25_12b_jp_mlx` を定義したが、10.5 作業中の実行構成を
 変えないため、現時点では default `conversation_backend` は `lmstudio_gemma4_e2b` のまま維持する。
 切り替える場合は `conversation_backend = "local_lfm25_12b_jp_mlx"` に変更してから warm-up と実測を行う。
+
+### 確定した判断: Phase 10.5 の開始理由と priority policy
+Phase 10.5 の開始理由は、runtime state / command payload では
+`wake_word` / `followup` / `initiative` / `arrival` / `resume_unspoken` に正規化する。
+
+`ParticipationDecision.mode` の `called` / `invited` は ambient log や user turn の参加モードとして残すが、
+`TomoroRuntimeState.last_start_reason` と `conversation_sessions.start_reason` では
+`wake_word` / `followup` を使う。
+
+`resume_unspoken` は現時点では予約語であり、interrupted turn や diary 由来 candidate を実際に再提示する経路は
+別 Phase で実装する。
+
+priority policy は `TomoroSession` に閉じ込める。
+hard interrupt は active playback echo より優先し、withdrawn は follow-up / initiative を抑制し、
+human transcript 後に遅れて届く initiative / arrival result は `not_speakable` または `stale_result` に倒す。

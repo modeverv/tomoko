@@ -6,11 +6,15 @@ from datetime import UTC, datetime, timedelta
 import numpy as np
 import pytest
 
-from server.edge.pipeline.vad import VADProcessor
 from server.edge.participation.wake_word import WakeWordJudge
+from server.edge.pipeline.vad import VADProcessor
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.session import TomoroSession
-from server.shared.candidate import ArrivalCandidate, ArrivalContextSnapshot, UtteranceCandidate
+from server.shared.candidate import (
+    ArrivalCandidate,
+    ArrivalContextSnapshot,
+    UtteranceCandidate,
+)
 from server.shared.models import SessionEvent, Transcript, TransitionResult
 
 

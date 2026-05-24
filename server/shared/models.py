@@ -9,6 +9,13 @@ import numpy as np
 
 AttentionMode = Literal["ambient", "engaged", "cooldown", "withdrawn"]
 ParticipationMode = Literal["called", "invited", "observer", "withdraw"]
+StartReason = Literal[
+    "wake_word",
+    "followup",
+    "initiative",
+    "arrival",
+    "resume_unspoken",
+]
 BargeInKind = Literal[
     "echo",
     "backchannel",
@@ -87,6 +94,7 @@ class TomoroRuntimeState:
     active_turn_id: str | None
     speaking_turn_id: str | None
     context_build_id: UUID | None
+    last_start_reason: StartReason | None = None
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 

@@ -11,6 +11,32 @@
 - `wake_word` / `followup` / `initiative` / `arrival` / `resume_unspoken` を runtime state と command payload の共通語彙として固定する
 - hard interrupt / withdrawn / human transcript / stale result の優先順位を unit test で明示する
 
+### やったこと
+- `StartReason` を追加し、`TomoroRuntimeState.last_start_reason` で直近の開始理由を読めるようにした
+- human transcript の `called` / `invited` を runtime 上では `wake_word` / `followup` に正規化した
+- conversation session の `start_reason` も `wake_word` / `followup` に寄せた
+- initiative / arrival の fetch / start / mark command payload に `start_reason` を追加した
+- `resume_unspoken` は共通語彙として予約し、実際の再提示経路はまだ追加しない形にした
+- priority policy のうち、hard interrupt > playback echo、withdrawn > follow-up / initiative、human transcript > delayed initiative、current request > stale result を unit test で固定した
+- `PLAN.md` の該当チェックボックスを更新し、`MEMORY.md` に判断を追記した
+
+### 詰まったこと・解決したこと
+- `called` / `invited` を消すと ambient log や user turn の意味が崩れる
+  → 参加モードとしては残し、runtime の開始理由だけ `wake_word` / `followup` に正規化した
+- `resume_unspoken` はまだ発話経路がない
+  → 今回は型と state の予約語に留め、実際の候補消費は別 Phase へ残した
+
+### 次のセッションでやること
+- resume_unspoken を実装する場合は、interrupted turn / diary candidate からの command result に `start_reason="resume_unspoken"` と turn/candidate id を持たせる
+- LLM delta / TTS chunk まで stale 判定を広げる場合は、`turn_id` / `chunk_id` の result event 化を進める
+
+### 検証
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase105_session_runtime.py tests/unit/test_phase10_session_contract.py tests/unit/test_phase85_conversation_sessions.py tests/unit/test_phase885_session_runtime.py`
+- `mise exec -- uv run ruff check server/shared/models.py server/session.py tests/unit/test_phase105_session_runtime.py tests/unit/test_phase85_conversation_sessions.py`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run ruff check .`
+- `git diff --check`
+
 ## 2026-05-25 セッション4
 
 ### やること（開始時に書く）

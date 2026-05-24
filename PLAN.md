@@ -1533,13 +1533,13 @@ resume_unspoken:
   - `chunk_id`
   - `context_build_id`
   - 現在 state と一致しない command result は stale として無視する
-- [ ] 自発発話用の開始理由を state / command に追加する
+- [x] 自発発話用の開始理由を state / command に追加する
   - `wake_word`
   - `followup`
   - `initiative`
   - `arrival`
   - `resume_unspoken`
-- [ ] priority policy を `TomoroSession` 内に閉じ込める
+- [x] priority policy を `TomoroSession` 内に閉じ込める
   - hard interrupt > active playback echo 判定
   - withdrawn > follow-up
   - human transcript > Tomoko initiative
@@ -1597,6 +1597,26 @@ Phase 10.5 は、外部 EventBus や event sourcing へ広げず、`TomoroSessio
 - `mise exec -- uv run pytest -m unit tests/unit/test_phase105_session_runtime.py`
 - `mise exec -- uv run pytest -m unit tests/unit/test_phase885_session_runtime.py tests/unit/test_phase10_session_contract.py tests/unit/test_phase10_candidate_command_runner.py tests/unit/test_phase105_session_runtime.py`
 - `mise exec -- uv run ruff check server/session.py server/gateway/candidate_commands.py tests/unit/test_phase105_session_runtime.py`
+
+### 2026-05-25 追記: 開始理由と priority policy
+
+上の Phase 10.5 実装結果に続き、開始理由と priority policy も `TomoroSession` 内に寄せた。
+
+- `TomoroRuntimeState.last_start_reason` を追加した
+  - `wake_word` / `followup` / `initiative` / `arrival` / `resume_unspoken` を共通語彙にする
+  - `resume_unspoken` は現時点では予約語で、発話経路本体はまだ追加しない
+- human transcript の `called` / `invited` は runtime 上では `wake_word` / `followup` に正規化する
+  - conversation session の `start_reason` も `wake_word` / `followup` を使う
+- initiative / arrival の fetch / start / mark command payload に `start_reason` を追加した
+- priority policy は既存実装と追加 test で固定した
+  - hard interrupt は active playback echo より優先する
+  - withdrawn 中は follow-up / initiative を抑制する
+  - human transcript 後に遅れて届いた initiative result は `not_speakable` で抑制する
+  - stale candidate result は request id で捨てる
+  - same session context は既存 Phase 8.5 / 8.8 の context test で優先済み
+
+**検証**:
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase105_session_runtime.py tests/unit/test_phase10_session_contract.py tests/unit/test_phase85_conversation_sessions.py tests/unit/test_phase885_session_runtime.py`
 
 これらは M4 のインフラ安定化で、複数 node / 複数 process の必要が明確になった時に検討する。
 

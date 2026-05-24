@@ -205,7 +205,7 @@ async def test_participating_speech_creates_one_active_conversation_session() ->
     await run_one_finished_speech(session)
 
     assert first_session_id is not None
-    assert sessions.created == [(first_session_id, "local", "called")]
+    assert sessions.created == [(first_session_id, "local", "wake_word")]
     assert [turn[2] for turn in conversation_logs.user_turns] == [
         first_session_id,
         first_session_id,
