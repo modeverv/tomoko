@@ -1,0 +1,718 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Literal, Protocol
+from uuid import UUID, uuid4
+
+import psycopg
+from psycopg.types.json import Jsonb
+
+CandidateMaturity = Literal[0, 1, 2]
+ArrivalBehavior = Literal["speak_first", "wait_silent", "subtle_react"]
+
+_VALID_MATURITIES = {0, 1, 2}
+_VALID_ARRIVAL_BEHAVIORS = {"speak_first", "wait_silent", "subtle_react"}
+
+
+@dataclass(frozen=True)
+class ArrivalContextSnapshot:
+    device_id: str | None
+    observed_at: datetime
+    schema_version: int = 1
+    time_of_day: str | None = None
+    attention_mode: str | None = None
+    recent_summary: str | None = None
+    urgent_candidate_ids: tuple[UUID, ...] = field(default_factory=tuple)
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+    @classmethod
+    def from_json(cls, payload: dict[str, object]) -> ArrivalContextSnapshot:
+        schema_version = int(payload.get("schema_version", 1))
+        if schema_version != 1:
+            raise ValueError(
+                f"Unsupported arrival context schema_version: {schema_version}"
+            )
+
+        observed_at_raw = payload.get("observed_at")
+        if isinstance(observed_at_raw, datetime):
+            observed_at = observed_at_raw
+        elif isinstance(observed_at_raw, str):
+            observed_at = datetime.fromisoformat(observed_at_raw)
+        else:
+            observed_at = datetime.now(UTC)
+
+        return cls(
+            schema_version=schema_version,
+            device_id=_optional_str(payload.get("device_id")),
+            observed_at=observed_at,
+            time_of_day=_optional_str(payload.get("time_of_day")),
+            attention_mode=_optional_str(payload.get("attention_mode")),
+            recent_summary=_optional_str(payload.get("recent_summary")),
+            urgent_candidate_ids=tuple(
+                UUID(str(item))
+                for item in _as_sequence(payload.get("urgent_candidate_ids"))
+            ),
+            notes=tuple(str(item) for item in _as_sequence(payload.get("notes"))),
+        )
+
+    def to_json(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "schema_version": self.schema_version,
+            "observed_at": self.observed_at.isoformat(),
+            "urgent_candidate_ids": [
+                str(candidate_id) for candidate_id in self.urgent_candidate_ids
+            ],
+            "notes": list(self.notes),
+        }
+        if self.device_id is not None:
+            payload["device_id"] = self.device_id
+        if self.time_of_day is not None:
+            payload["time_of_day"] = self.time_of_day
+        if self.attention_mode is not None:
+            payload["attention_mode"] = self.attention_mode
+        if self.recent_summary is not None:
+            payload["recent_summary"] = self.recent_summary
+        return payload
+
+
+@dataclass(frozen=True)
+class UtteranceCandidate:
+    id: UUID
+    seed: str
+    generated_text: str | None
+    generated_audio: bytes | None
+    priority: float
+    urgent: bool
+    created_at: datetime
+    expires_at: datetime
+    spoken_at: datetime | None
+    dismissed_at: datetime | None
+    maturity: CandidateMaturity
+    source: str
+    context_tags: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        if self.maturity not in _VALID_MATURITIES:
+            raise ValueError(f"Unsupported candidate maturity: {self.maturity}")
+
+    @classmethod
+    def from_db_row(cls, row: tuple[object, ...]) -> UtteranceCandidate:
+        (
+            candidate_id,
+            seed,
+            generated_text,
+            generated_audio,
+            priority,
+            urgent,
+            created_at,
+            expires_at,
+            spoken_at,
+            dismissed_at,
+            maturity,
+            source,
+            context_tags,
+        ) = row
+        return cls(
+            id=_as_uuid(candidate_id),
+            seed=str(seed),
+            generated_text=_optional_str(generated_text),
+            generated_audio=bytes(generated_audio) if generated_audio is not None else None,
+            priority=float(priority),
+            urgent=bool(urgent),
+            created_at=_as_datetime(created_at),
+            expires_at=_as_datetime(expires_at),
+            spoken_at=_optional_datetime(spoken_at),
+            dismissed_at=_optional_datetime(dismissed_at),
+            maturity=_as_maturity(maturity),
+            source=str(source),
+            context_tags=tuple(str(tag) for tag in context_tags or ()),
+        )
+
+
+@dataclass(frozen=True)
+class ArrivalCandidate:
+    id: UUID
+    computed_at: datetime
+    valid_until: datetime
+    context_snapshot: ArrivalContextSnapshot
+    behavior: ArrivalBehavior
+    utterance_text: str | None
+    utterance_audio: bytes | None
+    used_at: datetime | None
+
+    def __post_init__(self) -> None:
+        if self.behavior not in _VALID_ARRIVAL_BEHAVIORS:
+            raise ValueError(f"Unsupported arrival behavior: {self.behavior}")
+
+    @classmethod
+    def from_db_row(cls, row: tuple[object, ...]) -> ArrivalCandidate:
+        (
+            candidate_id,
+            computed_at,
+            valid_until,
+            context_snapshot,
+            behavior,
+            utterance_text,
+            utterance_audio,
+            used_at,
+        ) = row
+        return cls(
+            id=_as_uuid(candidate_id),
+            computed_at=_as_datetime(computed_at),
+            valid_until=_as_datetime(valid_until),
+            context_snapshot=ArrivalContextSnapshot.from_json(
+                dict(context_snapshot or {})
+            ),
+            behavior=_as_arrival_behavior(behavior),
+            utterance_text=_optional_str(utterance_text),
+            utterance_audio=bytes(utterance_audio) if utterance_audio is not None else None,
+            used_at=_optional_datetime(used_at),
+        )
+
+
+class CandidateStore(Protocol):
+    async def insert_utterance_candidate(
+        self,
+        *,
+        seed: str,
+        source: str,
+        expires_at: datetime,
+        priority: float = 0.5,
+        urgent: bool = False,
+        maturity: CandidateMaturity = 0,
+        generated_text: str | None = None,
+        generated_audio: bytes | None = None,
+        context_tags: tuple[str, ...] = (),
+        created_at: datetime | None = None,
+    ) -> UtteranceCandidate: ...
+
+    async def fetch_active_utterance_candidates(
+        self,
+        *,
+        now: datetime,
+        limit: int,
+    ) -> list[UtteranceCandidate]: ...
+
+    async def mark_utterance_spoken(
+        self,
+        candidate_id: UUID,
+        *,
+        spoken_at: datetime,
+    ) -> None: ...
+
+    async def dismiss_utterance_candidate(
+        self,
+        candidate_id: UUID,
+        *,
+        dismissed_at: datetime,
+    ) -> None: ...
+
+    async def mark_expired_utterance_candidates(self, now: datetime) -> int: ...
+
+    async def insert_arrival_candidate(
+        self,
+        *,
+        context_snapshot: ArrivalContextSnapshot,
+        behavior: ArrivalBehavior,
+        valid_until: datetime,
+        computed_at: datetime | None = None,
+        utterance_text: str | None = None,
+        utterance_audio: bytes | None = None,
+    ) -> ArrivalCandidate: ...
+
+    async def fetch_latest_fresh_arrival_candidate(
+        self,
+        *,
+        now: datetime,
+        device_id: str | None,
+    ) -> ArrivalCandidate | None: ...
+
+    async def mark_arrival_used(
+        self,
+        candidate_id: UUID,
+        *,
+        used_at: datetime,
+    ) -> None: ...
+
+
+class InMemoryCandidateStore:
+    def __init__(self) -> None:
+        self.utterance_candidates: list[UtteranceCandidate] = []
+        self.arrival_candidates: list[ArrivalCandidate] = []
+
+    async def insert_utterance_candidate(
+        self,
+        *,
+        seed: str,
+        source: str,
+        expires_at: datetime,
+        priority: float = 0.5,
+        urgent: bool = False,
+        maturity: CandidateMaturity = 0,
+        generated_text: str | None = None,
+        generated_audio: bytes | None = None,
+        context_tags: tuple[str, ...] = (),
+        created_at: datetime | None = None,
+    ) -> UtteranceCandidate:
+        candidate = UtteranceCandidate(
+            id=uuid4(),
+            seed=seed,
+            generated_text=generated_text,
+            generated_audio=generated_audio,
+            priority=priority,
+            urgent=urgent,
+            created_at=created_at or datetime.now(UTC),
+            expires_at=expires_at,
+            spoken_at=None,
+            dismissed_at=None,
+            maturity=maturity,
+            source=source,
+            context_tags=tuple(context_tags),
+        )
+        self.utterance_candidates.append(candidate)
+        return candidate
+
+    async def fetch_active_utterance_candidates(
+        self,
+        *,
+        now: datetime,
+        limit: int,
+    ) -> list[UtteranceCandidate]:
+        return sorted(
+            [
+                candidate
+                for candidate in self.utterance_candidates
+                if candidate.spoken_at is None
+                and candidate.dismissed_at is None
+                and candidate.expires_at > now
+            ],
+            key=lambda candidate: (-candidate.priority, candidate.created_at),
+        )[:limit]
+
+    async def mark_utterance_spoken(
+        self,
+        candidate_id: UUID,
+        *,
+        spoken_at: datetime,
+    ) -> None:
+        self._replace_utterance(
+            candidate_id,
+            spoken_at=spoken_at,
+        )
+
+    async def dismiss_utterance_candidate(
+        self,
+        candidate_id: UUID,
+        *,
+        dismissed_at: datetime,
+    ) -> None:
+        self._replace_utterance(
+            candidate_id,
+            dismissed_at=dismissed_at,
+        )
+
+    async def mark_expired_utterance_candidates(self, now: datetime) -> int:
+        count = 0
+        for candidate in list(self.utterance_candidates):
+            if (
+                candidate.spoken_at is None
+                and candidate.dismissed_at is None
+                and candidate.expires_at <= now
+            ):
+                self._replace_utterance(candidate.id, dismissed_at=now)
+                count += 1
+        return count
+
+    async def insert_arrival_candidate(
+        self,
+        *,
+        context_snapshot: ArrivalContextSnapshot,
+        behavior: ArrivalBehavior,
+        valid_until: datetime,
+        computed_at: datetime | None = None,
+        utterance_text: str | None = None,
+        utterance_audio: bytes | None = None,
+    ) -> ArrivalCandidate:
+        candidate = ArrivalCandidate(
+            id=uuid4(),
+            computed_at=computed_at or datetime.now(UTC),
+            valid_until=valid_until,
+            context_snapshot=context_snapshot,
+            behavior=behavior,
+            utterance_text=utterance_text,
+            utterance_audio=utterance_audio,
+            used_at=None,
+        )
+        self.arrival_candidates.append(candidate)
+        return candidate
+
+    async def fetch_latest_fresh_arrival_candidate(
+        self,
+        *,
+        now: datetime,
+        device_id: str | None,
+    ) -> ArrivalCandidate | None:
+        candidates = [
+            candidate
+            for candidate in self.arrival_candidates
+            if candidate.used_at is None
+            and candidate.valid_until > now
+            and (
+                device_id is None
+                or candidate.context_snapshot.device_id is None
+                or candidate.context_snapshot.device_id == device_id
+            )
+        ]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda candidate: candidate.computed_at)
+
+    async def mark_arrival_used(
+        self,
+        candidate_id: UUID,
+        *,
+        used_at: datetime,
+    ) -> None:
+        for index, candidate in enumerate(self.arrival_candidates):
+            if candidate.id == candidate_id:
+                self.arrival_candidates[index] = ArrivalCandidate(
+                    id=candidate.id,
+                    computed_at=candidate.computed_at,
+                    valid_until=candidate.valid_until,
+                    context_snapshot=candidate.context_snapshot,
+                    behavior=candidate.behavior,
+                    utterance_text=candidate.utterance_text,
+                    utterance_audio=candidate.utterance_audio,
+                    used_at=used_at,
+                )
+                return
+
+    def _replace_utterance(
+        self,
+        candidate_id: UUID,
+        *,
+        spoken_at: datetime | None = None,
+        dismissed_at: datetime | None = None,
+    ) -> None:
+        for index, candidate in enumerate(self.utterance_candidates):
+            if candidate.id == candidate_id:
+                self.utterance_candidates[index] = UtteranceCandidate(
+                    id=candidate.id,
+                    seed=candidate.seed,
+                    generated_text=candidate.generated_text,
+                    generated_audio=candidate.generated_audio,
+                    priority=candidate.priority,
+                    urgent=candidate.urgent,
+                    created_at=candidate.created_at,
+                    expires_at=candidate.expires_at,
+                    spoken_at=spoken_at or candidate.spoken_at,
+                    dismissed_at=dismissed_at or candidate.dismissed_at,
+                    maturity=candidate.maturity,
+                    source=candidate.source,
+                    context_tags=candidate.context_tags,
+                )
+                return
+
+
+class PostgresCandidateStore:
+    def __init__(self, dsn: str) -> None:
+        self.dsn = dsn
+
+    async def insert_utterance_candidate(
+        self,
+        *,
+        seed: str,
+        source: str,
+        expires_at: datetime,
+        priority: float = 0.5,
+        urgent: bool = False,
+        maturity: CandidateMaturity = 0,
+        generated_text: str | None = None,
+        generated_audio: bytes | None = None,
+        context_tags: tuple[str, ...] = (),
+        created_at: datetime | None = None,
+    ) -> UtteranceCandidate:
+        _as_maturity(maturity)
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO utterance_candidates (
+                        seed,
+                        generated_text,
+                        generated_audio,
+                        priority,
+                        urgent,
+                        created_at,
+                        expires_at,
+                        maturity,
+                        source,
+                        context_tags
+                    )
+                    VALUES (%s, %s, %s, %s, %s, COALESCE(%s, now()), %s, %s, %s, %s)
+                    RETURNING
+                        id,
+                        seed,
+                        generated_text,
+                        generated_audio,
+                        priority,
+                        urgent,
+                        created_at,
+                        expires_at,
+                        spoken_at,
+                        dismissed_at,
+                        maturity,
+                        source,
+                        context_tags
+                    """,
+                    (
+                        seed,
+                        generated_text,
+                        generated_audio,
+                        priority,
+                        urgent,
+                        created_at,
+                        expires_at,
+                        maturity,
+                        source,
+                        list(context_tags),
+                    ),
+                )
+                row = await cur.fetchone()
+        if row is None:
+            raise RuntimeError("utterance candidate insert returned no row")
+        return UtteranceCandidate.from_db_row(row)
+
+    async def fetch_active_utterance_candidates(
+        self,
+        *,
+        now: datetime,
+        limit: int,
+    ) -> list[UtteranceCandidate]:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT
+                        id,
+                        seed,
+                        generated_text,
+                        generated_audio,
+                        priority,
+                        urgent,
+                        created_at,
+                        expires_at,
+                        spoken_at,
+                        dismissed_at,
+                        maturity,
+                        source,
+                        context_tags
+                    FROM utterance_candidates
+                    WHERE spoken_at IS NULL
+                      AND dismissed_at IS NULL
+                      AND expires_at > %s
+                    ORDER BY priority DESC, created_at ASC
+                    LIMIT %s
+                    """,
+                    (now, limit),
+                )
+                rows = await cur.fetchall()
+        return [UtteranceCandidate.from_db_row(row) for row in rows]
+
+    async def mark_utterance_spoken(
+        self,
+        candidate_id: UUID,
+        *,
+        spoken_at: datetime,
+    ) -> None:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE utterance_candidates
+                    SET spoken_at = COALESCE(spoken_at, %s)
+                    WHERE id = %s
+                    """,
+                    (spoken_at, candidate_id),
+                )
+
+    async def dismiss_utterance_candidate(
+        self,
+        candidate_id: UUID,
+        *,
+        dismissed_at: datetime,
+    ) -> None:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE utterance_candidates
+                    SET dismissed_at = COALESCE(dismissed_at, %s)
+                    WHERE id = %s
+                    """,
+                    (dismissed_at, candidate_id),
+                )
+
+    async def mark_expired_utterance_candidates(self, now: datetime) -> int:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE utterance_candidates
+                    SET dismissed_at = %s
+                    WHERE spoken_at IS NULL
+                      AND dismissed_at IS NULL
+                      AND expires_at <= %s
+                    """,
+                    (now, now),
+                )
+                return cur.rowcount or 0
+
+    async def insert_arrival_candidate(
+        self,
+        *,
+        context_snapshot: ArrivalContextSnapshot,
+        behavior: ArrivalBehavior,
+        valid_until: datetime,
+        computed_at: datetime | None = None,
+        utterance_text: str | None = None,
+        utterance_audio: bytes | None = None,
+    ) -> ArrivalCandidate:
+        _as_arrival_behavior(behavior)
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO arrival_candidates (
+                        device_id,
+                        computed_at,
+                        valid_until,
+                        context_snapshot,
+                        behavior,
+                        utterance_text,
+                        utterance_audio
+                    )
+                    VALUES (%s, COALESCE(%s, now()), %s, %s, %s, %s, %s)
+                    RETURNING
+                        id,
+                        computed_at,
+                        valid_until,
+                        context_snapshot,
+                        behavior,
+                        utterance_text,
+                        utterance_audio,
+                        used_at
+                    """,
+                    (
+                        context_snapshot.device_id,
+                        computed_at,
+                        valid_until,
+                        Jsonb(context_snapshot.to_json()),
+                        behavior,
+                        utterance_text,
+                        utterance_audio,
+                    ),
+                )
+                row = await cur.fetchone()
+        if row is None:
+            raise RuntimeError("arrival candidate insert returned no row")
+        return ArrivalCandidate.from_db_row(row)
+
+    async def fetch_latest_fresh_arrival_candidate(
+        self,
+        *,
+        now: datetime,
+        device_id: str | None,
+    ) -> ArrivalCandidate | None:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT
+                        id,
+                        computed_at,
+                        valid_until,
+                        context_snapshot,
+                        behavior,
+                        utterance_text,
+                        utterance_audio,
+                        used_at
+                    FROM arrival_candidates
+                    WHERE used_at IS NULL
+                      AND valid_until > %s
+                      AND (%s::text IS NULL OR device_id IS NULL OR device_id = %s)
+                    ORDER BY computed_at DESC
+                    LIMIT 1
+                    """,
+                    (now, device_id, device_id),
+                )
+                row = await cur.fetchone()
+        if row is None:
+            return None
+        return ArrivalCandidate.from_db_row(row)
+
+    async def mark_arrival_used(
+        self,
+        candidate_id: UUID,
+        *,
+        used_at: datetime,
+    ) -> None:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE arrival_candidates
+                    SET used_at = COALESCE(used_at, %s)
+                    WHERE id = %s
+                    """,
+                    (used_at, candidate_id),
+                )
+
+
+def _as_sequence(value: object) -> tuple[object, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, (list, tuple)):
+        return tuple(value)
+    return (value,)
+
+
+def _optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _as_uuid(value: object) -> UUID:
+    if isinstance(value, UUID):
+        return value
+    return UUID(str(value))
+
+
+def _as_datetime(value: object) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    raise TypeError(f"Expected datetime value, got {type(value)!r}")
+
+
+def _optional_datetime(value: object) -> datetime | None:
+    if value is None:
+        return None
+    return _as_datetime(value)
+
+
+def _as_maturity(value: object) -> CandidateMaturity:
+    maturity = int(value)
+    if maturity not in _VALID_MATURITIES:
+        raise ValueError(f"Unsupported candidate maturity: {maturity}")
+    return maturity  # type: ignore[return-value]
+
+
+def _as_arrival_behavior(value: object) -> ArrivalBehavior:
+    behavior = str(value)
+    if behavior not in _VALID_ARRIVAL_BEHAVIORS:
+        raise ValueError(f"Unsupported arrival behavior: {behavior}")
+    return behavior  # type: ignore[return-value]

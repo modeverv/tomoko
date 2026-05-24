@@ -878,23 +878,264 @@ Phase 8.8.5 は、本格 EventBus ではなく `TomoroSession` 内の最小 even
 
 ## Phase 9: thinker + arrival 事前計算
 
-- [ ] `utterance_candidates` / `arrival_candidates` テーブル作成
-- [ ] `server/shared/candidate.py`: `UtteranceCandidate` 型定義
-- [ ] `server/thinker/main.py`: 常駐ループ
-  - `candidate_generation_loop` と `arrival_precompute_loop` を並行実行
-- [ ] `server/thinker/sources/time_based.py`: 最初の情報源
-- [ ] `server/thinker/evaluator/llm.py`: 発話すべきか判定
-- [ ] `server/thinker/selection/highest.py`: `HighestPriority`
-- [ ] `server/thinker/arrival.py`: 3 分ごとに arrival_candidates を作り直す
-- [ ] docker-compose に thinker サービス追加
+上の M3 ゴールをそのまま一気に実装すると、DB schema、候補生成、LLM 判定、arrival 事前計算、
+常駐 loop、docker-compose 変更が混ざり、LLM が判断を補いながら進める危険がある。
+
+そのため Phase 9 は以下の小 Phase に分解する。
+各 Phase は「テストを先に書ける単位」にし、online `/ws` 経路や `TomoroSession` にはまだ接続しない。
+Phase 10 で session から候補を消費するまでは、Phase 9 は background 側の候補プール構築だけを担当する。
+
+### Phase 9.0: candidate schema / DTO / store
+
+**目標**: thinker が使う候補プールの DB 契約を固定する。
+この Phase では LLM も常駐 loop も実装しない。
+
+- [x] `docker/postgres/init/006_candidates.sql` を追加する
+  - `utterance_candidates`
+  - `arrival_candidates`
+  - 必要な index
+- [x] `utterance_candidates` は次の lifecycle を持つ
+  - `created_at`: 候補を作った時刻
+  - `expires_at`: 話せなかった場合に期限切れ扱いにする時刻
+  - `spoken_at`: 実際に話した時刻。Phase 10 で更新する
+  - `dismissed_at`: 話したかったが期限切れになった時刻。journalist の材料にする
+  - `maturity`: `0=seed only`, `1=text ready`, `2=audio ready`
+- [x] `arrival_candidates` は次の lifecycle を持つ
+  - `computed_at`: 事前計算した時刻
+  - `valid_until`: この時刻を過ぎた候補は使わない
+  - `used_at`: Phase 10 で入室時に使ったら更新する
+- [x] `server/shared/candidate.py` を追加する
+  - `UtteranceCandidate`
+  - `ArrivalCandidate`
+  - `ArrivalBehavior = Literal["speak_first", "wait_silent", "subtle_react"]`
+  - `CandidateMaturity = Literal[0, 1, 2]` または enum
+  - `ArrivalContextSnapshot`
+- [x] DB row から DTO へ変換し、生 `dict` を application 層で持ち回らない
+- [x] `PostgresCandidateStore` を追加する
+  - `insert_utterance_candidate(...)`
+  - `fetch_active_utterance_candidates(now, limit)`
+  - `mark_utterance_spoken(candidate_id, spoken_at)`
+  - `mark_expired_utterance_candidates(now)` または `dismiss_expired_utterance_candidates(now)`
+  - `insert_arrival_candidate(...)`
+  - `fetch_latest_fresh_arrival_candidate(now, device_id | None)`
+  - `mark_arrival_used(candidate_id, used_at)`
+- [x] unit test を追加する
+  - DTO round-trip
+  - expired / spoken / dismissed 候補は active fetch から除外される
+  - priority 降順、created_at 昇順で active candidate が返る
+  - fresh な arrival candidate だけが返る
+- [x] integration test を追加する
+  - PostgreSQL に DDL を適用して store round-trip が通る
+
+**完了条件**:
+- 候補プールの schema / DTO / store の契約が固定される
+- `pytest -m unit` が通る
+- 追加した integration test が手元で通る
+
+### 2026-05-24 実装結果
+
+Phase 9.0 は thinker / arrival precompute が使う候補プールの DB 契約と DTO/store 境界だけを実装した。
+LLM evaluator、deterministic source、常駐 loop、online `/ws` 経路への接続はまだ行わない。
+
+- `docker/postgres/init/006_candidates.sql` を追加した
+  - `utterance_candidates` / `arrival_candidates` と active / fresh fetch 用 index を作成する
+  - `maturity` と `behavior` は CHECK 制約で許可値を固定する
+  - `spoken_at` と `dismissed_at` が同時に立たないよう terminal state 制約を置く
+- `server/shared/candidate.py` を追加した
+  - `UtteranceCandidate`
+  - `ArrivalCandidate`
+  - `ArrivalContextSnapshot`
+  - `CandidateMaturity`
+  - `ArrivalBehavior`
+  - `CandidateStore` / `InMemoryCandidateStore` / `PostgresCandidateStore`
+- `ArrivalContextSnapshot` は schema_version 付き JSONB snapshot として保存し、DB 境界で DTO に変換する
+- `PostgresCandidateStore` は active utterance fetch と fresh arrival fetch で、期限切れ / 発話済み / dismissed / 使用済み候補を除外する
+- `tests/unit/test_phase90_candidates.py` と `tests/integration/test_phase90_candidates_db.py` を追加した
+
+検証:
+- `mise exec -- uv run ruff check server/shared/candidate.py tests/unit/test_phase90_candidates.py tests/integration/test_phase90_candidates_db.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase90_candidates.py`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase90_candidates_db.py`
+
+### Phase 9.1: deterministic source / selection
+
+**目標**: LLM なしで seed 候補を生成し、候補選択の最小ルールを固定する。
+この Phase ではまだ LLM evaluator と arrival 事前計算は実装しない。
+
+- [ ] `server/thinker/sources/base.py` を追加する
+  - `InformationSource` 抽象
+  - `async def collect(context: ThinkerSourceContext) -> list[CandidateSeed]`
+- [ ] `server/shared/candidate.py` に `CandidateSeed` / `ThinkerSourceContext` を追加する
+  - `seed_text`
+  - `source`
+  - `priority`
+  - `expires_at`
+  - `context_tags`
+  - `dedupe_key`
+- [ ] `server/thinker/sources/time_based.py` を追加する
+  - 時刻だけから deterministic な候補を作る
+  - 例: 朝 / 昼 / 夜 / 深夜の軽い一言 seed
+  - 外部 API や LLM は呼ばない
+- [ ] `server/thinker/selection/base.py` を追加する
+  - `SelectionStrategy` 抽象
+- [ ] `server/thinker/selection/highest.py` を追加する
+  - `HighestPriority`
+  - priority 降順、urgent 優先、expires_at 昇順、created_at 昇順で安定選択する
+- [ ] dedupe 方針を固定する
+  - 同じ `dedupe_key` の active candidate が存在する場合は新規 insert しない
+  - `dismissed_at` / `spoken_at` 済みは別候補として再生成してよい
+- [ ] unit test を追加する
+  - time_based source は同じ時刻入力で同じ seed を返す
+  - dedupe_key が安定する
+  - HighestPriority の tie-break が安定する
+  - LLM / DB なしでテストできる
+
+**完了条件**:
+- LLM なしで `utterance_candidates` に seed-only candidate を積める設計が固定される
+- 候補選択の tie-break がテストで固定される
+- `pytest -m unit` が通る
+
+### Phase 9.2: LLM evaluator
+
+**目標**: seed 候補を「話す価値があるか」「どの文面にするか」へ進める。
+この Phase では音声事前生成はしない。`maturity=0 -> 1` までを扱う。
+
+- [ ] `server/thinker/evaluator/base.py` を追加する
+  - `UtteranceEvaluator` 抽象
+  - `async def evaluate(seed: CandidateSeed, context: ThinkerEvaluationContext) -> EvaluatedUtterance | None`
+- [ ] `server/shared/candidate.py` に `ThinkerEvaluationContext` / `EvaluatedUtterance` を追加する
+  - `should_keep`
+  - `generated_text`
+  - `priority`
+  - `urgent`
+  - `reason`
+  - `context_tags`
+- [ ] `server/thinker/evaluator/llm.py` を追加する
+  - `InferenceRouter.select("candidate_gen", "privacy")` を使う
+  - 会話原文ではなく、ContextSnapshotBuilder 由来の要約・用語・人格 subset など必要最小限だけを渡す
+  - JSON response を期待し、parse failure は候補破棄または `should_keep=False` として扱う
+- [ ] evaluator prompt の出力 schema を `PLAN.md` または docstring に固定する
+  - `should_keep: bool`
+  - `generated_text: str | null`
+  - `priority: float`
+  - `urgent: bool`
+  - `reason: str`
+- [ ] LLM evaluator の失敗時挙動を固定する
+  - backend selection 失敗、timeout、JSON parse failure は online 会話を止めない
+  - 失敗した seed は DB に保存しないか、`source_error` を log に残して捨てる
+- [ ] unit test を追加する
+  - fake backend の JSON から `EvaluatedUtterance` を作れる
+  - `should_keep=false` は保存されない
+  - malformed JSON は例外を外へ漏らさず破棄される
+  - privacy task として router が呼ばれる
+
+**完了条件**:
+- seed candidate を text-ready candidate に昇格できる
+- LLM 失敗が background worker 内で閉じる
+- `pytest -m unit` が通る
+
+### Phase 9.3: arrival precompute
+
+**目標**: 入室時の初手を 3 分以内に使える形で事前計算する。
+この Phase ではまだ session から arrival candidate を消費しない。
+
+- [ ] `server/thinker/arrival.py` を追加する
+  - `ArrivalPrecomputer`
+  - `async def precompute_once(now, device_id | None) -> ArrivalCandidate`
+- [ ] `ArrivalContextSnapshot` の schema を固定する
+  - `schema_version`
+  - `computed_at`
+  - `device_id`
+  - `local_time`
+  - `time_since_last_session_sec | None`
+  - `session_count_today`
+  - `urgent_candidate_count`
+  - `top_urgent_seeds`
+  - `persona_hint`
+- [ ] behavior を固定する
+  - `speak_first`: 入室時に一言話す
+  - `wait_silent`: 何も言わず待つ
+  - `subtle_react`: Phase 10 以降で表示だけ変える余地。Phase 9 では保存だけ
+- [ ] arrival prompt の出力 schema を固定する
+  - `behavior`
+  - `utterance_text`
+  - `reason`
+- [ ] LLM 失敗時 fallback を固定する
+  - `behavior="wait_silent"`
+  - `utterance_text=None`
+  - `valid_until=now + 3 minutes`
+- [ ] unit test を追加する
+  - fresh arrival candidate が保存される
+  - LLM 失敗時に wait_silent fallback が保存される
+  - `valid_until` を過ぎた candidate は fetch されない
+  - context_snapshot が DTO として round-trip する
+- [ ] perf test を追加する
+  - `precompute_once` が実 backend なしの fake 構成で十分速い
+  - freshness test は `computed_at` / `valid_until` を見る
+
+**完了条件**:
+- `arrival_candidates` に常に fresh な候補を置ける
+- 入室時に使うかどうかの判断材料が DB に揃う
+- `pytest -m unit` が通る
+
+### Phase 9.4: thinker process loop
+
+**目標**: background process として candidate generation と arrival precompute を定期実行できるようにする。
+この Phase で初めて loop / CLI / Makefile / docker-compose を扱う。
+
+- [ ] `server/thinker/main.py` を追加する
+  - `candidate_generation_loop`
+  - `arrival_precompute_loop`
+  - `asyncio.gather(...)` で並行実行
+  - graceful shutdown を扱う
+- [ ] `background-process/run_thinker.py` を追加する
+  - `--once`
+  - `--watch`
+  - `--candidate-interval-sec`
+  - `--arrival-interval-sec`
+  - default arrival interval は 180 秒
+- [ ] `Makefile` に entry を追加する
+  - `make thinker`
+  - `make thinker-once`
+- [ ] docker-compose への thinker service 追加は最後に行う
+  - 既存 DB service に依存する
+  - online `/ws` service とは疎結合にする
+  - Redis / pub-sub は導入しない
+- [ ] loop の観測ログを追加する
+  - generated seed count
+  - kept candidate count
+  - arrival behavior
+  - elapsed_ms
+  - error count
+- [ ] unit test を追加する
+  - `--once` 相当の runner が candidate / arrival を 1 回ずつ呼ぶ
+  - interval loop は cancellation で止まる
+  - source / evaluator failure が片方の loop 全体を落とさない
+- [ ] integration / smoke test を追加する
+  - local PostgreSQL に対して `thinker-once` を実行し、candidate が保存される
+
+**完了条件**:
+- `make thinker-once` で seed candidate と arrival candidate が保存される
+- `make thinker` で background loop として継続実行できる
+- `pytest -m unit` が通る
+- 追加した integration / smoke test が手元で通る
+
+### Phase 9 全体の完了条件
+
+- `utterance_candidates` に text-ready または seed-only candidate が継続的に積まれる
+- `arrival_candidates` に 3 分以内の fresh candidate が維持される
+- thinker は background process であり、online `/ws` 経路をブロックしない
+- PostgreSQL が唯一の真実であり、Redis / pub-sub / EventBus は導入しない
+- `TomoroSession` は Phase 9 では候補を消費しない。消費は Phase 10 で扱う
+- `pytest -m unit` が通る
 
 ```python
 @pytest.mark.perf
 async def test_arrival_candidate_freshness():
     candidate = await db.fetch_latest_fresh_arrival_candidate()
     assert candidate is not None
-    age = datetime.now() - candidate.computed_at
-    assert age.total_seconds() < 300
+    now = datetime.now(candidate.computed_at.tzinfo)
+    assert candidate.computed_at <= now < candidate.valid_until
 ```
 
 ---

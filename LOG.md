@@ -4,6 +4,78 @@
 
 ---
 
+## 2026-05-24 セッション46
+
+### やること（開始時に書く）
+- M3 Phase 9.0: candidate schema / DTO / store を実装する
+- `docker/postgres/init/006_candidates.sql`、`server/shared/candidate.py`、`PostgresCandidateStore` を追加する
+- candidate DTO round-trip と active/fresh fetch の unit test、PostgreSQL store round-trip の integration test を追加する
+
+### やったこと
+- `docker/postgres/init/006_candidates.sql` を追加した
+  - `utterance_candidates` / `arrival_candidates` と active / fresh fetch 用 index を追加した
+  - `maturity` / `behavior` の CHECK 制約を追加した
+  - `spoken_at` と `dismissed_at` が同時に立たない制約を追加した
+- `server/shared/candidate.py` を追加した
+  - `UtteranceCandidate` / `ArrivalCandidate` / `ArrivalContextSnapshot` DTO を追加した
+  - `CandidateMaturity` / `ArrivalBehavior` の許可値を loader で検証するようにした
+  - `CandidateStore` protocol、`InMemoryCandidateStore`、`PostgresCandidateStore` を追加した
+- `tests/unit/test_phase90_candidates.py` を追加した
+  - DTO round-trip
+  - expired / spoken / dismissed 除外
+  - priority 降順・created_at 昇順
+  - fresh arrival fetch を固定した
+- `tests/integration/test_phase90_candidates_db.py` を追加し、PostgreSQL DDL 適用後の store round-trip を確認した
+- `PLAN.md` の Phase 9.0 チェックボックスと実装結果を更新した
+- `MEMORY.md` / `_docs/latency.md` に Phase 9.0 の判断と検証結果を追記した
+
+### 詰まったこと・解決したこと
+- arrival candidate の device filter を JSONB だけで行うと store 契約が読みにくくなる
+  → `device_id` は検索用の列としても持ち、同じ値を `ArrivalContextSnapshot` にも含める形にした
+- Phase 9.0 で LLM evaluator や常駐 loop まで進めると責務が混ざる
+  → schema / DTO / store のみで止め、Phase 9.1 以降へ送った
+
+### 次のセッションでやること
+- Phase 9.1 に進む場合は、`CandidateSeed` / `ThinkerSourceContext` と deterministic `time_based` source から実装する
+- dedupe_key の保存先と一意性は Phase 9.1 で判断・実装する
+
+### 検証
+- `mise exec -- uv run ruff check server/shared/candidate.py tests/unit/test_phase90_candidates.py tests/integration/test_phase90_candidates_db.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase90_candidates.py`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase90_candidates_db.py`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run ruff check .`
+- `git diff --check`
+
+## 2026-05-24 セッション45
+
+### やること（開始時に書く）
+- markdown 編集禁止ルールの一時解除を受け、`PLAN.md` の M3 Phase 9 を実装しやすい粒度へ分解する
+- Phase 9 を DB/DTO/store、deterministic source、LLM evaluator、arrival precompute、process loop に分ける
+- LLM がテスト先行で迷わず進められる完了条件とテスト観点を追記する
+
+### やったこと
+- `PLAN.md` の Phase 9 を 9.0〜9.4 に分解した
+  - 9.0: candidate schema / DTO / store
+  - 9.1: deterministic source / selection
+  - 9.2: LLM evaluator
+  - 9.3: arrival precompute
+  - 9.4: thinker process loop
+- Phase 9 では online `/ws` 経路や `TomoroSession` に接続せず、background 側の候補プール構築だけを担当することを明記した
+- 各小 Phase に完了条件、テスト観点、失敗時 fallback、Redis / pub-sub を導入しない境界を追記した
+
+### 詰まったこと・解決したこと
+- 元の Phase 9 は部品名は明確だったが、DB lifecycle / DTO / source / evaluator / loop が混ざっており実装判断が入りやすかった
+  → DB 契約から順に積む小 Phase に分解し、LLM がテスト先行で進められる形にした
+
+### 次のセッションでやること
+- Phase 9.0 実装時は `006_candidates.sql`、`server/shared/candidate.py`、`PostgresCandidateStore`、unit/integration test から着手する
+
+### 検証
+- `git diff -- PLAN.md LOG.md`
+- `git diff --check`
+- `rg -n "Phase 9|Phase 9\\.0|Phase 9\\.1|Phase 9\\.2|Phase 9\\.3|Phase 9\\.4|Phase 9 全体" PLAN.md`
+
 ## 2026-05-24 セッション44
 
 ### やること（開始時に書く）

@@ -1031,3 +1031,18 @@ transcript finalized は reducer 入口を用意し、active playback 中の ech
 既存の実会話処理はまだ全面 command runner 化しない。
 DB write / context build / LLM / TTS / WebSocket send の実行分離は、M3 の自発発話や arrival で競合が増えてから
 event queue / drain loop と一緒に厚くする。
+
+### 確定した判断: Phase 9.0 candidate schema / DTO / store
+M3 Phase 9.0 は、thinker / arrival precompute が使う候補プールの DB 契約と DTO/store 境界だけを固定した。
+LLM evaluator、deterministic source、常駐 loop、online `/ws` 経路や `TomoroSession` からの消費は Phase 9.1 以降に送る。
+
+`utterance_candidates` は `created_at` / `expires_at` / `spoken_at` / `dismissed_at` / `maturity` で lifecycle を表す。
+active fetch は `spoken_at IS NULL`、`dismissed_at IS NULL`、`expires_at > now` だけを返し、
+priority 降順、created_at 昇順で安定順序にする。
+
+`arrival_candidates` は `computed_at` / `valid_until` / `used_at` で lifecycle を表す。
+fresh fetch は未使用かつ `valid_until > now` の最新候補だけを返す。
+device filter のため `device_id` は列としても持つが、`ArrivalContextSnapshot` の JSONB snapshot にも含める。
+
+application 層では DB row や JSONB の生 `dict` を持ち回らず、
+`UtteranceCandidate` / `ArrivalCandidate` / `ArrivalContextSnapshot` に変換して扱う。
