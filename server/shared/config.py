@@ -10,6 +10,7 @@ from typing import Any
 class NodeSection:
     role: str
     device_id: str | None = None
+    gateway_ws_url: str | None = None
 
 
 @dataclass(frozen=True)

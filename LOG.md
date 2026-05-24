@@ -4,6 +4,77 @@
 
 ---
 
+## 2026-05-25 セッション2
+
+### やること（開始時に書く）
+- バックグラウンドプロセス、日記、edge / gateway など別プロセスで起動する機能の Makefile entry をメンテする
+- config / log file / once / watch の入口を揃え、dry-run と unit test で壊れにくくする
+
+### やったこと
+- `Makefile` に `CENTRAL_CONFIG` / `EDGE_KITCHEN_CONFIG` と各 background process 用ログファイル変数を追加した
+- `server` / `gateway` / `edge-kitchen` の起動を config 変数経由に揃え、`gateway-reload` / `edge-kitchen-reload` を追加した
+- `session-summarizer` / `persona-updater` / `thinker` / `journalist` の once / watch target が `--config $(CENTRAL_CONFIG)` を明示するようにした
+- background process の一括入口として `background-once` / `background-watch` / `background-dry-run` を追加した
+- `tests/unit/test_makefile_process_entries.py` を追加し、Makefile の別プロセス入口を unit test で固定した
+
+### 詰まったこと・解決したこと
+- `thinker` / `journalist` / summarizer / persona updater は CLI 側に `--config` があるが、Makefile は一部だけ暗黙 default に頼っていた
+  → 起動 target から中央 config を明示し、config 切り替え時のズレを減らした
+- `make background-watch` を依存 target にすると常駐 process が直列実行で止まる
+  → watch は別ターミナルで起動する target 名を表示するだけにし、実行する集合 target は `background-once` に限定した
+
+### 次のセッションでやること
+- 実運用では `make gateway` と必要な background process を別ターミナルで起動し、ログファイルの分離が見やすいか確認する
+- docker-compose service 化は Phase 9 / Phase 12 の既存判断通り、app image 方針が固まってから行う
+
+### 検証
+- `mise exec -- uv run pytest -m unit tests/unit/test_makefile_process_entries.py`
+- `make -n background-dry-run`
+- `make -n gateway-reload edge-kitchen-reload background-watch background-once`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run ruff check .`
+- `git diff --check`
+
+## 2026-05-25 セッション1
+
+### やること（開始時に書く）
+- Phase 14: edge / gateway 間の WebSocket text event protocol を実装する
+- edge と中央をプロセス分離できるように、edge 側 adapter と gateway 側 adapter を追加する
+- 中央サーバーにも従来のブラウザ client 機能を残し、単体利用できる状態を維持する
+- unit test を先に追加し、Phase 14 の境界と互換性を固定する
+
+### やったこと
+- `server/shared/edge_protocol.py` を追加し、edge -> gateway の `hello` / `presence` / `speech` /
+  `playback_started` / `playback_ended` JSON protocol を固定した
+- 中央サーバーに `/edge/ws` を追加し、既存 `/ws` と `/` client 配信は維持した
+- `GatewayEdgeProtocolHandler` を追加し、presence report、primary edge 判定、duplicate 判定、
+  stale / duplicate event discard を通して fresh な `speech` だけを `TomoroSession.process_transcript()` へ渡すようにした
+- `TomoroSession.process_transcript()` を追加し、ローカル STT 済み transcript と remote edge transcript の入口を共通化した
+- edge role かつ `node.gateway_ws_url` がある場合の `/ws` を remote edge adapter として動かし、
+  ブラウザ音声を VAD/STT 後に `speech` event として中央へ送るようにした
+- edge は gateway から返る `reply_text` / `emotion` / `reply_done` をブラウザへ転送し、
+  edge local TTS で audio chunk を生成してブラウザへ送るようにした
+- edge role の startup warm-up は `gateway_ws_url` がある場合 STT/TTS までに留めた
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` を追記した
+
+### 詰まったこと・解決したこと
+- `role="edge"` は既存テストでは旧来の単体サーバーも表していた
+  → `node.gateway_ws_url` がある場合だけ remote edge として扱い、中央 inference warm-up を skip する条件もそこに限定した
+- central TomoroSession で TTS まで実行すると音声 bytes が edge 外へ出る境界と衝突する
+  → `/edge/ws` 経路では gateway 側 `tts_backend=None` とし、返答 text event だけを edge へ返して edge local TTS で再生する形にした
+
+### 次のセッションでやること
+- reconnect backoff / heartbeat / connection health UI を Phase 14 hardening として追加する
+- 実 LAN で `/edge/ws` の `speech sent -> received`、`reply sent -> received`、first audio latency を `_docs/latency.md` に記録する
+- 複数 edge 接続をまたいだ長時間 soak test を追加する
+
+### 検証
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase14_presence_db.py`
+- `make -n edge-kitchen gateway`
+- `git diff --check`
+
 ## 2026-05-24 セッション57
 
 ### やること（開始時に書く）

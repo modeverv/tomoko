@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from typing import Protocol
 
+import psycopg
+
 from server.gateway.turn_taking.barge_in import BargeInDetector
 
 
@@ -71,6 +73,56 @@ class DuplicateSpeechFilter:
             ):
                 return True
         return False
+
+
+class PostgresRecentTranscriptReader:
+    def __init__(self, dsn: str) -> None:
+        self.dsn = dsn
+
+    async def read_recent_transcripts(
+        self,
+        *,
+        since: datetime,
+        exclude_device_id: str,
+        limit: int,
+    ) -> tuple[RecentTranscript, ...]:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT transcript, device_id, recorded_at
+                    FROM ambient_logs
+                    WHERE recorded_at >= %s
+                      AND device_id <> %s
+                    ORDER BY recorded_at DESC
+                    LIMIT %s
+                    """,
+                    (since, exclude_device_id, limit),
+                )
+                ambient_rows = await cur.fetchall()
+                await cur.execute(
+                    """
+                    SELECT transcript, device_id, recorded_at
+                    FROM conversation_logs
+                    WHERE recorded_at >= %s
+                      AND device_id <> %s
+                      AND role = 'user'
+                    ORDER BY recorded_at DESC
+                    LIMIT %s
+                    """,
+                    (since, exclude_device_id, limit),
+                )
+                conversation_rows = await cur.fetchall()
+        rows = [*ambient_rows, *conversation_rows]
+        rows.sort(key=lambda row: row[2], reverse=True)
+        return tuple(
+            RecentTranscript(
+                text=str(row[0]),
+                device_id=str(row[1]),
+                recorded_at=row[2],
+            )
+            for row in rows[:limit]
+        )
 
 
 def _normalize(text: str) -> str:

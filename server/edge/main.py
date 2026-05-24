@@ -21,8 +21,13 @@ from server.edge.pipeline.stt import (
 )
 from server.edge.pipeline.stt_filter import TranscriptFilter
 from server.edge.pipeline.vad import create_vad_processor
+from server.edge.remote import EdgeRemoteAudioSession, EdgeReplyPlayer
 from server.gateway.candidate_commands import CandidateCommandRunner
+from server.gateway.dedup import DuplicateSpeechFilter, PostgresRecentTranscriptReader
+from server.gateway.edge_adapter import GatewayEdgeProtocolHandler
+from server.gateway.presence import PresenceManager
 from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
+from server.gateway.resolver import DirectSpeakerResolver
 from server.gateway.thinking.deep import ThinkDeepMode
 from server.gateway.thinking.fast import ThinkFastMode
 from server.gateway.turn_taking.barge_in import BargeInDetector
@@ -34,6 +39,11 @@ from server.shared.db import (
     PostgresConversationLogWriter,
     PostgresConversationSessionStore,
 )
+from server.shared.edge_protocol import (
+    EdgeHelloEvent,
+    EdgePlaybackTelemetryEvent,
+    parse_edge_event,
+)
 from server.shared.inference.embedding import EmbeddingBackend, create_embedding_backend
 from server.shared.inference.router import InferenceRouter
 from server.shared.inference.tts import create_tts_backend
@@ -44,6 +54,7 @@ from server.shared.memory import (
 )
 from server.shared.models import PlaybackTelemetry, SessionEvent
 from server.shared.persona import PostgresPersonaSnapshotStore
+from server.shared.presence import PostgresPresenceStore
 
 
 def _configure_app_logging() -> None:
@@ -182,6 +193,14 @@ def _create_default_persona_store() -> PostgresPersonaSnapshotStore:
 
 @app.websocket("/ws")
 async def websocket_session(websocket: WebSocket) -> None:
+    config = _load_config()
+    if config.node.role == "edge" and config.node.gateway_ws_url:
+        await _edge_browser_session(websocket, config)
+        return
+    await _central_browser_session(websocket)
+
+
+async def _central_browser_session(websocket: WebSocket) -> None:
     await websocket.accept()
     chunk_count = 0
 
@@ -336,6 +355,175 @@ async def websocket_session(websocket: WebSocket) -> None:
             await initiative_task
 
 
+@app.websocket("/edge/ws")
+async def edge_gateway_session(websocket: WebSocket) -> None:
+    await websocket.accept()
+    device_id = "unknown"
+
+    async def send_event(event: dict[str, str]) -> None:
+        await websocket.send_json(event)
+
+    session = _create_gateway_text_session(send_event)
+    config = _load_config()
+    presence_store = PostgresPresenceStore(config.database.dsn)
+    handler = GatewayEdgeProtocolHandler(
+        session=session,
+        presence_manager=PresenceManager(
+            store=presence_store,
+            resolver=DirectSpeakerResolver(),
+        ),
+        duplicate_filter=DuplicateSpeechFilter(
+            reader=PostgresRecentTranscriptReader(config.database.dsn),
+        ),
+    )
+    candidate_runner = CandidateCommandRunner(
+        session=session,
+        store=_create_default_candidate_store(),
+        device_id=device_id,
+    )
+    logger.info("edge gateway websocket connected")
+    try:
+        while True:
+            message = await websocket.receive()
+            if message.get("text") is not None:
+                try:
+                    event = parse_edge_event(json.loads(message["text"]))
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning("ignored malformed edge event error=%s", e)
+                    continue
+                if isinstance(event, EdgeHelloEvent):
+                    device_id = event.device_id
+                    candidate_runner.device_id = device_id
+                    await candidate_runner.run_result(
+                        await session.post_event(
+                            SessionEvent(
+                                type="session_started",
+                                payload={"device_id": device_id},
+                            )
+                        )
+                    )
+                await handler.handle(event)
+                continue
+            if message.get("type") == "websocket.disconnect":
+                raise WebSocketDisconnect()
+    except WebSocketDisconnect:
+        logger.info("edge gateway websocket disconnected device_id=%s", device_id)
+
+
+async def _edge_browser_session(websocket: WebSocket, config: NodeConfig) -> None:
+    await websocket.accept()
+    import websockets
+
+    assert config.node.device_id is not None
+    assert config.node.gateway_ws_url is not None
+    device_id = config.node.device_id
+
+    async def send_browser_event(event: dict[str, object]) -> None:
+        await websocket.send_json(event)
+
+    async def send_browser_audio(chunk: bytes) -> None:
+        await websocket.send_bytes(chunk)
+
+    async with websockets.connect(config.node.gateway_ws_url) as gateway:
+        await gateway.send(json.dumps(EdgeHelloEvent(device_id=device_id).to_json()))
+
+        async def send_gateway_event(event: dict[str, object]) -> None:
+            await gateway.send(json.dumps(event))
+
+        edge_session = EdgeRemoteAudioSession(
+            device_id=device_id,
+            vad_processor=_create_default_vad_processor(),
+            transcriber=_create_default_transcriber(),
+            transcript_filter=TranscriptFilter(),
+            send_browser_event=send_browser_event,
+            send_gateway_event=send_gateway_event,
+        )
+        reply_player = EdgeReplyPlayer(
+            tts_backend=_create_default_tts_backend(),
+            send_browser_event=send_browser_event,
+            send_browser_audio=send_browser_audio,
+        )
+
+        async def receive_gateway_events() -> None:
+            async for payload in gateway:
+                await reply_player.handle_gateway_payload(payload)
+
+        gateway_task = asyncio.create_task(receive_gateway_events())
+        try:
+            while True:
+                message = await websocket.receive()
+                if message.get("bytes") is not None:
+                    await edge_session.process_audio_chunk(message["bytes"])
+                    continue
+                if message.get("text") is not None:
+                    await _forward_edge_playback_event(
+                        text=message["text"],
+                        device_id=device_id,
+                        send_gateway_event=send_gateway_event,
+                    )
+                    continue
+                if message.get("type") == "websocket.disconnect":
+                    raise WebSocketDisconnect()
+        except WebSocketDisconnect:
+            logger.info("edge browser websocket disconnected device_id=%s", device_id)
+        finally:
+            gateway_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await gateway_task
+
+
+async def _forward_edge_playback_event(
+    *,
+    text: str,
+    device_id: str,
+    send_gateway_event,
+) -> None:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        logger.warning("ignored non-json edge browser text event")
+        return
+    event_type = payload.get("type")
+    if event_type not in {"playback_started", "playback_ended"}:
+        return
+    await send_gateway_event(
+        EdgePlaybackTelemetryEvent(
+            type=event_type,
+            device_id=device_id,
+            turn_id=payload.get("turn_id"),
+            chunk_id=_optional_int(payload.get("chunk_id")),
+            scheduled_audio_time=_optional_float(payload.get("scheduled_audio_time")),
+            sent_audio_time=_optional_float(payload.get("sent_audio_time")),
+            audio_context_time=_optional_float(payload.get("audio_context_time")),
+            performance_now_ms=_optional_float(payload.get("performance_now_ms")),
+        ).to_json()
+    )
+
+
+def _create_gateway_text_session(send_event) -> TomoroSession:
+    return TomoroSession(
+        vad_processor=_create_default_vad_processor(),
+        send_event=send_event,
+        send_audio=None,
+        transcriber=None,
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=_create_default_ambient_log_writer(),
+        conversation_log_writer=_create_default_conversation_log_writer(),
+        conversation_session_store=_create_default_conversation_session_store(),
+        router=_create_default_router(),
+        thinking_mode=_create_default_thinking_mode(),
+        deep_thinking_mode=_create_default_deep_thinking_mode(),
+        tts_backend=None,
+        embedding_backend=_create_default_embedding_backend(),
+        memory_store=_create_default_memory_store(),
+        session_summary_store=_create_default_session_summary_store(),
+        persona_store=_create_default_persona_store(),
+        speech_normalizer=None,
+        barge_in_detector=BargeInDetector(),
+        transcript_filter=TranscriptFilter(),
+    )
+
+
 def _load_config() -> NodeConfig:
     config_factory = getattr(app.state, "config_factory", None)
     if config_factory is not None:
@@ -395,6 +583,10 @@ async def _warm_up_app() -> None:
         tts_backend_name,
         elapsed_ms,
     )
+
+    if config.node.role == "edge" and config.node.gateway_ws_url:
+        logger.info("startup warm-up completed role=edge skipped central inference targets")
+        return
 
     conversation_backend_name = config.inference.conversation_backend
     conversation_spec = config.backends[conversation_backend_name]

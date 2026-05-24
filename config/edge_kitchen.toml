@@ -1,6 +1,7 @@
 [node]
 role = "edge"
 device_id = "kitchen"
+gateway_ws_url = "ws://127.0.0.1:8000/edge/ws"
 
 [database]
 dsn = "postgresql://tomoko:tomoko@localhost:5432/tomoko"

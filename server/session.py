@@ -493,10 +493,20 @@ class TomoroSession:
             stt_elapsed_ms,
             self._elapsed_since_speech_end_ms(),
         )
+        await self.process_transcript(transcript, reset_audio_input=True)
+
+    async def process_transcript(
+        self,
+        transcript: Transcript,
+        *,
+        reset_audio_input: bool = False,
+    ) -> None:
+        """Handle a finalized transcript from local STT or a remote edge node."""
         filter_decision = self._filter_transcript(transcript, is_partial=False)
         if filter_decision.action == "drop":
-            self.vad_processor.reset()
-            self._reset_transcriber_stream()
+            if reset_audio_input:
+                self.vad_processor.reset()
+                self._reset_transcriber_stream()
             await self._transition("idle")
             return
         previous_attention = self.attention_mode
@@ -527,8 +537,9 @@ class TomoroSession:
                         attended=False,
                         participation_mode="observer",
                     )
-                self.vad_processor.reset()
-                self._reset_transcriber_stream()
+                if reset_audio_input:
+                    self.vad_processor.reset()
+                    self._reset_transcriber_stream()
                 await self._transition("idle")
                 return
 
@@ -582,8 +593,9 @@ class TomoroSession:
             if self.router is not None and self.thinking_mode is not None:
                 await self._start_reply_task(transcript)
 
-        self.vad_processor.reset()
-        self._reset_transcriber_stream()
+        if reset_audio_input:
+            self.vad_processor.reset()
+            self._reset_transcriber_stream()
         await self._transition("idle")
 
     async def _maybe_emit_partial_transcript(self, chunk: np.ndarray) -> None:

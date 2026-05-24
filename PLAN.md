@@ -1953,6 +1953,39 @@ async def test_loudest_edge_is_primary():
 - 音声 bytes が中央 DB / gateway に流れない
 - `pytest -m unit tests/unit/test_phase14_edge_split.py` が通る
 
+#### Phase 14.3 実装結果: 2026-05-25
+
+Phase 14.3 は、ack / retry / durable queue / Redis を導入せず、plain WebSocket 1 本の text event protocol として実装した。
+
+実装済み:
+- `server/shared/edge_protocol.py` を追加し、edge -> gateway の `hello` / `presence` / `speech` /
+  `playback_started` / `playback_ended` JSON protocol を固定した
+- `speech` event は `device_id` / `event_id` / `transcript_id` / `transcript` / `audio_level_db` /
+  `observed_at` / `sent_at` を持ち、音声 bytes は含めない
+- 中央サーバーに `/edge/ws` を追加し、edge process からの text event を受ける
+- 中央サーバーの既存 `/ws` と `/` client 配信は維持し、中央 PC 単体でもブラウザ client として使える
+- `GatewayEdgeProtocolHandler` が presence report、primary edge 判定、duplicate 判定、stale / duplicate event discard を行い、
+  fresh な `speech` だけを `TomoroSession.process_transcript()` に渡す
+- `TomoroSession.process_transcript()` を追加し、ローカル STT 済み transcript と remote edge transcript の入口を共通化した
+- edge role かつ `node.gateway_ws_url` がある場合、edge `/ws` はブラウザ音声を VAD/STT し、
+  STT 後 `speech` event だけを `/edge/ws` へ送る
+- edge は gateway から返る `reply_text` / `emotion` / `reply_done` をブラウザへ転送し、
+  edge local TTS で audio chunk を生成してブラウザへ送る
+- edge role の startup warm-up は `gateway_ws_url` がある場合 STT/TTS までに留め、中央 inference warm-up をスキップする
+
+未実装:
+- reconnect backoff / heartbeat / connection health UI
+- ack / retry / durable queue
+- 複数 edge 接続をまたいだ長時間 soak test
+- 実 LAN 上の `/edge/ws` first reply / first audio latency 計測
+
+検証:
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase14_presence_db.py`
+- `make -n edge-kitchen gateway`
+- `git diff --check`
+
 ---
 
 ## Phase 15: エッジ軽量 LLM
