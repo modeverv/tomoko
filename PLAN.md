@@ -1518,7 +1518,7 @@ resume_unspoken:
   - `LLMCompleted`
   - `TTSChunkReady`
   - `CommandFailed`
-- [ ] `TomoroSession` 内部に event queue / drain loop を追加する
+- [x] `TomoroSession` 内部に event queue / drain loop を追加する
   - `_event_queue: asyncio.Queue[SessionEvent]`
   - `_draining` guard
   - `_drain_events()`

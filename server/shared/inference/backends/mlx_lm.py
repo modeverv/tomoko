@@ -1,0 +1,112 @@
+from __future__ import annotations
+
+import logging
+import time
+from collections.abc import AsyncGenerator, Callable, Iterable
+from typing import Any
+
+from server.shared.inference.backends.base import InferenceBackend
+
+logger = logging.getLogger(__name__)
+
+ModelLoader = Callable[[str], tuple[Any, Any]]
+StreamGenerator = Callable[[Any, Any, str, int], Iterable[Any]]
+
+
+class MLXLMBackend(InferenceBackend):
+    def __init__(
+        self,
+        *,
+        name: str,
+        model: str,
+        privacy_allowed: bool = True,
+        max_tokens: int = 180,
+        model_loader: ModelLoader | None = None,
+        stream_generator: StreamGenerator | None = None,
+    ) -> None:
+        self.name = name
+        self.model_name = model
+        self.privacy_allowed = privacy_allowed
+        self.max_tokens = max_tokens
+        self._model_loader = model_loader or _load_model
+        self._stream_generator = stream_generator or _stream_generate
+        self._model: Any | None = None
+        self._tokenizer: Any | None = None
+
+    async def warm_up(self) -> None:
+        async for _chunk in self.chat_stream(
+            "あなたは日本語で短く答えるアシスタントです。",
+            [{"role": "user", "content": "短く返事して。"}],
+        ):
+            pass
+
+    async def chat_stream(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, str]],
+    ) -> AsyncGenerator[str, None]:
+        model, tokenizer = self._load()
+        prompt = _build_chat_prompt(tokenizer, system_prompt, messages)
+        for response in self._stream_generator(
+            model,
+            tokenizer,
+            prompt,
+            self.max_tokens,
+        ):
+            text = getattr(response, "text", "")
+            if text:
+                yield text
+
+    def _load(self) -> tuple[Any, Any]:
+        if self._model is None or self._tokenizer is None:
+            started_at = time.perf_counter()
+            self._model, self._tokenizer = self._model_loader(self.model_name)
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            logger.info(
+                "MLXLMBackend model loaded backend=%s model=%s elapsed_ms=%.1f",
+                self.name,
+                self.model_name,
+                elapsed_ms,
+            )
+        return self._model, self._tokenizer
+
+
+def _load_model(model_name: str) -> tuple[Any, Any]:
+    from mlx_lm import load
+
+    return load(model_name)
+
+
+def _stream_generate(
+    model: Any,
+    tokenizer: Any,
+    prompt: str,
+    max_tokens: int,
+):
+    from mlx_lm import stream_generate
+
+    yield from stream_generate(
+        model,
+        tokenizer,
+        prompt,
+        max_tokens=max_tokens,
+        temperature=0.0,
+    )
+
+
+def _build_chat_prompt(
+    tokenizer: Any,
+    system_prompt: str,
+    messages: list[dict[str, str]],
+) -> str:
+    chat_messages = [{"role": "system", "content": system_prompt}] + messages
+    if hasattr(tokenizer, "apply_chat_template"):
+        return tokenizer.apply_chat_template(
+            chat_messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+    rendered = "\n".join(
+        f"{message['role']}:\n{message['content']}" for message in chat_messages
+    )
+    return f"{rendered}\nassistant:\n"

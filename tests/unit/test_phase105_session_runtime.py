@@ -7,9 +7,11 @@ import numpy as np
 import pytest
 
 from server.edge.pipeline.vad import VADProcessor
+from server.edge.participation.wake_word import WakeWordJudge
+from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.session import TomoroSession
-from server.shared.candidate import UtteranceCandidate
-from server.shared.models import SessionEvent, TransitionResult
+from server.shared.candidate import ArrivalCandidate, ArrivalContextSnapshot, UtteranceCandidate
+from server.shared.models import SessionEvent, Transcript, TransitionResult
 
 
 class QuietVAD:
@@ -22,6 +24,14 @@ def _session() -> TomoroSession:
     return TomoroSession(
         vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
         send_event=lambda event: None,
+    )
+
+
+def _session_with_participation() -> TomoroSession:
+    return TomoroSession(
+        vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
+        send_event=lambda event: None,
+        participation_judge=WakeWordJudge(),
     )
 
 
@@ -41,6 +51,35 @@ def _utterance_candidate() -> UtteranceCandidate:
         maturity=1,
         source="test",
         context_tags=(),
+    )
+
+
+def _arrival_candidate() -> ArrivalCandidate:
+    now = datetime.now(UTC)
+    return ArrivalCandidate(
+        id="22222222-2222-2222-2222-222222222222",  # type: ignore[arg-type]
+        computed_at=now,
+        valid_until=now + timedelta(minutes=3),
+        context_snapshot=ArrivalContextSnapshot(
+            computed_at=now,
+            device_id="desk",
+            local_time="22:00",
+        ),
+        behavior="speak_first",
+        utterance_text="おかえり。今日は少し早かったね。",
+        utterance_audio=None,
+        used_at=None,
+    )
+
+
+def _transcript(text: str) -> Transcript:
+    return Transcript(
+        text=text,
+        device_id="desk",
+        speaker=None,
+        audio_level_db=-20.0,
+        recorded_at=datetime.now(UTC),
+        is_final=True,
     )
 
 
@@ -149,3 +188,80 @@ async def test_human_attention_blocks_late_initiative_candidate_result() -> None
 
     assert loaded.commands == []
     assert loaded.emissions[0].payload["reason"] == "not_speakable"
+
+
+@pytest.mark.unit
+async def test_start_reason_state_records_wake_word_and_followup() -> None:
+    session = _session_with_participation()
+
+    await session.process_transcript(_transcript("トモコ、少し聞いて"))
+
+    assert session.get_now_state().last_start_reason == "wake_word"
+
+    await session.process_transcript(_transcript("さっきの続きなんだけど"))
+
+    assert session.get_now_state().last_start_reason == "followup"
+
+
+@pytest.mark.unit
+async def test_initiative_and_arrival_commands_carry_start_reason() -> None:
+    session = _session()
+    initiative = _utterance_candidate()
+    arrival = _arrival_candidate()
+
+    initiative_result = await session.post_event(
+        SessionEvent(
+            type="initiative_candidate_loaded",
+            payload={"candidate": initiative},
+        )
+    )
+    arrival_result = await session.post_event(
+        SessionEvent(
+            type="arrival_candidate_loaded",
+            payload={"candidate": arrival},
+        )
+    )
+
+    assert initiative_result.commands[0].payload["start_reason"] == "initiative"
+    assert initiative_result.commands[0].payload["started_by"] == "initiative"
+    assert arrival_result.commands[0].payload["start_reason"] == "arrival"
+    assert arrival_result.commands[0].payload["started_by"] == "arrival"
+    assert session.get_now_state().last_start_reason == "arrival"
+
+
+@pytest.mark.unit
+async def test_withdrawn_priority_blocks_followup_and_initiative() -> None:
+    session = _session_with_participation()
+    session.attention_mode = "withdrawn"
+
+    await session.process_transcript(_transcript("さっきの続きなんだけど"))
+    initiative = await session.post_event(SessionEvent(type="idle_timer_elapsed"))
+
+    assert session.get_now_state().last_start_reason is None
+    assert initiative.commands == []
+    assert initiative.emissions[0].payload["reason"] == "not_speakable"
+
+
+@pytest.mark.unit
+async def test_hard_interrupt_priority_beats_active_playback_echo() -> None:
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
+        send_event=lambda event: None,
+        barge_in_detector=BargeInDetector(),
+    )
+    await session.post_event(
+        SessionEvent(
+            type="playback_started",
+            payload={"turn_id": "turn-1", "chunk_id": 1},
+        )
+    )
+
+    result = session._reduce(
+        SessionEvent(
+            type="transcript_finalized",
+            payload={"transcript": _transcript("違う違う、待って")},
+        )
+    )
+
+    assert result.emissions[0].payload["kind"] == "hard_interrupt"
+    assert result.emissions[0].payload["action"] == "restart_turn"

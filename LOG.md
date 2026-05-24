@@ -4,11 +4,41 @@
 
 ---
 
+## 2026-05-25 セッション5
+
+### やること（開始時に書く）
+- Phase 10.5 の残チェック項目から、自発発話用の開始理由と priority policy を `TomoroSession` state / command に寄せる
+- `wake_word` / `followup` / `initiative` / `arrival` / `resume_unspoken` を runtime state と command payload の共通語彙として固定する
+- hard interrupt / withdrawn / human transcript / stale result の優先順位を unit test で明示する
+
 ## 2026-05-25 セッション4
 
 ### やること（開始時に書く）
 - 他セッションで進行中の Phase 10.5 runtime hardening に触れず、`lfm2.5-1.2b-jp-mlx` 用のメイン推論バックエンドを追加する
 - 変更範囲は `InferenceRouter` / inference backend / config / unit test に限定し、`TomoroSession` の実装競合を避ける
+
+### やったこと
+- `server/shared/inference/backends/mlx_lm.py` を追加し、`mlx_lm.load()` / `mlx_lm.stream_generate()` を使う汎用 `MLXLMBackend` を実装した
+- `InferenceRouter` に `type = "mlx_lm"` を追加した
+- `config/central_realtime.toml` に `local_lfm25_12b_jp_mlx` backend を追加した
+- 進行中の Phase 10.5 と衝突しないよう、default `conversation_backend` は `lmstudio_gemma4_e2b` のまま維持した
+- `tests/unit/test_mlx_lm_backend.py` と router test を追加した
+- `MEMORY.md` / `_docs/latency.md` に今回の判断と検証を追記した
+
+### 詰まったこと・解決したこと
+- 既存 `gemma_mlx` は `mlx-vlm` 専用実装なので、LFM までそこへ寄せるとモデル種別の境界が曖昧になる
+  → causal LM 系の汎用 backend として `mlx_lm` type を分けた
+- 10.5 作業中に active config を切り替えると実行確認の前提が変わる
+  → backend 定義だけ追加し、切り替えは `conversation_backend` の 1 行変更に留めた
+
+### 次のセッションでやること
+- Phase 10.5 の作業が落ち着いた後、`conversation_backend = "local_lfm25_12b_jp_mlx"` に切り替えて startup warm-up と first text delta を `_docs/latency.md` に追記する
+
+### 検証
+- `mise exec -- uv run ruff check server/shared/inference/backends/mlx_lm.py server/shared/inference/router.py tests/unit/test_mlx_lm_backend.py tests/unit/test_router.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_mlx_lm_backend.py tests/unit/test_router.py`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
 
 ## 2026-05-25 セッション3
 

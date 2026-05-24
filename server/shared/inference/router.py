@@ -7,6 +7,7 @@ from server.shared.config import NodeConfig
 from server.shared.inference.backends.base import InferenceBackend
 from server.shared.inference.backends.gemma_mlx import GemmaMLXBackend
 from server.shared.inference.backends.lm_studio import LMStudioBackend
+from server.shared.inference.backends.mlx_lm import MLXLMBackend
 from server.shared.inference.backends.ollama import OllamaBackend
 
 
@@ -45,7 +46,13 @@ class InferenceRouter:
                         model=spec.model,
                         privacy_allowed=spec.privacy_allowed,
                     )
-            # Future backends (mlx, etc.) will be added here
+            elif spec.type == "mlx_lm":
+                if spec.model:
+                    self.backends[name] = MLXLMBackend(
+                        name=spec.name,
+                        model=spec.model,
+                        privacy_allowed=spec.privacy_allowed,
+                    )
 
     async def select(self, role: str, preference: str = "latency") -> InferenceBackend:
         if role == "conversation":

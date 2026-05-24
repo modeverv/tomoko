@@ -8,6 +8,7 @@ from server.shared.config import (
     NodeConfig,
     NodeSection,
 )
+from server.shared.inference.backends.mlx_lm import MLXLMBackend
 from server.shared.inference.monitor import MockMonitor
 from server.shared.inference.router import InferenceMetrics, InferenceRouter
 
@@ -71,6 +72,39 @@ async def test_router_reads_config():
     backend = await router.select("conversation", "latency")
     assert backend is not None
     assert backend.name == "lmstudio_gemma4_e2b"
+
+
+@pytest.mark.unit
+async def test_router_can_select_lfm_mlx_lm_backend() -> None:
+    config = make_config(
+        conversation_backend="local_lfm25_12b_jp_mlx",
+        conversation_fallback=None,
+    )
+    config.backends["local_lfm25_12b_jp_mlx"] = BackendSpec(
+        name="local_lfm25_12b_jp_mlx",
+        type="mlx_lm",
+        model="lfm2.5-1.2b-jp-mlx",
+        max_latency_ms=800,
+        privacy_allowed=True,
+    )
+    router = InferenceRouter(config, monitor=MockMonitor())
+
+    backend = await router.select("conversation", "privacy")
+
+    assert isinstance(backend, MLXLMBackend)
+    assert backend.name == "local_lfm25_12b_jp_mlx"
+    assert backend.model_name == "lfm2.5-1.2b-jp-mlx"
+
+
+@pytest.mark.unit
+def test_central_config_contains_lfm_mlx_lm_backend() -> None:
+    config = NodeConfig.load("config/central_realtime.toml")
+
+    backend = config.backends["local_lfm25_12b_jp_mlx"]
+
+    assert backend.type == "mlx_lm"
+    assert backend.model == "lfm2.5-1.2b-jp-mlx"
+    assert backend.privacy_allowed
 
 @pytest.mark.unit
 async def test_privacy_preference_can_use_private_configured_fallback():

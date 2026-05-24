@@ -43,6 +43,12 @@ model = "mlx-community/gemma-4-e2b-it-4bit"
 max_latency_ms = 800
 privacy_allowed = true
 
+[backends.local_lfm25_12b_jp_mlx]
+type = "mlx_lm"
+model = "lfm2.5-1.2b-jp-mlx"
+max_latency_ms = 800
+privacy_allowed = true
+
 [backends.lmstudio_gemma4_e2b]
 type = "lm_studio"
 url = "http://192.168.11.66:1234"

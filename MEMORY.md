@@ -1319,3 +1319,15 @@ Phase 10 の candidate fetch には `request_id` を持たせる。
 個別 `SessionEvent` dataclass 化は今回は見送る。
 既存の文字列 event 契約でも、queue / drain と request id で現在の競合はテスト可能になったため、
 payload contract がさらに読みにくくなった段階で分ける。
+
+### 確定した判断: LFM 2.5 1.2B JP MLX 会話 backend
+`lfm2.5-1.2b-jp-mlx` は、Phase 10.5 の `TomoroSession` runtime hardening と直交するため、
+`TomoroSession` / command runner には触れず、`InferenceRouter` 配下の `mlx_lm` backend として追加した。
+
+既存の `gemma_mlx` backend は `mlx-vlm` 経由で Gemma 4 E2B を扱う専用実装として残す。
+LFM は causal LM 系の MLX model として `mlx_lm.load()` / `mlx_lm.stream_generate()` を使う汎用
+`MLXLMBackend` に載せる。
+
+`config/central_realtime.toml` には `local_lfm25_12b_jp_mlx` を定義したが、10.5 作業中の実行構成を
+変えないため、現時点では default `conversation_backend` は `lmstudio_gemma4_e2b` のまま維持する。
+切り替える場合は `conversation_backend = "local_lfm25_12b_jp_mlx"` に変更してから warm-up と実測を行う。
