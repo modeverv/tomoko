@@ -71,7 +71,10 @@ class CandidateCommandRunner:
             return await self.session.post_event(
                 SessionEvent(
                     type="initiative_candidate_loaded",
-                    payload={"candidate": selected},
+                    payload={
+                        "candidate": selected,
+                        "request_id": command.payload.get("request_id"),
+                    },
                     occurred_at=now,
                 )
             )
@@ -92,7 +95,10 @@ class CandidateCommandRunner:
             return await self.session.post_event(
                 SessionEvent(
                     type="arrival_candidate_loaded",
-                    payload={"candidate": candidate},
+                    payload={
+                        "candidate": candidate,
+                        "request_id": command.payload.get("request_id"),
+                    },
                     occurred_at=now,
                 )
             )

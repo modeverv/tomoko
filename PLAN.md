@@ -1574,6 +1574,30 @@ resume_unspoken:
 - 複数プロセス間 event bus
 - Redis / message queue 前提の runtime 化
 
+### 2026-05-25 実装結果
+
+Phase 10.5 は、外部 EventBus や event sourcing へ広げず、`TomoroSession.post_event()` の内側だけを
+小さな event queue / drain loop にした。
+
+- `TomoroSession` に `_event_queue` / `_event_drain_lock` / `_drain_events()` / `_process_event()` を追加した
+  - 複数の `post_event()` が同時に呼ばれても、`TomoroSession` 内で enqueue 順に reducer を通る
+  - playback telemetry のような即時 state 反映 command も `_process_event()` 内で処理する
+- Phase 10 の candidate fetch command に `request_id` を追加した
+  - `fetch_initiative_candidate` / `fetch_arrival_candidate` が発行時点の request id を payload に持つ
+  - `CandidateCommandRunner` は DB read 結果を `initiative_candidate_loaded` / `arrival_candidate_loaded` event として戻す時に request id を引き継ぐ
+  - 古い request id の result は `stale_result` として捨てる
+- human transcript / attention change で既に発話不能になっている場合は、遅れて届いた initiative / arrival result を
+  既存の `not_speakable` priority で抑制する
+- 既存の `SessionEvent` 文字列契約は維持した
+  - 個別 dataclass 化は、event 種類がさらに増えて payload contract が読みにくくなった時に行う
+- command runner は引き続き state を直接変更せず、結果を `SessionEvent` として戻す
+
+**検証**:
+- `tests/unit/test_phase105_session_runtime.py` を追加した
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase105_session_runtime.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase885_session_runtime.py tests/unit/test_phase10_session_contract.py tests/unit/test_phase10_candidate_command_runner.py tests/unit/test_phase105_session_runtime.py`
+- `mise exec -- uv run ruff check server/session.py server/gateway/candidate_commands.py tests/unit/test_phase105_session_runtime.py`
+
 これらは M4 のインフラ安定化で、複数 node / 複数 process の必要が明確になった時に検討する。
 
 ---

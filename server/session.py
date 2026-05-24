@@ -129,6 +129,13 @@ class TomoroSession:
         self._reply_cancel_status: ConversationLogStatus | None = None
         self.active_conversation_session_id: UUID | None = None
         self._context_build_id: UUID | None = None
+        self._event_queue: asyncio.Queue[
+            tuple[SessionEvent, asyncio.Future[TransitionResult]]
+        ] = asyncio.Queue()
+        self._event_drain_lock = asyncio.Lock()
+        self._candidate_request_sequence = 0
+        self._active_initiative_request_id: str | None = None
+        self._active_arrival_request_id: str | None = None
 
     @property
     def _playback_echo_grace_ms(self) -> int:
@@ -161,7 +168,25 @@ class TomoroSession:
         )
 
     async def post_event(self, event: SessionEvent) -> TransitionResult:
-        """Apply a session event through the minimal event-shaped runtime."""
+        """Queue a session event and apply queued events in TomoroSession order."""
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[TransitionResult] = loop.create_future()
+        self._event_queue.put_nowait((event, future))
+        async with self._event_drain_lock:
+            await self._drain_events()
+        return await future
+
+    async def _drain_events(self) -> None:
+        while not self._event_queue.empty():
+            event, future = self._event_queue.get_nowait()
+            if future.cancelled():
+                continue
+            try:
+                future.set_result(await self._process_event(event))
+            except Exception as exc:
+                future.set_exception(exc)
+
+    async def _process_event(self, event: SessionEvent) -> TransitionResult:
         result = self._reduce(event)
         for command in result.commands:
             if command.type == "record_playback_telemetry":
@@ -224,7 +249,10 @@ class TomoroSession:
             commands=[
                 SessionCommand(
                     type="fetch_initiative_candidate",
-                    payload={"reason": "initiative"},
+                    payload={
+                        "reason": "initiative",
+                        "request_id": self._new_candidate_request_id("initiative"),
+                    },
                 )
             ],
         )
@@ -250,6 +278,7 @@ class TomoroSession:
                     payload={
                         "reason": "arrival",
                         "device_id": event.payload.get("device_id"),
+                        "request_id": self._new_candidate_request_id("arrival"),
                     },
                 )
             ],
@@ -259,6 +288,18 @@ class TomoroSession:
         self,
         event: SessionEvent,
     ) -> TransitionResult:
+        if self._is_stale_candidate_result(
+            "initiative",
+            event.payload.get("request_id"),
+        ):
+            return self._transition_result(
+                "initiative_skipped",
+                payload={
+                    "reason": "stale_result",
+                    "request_id": event.payload.get("request_id"),
+                },
+            )
+        self._active_initiative_request_id = None
         candidate = event.payload.get("candidate")
         if candidate is None:
             return self._transition_result(
@@ -323,6 +364,18 @@ class TomoroSession:
         )
 
     def _reduce_arrival_candidate_loaded(self, event: SessionEvent) -> TransitionResult:
+        if self._is_stale_candidate_result(
+            "arrival",
+            event.payload.get("request_id"),
+        ):
+            return self._transition_result(
+                "arrival_skipped",
+                payload={
+                    "reason": "stale_result",
+                    "request_id": event.payload.get("request_id"),
+                },
+            )
+        self._active_arrival_request_id = None
         candidate = event.payload.get("candidate")
         if candidate is None:
             return self._transition_result(
@@ -397,6 +450,29 @@ class TomoroSession:
             and self.state == "idle"
             and self.audio_turns.playback_state == "idle"
         )
+
+    def _new_candidate_request_id(self, kind: Literal["initiative", "arrival"]) -> str:
+        self._candidate_request_sequence += 1
+        request_id = f"{kind}-{self._candidate_request_sequence}"
+        if kind == "initiative":
+            self._active_initiative_request_id = request_id
+        else:
+            self._active_arrival_request_id = request_id
+        return request_id
+
+    def _is_stale_candidate_result(
+        self,
+        kind: Literal["initiative", "arrival"],
+        request_id: object,
+    ) -> bool:
+        if request_id is None:
+            return False
+        active_request_id = (
+            self._active_initiative_request_id
+            if kind == "initiative"
+            else self._active_arrival_request_id
+        )
+        return str(request_id) != active_request_id
 
     def _reduce_transcript_finalized(self, event: SessionEvent) -> TransitionResult:
         transcript = event.payload.get("transcript")

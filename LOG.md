@@ -4,6 +4,48 @@
 
 ---
 
+## 2026-05-25 セッション4
+
+### やること（開始時に書く）
+- 他セッションで進行中の Phase 10.5 runtime hardening に触れず、`lfm2.5-1.2b-jp-mlx` 用のメイン推論バックエンドを追加する
+- 変更範囲は `InferenceRouter` / inference backend / config / unit test に限定し、`TomoroSession` の実装競合を避ける
+
+## 2026-05-25 セッション3
+
+### やること（開始時に書く）
+- Phase 10.5: TomoroSession runtime hardening を実施する
+- `post_event()` の内部 event queue / drain loop を追加し、arrival / initiative / playback telemetry / transcript event の処理順を TomoroSession に閉じ込める
+- command 結果が再び `SessionEvent` として戻る既存境界を保ちつつ、priority / stale result の見通しを unit test で固定する
+
+### やったこと
+- `TomoroSession.post_event()` の内側に `_event_queue` / `_event_drain_lock` / `_drain_events()` / `_process_event()` を追加した
+- 複数 `post_event()` が同時に来ても reducer と即時反映 command が enqueue 順に処理されることを unit test で固定した
+- `fetch_initiative_candidate` / `fetch_arrival_candidate` command に `request_id` を追加した
+- `CandidateCommandRunner` が DB read 結果を event として戻す時に request id を引き継ぐようにした
+- 古い initiative / arrival result を `stale_result` として捨てるようにした
+- 人間発話などで attention が `ambient` でなくなった後に遅れて届いた initiative result は、既存の `not_speakable` priority で抑制されることを test で固定した
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` に Phase 10.5 の実装結果を追記した
+
+### 詰まったこと・解決したこと
+- `post_event()` を queue 化すると戻り値をどう維持するかが問題になる
+  → 各 event に `Future[TransitionResult]` を対応させ、public API はこれまで通り `TransitionResult` を返す形にした
+- candidate の DB read 結果が遅れて戻ると、後続の fetch 結果や人間発話後の状態に混ざる可能性があった
+  → fetch command payload に request id を入れ、result event 側で一致しないものを stale として捨てるようにした
+- 個別 `SessionEvent` dataclass 化は現時点では効果より変更範囲が大きい
+  → 文字列 event 契約は維持し、queue / stale result / priority test で見通しを確保する粒度に留めた
+
+### 次のセッションでやること
+- `SessionEvent` の payload contract がさらに増えたら、`TranscriptFinalized` / `PlaybackStarted` / `CommandFailed` などの個別 dataclass 化を検討する
+- resume_unspoken を実装する時は、今回の request id / stale result と同じ方針で `turn_id` / `candidate_id` を command result に持たせる
+
+### 検証
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase105_session_runtime.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase885_session_runtime.py tests/unit/test_phase10_session_contract.py tests/unit/test_phase10_candidate_command_runner.py tests/unit/test_phase105_session_runtime.py`
+- `mise exec -- uv run ruff check server/session.py server/gateway/candidate_commands.py tests/unit/test_phase105_session_runtime.py`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run ruff check .`
+- `git diff --check`
+
 ## 2026-05-25 セッション2
 
 ### やること（開始時に書く）
