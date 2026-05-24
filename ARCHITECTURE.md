@@ -46,6 +46,8 @@
               │  arrival_candidates           │
               │  emotion_log                  │
               │  persona_state                │
+              │  persona_lexicon_versions     │
+              │  persona_state_versions       │
               │  diary                        │
               │  inference_metrics            │
               └──────────────┬───────────────┘
@@ -58,6 +60,7 @@
 │  journalist            │  │  プライバシー非依存の  │
 │  session_summarizer     │  │  タスクのみ           │
 │  persona_update        │  └──────────────────────┘
+│  lexicon_update        │
 │  embedder              │
 └────────────────────────┘
 ```
@@ -112,6 +115,7 @@
   journalist（日記、定期）
   session_summarizer（会話セッション要約と embedding、追いかけ処理）
   persona_update（会話後）
+  lexicon_update（用語集・関係性フレーズの versioned JSONB snapshot 生成）
   embedder（embedding生成）
   arrival事前計算（3分ごと）
 
@@ -1703,3 +1707,201 @@ session_summarizer loop
 
 これにより、プログラムは log を毎回走査して会話単位を推定せず、
 「会話単位の索引カード」から関連する原本へ辿れる。
+
+---
+
+## 2026-05-24 追記: 用語集ログと人格スナップショット
+
+セッション要約は「何の話だったか」を圧縮する。
+一方で、印象的な言い回し、関係性の合図、訂正された事実、Tomoko らしい応答癖は
+要約だけでは落ちやすい。
+このため、会話セッション要約とは別に、用語集と人格状態を versioned JSONB snapshot として残す。
+
+### 目的
+
+- 後から「いつ、何が Tomoko の語彙や性格状態に影響したか」を追跡できる
+- 要約で落ちやすい印象的フレーズや関係性の手触りを残す
+- persona update / diary / 自発発話が全 raw log を毎回読まずに済む
+- 外部分析では PostgreSQL の `jsonb` / jsonpath / GIN index を使える
+- プログラム内では JSON を直接触らず、schema version 付きモデルクラスに移して扱う
+
+### テーブル
+
+```sql
+CREATE TABLE persona_lexicon_versions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    version INTEGER NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    source_session_id UUID REFERENCES conversation_sessions(id),
+    previous_version_id UUID REFERENCES persona_lexicon_versions(id),
+    reason TEXT NOT NULL,
+    lexicon_json JSONB NOT NULL,
+    diff_json JSONB NOT NULL,
+    schema_version INTEGER NOT NULL DEFAULT 1,
+    model TEXT,
+    status TEXT NOT NULL DEFAULT 'completed'
+);
+
+CREATE TABLE persona_state_versions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    version INTEGER NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    source_session_id UUID REFERENCES conversation_sessions(id),
+    previous_version_id UUID REFERENCES persona_state_versions(id),
+    reason TEXT NOT NULL,
+    state_json JSONB NOT NULL,
+    diff_json JSONB NOT NULL,
+    schema_version INTEGER NOT NULL DEFAULT 1,
+    model TEXT,
+    status TEXT NOT NULL DEFAULT 'completed'
+);
+```
+
+`lexicon_json` / `state_json` はその時点の全体 snapshot。
+`diff_json` は前 version からの変動点だけを持つ。
+これにより、ある応答時点の Tomoko が持っていた語彙・関係性・性格状態を再現しやすくする。
+
+JSONB を使う理由:
+
+- JSON 全体を1レコードとして保持でき、versioned snapshot として読みやすい
+- `jsonb_path_query` / `@>` / `?` などで外部分析しやすい
+- 必要な key に GIN index や expression index を張れる
+- 正規化しすぎず、LLM が返す構造化知識をそのまま保存できる
+
+ただし、アプリケーションコードは生 dict を持ち回らない。
+`server/shared/models.py` に `PersonaLexiconSnapshot` / `PersonaStateSnapshot` のようなモデルクラスを置き、
+DB 入出力時に JSONB と相互変換する。
+schema を変える時は `schema_version` を上げ、migration / loader で吸収する。
+
+### lexicon_json の形
+
+```jsonc
+{
+  "schema_version": 1,
+  "user_terms": [
+    {
+      "term": "カレーの話",
+      "meaning": "前に作ったカレーの経過や味の話題",
+      "tone": "親しみ",
+      "salience": 0.82,
+      "first_seen_session_id": "...",
+      "last_seen_session_id": "...",
+      "evidence": ["昨日カレーを作ったよ"]
+    }
+  ],
+  "tomoko_phrases": [
+    {
+      "phrase": "それ、ちょっと覚えておきたい",
+      "usage": "相手のこだわりや感情が出た時",
+      "salience": 0.74,
+      "evidence_session_id": "..."
+    }
+  ],
+  "relationship_markers": [
+    {
+      "marker": "さっきの続き",
+      "meaning": "同一会話セッション内の継続話題として扱う",
+      "salience": 0.7
+    }
+  ],
+  "corrections": [
+    {
+      "wrong": "以前の仮理解",
+      "correct": "訂正後の理解",
+      "source_session_id": "..."
+    }
+  ]
+}
+```
+
+### state_json の形
+
+```jsonc
+{
+  "schema_version": 1,
+  "traits": {
+    "warmth": 0.72,
+    "playfulness": 0.48,
+    "initiative": 0.35
+  },
+  "relationship": {
+    "familiarity": 0.61,
+    "preferred_address": "トモコ",
+    "boundaries": ["静かにしてと言われたら withdrawn を尊重する"]
+  },
+  "speaking_style": {
+    "sentence_length": "short",
+    "honorific_level": "casual_polite",
+    "signature_phrases": ["うん", "それ、覚えておきたい"]
+  },
+  "open_threads": [
+    {
+      "topic": "カレーの味の変化",
+      "source_session_id": "...",
+      "status": "watch"
+    }
+  ]
+}
+```
+
+### diff_json の形
+
+```jsonc
+{
+  "schema_version": 1,
+  "added": [
+    {
+      "path": "$.user_terms",
+      "value": {"term": "カレーの話", "meaning": "..."},
+      "reason": "会話内で繰り返し参照された"
+    }
+  ],
+  "updated": [
+    {
+      "path": "$.relationship.familiarity",
+      "from": 0.58,
+      "to": 0.61,
+      "reason": "継続会話が自然に成立した"
+    }
+  ],
+  "deprecated": [
+    {
+      "path": "$.corrections[0]",
+      "reason": "新しい訂正で置き換えられた"
+    }
+  ]
+}
+```
+
+### 生成タイミング
+
+`session_summarizer` が session summary を作った後、`lexicon_update` / `persona_update` が
+その session の summary、salient phrases、必要な raw turns を読んで version を追加する。
+
+```text
+conversation session closed
+  -> session_summarizer: summary_text / summary_embedding
+  -> lexicon_update: persona_lexicon_versions を追加
+  -> persona_update: persona_state_versions を追加
+```
+
+この処理は background worker で行い、`TomoroSession` のオンライン経路に乗せない。
+人格変化は即時反映ではなく、次回以降の応答で使われればよい。
+
+### 応答生成での使い方
+
+`ThinkFastMode` / `ThinkDeepMode` は必要に応じて最新の lexicon / persona snapshot を
+軽く圧縮して system prompt に入れる。
+毎回全 JSON を入れるのではなく、現在発話や関連 session summary に関係する subset だけを選ぶ。
+
+```text
+current transcript
+  -> session summary search
+  -> related sessions
+  -> lexicon_json から関連 term / phrase を抽出
+  -> persona_state_versions 最新 snapshot から speaking_style / relationship を抽出
+  -> ThinkingInput に補助文脈として渡す
+```
+
+JSONB snapshot は分析と再現性のための保存形式であり、LLM prompt にそのまま全量投入しない。
+必要な subset をモデルクラスに読み込み、プロンプト用 DTO に変換する。

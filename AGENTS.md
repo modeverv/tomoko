@@ -213,6 +213,20 @@ M2 Phase 8.5 以降は、会話のまとまりを `conversation_sessions` で表
 - 別プロセス（`session_summarizer` または `journalist` の前段）が pending session を拾い、要約と embedding を保存する
 - 要約が間違っても原本を上書きしない。再生成可能なキャッシュ/索引として扱う
 
+### 7. 用語集と人格状態は versioned JSONB snapshot として扱う
+
+用語集・関係性・人格状態は、後から変動点を追跡できるように versioned snapshot として保存する。
+正規化テーブルを細かく増やすのではなく、まずは PostgreSQL `jsonb` カラムに「その時点の全体像」を1レコードで持つ。
+
+- `persona_lexicon_versions.lexicon_json` は用語集・印象的フレーズ・関係性マーカーの全体 snapshot
+- `persona_state_versions.state_json` は性格傾向・話し方・関係性状態の全体 snapshot
+- `diff_json` は前 version からの変更点を保存する
+- `schema_version` を必ず持たせる
+- 外部分析では PostgreSQL の `jsonb` / jsonpath / GIN index を使える形にする
+- アプリケーションコードでは生の `dict` を持ち回らず、`server/shared/models.py` のモデルクラスへ変換して使う
+- JSON schema を変える場合は loader / migration を用意し、古い snapshot を読めるようにする
+- これらは原本ではなく、`conversation_logs` / `conversation_sessions` から再生成可能な解釈ログとして扱う
+
 ## コード規約
 
 ### Python

@@ -682,3 +682,14 @@ pending session を追いかけて処理する。
 
 原本は常に `conversation_logs`、`conversation_sessions.summary_text` / `summary_embedding` は検索と文脈復元のための
 再生成可能な索引として扱う。
+
+### 確定した判断: 用語集と人格状態は versioned JSONB snapshot として保存する
+セッション要約では落ちやすい印象的フレーズ、用語、訂正、関係性マーカー、話し方の癖は、
+`persona_lexicon_versions` と `persona_state_versions` に versioned JSONB snapshot として保存する。
+
+各レコードはその時点の全体 snapshot（`lexicon_json` / `state_json`）と、前 version からの変化（`diff_json`）を持つ。
+PostgreSQL 側では `jsonb` / jsonpath / GIN index により外部分析しやすくし、アプリケーション側では
+`server/shared/models.py` の schema version 付きモデルクラスへ変換して扱う。
+
+これらは原本ではなく、`conversation_logs` / `conversation_sessions` から再生成可能な解釈ログである。
+人格変化の正は DB の versioned JSONB snapshot とし、`prompts/persona_history/` は人間向け export として扱う。
