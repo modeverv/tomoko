@@ -784,10 +784,8 @@ class TomoroSession:
         await self._cancel_reply_generation(status="cancelled")
         self._reset_latency_probe()
         self._latency_reply_start_at = time.perf_counter()
-        await self._ensure_conversation_session(
-            device_id=device_id,
-            start_reason=reason,
-        )
+        # Initiative/arrival speech opens attention, but the conversation session
+        # starts only when a human replies through the normal participation path.
         await self._transition_attention("engaged")
         await self._send_event({"type": "reply_text", "delta": text})
         self._begin_audio_turn()

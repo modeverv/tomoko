@@ -55,6 +55,34 @@
 - `mise exec -- uv run ruff check .`
 - `mise exec -- uv run pytest -m unit`
 
+## 2026-05-24 セッション54
+
+### やること（開始時に書く）
+- Phase 10 配下で人間判断が必要だった項目への回答を `PLAN.md` / `MEMORY.md` に反映する
+- initiative / arrival 発話だけでは conversation session を開始しないよう修正する
+- 対応する unit test を追加して `pytest -m unit` を確認する
+
+### やったこと
+- Phase 10 の人間判断を `PLAN.md` と `MEMORY.md` に反映した
+- `TomoroSession.start_precomputed_reply()` から conversation session 開始を外した
+  - initiative / arrival 発話では attention だけ `engaged` にする
+  - 人間が返事した時に通常の参加判断経路で conversation session を開始する
+- 自発発話判断45秒は発話固定間隔ではなく候補取得判断間隔であることを明記した
+- Phase 10.5 は今は実施しない、Phase 10 は unit 実装済みで完了扱いにする判断を記録した
+
+### 詰まったこと・解決したこと
+- 自発発話で attention を開くことと conversation session を開始することが混ざっていた
+  → attention は開くが session は人間の返答で開始する形に分離した
+
+### 次のセッションでやること
+- Phase 10 の実 browser 確認は体験確認として別途行う
+- Phase 11 以降へ進む場合は PLAN の小 Phase に従う
+
+### 検証
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase10_candidate_command_runner.py tests/unit/test_phase10_session_contract.py`
+- `mise exec -- uv run ruff check server/session.py tests/unit/test_phase10_candidate_command_runner.py`
+- `mise exec -- uv run pytest -m unit`
+
 ## 2026-05-24 セッション52
 
 ### やること（開始時に書く）

@@ -18,14 +18,28 @@ class QuietVAD:
         return 0.0
 
 
+class RecordingConversationSessionStore:
+    def __init__(self) -> None:
+        self.create_calls: list[tuple[str, str]] = []
+
+    async def create_session(self, *, device_id: str, start_reason: str):
+        self.create_calls.append((device_id, start_reason))
+        raise AssertionError("initiative/arrival must not create conversation session")
+
+    async def close_session(self, session_id, *, end_reason: str) -> None:
+        del session_id, end_reason
+
+
 def _session(
     events: list[dict[str, str]],
     audio_chunks: list[bytes] | None = None,
+    conversation_session_store=None,
 ) -> TomoroSession:
     return TomoroSession(
         vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
         send_event=events.append,
         send_audio=audio_chunks.append if audio_chunks is not None else None,
+        conversation_session_store=conversation_session_store,
     )
 
 
@@ -97,6 +111,40 @@ async def test_runner_fetches_arrival_candidate_speaks_and_marks_used() -> None:
     ]
     assert store.arrival_candidates[0].id == candidate.id
     assert store.arrival_candidates[0].used_at == now
+
+
+@pytest.mark.unit
+async def test_initiative_and_arrival_do_not_start_conversation_session() -> None:
+    now = datetime(2026, 5, 24, 22, 30, tzinfo=UTC)
+    store = InMemoryCandidateStore()
+    await store.insert_utterance_candidate(
+        seed="休憩",
+        source="test",
+        expires_at=now + timedelta(minutes=10),
+        priority=0.9,
+        maturity=1,
+        generated_text="ねえ、少し休憩しない？",
+        created_at=now,
+    )
+    events: list[dict[str, str]] = []
+    conversation_sessions = RecordingConversationSessionStore()
+    session = _session(
+        events,
+        conversation_session_store=conversation_sessions,
+    )
+    runner = CandidateCommandRunner(
+        session=session,
+        store=store,
+        device_id="desk",
+        now_factory=lambda: now,
+    )
+
+    result = await session.post_event(SessionEvent(type="idle_timer_elapsed"))
+    await runner.run_result(result)
+
+    assert conversation_sessions.create_calls == []
+    assert session.active_conversation_session_id is None
+    assert session.attention_mode == "engaged"
 
 
 @pytest.mark.unit

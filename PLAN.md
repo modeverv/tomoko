@@ -1320,6 +1320,7 @@ Phase 10 では、それらを online `/ws` 経路に接続し、`TomoroSession`
 - [x] idle timer は adapter 側で管理し、期限到達時に `idle_timer_elapsed` event を投げる
   - timer は state の source of truth ではない
   - timer は `TomoroSession` の state を直接変更しない
+  - 現行の45秒は「自発発話判断」の間隔であり、固定で45秒ごとに発話するという意味ではない
 - [x] `fetch_initiative_candidate` command runner を実装する
   - `CandidateStore.fetch_active_utterance_candidates(now, limit=...)` を呼ぶ
   - 選択は Phase 9.1 の `HighestPriority` と同じ規則にする
@@ -1330,10 +1331,11 @@ Phase 10 では、それらを online `/ws` 経路に接続し、`TomoroSession`
   - `maturity=0` / `generated_text is None` は Phase 10 では話さず `dismiss_utterance_candidate` へ回す
 - [x] 発話開始後または発話完了後に `mark_utterance_spoken` command を返す
   - 初段では「reply 開始 command を出した時点」で spoken としてよい
-  - 将来、TTS 失敗時の retry が必要になったら lifecycle を見直す
+  - audio が失敗する場合はブラウザ側クラッシュに近く、実運用では返ってこない想定なので現状維持する
 - [x] expired cleanup は物理削除ではなく `mark_expired_utterance_candidates(now)` による `dismissed_at` 更新にする
   - cleanup は thinker loop でも行う
   - online 側では initiative fetch 前の軽い command として呼んでよい
+  - update 文一発で処理負荷が安いため、online 経由で実行する
 
 **テスト観点**:
 - active candidate がない時は何も話さない
@@ -1368,8 +1370,10 @@ Phase 10 では、それらを online `/ws` 経路に接続し、`TomoroSession`
 - [x] `speak_first` なのに `utterance_text is None` の candidate は話さない
   - Phase 9.3 の fallback と同じく安全側に倒す
   - `mark_arrival_used` は実行して、同じ壊れた candidate を繰り返さない
-- [x] arrival 発話は会話開始理由 `arrival` として扱う
-  - ただし Phase 10.5 の `started_by` state 強化までは command payload に閉じる
+- [x] arrival 発話は command payload 上の開始理由 `arrival` として扱う
+  - ただし arrival / initiative 発話だけでは conversation session を開始しない
+  - 人間が返事した時に通常の参加判断経路で conversation session を開始する
+  - Phase 10.5 の `started_by` state 強化までは command payload に閉じる
 
 **テスト観点**:
 - fresh arrival candidate がない時は何も話さない
@@ -1428,6 +1432,8 @@ Phase 10 では、それらを online `/ws` 経路に接続し、`TomoroSession`
 - `_docs/latency.md` に Phase 10 の実測が残っている
 - `pytest -m unit` が通る
 
+2026-05-24 判断: Phase 10 は unit 実装済みで完了扱いとし、browser 実測と latency 追記は後続の体験確認で行う。
+
 ### Phase 10.4: Phase 10 全体の regression / 完了判定
 
 - [ ] Phase 10 の unit test をまとめて実行する
@@ -1453,6 +1459,20 @@ Phase 10 では、それらを online `/ws` 経路に接続し、`TomoroSession`
 - WebSocket endpoint を増やしていない
 - Redis / pub-sub / EventBus / event sourcing を導入していない
 - `pytest -m unit` が通る
+
+### 2026-05-24 Phase 10 人間判断
+
+- 明示的なスタートボタンは残置する。接続時 `session_started` の現状実装は維持する
+- initiative / arrival の発話可能条件は現状維持する
+- 自発発話判断の45秒間隔は、発話固定間隔ではなく候補取得判断の間隔として扱う
+- initiative / arrival 発話だけでは conversation session を開始しない。人間が返事した時に開始する
+- `spoken_at` は reply 開始 command を出した時点でよい
+- seed-only / text 未生成 candidate は online で捨てる
+- expired cleanup は online 経由で行う
+- `wait_silent` / `subtle_react` の used 扱いは現状維持する
+- `subtle_react` の演出と emotion / image は未来で検討する
+- Phase 10.5 runtime hardening は今はやらない
+- Phase 10 は unit 実装済みで完了扱いにする
 
 ---
 
