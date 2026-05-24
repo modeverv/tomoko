@@ -25,6 +25,26 @@ class BenchTarget:
 
 TARGETS = [
     BenchTarget(
+        name="kokoro_mlx",
+        spec=BackendSpec(
+            name="kokoro_mlx",
+            type="kokoro_mlx",
+            model="mlx-community/Kokoro-82M-bf16",
+            voice="jf_alpha",
+        ),
+    ),
+    BenchTarget(
+        name="kokoro_coreml",
+        spec=BackendSpec(
+            name="kokoro_coreml",
+            type="kokoro_coreml",
+            command="kokoro",
+            voice="jf_alpha",
+            sample_rate=24000,
+            streaming=True,
+        ),
+    ),
+    BenchTarget(
         name="irodori_mlx",
         spec=BackendSpec(
             name="irodori_mlx",
@@ -75,14 +95,21 @@ async def main() -> None:
         "--output-dir",
         default="logs/tts-bench",
     )
+    parser.add_argument(
+        "--targets",
+        default=",".join(target.name for target in TARGETS),
+        help="Comma-separated backend names to benchmark.",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    target_names = {name.strip() for name in args.targets.split(",") if name.strip()}
+    targets = [target for target in TARGETS if target.name in target_names]
 
     print("| backend | warmup_ms | first_chunk_ms | total_ms | chunks | bytes | audio_ms |")
     print("|---|---:|---:|---:|---:|---:|---:|")
-    for target in TARGETS:
+    for target in targets:
         result = await bench_target(target, args.text, args.style, args.voice, output_dir)
         print(
             f"| {result['backend']} | {result['warmup_ms']:.1f} | "
@@ -99,14 +126,18 @@ async def bench_target(
     output_dir: Path,
 ) -> dict[str, float | int | str]:
     spec = target.spec
-    if voice and target.spec.type == "qwen3_mlx":
+    if voice and target.spec.type in {"qwen3_mlx", "kokoro_mlx", "kokoro_coreml"}:
         spec = BackendSpec(
             name=target.spec.name,
             type=target.spec.type,
             model=target.spec.model,
+            model_path=target.spec.model_path,
+            command=target.spec.command,
             voice=voice,
+            sample_rate=target.spec.sample_rate,
             max_latency_ms=target.spec.max_latency_ms,
             privacy_allowed=target.spec.privacy_allowed,
+            streaming=target.spec.streaming,
         )
     backend = create_tts_backend(spec)
 

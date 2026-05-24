@@ -65,6 +65,24 @@ streaming = true
 stream_interval_ms = 1000
 stream_min_audio_ms = 1000
 
+[backends.local_whisper_coreml_small]
+type = "whisper_coreml"
+model_path = "models/whisper/ggml-small.bin"
+command = "whisper-cli"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
+
+[backends.local_whisperkit_coreml_small]
+type = "whisper_coreml"
+model = "small"
+command = "whisperkit-cli"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
+
 [backends.local_multilingual_e5_small]
 type = "multilingual_e5_small"
 model = "intfloat/multilingual-e5-small"
@@ -88,6 +106,15 @@ model = "mlx-community/Kokoro-82M-bf16"
 voice = "jf_alpha"
 max_latency_ms = 200
 privacy_allowed = true
+
+[backends.kokoro_coreml]
+type = "kokoro_coreml"
+command = "kokoro"
+voice = "jf_alpha"
+sample_rate = 24000
+max_latency_ms = 200
+privacy_allowed = true
+streaming = true
 
 [backends.irodori_mlx]
 type = "irodori_mlx"

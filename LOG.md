@@ -4,6 +4,43 @@
 
 ---
 
+## 2026-05-25 セッション7
+
+### やること（開始時に書く）
+- Whisper を CoreML で動かす STT backend を追加し、既存 MLX Whisper と速度ベンチする
+- Kokoro を CoreML で動かす TTS backend を追加し、既存 Kokoro MLX と速度ベンチする
+- Kokoro は MLX / CoreML の聞き比べ用サンプル WAV を出力する
+- 変更は backend 抽象、設定、ベンチツール、unit test に閉じ、TomoroSession の状態機械には触れない
+
+### やったこと
+- `WhisperCoreMLSTT` を追加し、`whisper-cli` / `whisperkit-cli` を設定の `command` で差し替えられるようにした
+- `KokoroCoreMLBackend` を追加し、Python object の `generate_stream` または `kokoro say` CLI を使えるようにした
+- `config/central_realtime.toml` / `config/edge_kitchen.toml` に CoreML STT / TTS backend 定義を追加した
+- `_tools/bench_tts_backends.py` に `kokoro_mlx` / `kokoro_coreml` と `--targets` を追加した
+- Kokoro CoreML の Japanese voice は `misaki[ja]` で IPA 化して CLI に渡すようにした
+- `brew install whisperkit-cli jud/kokoro-coreml/kokoro` で実測用 CLI を導入した
+- Kokoro MLX / CoreML の聞き比べ WAV を `logs/kokoro-mlx-coreml-bench/` に出力した
+- `MEMORY.md` / `_docs/latency.md` に CoreML backend の制約と実測を追記した
+
+### 詰まったこと・解決したこと
+- Kokoro CoreML は Japanese voice に生テキストを渡すと CoreML shape error で落ちた
+  → `misaki[ja]` で IPA 化し、`kokoro say --ipa` を使うことで合成できた
+- Homebrew `kokoro` 0.11.0 は `--ipa` と `--stream` を同時に使えない
+  → Japanese voice では stream を試した後、CLI error を検出して file generation に fallback する
+- WhisperKit CLI は CoreML だが、現在の backend は transcription ごとに CLI を起動する
+  → 実測値には process / model startup が乗るため、online 採用には `whisperkit-cli serve` など常駐化が必要
+
+### 次のセッションでやること
+- CoreML STT を実用候補にするなら、WhisperKit `serve` を起動済み前提にした persistent backend を追加する
+- Kokoro CoreML の日本語 streaming が必要なら、`--ipa` + streaming が可能な runtime/API を探すか、MLX Kokoro を継続採用する
+
+### 検証
+- Kokoro TTS bench: MLX first 87.9ms / total 88.0ms、CoreML first 4816.4ms / total 4816.5ms
+- STT perf: MLX measured 103.0ms、WhisperKit CoreML measured 4755.6ms
+- `mise exec -- uv run ruff check server/shared/config.py server/edge/pipeline/stt.py server/shared/inference/tts/kokoro_coreml.py server/shared/inference/tts/__init__.py _tools/bench_tts_backends.py tests/unit/test_stt_backends.py tests/unit/test_kokoro_coreml_tts.py tests/perf/test_stt_latency.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_stt_backends.py tests/unit/test_kokoro_coreml_tts.py tests/unit/test_kokoro_mlx_tts.py tests/unit/test_phase0_config.py`
+- `TOMOKO_STT_BENCH_BACKENDS=local_whisper_mlx_small,local_whisperkit_coreml_small mise exec -- uv run pytest -m perf --tb=short tests/perf/test_stt_latency.py -s`
+
 ## 2026-05-25 セッション6
 
 ### やること（開始時に書く）

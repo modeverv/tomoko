@@ -35,8 +35,11 @@ class BackendSpec:
     name: str
     type: str
     model: str | None = None
+    model_path: str | None = None
+    command: str | None = None
     url: str | None = None
     voice: str | None = None
+    sample_rate: int | None = None
     max_latency_ms: int | None = None
     privacy_allowed: bool = True
     streaming: bool = False

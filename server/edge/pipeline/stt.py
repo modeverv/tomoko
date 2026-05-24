@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import math
 import os
+import re
+import shutil
+import subprocess
 import tempfile
 import wave
 from datetime import UTC, datetime
@@ -180,12 +183,165 @@ class MlxWhisperSTT:
         return str(result.get("text", "")).strip()
 
 
+class WhisperCoreMLSTT:
+    def __init__(
+        self,
+        *,
+        model_path: str,
+        command: str = "whisper-cli",
+        language: str = "ja",
+        initial_prompt: str = "ともこ",
+        streaming: bool = False,
+        stream_interval_ms: int = 1000,
+        stream_min_audio_ms: int = 1000,
+    ) -> None:
+        self.model_path = model_path
+        self.command = command
+        self.language = language
+        self.initial_prompt = initial_prompt
+        self.streaming = streaming
+        self.stream_interval_ms = stream_interval_ms
+        self.stream_min_audio_ms = stream_min_audio_ms
+        self._stream_buffer: list[np.ndarray] = []
+        self._stream_samples = 0
+        self._stream_samples_since_emit = 0
+        self._last_stream_text = ""
+
+    async def transcribe(self, segment: SpeechSegment) -> Transcript:
+        text = await asyncio.to_thread(self._transcribe_audio, segment.audio, 16000)
+        return Transcript(
+            text=text,
+            device_id=segment.device_id,
+            speaker=None,
+            audio_level_db=_audio_level_db(segment.audio),
+            recorded_at=segment.ended_at,
+            is_final=True,
+        )
+
+    async def warm_up(self) -> None:
+        now = datetime.now(UTC)
+        segment = SpeechSegment(
+            audio=np.zeros(16000, dtype=np.float32),
+            started_at=now,
+            ended_at=now,
+            device_id="warmup",
+            vad_confidence=0.0,
+        )
+        await self.transcribe(segment)
+        self.reset_stream()
+
+    async def process_stream_chunk(
+        self,
+        chunk: np.ndarray,
+        *,
+        device_id: str,
+        sample_rate: int,
+    ) -> Transcript | None:
+        if not self.streaming:
+            return None
+
+        self._stream_buffer.append(chunk.astype(np.float32, copy=True))
+        self._stream_samples += len(chunk)
+        self._stream_samples_since_emit += len(chunk)
+        min_samples = int(sample_rate * self.stream_min_audio_ms / 1000)
+        interval_samples = int(sample_rate * self.stream_interval_ms / 1000)
+        if self._stream_samples < min_samples:
+            return None
+        if self._stream_samples_since_emit < interval_samples:
+            return None
+
+        self._stream_samples_since_emit = 0
+        audio = np.concatenate(self._stream_buffer)
+        text = await asyncio.to_thread(self._transcribe_audio, audio, sample_rate)
+        if not text or text == self._last_stream_text:
+            return None
+        self._last_stream_text = text
+        return Transcript(
+            text=text,
+            device_id=device_id,
+            speaker=None,
+            audio_level_db=_audio_level_db(audio),
+            recorded_at=datetime.now(UTC),
+            is_final=False,
+        )
+
+    def reset_stream(self) -> None:
+        self._stream_buffer = []
+        self._stream_samples = 0
+        self._stream_samples_since_emit = 0
+        self._last_stream_text = ""
+
+    def _transcribe_audio(self, audio: np.ndarray, sample_rate: int) -> str:
+        if shutil.which(self.command) is None:
+            raise RuntimeError(
+                f"{self.command!r} is not available. Install whisperkit-cli or build "
+                "whisper.cpp with CoreML support, then set backends.<name>.command."
+            )
+
+        audio_path = _write_temp_wav(audio, sample_rate)
+        try:
+            args = self._command_args(audio_path)
+            completed = subprocess.run(
+                args,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            audio_path.unlink(missing_ok=True)
+        return _clean_whisper_cpp_output(completed.stdout or completed.stderr)
+
+    def _command_args(self, audio_path: Path) -> list[str]:
+        command_name = Path(self.command).name
+        if command_name == "whisperkit-cli":
+            args = [
+                self.command,
+                "transcribe",
+                "--audio-path",
+                str(audio_path),
+                "--language",
+                self.language,
+                "--prompt",
+                self.initial_prompt,
+                "--without-timestamps",
+            ]
+            if self.model_path:
+                option = "--model-path" if "/" in self.model_path else "--model"
+                args.extend([option, self.model_path])
+            return args
+
+        return [
+            self.command,
+            "-m",
+            self.model_path,
+            "-f",
+            str(audio_path),
+            "-l",
+            self.language,
+            "--prompt",
+            self.initial_prompt,
+            "-nt",
+            "-np",
+        ]
+
+
 def create_stt_transcriber(spec: BackendSpec) -> SpeechTranscriber:
     if spec.type == "faster_whisper":
         return FasterWhisperSTT(model_name=spec.model or "small")
     if spec.type == "mlx_whisper":
         return MlxWhisperSTT(
             model_name=spec.model or "mlx-community/whisper-small-mlx",
+            streaming=spec.streaming,
+            stream_interval_ms=spec.stream_interval_ms,
+            stream_min_audio_ms=spec.stream_min_audio_ms,
+        )
+    if spec.type == "whisper_coreml":
+        model_path = spec.model_path or spec.model
+        if not model_path:
+            raise ValueError("whisper_coreml backend requires model_path or model")
+        return WhisperCoreMLSTT(
+            model_path=model_path,
+            command=spec.command or "whisper-cli",
             streaming=spec.streaming,
             stream_interval_ms=spec.stream_interval_ms,
             stream_min_audio_ms=spec.stream_min_audio_ms,
@@ -227,6 +383,20 @@ def _write_temp_wav(audio: np.ndarray, sample_rate: int) -> Path:
         wav.setframerate(sample_rate)
         wav.writeframes(pcm.tobytes())
     return path
+
+
+def _clean_whisper_cpp_output(output: str) -> str:
+    lines: list[str] = []
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("whisper_") or line.startswith("main:"):
+            continue
+        line = re.sub(r"^\[[^\]]+\]\s*", "", line).strip()
+        if line:
+            lines.append(line)
+    return " ".join(lines).strip()
 
 
 class NullTranscriber:

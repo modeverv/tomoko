@@ -24,7 +24,10 @@ ROOT = Path(__file__).resolve().parents[2]
     "backend_name",
     os.environ.get(
         "TOMOKO_STT_BENCH_BACKENDS",
-        "local_whisper_small,local_whisper_mlx_small",
+        (
+            "local_whisper_small,local_whisper_mlx_small,"
+            "local_whisper_coreml_small,local_whisperkit_coreml_small"
+        ),
     ).split(","),
 )
 async def test_stt_backend_latency(backend_name: str, tmp_path: Path) -> None:
@@ -36,6 +39,8 @@ async def test_stt_backend_latency(backend_name: str, tmp_path: Path) -> None:
     spec = config.backends[backend_name]
     if spec.type == "mlx_whisper" and find_spec("mlx_whisper") is None:
         pytest.skip("mlx-whisper is not installed")
+    if spec.type == "whisper_coreml" and not shutil.which(spec.command or "whisper-cli"):
+        pytest.skip("whisper.cpp CoreML command is not installed")
 
     audio = _make_sample_audio(tmp_path)
     segment = SpeechSegment(

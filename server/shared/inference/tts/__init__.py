@@ -4,6 +4,7 @@ from server.shared.config import BackendSpec
 from server.shared.inference.tts.base import TTSBackend
 from server.shared.inference.tts.irodori_mlx import IrodoriMLXBackend
 from server.shared.inference.tts.irodori_mlx_stream import IrodoriMLXStreamBackend
+from server.shared.inference.tts.kokoro_coreml import KokoroCoreMLBackend
 from server.shared.inference.tts.kokoro_mlx import KokoroMLXBackend
 from server.shared.inference.tts.qwen3_mlx import Qwen3MLXTTSBackend
 from server.shared.inference.tts.say import SayBackend
@@ -14,6 +15,8 @@ def create_tts_backend(spec: BackendSpec) -> TTSBackend:
         return SayBackend.from_spec(spec)
     if spec.type == "kokoro_mlx":
         return KokoroMLXBackend.from_spec(spec)
+    if spec.type == "kokoro_coreml":
+        return KokoroCoreMLBackend.from_spec(spec)
     if spec.type == "irodori_mlx":
         return IrodoriMLXBackend.from_spec(spec)
     if spec.type == "irodori_mlx_stream":

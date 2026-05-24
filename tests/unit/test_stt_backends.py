@@ -10,6 +10,7 @@ import pytest
 from server.edge.pipeline.stt import (
     FasterWhisperSTT,
     MlxWhisperSTT,
+    WhisperCoreMLSTT,
     create_stt_transcriber,
 )
 from server.shared.config import BackendSpec
@@ -31,6 +32,25 @@ def test_create_stt_transcriber_supports_mlx_whisper() -> None:
 
     assert isinstance(transcriber, MlxWhisperSTT)
     assert transcriber.model_name == "mlx-community/whisper-small-mlx"
+    assert transcriber.streaming is True
+
+
+@pytest.mark.unit
+def test_create_stt_transcriber_supports_whisper_coreml() -> None:
+    transcriber = create_stt_transcriber(
+        BackendSpec(
+            name="local_whisper_coreml_small",
+            type="whisper_coreml",
+            model_path="models/whisper/ggml-small.bin",
+            command="whisper-cli",
+            streaming=True,
+            stream_interval_ms=500,
+            stream_min_audio_ms=500,
+        )
+    )
+
+    assert isinstance(transcriber, WhisperCoreMLSTT)
+    assert transcriber.model_path == "models/whisper/ggml-small.bin"
     assert transcriber.streaming is True
 
 
@@ -62,6 +82,74 @@ async def test_mlx_whisper_transcribes_via_temp_wav(monkeypatch: pytest.MonkeyPa
     assert calls[0]["path_or_hf_repo"] == "mlx-community/whisper-small-mlx"
     assert calls[0]["language"] == "ja"
     assert calls[0]["initial_prompt"] == "ともこ"
+
+
+@pytest.mark.unit
+async def test_whisper_coreml_transcribes_via_whisper_cpp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    class FakeCompleted:
+        stdout = "[00:00:00.000 --> 00:00:01.000] ともこ、聞こえます\n"
+        stderr = ""
+
+    def fake_run(args: list[str], **kwargs: object) -> FakeCompleted:
+        calls.append(args)
+        assert kwargs["check"] is True
+        return FakeCompleted()
+
+    monkeypatch.setattr("server.edge.pipeline.stt.shutil.which", lambda _command: "/bin/fake")
+    monkeypatch.setattr("server.edge.pipeline.stt.subprocess.run", fake_run)
+    transcriber = WhisperCoreMLSTT(
+        model_path="models/whisper/ggml-small.bin",
+        command="whisper-cli",
+    )
+    segment = SpeechSegment(
+        audio=np.zeros(1600, dtype=np.float32),
+        started_at=datetime.now(UTC),
+        ended_at=datetime.now(UTC),
+        device_id="local",
+        vad_confidence=0.9,
+    )
+
+    transcript = await transcriber.transcribe(segment)
+
+    assert transcript.text == "ともこ、聞こえます"
+    assert calls[0][:3] == ["whisper-cli", "-m", "models/whisper/ggml-small.bin"]
+
+
+@pytest.mark.unit
+async def test_whisper_coreml_supports_whisperkit_cli_args(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    class FakeCompleted:
+        stdout = "ともこ、聞こえます\n"
+        stderr = ""
+
+    def fake_run(args: list[str], **kwargs: object) -> FakeCompleted:
+        calls.append(args)
+        assert kwargs["check"] is True
+        return FakeCompleted()
+
+    monkeypatch.setattr("server.edge.pipeline.stt.shutil.which", lambda _command: "/bin/fake")
+    monkeypatch.setattr("server.edge.pipeline.stt.subprocess.run", fake_run)
+    transcriber = WhisperCoreMLSTT(model_path="small", command="whisperkit-cli")
+    segment = SpeechSegment(
+        audio=np.zeros(1600, dtype=np.float32),
+        started_at=datetime.now(UTC),
+        ended_at=datetime.now(UTC),
+        device_id="local",
+        vad_confidence=0.9,
+    )
+
+    transcript = await transcriber.transcribe(segment)
+
+    assert transcript.text == "ともこ、聞こえます"
+    assert calls[0][0:2] == ["whisperkit-cli", "transcribe"]
+    assert "--model" in calls[0]
 
 
 @pytest.mark.unit
