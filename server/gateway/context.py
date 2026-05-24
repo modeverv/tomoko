@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -17,6 +18,7 @@ from server.shared.memory import ConversationMemoryStore, ConversationSessionSum
 from server.shared.models import (
     ContextBuildPolicy,
     ContextBuildTrace,
+    ContextCacheTrace,
     LexiconTerm,
     MemoryHit,
     PersonaPromptSlice,
@@ -28,7 +30,23 @@ from server.shared.persona import PersonaSnapshotStore
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class _CacheEntry:
+    value: Any
+    cached_at: float
+    ttl_ms: int
+
+
 class ContextSnapshotBuilder:
+    DEFAULT_CACHE_TTL_MS = {
+        "same_session_turns": 1000,
+        "recent_turns": 3000,
+        "session_summaries": 10000,
+        "memory_hits": 5000,
+        "lexicon_terms": 30000,
+        "persona_slice": 10000,
+    }
+
     def __init__(
         self,
         *,
@@ -37,12 +55,18 @@ class ContextSnapshotBuilder:
         memory_store: ConversationMemoryStore | None = None,
         session_summary_store: ConversationSessionSummaryStore | None = None,
         persona_store: PersonaSnapshotStore | None = None,
+        cache_ttl_ms: dict[str, int] | None = None,
     ) -> None:
         self.conversation_log_reader = conversation_log_reader
         self.embedding_backend = embedding_backend
         self.memory_store = memory_store
         self.session_summary_store = session_summary_store
         self.persona_store = persona_store
+        self._cache_ttl_ms = {
+            **self.DEFAULT_CACHE_TTL_MS,
+            **(cache_ttl_ms or {}),
+        }
+        self._cache: dict[tuple[Any, ...], _CacheEntry] = {}
 
     async def build(
         self,
@@ -59,6 +83,8 @@ class ContextSnapshotBuilder:
         stage_timings_ms: dict[str, float] = {}
         source_errors: dict[str, str] = {}
         skipped_sources: list[str] = []
+        cache_entries: dict[str, ContextCacheTrace] = {}
+        source_semaphore = asyncio.Semaphore(max(1, policy.max_parallel_sources))
 
         tasks: dict[str, asyncio.Task[Any]] = {}
         if self.conversation_log_reader is not None:
@@ -73,9 +99,19 @@ class ContextSnapshotBuilder:
                         "same_session_turns",
                         stage_timings_ms,
                         source_errors,
-                        lambda: read_session_turns(
-                            conversation_session_id=active_session_id,
-                            limit=policy.max_same_session_turns + 1,
+                        source_semaphore,
+                        lambda: self._cached_source(
+                            source="same_session_turns",
+                            key=(
+                                "same_session_turns",
+                                active_session_id,
+                                policy.max_same_session_turns + 1,
+                            ),
+                            cache_entries=cache_entries,
+                            loader=lambda: read_session_turns(
+                                conversation_session_id=active_session_id,
+                                limit=policy.max_same_session_turns + 1,
+                            ),
                         ),
                     )
                 )
@@ -90,7 +126,15 @@ class ContextSnapshotBuilder:
                         "recent_turns",
                         stage_timings_ms,
                         source_errors,
-                        lambda: read_recent_turns(limit=policy.max_recent_turns + 1),
+                        source_semaphore,
+                        lambda: self._cached_source(
+                            source="recent_turns",
+                            key=("recent_turns", policy.max_recent_turns + 1),
+                            cache_entries=cache_entries,
+                            loader=lambda: read_recent_turns(
+                                limit=policy.max_recent_turns + 1
+                            ),
+                        ),
                     ),
                 )
 
@@ -104,8 +148,14 @@ class ContextSnapshotBuilder:
                     "session_summaries",
                     stage_timings_ms,
                     source_errors,
-                    lambda: self._search_session_summaries(
-                        text, policy.max_session_summaries
+                    source_semaphore,
+                    lambda: self._cached_source(
+                        source="session_summaries",
+                        key=("session_summaries", text, policy.max_session_summaries),
+                        cache_entries=cache_entries,
+                        loader=lambda: self._search_session_summaries(
+                            text, policy.max_session_summaries
+                        ),
                     ),
                 )
             )
@@ -123,7 +173,15 @@ class ContextSnapshotBuilder:
                     "memory_hits",
                     stage_timings_ms,
                     source_errors,
-                    lambda: self._search_memory_hits(text, policy.max_memory_hits),
+                    source_semaphore,
+                    lambda: self._cached_source(
+                        source="memory_hits",
+                        key=("memory_hits", text, policy.max_memory_hits),
+                        cache_entries=cache_entries,
+                        loader=lambda: self._search_memory_hits(
+                            text, policy.max_memory_hits
+                        ),
+                    ),
                 )
             )
         elif policy.allow_turn_memory_search and policy.max_memory_hits > 0:
@@ -135,8 +193,14 @@ class ContextSnapshotBuilder:
                     "lexicon_terms",
                     stage_timings_ms,
                     source_errors,
-                    lambda: self._read_lexicon_terms(
-                        text, policy.max_lexicon_terms
+                    source_semaphore,
+                    lambda: self._cached_source(
+                        source="lexicon_terms",
+                        key=("lexicon_terms", text, policy.max_lexicon_terms),
+                        cache_entries=cache_entries,
+                        loader=lambda: self._read_lexicon_terms(
+                            text, policy.max_lexicon_terms
+                        ),
                     ),
                 )
             )
@@ -145,7 +209,13 @@ class ContextSnapshotBuilder:
                     "persona_slice",
                     stage_timings_ms,
                     source_errors,
-                    self._read_persona_slice,
+                    source_semaphore,
+                    lambda: self._cached_source(
+                        source="persona_slice",
+                        key=("persona_slice",),
+                        cache_entries=cache_entries,
+                        loader=self._read_persona_slice,
+                    ),
                 )
             )
         elif policy.allow_persona_slice:
@@ -201,13 +271,16 @@ class ContextSnapshotBuilder:
             included_counts=source_counts,
             skipped_sources=sorted(set(skipped_sources)),
             stage_timings_ms=stage_timings_ms,
-            cache_hits={},
+            cache_hits={
+                source: entry.hit for source, entry in cache_entries.items()
+            },
             source_errors=source_errors,
+            cache_entries=cache_entries,
         )
         logger.info(
             "ContextSnapshotBuilder depth=%s elapsed_ms=%.1f budget_ms=%s "
             "timed_out=%s recent_turns=%s session_summaries=%s memory_hits=%s "
-            "lexicon_terms=%s",
+            "lexicon_terms=%s max_parallel_sources=%s cache_hits=%s",
             policy.depth,
             elapsed_ms,
             policy.max_build_ms,
@@ -216,6 +289,8 @@ class ContextSnapshotBuilder:
             source_counts["session_summaries"],
             source_counts["memory_hits"],
             source_counts["lexicon_terms"],
+            policy.max_parallel_sources,
+            trace.cache_hits,
         )
         return TomokoContextSnapshot(
             depth=policy.depth,
@@ -230,17 +305,53 @@ class ContextSnapshotBuilder:
             trace=trace,
         )
 
+    async def _cached_source(
+        self,
+        *,
+        source: str,
+        key: tuple[Any, ...],
+        cache_entries: dict[str, ContextCacheTrace],
+        loader: Callable[[], Awaitable[Any]],
+    ) -> Any:
+        ttl_ms = self._cache_ttl_ms[source]
+        now = time.monotonic()
+        entry = self._cache.get(key)
+        if entry is not None:
+            age_ms = (now - entry.cached_at) * 1000
+            if age_ms <= entry.ttl_ms:
+                cache_entries[source] = ContextCacheTrace(
+                    hit=True,
+                    age_ms=age_ms,
+                    ttl_ms=entry.ttl_ms,
+                )
+                return entry.value
+
+        cache_entries[source] = ContextCacheTrace(
+            hit=False,
+            age_ms=None,
+            ttl_ms=ttl_ms,
+        )
+        value = await loader()
+        self._cache[key] = _CacheEntry(
+            value=value,
+            cached_at=time.monotonic(),
+            ttl_ms=ttl_ms,
+        )
+        return value
+
     async def _timed(
         self,
         source: str,
         stage_timings_ms: dict[str, float],
         source_errors: dict[str, str],
+        source_semaphore: asyncio.Semaphore,
         awaitable_factory: Callable[[], Awaitable[Any]],
     ) -> Any:
         started_at = time.perf_counter()
         try:
-            awaitable = awaitable_factory()
-            return await awaitable
+            async with source_semaphore:
+                awaitable = awaitable_factory()
+                return await awaitable
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001

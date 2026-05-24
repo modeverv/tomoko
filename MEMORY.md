@@ -1001,3 +1001,17 @@ process-local TTL cache は初段では no-op とし、`ContextBuildTrace.cache_
 
 ### 人間
 [アイデア] short/normal/deepなどは応答速度を元に動的に切り替えても良いかも
+
+### 確定した判断: Phase 8.8.1 ContextSnapshotBuilder 運用 hardening
+`ContextSnapshotBuilder` の process-local TTL cache は、DB read の speed-up に限定して使う。
+cache 対象は `same_session_turns` / `recent_turns` / `session_summaries` / `memory_hits` /
+`lexicon_terms` / `persona_slice` とし、active session / attention / playback / barge-in のような
+authoritative state は cache しない。
+
+`ContextBuildTrace` には従来の `cache_hits` に加えて、source ごとの `hit` / `age_ms` / `ttl_ms` を
+`cache_entries` として残す。cache miss と DB timeout は trace 上で区別し、deadline 超過した source は
+cancel して prompt へ入れない。
+
+1 response あたりの context source 実行並列数は `ContextBuildPolicy.max_parallel_sources` で制限する。
+現時点では Redis や外部 queue は導入せず、単一サーバー運用の範囲で process-local cache と policy による
+parallelism 制御に留める。

@@ -49,6 +49,20 @@ class InMemoryConversationReader:
         return self.same_session_turns[-limit:]
 
 
+class CountingConversationReader(InMemoryConversationReader):
+    def __init__(
+        self,
+        *,
+        recent_turns: list[ConversationTurn],
+    ) -> None:
+        super().__init__(recent_turns=recent_turns)
+        self.recent_calls = 0
+
+    async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]:
+        self.recent_calls += 1
+        return await super().read_recent_turns(limit=limit)
+
+
 class FakeEmbeddingBackend:
     name = "fake_e5"
     model = "fake_e5"
@@ -153,6 +167,16 @@ class FakePersonaStore:
                 },
             }
         )
+
+
+class SlowPersonaStore(FakePersonaStore):
+    async def read_latest_lexicon(self) -> PersonaLexiconSnapshot:
+        await asyncio.sleep(0.05)
+        return await super().read_latest_lexicon()
+
+    async def read_latest_state(self) -> PersonaStateSnapshot:
+        await asyncio.sleep(0.05)
+        return await super().read_latest_state()
 
 
 @pytest.mark.unit
@@ -274,6 +298,126 @@ async def test_timeout_returns_degraded_snapshot_with_trace() -> None:
     assert snapshot.recent_turns == []
     assert snapshot.trace.timed_out is True
     assert snapshot.trace.skipped_sources == ["recent_turns", "same_session_turns"]
+    assert snapshot.trace.cache_hits["recent_turns"] is False
+    assert snapshot.trace.cache_entries["recent_turns"].age_ms is None
+
+
+@pytest.mark.unit
+async def test_recent_turns_cache_records_hit_age_and_ttl() -> None:
+    first_turn = ConversationTurn(
+        speaker="user",
+        text="最初の話",
+        timestamp=datetime(2026, 5, 24, 10, 0, tzinfo=UTC),
+    )
+    reader = CountingConversationReader(recent_turns=[first_turn])
+    builder = ContextSnapshotBuilder(
+        conversation_log_reader=reader,
+        cache_ttl_ms={"recent_turns": 30},
+    )
+    policy = ContextBuildPolicy.for_depth("fast")
+
+    first_snapshot = await builder.build(
+        text="トモコ",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=policy,
+    )
+    second_snapshot = await builder.build(
+        text="トモコ",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=policy,
+    )
+
+    assert reader.recent_calls == 1
+    assert first_snapshot.trace.cache_hits["recent_turns"] is False
+    assert second_snapshot.trace.cache_hits["recent_turns"] is True
+    assert second_snapshot.trace.cache_entries["recent_turns"].age_ms is not None
+    assert second_snapshot.trace.cache_entries["recent_turns"].ttl_ms == 30
+
+
+@pytest.mark.unit
+async def test_expired_recent_turns_cache_falls_back_to_reader() -> None:
+    first_turn = ConversationTurn(
+        speaker="user",
+        text="古い cache",
+        timestamp=datetime(2026, 5, 24, 10, 0, tzinfo=UTC),
+    )
+    refreshed_turn = ConversationTurn(
+        speaker="tomoko",
+        text="DB から読み直した話",
+        timestamp=datetime(2026, 5, 24, 10, 1, tzinfo=UTC),
+    )
+    reader = CountingConversationReader(recent_turns=[first_turn])
+    builder = ContextSnapshotBuilder(
+        conversation_log_reader=reader,
+        cache_ttl_ms={"recent_turns": 1},
+    )
+    policy = ContextBuildPolicy.for_depth("fast")
+
+    await builder.build(
+        text="トモコ",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=policy,
+    )
+    await asyncio.sleep(0.002)
+    reader.recent_turns = [refreshed_turn]
+    refreshed_snapshot = await builder.build(
+        text="トモコ",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=policy,
+    )
+
+    assert reader.recent_calls == 2
+    assert [turn.text for turn in refreshed_snapshot.recent_turns] == [
+        "DB から読み直した話"
+    ]
+    assert refreshed_snapshot.trace.cache_hits["recent_turns"] is False
+
+
+@pytest.mark.unit
+async def test_slow_optional_persona_source_times_out_without_blocking_recent_turns() -> None:
+    recent_turn = ConversationTurn(
+        speaker="tomoko",
+        text="今の話は残す",
+        timestamp=datetime(2026, 5, 24, 10, 0, tzinfo=UTC),
+    )
+    builder = ContextSnapshotBuilder(
+        conversation_log_reader=InMemoryConversationReader(recent_turns=[recent_turn]),
+        persona_store=SlowPersonaStore(),  # type: ignore[arg-type]
+    )
+
+    snapshot = await builder.build(
+        text="カレーの続き",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=ContextBuildPolicy(
+            depth="normal",
+            max_build_ms=1,
+            max_prompt_tokens=100,
+            max_same_session_turns=2,
+            max_recent_turns=2,
+            max_session_summaries=0,
+            max_memory_hits=0,
+            max_lexicon_terms=2,
+            allow_turn_memory_search=False,
+            allow_persona_slice=True,
+        ),
+    )
+
+    assert snapshot.recent_turns == [recent_turn]
+    assert snapshot.trace.timed_out is True
+    assert "lexicon_terms" in snapshot.trace.skipped_sources
+    assert "persona_slice" in snapshot.trace.skipped_sources
+    assert snapshot.trace.cache_hits["lexicon_terms"] is False
+    assert snapshot.trace.cache_entries["lexicon_terms"].age_ms is None
 
 
 @pytest.mark.unit

@@ -541,6 +541,7 @@ class ContextBuildPolicy:
     max_lexicon_terms: int
     allow_turn_memory_search: bool
     allow_persona_slice: bool
+    max_parallel_sources: int = 6
 
     @classmethod
     def for_depth(cls, depth: ContextDepth) -> ContextBuildPolicy:
@@ -600,6 +601,13 @@ class ContextBuildPolicy:
 
 
 @dataclass(frozen=True)
+class ContextCacheTrace:
+    hit: bool
+    age_ms: float | None
+    ttl_ms: int
+
+
+@dataclass(frozen=True)
 class ContextBuildTrace:
     budget_ms: int
     elapsed_ms: float
@@ -610,6 +618,7 @@ class ContextBuildTrace:
     stage_timings_ms: dict[str, float]
     cache_hits: dict[str, bool]
     source_errors: dict[str, str]
+    cache_entries: dict[str, ContextCacheTrace] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

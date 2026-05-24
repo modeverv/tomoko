@@ -26,6 +26,39 @@
 
 ---
 
+## 2026-05-24 セッション42
+
+### やること（開始時に書く）
+- M2 Phase 8.8.1: ContextSnapshotBuilder 運用 hardening を実装する
+- process-local TTL cache と cache hit / age / ttl trace を追加する
+- 遅い optional source が timeout しても degraded snapshot を返す regression test を追加する
+- unit / perf test で ContextSnapshotBuilder の予算運用を確認する
+
+### やったこと
+- `ContextSnapshotBuilder` に process-local TTL cache を追加した
+  - `same_session_turns` / `recent_turns` / `session_summaries` / `memory_hits` / `lexicon_terms` / `persona_slice` を source 単位で cache する
+  - `ContextBuildTrace.cache_entries` に hit / age_ms / ttl_ms を残す
+- `ContextBuildPolicy.max_parallel_sources` を追加し、context source の同時実行数を policy で制限できるようにした
+- builder log に `cache_hits` と `max_parallel_sources` を含めた
+- cache hit、TTL expiry 後の DB fallback、cache miss + DB timeout の regression test を追加した
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` を更新した
+
+### 詰まったこと・解決したこと
+- cache を authoritative state に広げると状態の正が分散する
+  → cache 対象は読み取り専用の context source に限定し、active session / attention / playback は対象外にした
+- timeout した source の task が後から prompt に混ざると危険
+  → `asyncio.wait(timeout=...)` の pending task を cancel し、done だけを assemble する既存方針を regression test で固定した
+
+### 次のセッションでやること
+- 実 DB データ量が増えたら、`normal` / `deep` の DB + embedding 込み perf を追加する
+- 応答速度に応じた `fast` / `normal` / `deep` の動的選択を試す場合は、まず `ContextBuildTrace` と turn latency を見て policy を決める
+
+### 検証
+- `mise exec -- uv run ruff check server/gateway/context.py server/shared/models.py tests/unit/test_phase88_context_snapshot.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase88_context_snapshot.py`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m perf --tb=short tests/perf/test_context_snapshot_latency.py`
+
 ## 人間
 short/normal/deepとかは応答速度を元に動的に切り替えても良いかも
 
