@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
 from pathlib import Path
 
@@ -26,7 +27,23 @@ async def _main() -> None:
         help="Path to TOML config.",
     )
     parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Keep polling pending sessions instead of exiting after one batch.",
+    )
+    parser.add_argument(
+        "--interval-sec",
+        type=float,
+        default=30.0,
+        help="Polling interval used with --watch.",
+    )
     args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+    )
 
     config = NodeConfig.load(args.config)
     if config.inference.embedding_backend is None:
@@ -42,8 +59,16 @@ async def _main() -> None:
         router=InferenceRouter(config=config),
         embedding_backend=embedding_backend,
     )
-    processed = await summarizer.process_pending(limit=args.limit)
-    print(f"processed={processed}")
+
+    if not args.watch:
+        processed = await summarizer.process_pending(limit=args.limit)
+        print(f"processed={processed}")
+        return
+
+    while True:
+        processed = await summarizer.process_pending(limit=args.limit)
+        print(f"processed={processed}")
+        await asyncio.sleep(args.interval_sec)
 
 
 if __name__ == "__main__":

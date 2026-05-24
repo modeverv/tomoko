@@ -455,6 +455,17 @@ Phase 8.6 は、online `/ws` 経路から要約生成を分離し、閉じた会
 - ローカル PostgreSQL に更新済み DDL を適用した
 - `ruff check .` と `pytest -m unit` が通過した
 
+### 2026-05-24 追記: background process 入口の配置補正
+
+上の「`_tools/summarize_pending_sessions.py` を追加した」という配置は、background worker の入口としては
+`_tools/` よりも役割が曖昧だったため補正する。
+
+`summarize_pending_sessions.py` はルートの `background-process/` 配下へ移動し、
+Makefile から起動する。
+
+- `make session-summarizer`: `--watch` 付きで pending session を定期処理する
+- `make session-summarizer-once`: 1 batch だけ処理して終了する
+
 ## Phase 8.7: 用語集ログと人格スナップショット
 
 Phase 8.6 の session summary を材料に、要約で落ちやすい印象的フレーズ・関係性マーカー・人格変化を

@@ -26,6 +26,36 @@
 
 ---
 
+## 2026-05-24 セッション39
+
+### やること（開始時に書く）
+- `_tools/summarize_pending_sessions.py` をルートの `background-process/` へ移動する
+- Makefile に session summarizer を起動する entry を追加する
+- background process として定期実行できる入口を用意する
+
+### やったこと
+- `background-process/` ディレクトリを追加し、`summarize_pending_sessions.py` を移動した
+- `summarize_pending_sessions.py` に `--watch` と `--interval-sec` を追加した
+  - `--watch` なしなら 1 batch だけ処理して終了する
+  - `--watch` ありなら pending session を定期 polling する
+- `Makefile` に `session-summarizer` と `session-summarizer-once` を追加した
+  - `session-summarizer` は `--watch` 付きで起動する
+  - `session-summarizer-once` は 1 batch だけ処理する
+- `PLAN.md` に background process 入口の配置補正を追記した
+
+### 詰まったこと・解決したこと
+- 特になし
+
+### 次のセッションでやること
+- `make server` と `make session-summarizer` を別ターミナルで起動して、実会話後の pending session が処理されるか確認する
+
+### 検証
+- `mise exec -- uv run python background-process/summarize_pending_sessions.py --help`
+- `make -n session-summarizer`
+- `make -n session-summarizer-once`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+
 ## 2026-05-24 セッション38
 
 ### やること（開始時に書く）

@@ -7,8 +7,10 @@ TOMOKO_DEBUG_LOG_FILE ?= logs/server-debug.log
 COMPOSE ?= docker compose --project-directory . -f docker/docker-compose.yml
 DB_DUMP_DIR ?= logs/db-dumps
 DB_DUMP_FILE ?= $(DB_DUMP_DIR)/tomoko-$(shell date +%Y%m%d-%H%M%S).sql
+SESSION_SUMMARY_LIMIT ?= 10
+SESSION_SUMMARY_INTERVAL_SEC ?= 30
 
-.PHONY: deps server server-reload server-debug db-up db-stop db-down db-dump test-unit bench-stt lint check
+.PHONY: deps server server-reload server-debug session-summarizer session-summarizer-once db-up db-stop db-down db-dump test-unit bench-stt lint check
 
 deps:
 	mise exec -- uv sync
@@ -22,6 +24,12 @@ server-reload:
 server-debug:
 	mkdir -p logs
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=DEBUG TOMOKO_LOG_FILE= mise exec -- uv run uvicorn server.edge.main:app --host $(HOST) --port $(PORT) --log-level info --reload 2>&1 | tee -a $(TOMOKO_DEBUG_LOG_FILE)
+
+session-summarizer:
+	PYTHONUNBUFFERED=1 mise exec -- uv run python background-process/summarize_pending_sessions.py --limit $(SESSION_SUMMARY_LIMIT) --watch --interval-sec $(SESSION_SUMMARY_INTERVAL_SEC)
+
+session-summarizer-once:
+	PYTHONUNBUFFERED=1 mise exec -- uv run python background-process/summarize_pending_sessions.py --limit $(SESSION_SUMMARY_LIMIT)
 
 db-up:
 	$(COMPOSE) up -d postgres
