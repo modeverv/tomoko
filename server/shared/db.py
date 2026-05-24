@@ -6,6 +6,7 @@ import psycopg
 
 from server.shared.models import (
     AttentionMode,
+    ConversationLogStatus,
     ConversationTurn,
     ParticipationMode,
     Transcript,
@@ -32,7 +33,14 @@ class ConversationLogWriter(Protocol):
         participation_mode: ParticipationMode,
     ) -> None: ...
 
-    async def write_tomoko_turn(self, *, text: str, emotion: str, device_id: str) -> None: ...
+    async def write_tomoko_turn(
+        self,
+        *,
+        text: str,
+        emotion: str,
+        device_id: str,
+        status: ConversationLogStatus = "completed",
+    ) -> None: ...
 
     async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]: ...
 
@@ -133,7 +141,14 @@ class PostgresConversationLogWriter:
                     ),
                 )
 
-    async def write_tomoko_turn(self, *, text: str, emotion: str, device_id: str) -> None:
+    async def write_tomoko_turn(
+        self,
+        *,
+        text: str,
+        emotion: str,
+        device_id: str,
+        status: ConversationLogStatus = "completed",
+    ) -> None:
         async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
@@ -144,9 +159,10 @@ class PostgresConversationLogWriter:
                         role,
                         transcript,
                         emotion,
-                        participation_mode
+                        participation_mode,
+                        status
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         device_id,
@@ -155,6 +171,7 @@ class PostgresConversationLogWriter:
                         text,
                         emotion,
                         "invited",
+                        status,
                     ),
                 )
 
@@ -165,6 +182,7 @@ class PostgresConversationLogWriter:
                     """
                     SELECT role, transcript, recorded_at, emotion
                     FROM conversation_logs
+                    WHERE status = 'completed'
                     ORDER BY recorded_at DESC
                     LIMIT %s
                     """,
@@ -197,8 +215,15 @@ class NullConversationLogWriter:
         del transcript, participation_mode
         return None
 
-    async def write_tomoko_turn(self, *, text: str, emotion: str, device_id: str) -> None:
-        del text, emotion, device_id
+    async def write_tomoko_turn(
+        self,
+        *,
+        text: str,
+        emotion: str,
+        device_id: str,
+        status: ConversationLogStatus = "completed",
+    ) -> None:
+        del text, emotion, device_id, status
         return None
 
     async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]:

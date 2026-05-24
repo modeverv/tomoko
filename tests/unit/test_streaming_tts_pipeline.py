@@ -63,6 +63,35 @@ class FakeRouter:
         return self.backend
 
 
+class InMemoryConversationLogWriter:
+    def __init__(self) -> None:
+        self.user_turns: list[tuple[str, str]] = []
+        self.tomoko_turns: list[tuple[str, str, str]] = []
+
+    async def write_user_turn(
+        self,
+        transcript: Transcript,
+        *,
+        participation_mode: str,
+    ) -> None:
+        self.user_turns.append((transcript.text, participation_mode))
+
+    async def write_tomoko_turn(
+        self,
+        *,
+        text: str,
+        emotion: str,
+        device_id: str,
+        status: str = "completed",
+    ) -> None:
+        del device_id
+        self.tomoko_turns.append((text, emotion, status))
+
+    async def read_recent_turns(self, *, limit: int) -> list[object]:
+        del limit
+        return []
+
+
 class BlockingStreamingTTS(TTSBackend):
     name = "blocking_streaming_tts"
 
@@ -131,12 +160,14 @@ async def test_reply_task_does_not_block_audio_processing_while_tts_waits() -> N
 async def test_hard_barge_in_cancels_generating_tts_and_stops_playback() -> None:
     events: list[dict[str, str]] = []
     tts = BlockingStreamingTTS()
+    conversation_logs = InMemoryConversationLogWriter()
     session = TomoroSession(
         vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
         send_event=events.append,
         send_audio=lambda chunk: None,
         transcriber=SequenceTranscriber(["トモコ、聞こえる？", "ストップ"]),
         participation_judge=WakeWordJudge(),
+        conversation_log_writer=conversation_logs,  # type: ignore[arg-type]
         router=FakeRouter(FakeBackend(["長めに話すね。"])),  # type: ignore[arg-type]
         thinking_mode=ThinkFastMode(),
         tts_backend=tts,
@@ -148,6 +179,9 @@ async def test_hard_barge_in_cancels_generating_tts_and_stops_playback() -> None
     await session._handle_finished_speech(_segment())
 
     assert tts.cancelled is True
+    assert conversation_logs.tomoko_turns == [
+        ("長めに話すね。", "neutral", "interrupted")
+    ]
     assert any(
         event["type"] == "audio_control" and event["action"] == "stop"
         for event in events

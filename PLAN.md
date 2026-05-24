@@ -263,6 +263,17 @@ Phase 7 は既存 `conversation_logs` の role 行保存を活かし、短期文
 - 短期文脈の上限は `RECENT_CONTEXT_TURN_LIMIT = 12`
 - `ruff check .`、`pytest -m unit`、`pytest -m perf --tb=short tests/perf/test_phase5_latency.py` が通過した
 
+### 2026-05-24 追記: interrupted turn の保存
+
+人間判断により、`conversation_logs` は role 形式のまま維持しつつ、返答状態を保存する。
+
+- `conversation_logs.status TEXT NOT NULL DEFAULT 'completed'` を追加した
+- 通常完了した Tomoko 返答は `completed`
+- hard interrupt で止められた Tomoko 返答は `interrupted`
+- 将来用に `cancelled` / `error` も `ConversationLogStatus` として予約した
+- 短期記憶の直近文脈では `completed` だけを使う
+- `interrupted` は日記や「言えなかったこと」の材料として残す
+
 ---
 
 ## Phase 8: 長期記憶（エピソード記憶）

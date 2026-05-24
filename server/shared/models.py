@@ -18,6 +18,7 @@ BargeInKind = Literal[
 BargeInAction = Literal["continue_speaking", "finish_sentence", "restart_turn"]
 PlaybackEventType = Literal["playback_started", "playback_ended"]
 TranscriptFilterAction = Literal["accept", "suppress_partial", "drop"]
+ConversationLogStatus = Literal["completed", "interrupted", "cancelled", "error"]
 
 
 @dataclass

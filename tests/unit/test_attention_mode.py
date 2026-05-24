@@ -78,9 +78,16 @@ class InMemoryConversationLogWriter:
     ) -> None:
         self.user_turns.append((transcript, participation_mode))
 
-    async def write_tomoko_turn(self, *, text: str, emotion: str, device_id: str) -> None:
+    async def write_tomoko_turn(
+        self,
+        *,
+        text: str,
+        emotion: str,
+        device_id: str,
+        status: str = "completed",
+    ) -> None:
         del device_id
-        self.tomoko_turns.append((text, emotion))
+        self.tomoko_turns.append((text, emotion, status))
 
 
 class FakeBackend(InferenceBackend):

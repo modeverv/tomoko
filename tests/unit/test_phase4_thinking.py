@@ -64,7 +64,7 @@ class InMemoryConversationLogWriter:
     def __init__(self, history: list[ConversationTurn] | None = None) -> None:
         self.history = history or []
         self.user_turns: list[tuple[Transcript, ParticipationMode]] = []
-        self.tomoko_turns: list[tuple[str, str]] = []
+        self.tomoko_turns: list[tuple[str, str, str]] = []
 
     async def write_user_turn(
         self,
@@ -81,9 +81,16 @@ class InMemoryConversationLogWriter:
             )
         )
 
-    async def write_tomoko_turn(self, *, text: str, emotion: str, device_id: str) -> None:
+    async def write_tomoko_turn(
+        self,
+        *,
+        text: str,
+        emotion: str,
+        device_id: str,
+        status: str = "completed",
+    ) -> None:
         del device_id
-        self.tomoko_turns.append((text, emotion))
+        self.tomoko_turns.append((text, emotion, status))
         self.history.append(
             ConversationTurn(
                 speaker="tomoko",

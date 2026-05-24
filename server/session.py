@@ -27,6 +27,7 @@ from server.shared.models import (
     AudioChunkOut,
     BargeInContext,
     BargeInDecision,
+    ConversationLogStatus,
     ConversationTurn,
     ParticipationContext,
     PlaybackTelemetry,
@@ -94,6 +95,7 @@ class TomoroSession:
         self._latency_first_reply_text_at: float | None = None
         self._latency_tts_start_at: float | None = None
         self._latency_first_audio_chunk_at: float | None = None
+        self._reply_cancel_status: ConversationLogStatus | None = None
 
     @property
     def _playback_echo_grace_ms(self) -> int:
@@ -162,7 +164,7 @@ class TomoroSession:
                 barge_in_decision.reason,
             )
             if barge_in_decision.action == "restart_turn":
-                await self._cancel_reply_generation()
+                await self._cancel_reply_generation(status="interrupted")
                 await self._stop_active_audio_turn()
             if barge_in_decision.action == "continue_speaking":
                 if self.ambient_log_writer is not None:
@@ -332,10 +334,11 @@ class TomoroSession:
                         await tts_worker
                         reply_text = reply.reply_text.strip()
                         if self.conversation_log_writer is not None and reply_text:
-                            await self.conversation_log_writer.write_tomoko_turn(
+                            await self._write_tomoko_turn(
                                 text=reply_text,
                                 emotion=reply.current_emotion,
                                 device_id=transcript.device_id,
+                                status="completed",
                             )
                         await self._send_event({"type": "reply_done"})
                         await self._end_audio_turn()
@@ -344,6 +347,14 @@ class TomoroSession:
             tts_worker.cancel()
             with suppress(asyncio.CancelledError):
                 await tts_worker
+            reply_text = reply.reply_text.strip()
+            if reply_text:
+                await self._write_tomoko_turn(
+                    text=reply_text,
+                    emotion=reply.current_emotion,
+                    device_id=transcript.device_id,
+                    status=self._reply_cancel_status or "cancelled",
+                )
             raise
         finally:
             if self._tts_worker_task is tts_worker:
@@ -417,7 +428,8 @@ class TomoroSession:
                 await maybe_awaitable
 
     async def _start_reply_task(self, transcript: Transcript) -> None:
-        await self._cancel_reply_generation()
+        await self._cancel_reply_generation(status="cancelled")
+        self._reply_cancel_status = None
         self._reply_task = asyncio.create_task(self._run_reply_task(transcript))
 
     async def _run_reply_task(self, transcript: Transcript) -> None:
@@ -431,13 +443,19 @@ class TomoroSession:
             if self._reply_task is asyncio.current_task():
                 self._reply_task = None
 
-    async def _cancel_reply_generation(self) -> None:
+    async def _cancel_reply_generation(
+        self,
+        *,
+        status: ConversationLogStatus = "cancelled",
+    ) -> None:
         current_task = asyncio.current_task()
         tasks = [
             task
             for task in (self._reply_task, self._tts_worker_task)
             if task is not None and task is not current_task and not task.done()
         ]
+        if tasks:
+            self._reply_cancel_status = status
         for task in tasks:
             task.cancel()
         for task in tasks:
@@ -607,6 +625,23 @@ class TomoroSession:
         if turns and turns[-1].speaker == "user" and turns[-1].text == transcript.text:
             turns = turns[:-1]
         return turns[-RECENT_CONTEXT_TURN_LIMIT:]
+
+    async def _write_tomoko_turn(
+        self,
+        *,
+        text: str,
+        emotion: str,
+        device_id: str,
+        status: ConversationLogStatus,
+    ) -> None:
+        if self.conversation_log_writer is None:
+            return
+        await self.conversation_log_writer.write_tomoko_turn(
+            text=text,
+            emotion=emotion,
+            device_id=device_id,
+            status=status,
+        )
 
     def _elapsed_since_speech_end_ms(self) -> float:
         return _elapsed_ms(self._latency_speech_end_at)

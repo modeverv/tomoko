@@ -58,6 +58,38 @@
 - Chrome 実セッションで「さっき言った〇〇のことだけど」が文脈付きで返るか確認する
 - M2 Phase 8: embedding / pgvector / `ThinkDeepMode` の設計に進む
 
+## 2026-05-24 セッション19
+
+### やること（開始時に書く）
+- 人間判断を反映する
+  - `conversation_logs` は role 形式のままで進める
+  - `conversation_logs.status TEXT NOT NULL DEFAULT 'completed'` を追加する
+  - 止められた Tomoko 返答は `status='interrupted'` で保存する
+
+### やったこと
+- `conversation_logs` に `status TEXT NOT NULL DEFAULT 'completed'` を追加する DDL を入れた
+- 既存ローカル PostgreSQL に `ALTER TABLE conversation_logs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed';` を適用した
+- `ConversationLogStatus = completed | interrupted | cancelled | error` を DTO 側に追加した
+- 通常完了した Tomoko 返答は `status='completed'`、hard interrupt で止められた生成済み途中返答は `status='interrupted'` で保存するようにした
+- 短期記憶の `read_recent_turns()` は `status='completed'` だけを context に使うようにした
+- hard interrupt 中の TTS cancel で interrupted turn が保存される unit test を追加した
+
+### 詰まったこと・解決したこと
+- `reply_done` 前に cancel されると、`ReplyPipeline` 内の途中テキストがローカル変数のまま消える
+  → `CancelledError` を受けた `_reply_to()` で `reply.reply_text` を `interrupted` として保存するようにした
+- `_start_reply_task()` でも既存 reply task を cancel するため、全部を `interrupted` にすると「止められた」以外も混ざる
+  → `_cancel_reply_generation(status=...)` で理由を渡し、hard interrupt だけ `interrupted` にした
+
+### 検証
+- `docker exec tomoko-postgres psql -U tomoko -d tomoko -c "\\d conversation_logs"` で `status` カラム確認
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m perf --tb=short tests/perf/test_phase5_latency.py`
+
+### 次のセッションでやること
+- Chrome 実セッションで hard interrupt した時に `conversation_logs.status='interrupted'` が残ることを確認する
+- M2 Phase 8: embedding / pgvector / `ThinkDeepMode` の設計に進む
+
 ## 初回（設計フェーズ）2026-05-23
 
 ### やったこと

@@ -35,8 +35,12 @@ CREATE TABLE IF NOT EXISTS conversation_logs (
     role TEXT NOT NULL,
     transcript TEXT NOT NULL,
     emotion TEXT,
-    participation_mode TEXT NOT NULL
+    participation_mode TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'completed'
 );
+
+ALTER TABLE conversation_logs
+    ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed';
 
 CREATE INDEX IF NOT EXISTS conversation_logs_recorded_at_idx
     ON conversation_logs (recorded_at DESC);

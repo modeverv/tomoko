@@ -629,3 +629,13 @@ M2 Phase 7 の短期記憶は、既存の `conversation_logs` テーブルに保
 
 短期文脈の上限は当面 `RECENT_CONTEXT_TURN_LIMIT = 12` とする。
 hard interrupt や cancel で `reply_done` に到達しなかった Tomoko 返答は `conversation_logs` に保存しない。
+
+### 確定した判断: 止められた Tomoko 返答は interrupted として conversation_logs に残す
+上の「hard interrupt や cancel で `reply_done` に到達しなかった Tomoko 返答は保存しない」という判断は否定する。
+
+人間判断により、止められた Tomoko 返答は `conversation_logs.status='interrupted'` として保存する。
+`conversation_logs` は role 形式のまま維持し、`status TEXT NOT NULL DEFAULT 'completed'` を追加する。
+
+`ConversationLogStatus` は `completed` / `interrupted` / `cancelled` / `error` とする。
+短期記憶の直近文脈には当面 `completed` だけを使う。
+`interrupted` は M3 の日記や「言えなかったこと」の材料として使えるように残す。
