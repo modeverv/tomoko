@@ -4,6 +4,43 @@
 
 ---
 
+## 2026-05-24 セッション47
+
+### やること（開始時に書く）
+- M3 Phase 9.1: deterministic source / selection を実装する
+- `CandidateSeed` / `ThinkerSourceContext` と `InformationSource` を追加する
+- deterministic `TimeBasedSource` と `HighestPriority` selection を追加し、dedupe 方針を unit test で固定する
+- `pytest -m unit` で確認する
+
+### やったこと
+- `server/shared/candidate.py` に `CandidateSeed` / `ThinkerSourceContext` を追加した
+- `server/thinker/sources/base.py` と `server/thinker/sources/time_based.py` を追加した
+  - `TimeBasedSource` は時刻 bucket だけから deterministic seed を返す
+  - 外部 API / LLM / DB read は呼ばない
+- `server/thinker/selection/base.py` と `server/thinker/selection/highest.py` を追加した
+  - priority 降順、urgent 優先、expires_at 昇順、created_at 昇順で選ぶ
+- dedupe は `context_tags` の `dedupe:<dedupe_key>` で固定した
+  - active candidate に同じ dedupe tag があれば insert しない
+  - spoken / dismissed 済みは再生成可能にした
+- `tests/unit/test_phase91_deterministic_sources.py` を追加した
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` を更新した
+
+### 詰まったこと・解決したこと
+- dedupe_key の保存先は専用カラムも考えられるが、Phase 9.1 では schema を増やす圧がまだない
+  → `context_tags` に `dedupe:<dedupe_key>` を保存し、後続で検索圧や DB 一意性が必要になったら専用列 / index を検討する方針にした
+
+### 次のセッションでやること
+- Phase 9.2 に進む場合は `UtteranceEvaluator` / `ThinkerEvaluationContext` / `EvaluatedUtterance` から実装する
+- LLM evaluator failure は online 会話を止めず、失敗 seed を捨てるか log に残すだけにする
+
+### 検証
+- `mise exec -- uv run ruff check server/shared/candidate.py server/thinker tests/unit/test_phase91_deterministic_sources.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase91_deterministic_sources.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase90_candidates.py tests/unit/test_phase91_deterministic_sources.py`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run ruff check .`
+- `git diff --check`
+
 ## 2026-05-24 セッション46
 
 ### やること（開始時に書く）

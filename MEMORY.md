@@ -1046,3 +1046,15 @@ device filter のため `device_id` は列としても持つが、`ArrivalContex
 
 application 層では DB row や JSONB の生 `dict` を持ち回らず、
 `UtteranceCandidate` / `ArrivalCandidate` / `ArrivalContextSnapshot` に変換して扱う。
+
+### 確定した判断: Phase 9.1 deterministic source と dedupe
+Phase 9.1 の deterministic source は、外部 API / LLM / DB read に依存しない seed 生成として実装する。
+初段は `TimeBasedSource` のみで、`ThinkerSourceContext.observed_at` から朝 / 昼 / 夜 / 深夜 bucket を決め、
+同じ時刻入力では同じ `CandidateSeed` と `dedupe_key` を返す。
+
+dedupe は専用カラムをまだ増やさず、`utterance_candidates.context_tags` に `dedupe:<dedupe_key>` を保存する。
+active candidate に同じ dedupe tag が存在する場合、`insert_seed_candidate_once()` は新規 insert せず `None` を返す。
+`spoken_at` / `dismissed_at` 済み candidate は active ではないため、同じ seed を後で再生成してよい。
+この方針は Phase 9.1 の最小足場であり、dedupe の検索圧や DB 一意性が必要になった時だけ専用列 / index を検討する。
+
+候補選択の初段は `HighestPriority` とし、priority 降順、urgent 優先、expires_at 昇順、created_at 昇順で安定選択する。

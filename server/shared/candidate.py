@@ -13,6 +13,7 @@ ArrivalBehavior = Literal["speak_first", "wait_silent", "subtle_react"]
 
 _VALID_MATURITIES = {0, 1, 2}
 _VALID_ARRIVAL_BEHAVIORS = {"speak_first", "wait_silent", "subtle_react"}
+_DEDUPE_TAG_PREFIX = "dedupe:"
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,41 @@ class ArrivalContextSnapshot:
         if self.recent_summary is not None:
             payload["recent_summary"] = self.recent_summary
         return payload
+
+
+@dataclass(frozen=True)
+class ThinkerSourceContext:
+    observed_at: datetime
+    device_id: str | None = None
+    attention_mode: str | None = None
+    recent_summary: str | None = None
+
+
+@dataclass(frozen=True)
+class CandidateSeed:
+    seed_text: str
+    source: str
+    priority: float
+    expires_at: datetime
+    dedupe_key: str
+    urgent: bool = False
+    context_tags: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        if not self.seed_text:
+            raise ValueError("CandidateSeed.seed_text must not be empty")
+        if not self.source:
+            raise ValueError("CandidateSeed.source must not be empty")
+        if not self.dedupe_key:
+            raise ValueError("CandidateSeed.dedupe_key must not be empty")
+
+        dedupe_tag = dedupe_key_to_tag(self.dedupe_key)
+        if dedupe_tag not in self.context_tags:
+            object.__setattr__(
+                self,
+                "context_tags",
+                (dedupe_tag, *self.context_tags),
+            )
 
 
 @dataclass(frozen=True)
@@ -187,6 +223,13 @@ class CandidateStore(Protocol):
         created_at: datetime | None = None,
     ) -> UtteranceCandidate: ...
 
+    async def insert_seed_candidate_once(
+        self,
+        seed: CandidateSeed,
+        *,
+        created_at: datetime | None = None,
+    ) -> UtteranceCandidate | None: ...
+
     async def fetch_active_utterance_candidates(
         self,
         *,
@@ -272,6 +315,34 @@ class InMemoryCandidateStore:
         )
         self.utterance_candidates.append(candidate)
         return candidate
+
+    async def insert_seed_candidate_once(
+        self,
+        seed: CandidateSeed,
+        *,
+        created_at: datetime | None = None,
+    ) -> UtteranceCandidate | None:
+        now = created_at or datetime.now(UTC)
+        dedupe_tag = dedupe_key_to_tag(seed.dedupe_key)
+        if any(
+            candidate.spoken_at is None
+            and candidate.dismissed_at is None
+            and candidate.expires_at > now
+            and dedupe_tag in candidate.context_tags
+            for candidate in self.utterance_candidates
+        ):
+            return None
+
+        return await self.insert_utterance_candidate(
+            seed=seed.seed_text,
+            source=seed.source,
+            expires_at=seed.expires_at,
+            priority=seed.priority,
+            urgent=seed.urgent,
+            maturity=0,
+            context_tags=seed.context_tags,
+            created_at=created_at,
+        )
 
     async def fetch_active_utterance_candidates(
         self,
@@ -482,6 +553,74 @@ class PostgresCandidateStore:
                 row = await cur.fetchone()
         if row is None:
             raise RuntimeError("utterance candidate insert returned no row")
+        return UtteranceCandidate.from_db_row(row)
+
+    async def insert_seed_candidate_once(
+        self,
+        seed: CandidateSeed,
+        *,
+        created_at: datetime | None = None,
+    ) -> UtteranceCandidate | None:
+        now = created_at or datetime.now(UTC)
+        dedupe_tag = dedupe_key_to_tag(seed.dedupe_key)
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT 1
+                    FROM utterance_candidates
+                    WHERE spoken_at IS NULL
+                      AND dismissed_at IS NULL
+                      AND expires_at > %s
+                      AND %s = ANY(context_tags)
+                    LIMIT 1
+                    """,
+                    (now, dedupe_tag),
+                )
+                if await cur.fetchone() is not None:
+                    return None
+
+                await cur.execute(
+                    """
+                    INSERT INTO utterance_candidates (
+                        seed,
+                        priority,
+                        urgent,
+                        created_at,
+                        expires_at,
+                        maturity,
+                        source,
+                        context_tags
+                    )
+                    VALUES (%s, %s, %s, COALESCE(%s, now()), %s, 0, %s, %s)
+                    RETURNING
+                        id,
+                        seed,
+                        generated_text,
+                        generated_audio,
+                        priority,
+                        urgent,
+                        created_at,
+                        expires_at,
+                        spoken_at,
+                        dismissed_at,
+                        maturity,
+                        source,
+                        context_tags
+                    """,
+                    (
+                        seed.seed_text,
+                        seed.priority,
+                        seed.urgent,
+                        created_at,
+                        seed.expires_at,
+                        seed.source,
+                        list(seed.context_tags),
+                    ),
+                )
+                row = await cur.fetchone()
+        if row is None:
+            raise RuntimeError("seed candidate insert returned no row")
         return UtteranceCandidate.from_db_row(row)
 
     async def fetch_active_utterance_candidates(
@@ -716,3 +855,7 @@ def _as_arrival_behavior(value: object) -> ArrivalBehavior:
     if behavior not in _VALID_ARRIVAL_BEHAVIORS:
         raise ValueError(f"Unsupported arrival behavior: {behavior}")
     return behavior  # type: ignore[return-value]
+
+
+def dedupe_key_to_tag(dedupe_key: str) -> str:
+    return f"{_DEDUPE_TAG_PREFIX}{dedupe_key}"
