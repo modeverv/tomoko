@@ -964,3 +964,19 @@ background `SessionSummarizer` が担当する。
 
 失敗時は `summary_status='error'` と `summary_error` を残し、原本 `conversation_logs` は変更しない。
 再実行したい場合は人間または運用スクリプトが status を `pending` に戻す。
+
+### 確定した判断: Phase 8.7 の用語集ログと人格スナップショット実装
+`persona_lexicon_versions` / `persona_state_versions` は、Phase 8.7 で DB とプログラム側 DTO の
+両方を実装した。
+
+保存形式は versioned JSONB snapshot のまま維持する。
+`lexicon_json` / `state_json` はその時点の全体 snapshot、`diff_json` は前 version からの変化だけを持つ。
+PostgreSQL では JSONB GIN index で外部分析できるようにし、アプリケーションコードでは
+`PersonaLexiconSnapshot` / `PersonaStateSnapshot` / `PersonaVersionDiff` に変換して扱う。
+
+background 側の入口は `background-process/update_persona_snapshots.py` と
+`make persona-updater` / `make persona-updater-once`。
+online `TomoroSession` 経路では lexicon / persona update を実行しない。
+
+応答生成に使う場合は JSONB snapshot 全量を prompt に直接入れず、
+`LexiconTerm` / `PersonaPromptSlice` のような subset DTO に落としてから渡す。

@@ -9,8 +9,10 @@ DB_DUMP_DIR ?= logs/db-dumps
 DB_DUMP_FILE ?= $(DB_DUMP_DIR)/tomoko-$(shell date +%Y%m%d-%H%M%S).sql
 SESSION_SUMMARY_LIMIT ?= 10
 SESSION_SUMMARY_INTERVAL_SEC ?= 30
+PERSONA_UPDATE_LIMIT ?= 10
+PERSONA_UPDATE_INTERVAL_SEC ?= 60
 
-.PHONY: deps server server-reload server-debug session-summarizer session-summarizer-once db-up db-stop db-down db-dump test-unit bench-stt lint check
+.PHONY: deps server server-reload server-debug session-summarizer session-summarizer-once persona-updater persona-updater-once db-up db-stop db-down db-dump test-unit bench-stt lint check
 
 deps:
 	mise exec -- uv sync
@@ -30,6 +32,12 @@ session-summarizer:
 
 session-summarizer-once:
 	PYTHONUNBUFFERED=1 mise exec -- uv run python background-process/summarize_pending_sessions.py --limit $(SESSION_SUMMARY_LIMIT)
+
+persona-updater:
+	PYTHONUNBUFFERED=1 mise exec -- uv run python background-process/update_persona_snapshots.py --limit $(PERSONA_UPDATE_LIMIT) --watch --interval-sec $(PERSONA_UPDATE_INTERVAL_SEC)
+
+persona-updater-once:
+	PYTHONUNBUFFERED=1 mise exec -- uv run python background-process/update_persona_snapshots.py --limit $(PERSONA_UPDATE_LIMIT)
 
 db-up:
 	$(COMPOSE) up -d postgres

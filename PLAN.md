@@ -473,7 +473,7 @@ versioned JSONB snapshot として保存する。
 
 **目標**: 後から外部分析で「いつ、どの会話が、Tomoko の語彙や性格状態にどう影響したか」を追跡できるようにする。
 
-- [ ] `persona_lexicon_versions` テーブルを作成する
+- [x] `persona_lexicon_versions` テーブルを作成する
   - `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
   - `version INTEGER NOT NULL`
   - `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`
@@ -485,7 +485,7 @@ versioned JSONB snapshot として保存する。
   - `schema_version INTEGER NOT NULL DEFAULT 1`
   - `model TEXT`
   - `status TEXT NOT NULL DEFAULT 'completed'`
-- [ ] `persona_state_versions` テーブルを作成する
+- [x] `persona_state_versions` テーブルを作成する
   - `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
   - `version INTEGER NOT NULL`
   - `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`
@@ -497,29 +497,29 @@ versioned JSONB snapshot として保存する。
   - `schema_version INTEGER NOT NULL DEFAULT 1`
   - `model TEXT`
   - `status TEXT NOT NULL DEFAULT 'completed'`
-- [ ] JSONB 分析用 index を追加する
+- [x] JSONB 分析用 index を追加する
   - `lexicon_json` / `state_json` に GIN index を張る
   - よく使う key は expression index を検討する
-- [ ] プログラム側モデルを追加する
+- [x] プログラム側モデルを追加する
   - `PersonaLexiconSnapshot`
   - `PersonaStateSnapshot`
   - `PersonaVersionDiff`
   - `schema_version` ごとの loader / validator
   - DB 入出力時は JSONB をモデルクラスへ変換し、生 dict を持ち回らない
-- [ ] `lexicon_update` worker を追加する
+- [x] `lexicon_update` worker を追加する
   - completed session summary と必要な raw turns を読む
   - 印象的フレーズ、用語、訂正、関係性マーカーを抽出する
   - 前 version からの `diff_json` を作る
   - `persona_lexicon_versions` に新 version を追加する
-- [ ] `persona_update` を snapshot 方式へ寄せる
+- [x] `persona_update` を snapshot 方式へ寄せる
   - 最新 `persona_state_versions.state_json` を読み込む
   - session summary / lexicon diff / diary を材料に次 version を作る
   - `state_json` と `diff_json` を保存する
-- [ ] 応答生成での利用は subset に限定する
+- [x] 応答生成での利用は subset に限定する
   - 最新 snapshot 全量を毎回 prompt に入れない
   - 現在発話・関連 session summary に関係する term / phrase / speaking_style だけを取り出す
   - `ThinkingInput` に渡す場合は DTO を追加して境界を明確にする
-- [ ] unit test / integration test を追加する
+- [x] unit test / integration test を追加する
   - JSONB snapshot をモデルクラスへ round-trip できる
   - schema_version が違う snapshot を loader が扱える
   - diff_json から追加/更新/廃止の変動点を追える
@@ -530,6 +530,37 @@ versioned JSONB snapshot として保存する。
 - `diff_json` で変動点を追跡できる
 - JSONB は PostgreSQL で検索でき、プログラム内ではモデルクラスとして扱える
 - `pytest -m unit` が通る
+
+### 2026-05-24 実装結果
+
+Phase 8.7 は、用語集と人格状態を versioned JSONB snapshot として保存する土台を実装した。
+
+- `docker/postgres/init/005_persona_snapshots.sql` を追加した
+  - `persona_lexicon_versions` / `persona_state_versions` を作成する
+  - `lexicon_json` / `state_json` / `diff_json` に GIN index を張る
+  - version / source session / created_at index を追加する
+- `server/shared/models.py` に schema version 付きモデルクラスを追加した
+  - `PersonaLexiconSnapshot`
+  - `PersonaStateSnapshot`
+  - `PersonaVersionDiff`
+  - `LexiconTerm`
+  - `PersonaPromptSlice`
+- `server/shared/persona.py` に `PostgresPersonaSnapshotStore` を追加した
+  - completed session summary と raw turns を読み出す
+  - 最新 lexicon / state snapshot をモデルクラスとして読む
+  - 新しい lexicon / state version を JSONB として保存する
+- `server/background/persona_updater.py` を追加した
+  - completed session summary を材料に lexicon / persona state の次 version を作る
+  - LLM extractor は JSON だけを返す契約にし、保存時は loader / validator を通す
+- `background-process/update_persona_snapshots.py` と Makefile entry を追加した
+  - `make persona-updater`
+  - `make persona-updater-once`
+- 応答生成で使う場合は `select_terms_for_prompt()` / `to_prompt_slice()` の subset DTO を通し、
+  JSONB snapshot 全量を prompt に直接入れない契約にした
+- `tests/unit/test_phase87_persona_snapshots.py` と
+  `tests/integration/test_phase87_persona_snapshots_db.py` を追加した
+- ローカル PostgreSQL に DDL を適用した
+- `ruff check .`、`pytest -m unit`、Phase 8.7 integration test が通過した
 
 ## Phase 8.8: ContextSnapshotBuilder 初段
 

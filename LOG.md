@@ -26,6 +26,47 @@
 
 ---
 
+## 2026-05-24 セッション40
+
+### やること（開始時に書く）
+- M2 Phase 8.7: 用語集ログと人格スナップショットを実装する
+- `persona_lexicon_versions` / `persona_state_versions` の JSONB DDL とモデルクラスを追加する
+- background worker と round-trip / jsonb query test を追加し、online 経路には乗せない
+
+### やったこと
+- `docker/postgres/init/005_persona_snapshots.sql` を追加した
+  - `persona_lexicon_versions` / `persona_state_versions` を作成する
+  - snapshot / diff JSONB に GIN index を追加する
+- `server/shared/models.py` に persona snapshot / diff / prompt subset DTO を追加した
+  - `PersonaLexiconSnapshot`
+  - `PersonaStateSnapshot`
+  - `PersonaVersionDiff`
+  - `LexiconTerm`
+  - `PersonaPromptSlice`
+- `server/shared/persona.py` を追加した
+  - 最新 snapshot の読み込み
+  - completed session material の読み込み
+  - 新 version の JSONB 保存
+- `server/background/persona_updater.py` を追加した
+  - completed session summary から lexicon / persona state の version を作る
+  - LLM extractor は JSON を返し、保存前に DTO loader / validator を通す
+- `background-process/update_persona_snapshots.py` を追加し、`Makefile` に `persona-updater` / `persona-updater-once` を追加した
+- `tests/unit/test_phase87_persona_snapshots.py` と `tests/integration/test_phase87_persona_snapshots_db.py` を追加した
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` を更新した
+
+### 詰まったこと・解決したこと
+- 生 JSONB をプログラム中で持ち回らないため、DB 境界で必ず `PersonaLexiconSnapshot` / `PersonaStateSnapshot` / `PersonaVersionDiff` に変換する形にした
+- 応答生成へ使う場合も snapshot 全量を prompt に入れず、`select_terms_for_prompt()` / `to_prompt_slice()` の subset DTO だけを使う契約にした
+
+### 次のセッションでやること
+- Phase 8.8 に進む場合は、`ContextSnapshotBuilder` から latest lexicon / persona snapshot を読み、budget 内で subset DTO に落とす
+
+### 検証
+- `docker exec -i tomoko-postgres psql -U tomoko -d tomoko < docker/postgres/init/005_persona_snapshots.sql`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase87_persona_snapshots_db.py`
+
 ## 2026-05-24 セッション39
 
 ### やること（開始時に書く）
