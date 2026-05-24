@@ -4,6 +4,45 @@
 
 ---
 
+## 2026-05-24 セッション50
+
+### やること（開始時に書く）
+- M3 Phase 9.4: thinker process loop を実装する
+- `server/thinker/main.py` と `background-process/run_thinker.py` を追加し、candidate generation と arrival precompute を once / watch で動かせるようにする
+- Makefile entry、loop 観測ログ、unit / smoke test を追加する
+- `pytest -m unit` と thinker-once smoke で確認する
+
+### やったこと
+- `server/thinker/main.py` を追加した
+  - `ThinkerProcess` で source → seed 保存 → evaluator → text-ready 保存を実行する
+  - `arrival_precompute_loop` と `candidate_generation_loop` を追加し、watch では `asyncio.gather(...)` で並行実行する
+  - generated seed count / inserted seed count / kept candidate count / arrival behavior / elapsed_ms / error count を log に出す
+- `background-process/run_thinker.py` を追加し、`--once` / `--watch` / interval options を受けるようにした
+- `Makefile` に `thinker` / `thinker-once` を追加した
+- `tests/unit/test_phase94_thinker_loop.py` と `tests/integration/test_phase94_thinker_smoke.py` を追加した
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` を更新した
+
+### 詰まったこと・解決したこと
+- source / evaluator の失敗を例外で loop 全体へ伝播させると background process が止まる
+  → Phase 9.4 では error count と log に閉じ、次 interval で回復できる形にした
+- docker-compose service 追加は、現時点ではアプリ用 Docker image / Dockerfile がないため半端な定義になる
+  → local process entrypoint と Makefile までで止め、M4 のインフラ安定化で app image 方針を決めてから追加する
+
+### 次のセッションでやること
+- Phase 10 に進む場合は、`TomoroSession` から candidate / arrival を消費する境界を先にテストで固定する
+- docker-compose の thinker service は、app image 方針が決まってから追加する
+
+### 検証
+- `mise exec -- uv run ruff check server/thinker/main.py background-process/run_thinker.py tests/unit/test_phase94_thinker_loop.py tests/integration/test_phase94_thinker_smoke.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase94_thinker_loop.py`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase94_thinker_smoke.py`
+- `mise exec -- uv run python background-process/run_thinker.py --help`
+- `make -n thinker thinker-once`
+- `make thinker-once`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `git diff --check`
+
 ## 2026-05-24 セッション49
 
 ### やること（開始時に書く）

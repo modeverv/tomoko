@@ -11,8 +11,12 @@ SESSION_SUMMARY_LIMIT ?= 10
 SESSION_SUMMARY_INTERVAL_SEC ?= 30
 PERSONA_UPDATE_LIMIT ?= 10
 PERSONA_UPDATE_INTERVAL_SEC ?= 60
+THINKER_CANDIDATE_INTERVAL_SEC ?= 60
+THINKER_ARRIVAL_INTERVAL_SEC ?= 180
 
-.PHONY: deps server server-reload server-debug session-summarizer session-summarizer-once persona-updater persona-updater-once db-up db-stop db-down db-dump test-unit bench-stt lint check
+.PHONY: deps server server-reload server-debug session-summarizer session-summarizer-once
+.PHONY: persona-updater persona-updater-once thinker thinker-once
+.PHONY: db-up db-stop db-down db-dump test-unit bench-stt lint check
 
 deps:
 	mise exec -- uv sync
@@ -38,6 +42,18 @@ persona-updater:
 
 persona-updater-once:
 	PYTHONUNBUFFERED=1 mise exec -- uv run python background-process/update_persona_snapshots.py --limit $(PERSONA_UPDATE_LIMIT)
+
+thinker:
+	PYTHONUNBUFFERED=1 mise exec -- uv run python background-process/run_thinker.py \
+		--watch \
+		--candidate-interval-sec $(THINKER_CANDIDATE_INTERVAL_SEC) \
+		--arrival-interval-sec $(THINKER_ARRIVAL_INTERVAL_SEC)
+
+thinker-once:
+	PYTHONUNBUFFERED=1 mise exec -- uv run python background-process/run_thinker.py \
+		--once \
+		--candidate-interval-sec $(THINKER_CANDIDATE_INTERVAL_SEC) \
+		--arrival-interval-sec $(THINKER_ARRIVAL_INTERVAL_SEC)
 
 db-up:
 	$(COMPOSE) up -d postgres

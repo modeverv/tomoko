@@ -1087,3 +1087,20 @@ arrival prompt の出力 schema は `behavior` / `utterance_text` / `reason` に
 `behavior` は `speak_first` / `wait_silent` / `subtle_react` のみ。
 LLM failure、malformed JSON、`speak_first` なのに発話文がない場合は、例外を外へ漏らさず
 `behavior="wait_silent"` / `utterance_text=None` / `valid_until=now+3分` の fallback candidate として保存する。
+
+### 確定した判断: Phase 9.4 thinker process loop
+Phase 9.4 の thinker は、local background process として `server/thinker/main.py` に集約する。
+`background-process/run_thinker.py` は CLI entrypoint だけを担当し、実処理は `ThinkerProcess` に置く。
+
+candidate generation は source → seed 保存 → evaluator → text-ready 保存の順に進める。
+source / evaluator / store の失敗は error count と log に閉じ、online `/ws` 経路や background loop 全体を止めない。
+arrival precompute も同じ process から定期実行するが、`TomoroSession` からの消費は Phase 10 以降に送る。
+
+`make thinker-once` は一度だけ candidate / arrival を保存し、`make thinker` は
+`candidate_generation_loop` と `arrival_precompute_loop` を並行実行する。
+Redis / pub-sub / EventBus は導入せず、PostgreSQL の候補プールだけを共有境界にする。
+
+docker-compose への thinker service 追加は、現時点では行わない。
+Tomoko アプリ用 Docker image / Dockerfile がまだなく、Apple Silicon / MLX / LM Studio 前提の runtime を
+Linux container service として半端に定義すると運用実体とずれる。
+M4 のインフラ安定化で app image 方針を決めた後に追加する。

@@ -1146,35 +1146,35 @@ online `/ws` 経路と `TomoroSession` からの消費はまだ行わない。
 **目標**: background process として candidate generation と arrival precompute を定期実行できるようにする。
 この Phase で初めて loop / CLI / Makefile / docker-compose を扱う。
 
-- [ ] `server/thinker/main.py` を追加する
+- [x] `server/thinker/main.py` を追加する
   - `candidate_generation_loop`
   - `arrival_precompute_loop`
   - `asyncio.gather(...)` で並行実行
   - graceful shutdown を扱う
-- [ ] `background-process/run_thinker.py` を追加する
+- [x] `background-process/run_thinker.py` を追加する
   - `--once`
   - `--watch`
   - `--candidate-interval-sec`
   - `--arrival-interval-sec`
   - default arrival interval は 180 秒
-- [ ] `Makefile` に entry を追加する
+- [x] `Makefile` に entry を追加する
   - `make thinker`
   - `make thinker-once`
 - [ ] docker-compose への thinker service 追加は最後に行う
   - 既存 DB service に依存する
   - online `/ws` service とは疎結合にする
   - Redis / pub-sub は導入しない
-- [ ] loop の観測ログを追加する
+- [x] loop の観測ログを追加する
   - generated seed count
   - kept candidate count
   - arrival behavior
   - elapsed_ms
   - error count
-- [ ] unit test を追加する
+- [x] unit test を追加する
   - `--once` 相当の runner が candidate / arrival を 1 回ずつ呼ぶ
   - interval loop は cancellation で止まる
   - source / evaluator failure が片方の loop 全体を落とさない
-- [ ] integration / smoke test を追加する
+- [x] integration / smoke test を追加する
   - local PostgreSQL に対して `thinker-once` を実行し、candidate が保存される
 
 **完了条件**:
@@ -1182,6 +1182,43 @@ online `/ws` 経路と `TomoroSession` からの消費はまだ行わない。
 - `make thinker` で background loop として継続実行できる
 - `pytest -m unit` が通る
 - 追加した integration / smoke test が手元で通る
+
+### 2026-05-24 実装結果
+
+Phase 9.4 は local background process として、candidate generation と arrival precompute を once / watch で実行できる形まで実装した。
+online `/ws` 経路や `TomoroSession` からの消費はまだ行わない。
+
+- `server/thinker/main.py` を追加した
+  - `ThinkerProcess.run_candidate_generation_once()` で source → seed 保存 → evaluator → text-ready 保存を実行する
+  - `run_arrival_precompute_once()` で `ArrivalPrecomputer` を呼び、arrival candidate を更新する
+  - `candidate_generation_loop()` / `arrival_precompute_loop()` を `asyncio.gather(...)` で並行実行できるようにした
+  - source / evaluator / store / arrival の失敗は error count と log に閉じ、background worker 全体を落とさない
+- `background-process/run_thinker.py` を追加した
+  - `--once`
+  - `--watch`
+  - `--candidate-interval-sec`
+  - `--arrival-interval-sec`
+- `Makefile` に `make thinker` / `make thinker-once` を追加した
+- loop 観測ログとして generated seed count / inserted seed count / kept candidate count / arrival behavior / elapsed_ms / error count を出す
+- `tests/unit/test_phase94_thinker_loop.py` を追加した
+  - once runner
+  - cancellation
+  - source / evaluator failure fallback
+- `tests/integration/test_phase94_thinker_smoke.py` を追加し、local PostgreSQL に candidate / arrival が保存されることを確認した
+- `make thinker-once` を実行し、LM Studio 経由で seed と text-ready candidate、arrival candidate が保存されることを確認した
+
+docker-compose への thinker service 追加は、現時点では行わない。
+現在の `docker/docker-compose.yml` は PostgreSQL service のみで、Tomoko アプリ用 Docker image / Dockerfile がまだない。
+ここで Linux container 前提の service を追加すると、Apple Silicon / MLX / LM Studio 前提の runtime と噛み合わない半端な定義になるため、
+M4 のインフラ安定化で app image 方針を決めてから追加する。
+
+検証:
+- `mise exec -- uv run ruff check server/thinker/main.py background-process/run_thinker.py tests/unit/test_phase94_thinker_loop.py tests/integration/test_phase94_thinker_smoke.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase94_thinker_loop.py`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase94_thinker_smoke.py`
+- `mise exec -- uv run python background-process/run_thinker.py --help`
+- `make -n thinker thinker-once`
+- `make thinker-once`
 
 ### Phase 9 全体の完了条件
 
