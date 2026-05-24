@@ -1081,10 +1081,10 @@ online `/ws` 経路と `TomoroSession` には接続していない。
 **目標**: 入室時の初手を 3 分以内に使える形で事前計算する。
 この Phase ではまだ session から arrival candidate を消費しない。
 
-- [ ] `server/thinker/arrival.py` を追加する
+- [x] `server/thinker/arrival.py` を追加する
   - `ArrivalPrecomputer`
   - `async def precompute_once(now, device_id | None) -> ArrivalCandidate`
-- [ ] `ArrivalContextSnapshot` の schema を固定する
+- [x] `ArrivalContextSnapshot` の schema を固定する
   - `schema_version`
   - `computed_at`
   - `device_id`
@@ -1094,24 +1094,24 @@ online `/ws` 経路と `TomoroSession` には接続していない。
   - `urgent_candidate_count`
   - `top_urgent_seeds`
   - `persona_hint`
-- [ ] behavior を固定する
+- [x] behavior を固定する
   - `speak_first`: 入室時に一言話す
   - `wait_silent`: 何も言わず待つ
   - `subtle_react`: Phase 10 以降で表示だけ変える余地。Phase 9 では保存だけ
-- [ ] arrival prompt の出力 schema を固定する
+- [x] arrival prompt の出力 schema を固定する
   - `behavior`
   - `utterance_text`
   - `reason`
-- [ ] LLM 失敗時 fallback を固定する
+- [x] LLM 失敗時 fallback を固定する
   - `behavior="wait_silent"`
   - `utterance_text=None`
   - `valid_until=now + 3 minutes`
-- [ ] unit test を追加する
+- [x] unit test を追加する
   - fresh arrival candidate が保存される
   - LLM 失敗時に wait_silent fallback が保存される
   - `valid_until` を過ぎた candidate は fetch されない
   - context_snapshot が DTO として round-trip する
-- [ ] perf test を追加する
+- [x] perf test を追加する
   - `precompute_once` が実 backend なしの fake 構成で十分速い
   - freshness test は `computed_at` / `valid_until` を見る
 
@@ -1119,6 +1119,27 @@ online `/ws` 経路と `TomoroSession` には接続していない。
 - `arrival_candidates` に常に fresh な候補を置ける
 - 入室時に使うかどうかの判断材料が DB に揃う
 - `pytest -m unit` が通る
+
+### 2026-05-24 実装結果
+
+Phase 9.3 は、入室時に消費する候補を background 側で 3 分 TTL の fresh candidate として保存する境界まで実装した。
+online `/ws` 経路と `TomoroSession` からの消費はまだ行わない。
+
+- `server/thinker/arrival.py` を追加した
+  - `ArrivalPrecomputer.precompute_once(now, device_id)` が context snapshot を組み立てる
+  - urgent な active utterance candidate を集め、`top_urgent_seeds` と `urgent_candidate_count` に入れる
+  - optional な `ArrivalStatsReader` から `time_since_last_session_sec` / `session_count_today` / `persona_hint` を受け取る
+- `ArrivalContextSnapshot` を Phase 9.3 schema へ更新した
+  - `computed_at` / `local_time` / `time_since_last_session_sec` / `session_count_today` / `urgent_candidate_count` / `top_urgent_seeds` / `persona_hint`
+  - DB 境界では JSONB を DTO に変換し、生 `dict` を application 層で持ち回らない
+- arrival prompt の JSON schema を `behavior` / `utterance_text` / `reason` に固定した
+- LLM 失敗、malformed JSON、`speak_first` なのに発話文がない場合は `wait_silent` fallback として保存する
+- `tests/unit/test_phase93_arrival_precompute.py` と `tests/perf/test_phase93_arrival_precompute_latency.py` を追加した
+
+検証:
+- `mise exec -- uv run ruff check server/shared/candidate.py server/thinker/arrival.py tests/unit/test_phase93_arrival_precompute.py tests/perf/test_phase93_arrival_precompute_latency.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase90_candidates.py tests/unit/test_phase91_deterministic_sources.py tests/unit/test_phase92_llm_evaluator.py tests/unit/test_phase93_arrival_precompute.py`
+- `mise exec -- uv run pytest -m perf --tb=short tests/perf/test_phase93_arrival_precompute_latency.py`
 
 ### Phase 9.4: thinker process loop
 

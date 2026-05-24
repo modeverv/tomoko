@@ -1072,3 +1072,18 @@ backend selection failure、runtime failure、malformed JSON、`should_keep=fals
 
 保存時は `CandidateStore.insert_evaluated_utterance_once()` で `maturity=1` とし、
 dedupe は Phase 9.1 と同じ `context_tags` の `dedupe:<dedupe_key>` を使う。
+
+### 確定した判断: Phase 9.3 arrival precompute
+Phase 9.3 の arrival precompute は、入室時の初手を 3 分以内に使える fresh candidate として
+`arrival_candidates` に保存する background 部品として実装する。
+online `/ws` 経路や `TomoroSession` からの消費は Phase 10 以降に送る。
+
+`ArrivalContextSnapshot` は schema version 付き DTO とし、`computed_at` / `device_id` / `local_time` /
+`time_since_last_session_sec` / `session_count_today` / `urgent_candidate_count` / `top_urgent_seeds` /
+`persona_hint` を持つ。
+urgent seed は active `utterance_candidates` から読み、DB row や JSONB の生 `dict` は application 層に持ち込まない。
+
+arrival prompt の出力 schema は `behavior` / `utterance_text` / `reason` に固定する。
+`behavior` は `speak_first` / `wait_silent` / `subtle_react` のみ。
+LLM failure、malformed JSON、`speak_first` なのに発話文がない場合は、例外を外へ漏らさず
+`behavior="wait_silent"` / `utterance_text=None` / `valid_until=now+3分` の fallback candidate として保存する。

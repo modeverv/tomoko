@@ -18,13 +18,15 @@ _DEDUPE_TAG_PREFIX = "dedupe:"
 
 @dataclass(frozen=True)
 class ArrivalContextSnapshot:
-    device_id: str | None
-    observed_at: datetime
     schema_version: int = 1
-    time_of_day: str | None = None
-    attention_mode: str | None = None
-    recent_summary: str | None = None
-    urgent_candidate_ids: tuple[UUID, ...] = field(default_factory=tuple)
+    computed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    device_id: str | None = None
+    local_time: str = ""
+    time_since_last_session_sec: int | None = None
+    session_count_today: int = 0
+    urgent_candidate_count: int = 0
+    top_urgent_seeds: tuple[str, ...] = field(default_factory=tuple)
+    persona_hint: str | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
 
     @classmethod
@@ -35,45 +37,50 @@ class ArrivalContextSnapshot:
                 f"Unsupported arrival context schema_version: {schema_version}"
             )
 
-        observed_at_raw = payload.get("observed_at")
-        if isinstance(observed_at_raw, datetime):
-            observed_at = observed_at_raw
-        elif isinstance(observed_at_raw, str):
-            observed_at = datetime.fromisoformat(observed_at_raw)
-        else:
-            observed_at = datetime.now(UTC)
+        computed_at = _parse_datetime_value(
+            payload.get("computed_at") or payload.get("observed_at")
+        )
 
         return cls(
             schema_version=schema_version,
+            computed_at=computed_at,
             device_id=_optional_str(payload.get("device_id")),
-            observed_at=observed_at,
-            time_of_day=_optional_str(payload.get("time_of_day")),
-            attention_mode=_optional_str(payload.get("attention_mode")),
-            recent_summary=_optional_str(payload.get("recent_summary")),
-            urgent_candidate_ids=tuple(
-                UUID(str(item))
-                for item in _as_sequence(payload.get("urgent_candidate_ids"))
+            local_time=_optional_str(payload.get("local_time"))
+            or _format_local_time(computed_at),
+            time_since_last_session_sec=_optional_int(
+                payload.get("time_since_last_session_sec")
             ),
+            session_count_today=_int_or_zero(payload.get("session_count_today")),
+            urgent_candidate_count=_int_or_zero(
+                payload.get("urgent_candidate_count")
+            ),
+            top_urgent_seeds=tuple(
+                str(item) for item in _as_sequence(payload.get("top_urgent_seeds"))
+            ),
+            persona_hint=_optional_str(payload.get("persona_hint")),
             notes=tuple(str(item) for item in _as_sequence(payload.get("notes"))),
         )
+
+    @property
+    def observed_at(self) -> datetime:
+        return self.computed_at
 
     def to_json(self) -> dict[str, object]:
         payload: dict[str, object] = {
             "schema_version": self.schema_version,
-            "observed_at": self.observed_at.isoformat(),
-            "urgent_candidate_ids": [
-                str(candidate_id) for candidate_id in self.urgent_candidate_ids
-            ],
+            "computed_at": self.computed_at.isoformat(),
+            "local_time": self.local_time or _format_local_time(self.computed_at),
+            "session_count_today": self.session_count_today,
+            "urgent_candidate_count": self.urgent_candidate_count,
+            "top_urgent_seeds": list(self.top_urgent_seeds),
             "notes": list(self.notes),
         }
         if self.device_id is not None:
             payload["device_id"] = self.device_id
-        if self.time_of_day is not None:
-            payload["time_of_day"] = self.time_of_day
-        if self.attention_mode is not None:
-            payload["attention_mode"] = self.attention_mode
-        if self.recent_summary is not None:
-            payload["recent_summary"] = self.recent_summary
+        if self.time_since_last_session_sec is not None:
+            payload["time_since_last_session_sec"] = self.time_since_last_session_sec
+        if self.persona_hint is not None:
+            payload["persona_hint"] = self.persona_hint
         return payload
 
 
@@ -952,6 +959,28 @@ def _optional_datetime(value: object) -> datetime | None:
     if value is None:
         return None
     return _as_datetime(value)
+
+
+def _parse_datetime_value(value: object) -> datetime:
+    if value is None:
+        return datetime.now(UTC)
+    return _as_datetime(value)
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    return int(value)
+
+
+def _int_or_zero(value: object) -> int:
+    if value is None:
+        return 0
+    return int(value)
+
+
+def _format_local_time(value: datetime) -> str:
+    return value.strftime("%H:%M")
 
 
 def _as_maturity(value: object) -> CandidateMaturity:

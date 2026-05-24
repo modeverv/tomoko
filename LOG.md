@@ -4,6 +4,47 @@
 
 ---
 
+## 2026-05-24 セッション49
+
+### やること（開始時に書く）
+- M3 Phase 9.3: arrival precompute を実装する
+- `ArrivalPrecomputer` と arrival context / prompt / fallback 境界を追加する
+- fresh arrival candidate 保存、LLM 失敗時 fallback、DTO round-trip、fake 構成 perf をテストで固定する
+- `pytest -m unit` で確認する
+
+### やったこと
+- `server/thinker/arrival.py` を追加した
+  - `ArrivalPrecomputer.precompute_once(now, device_id)` で 3 分 TTL の arrival candidate を保存する
+  - active な urgent utterance candidate から `urgent_candidate_count` / `top_urgent_seeds` を組み立てる
+  - optional な `ArrivalStatsReader` で session 統計と persona hint を注入できるようにした
+- `ArrivalContextSnapshot` を Phase 9.3 schema へ更新した
+  - `computed_at` / `local_time` / `time_since_last_session_sec` / `session_count_today` / `urgent_candidate_count` / `top_urgent_seeds` / `persona_hint`
+  - 古い `observed_at` JSON は読み取り fallback として残した
+- arrival prompt の出力 schema を `behavior` / `utterance_text` / `reason` に固定した
+- LLM 失敗や invalid response は `wait_silent` fallback として保存するようにした
+- `tests/unit/test_phase93_arrival_precompute.py` と `tests/perf/test_phase93_arrival_precompute_latency.py` を追加した
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` を更新した
+
+### 詰まったこと・解決したこと
+- Phase 9.0 の `ArrivalContextSnapshot` は arrival precompute 前の仮 schema だった
+  → Phase 9.3 の必須項目へ更新しつつ、既存 JSON を読めるよう `observed_at` fallback を残した
+- 入室前 context に session 統計をどう入れるかは DB 実装を増やすと Phase 9.3 の範囲を越える
+  → 初段は `ArrivalStatsReader` protocol にして、Phase 9.4 以降の background loop / DB reader から差し込める形にした
+
+### 次のセッションでやること
+- Phase 9.4: thinker process loop で candidate generation と arrival precompute を定期実行する
+- `ArrivalStatsReader` の実 DB reader が必要なら Phase 9.4 で追加する
+
+### 検証
+- `mise exec -- uv run ruff check server/shared/candidate.py server/thinker/arrival.py tests/unit/test_phase93_arrival_precompute.py tests/perf/test_phase93_arrival_precompute_latency.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase93_arrival_precompute.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase90_candidates.py tests/unit/test_phase91_deterministic_sources.py tests/unit/test_phase92_llm_evaluator.py tests/unit/test_phase93_arrival_precompute.py`
+- `mise exec -- uv run pytest -m perf --tb=short tests/perf/test_phase93_arrival_precompute_latency.py`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase90_candidates_db.py`
+- `git diff --check`
+
 ## 2026-05-24 セッション48
 
 ### やること（開始時に書く）

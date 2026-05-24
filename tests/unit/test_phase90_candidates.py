@@ -15,24 +15,25 @@ from server.shared.candidate import (
 
 @pytest.mark.unit
 def test_arrival_context_snapshot_round_trips_json() -> None:
-    candidate_id = uuid4()
-    observed_at = datetime(2026, 5, 24, 8, 30, tzinfo=UTC)
+    computed_at = datetime(2026, 5, 24, 8, 30, tzinfo=UTC)
 
     snapshot = ArrivalContextSnapshot.from_json(
         {
             "schema_version": 1,
             "device_id": "kitchen",
-            "observed_at": observed_at.isoformat(),
-            "time_of_day": "morning",
-            "attention_mode": "ambient",
-            "recent_summary": "朝の支度中",
-            "urgent_candidate_ids": [str(candidate_id)],
+            "computed_at": computed_at.isoformat(),
+            "local_time": "08:30",
+            "time_since_last_session_sec": 1200,
+            "session_count_today": 2,
+            "urgent_candidate_count": 1,
+            "top_urgent_seeds": ["洗濯物を取り込む"],
+            "persona_hint": "短く声をかける",
             "notes": ["まだ話しかけていない"],
         }
     )
 
     assert ArrivalContextSnapshot.from_json(snapshot.to_json()) == snapshot
-    assert snapshot.urgent_candidate_ids == (candidate_id,)
+    assert snapshot.top_urgent_seeds == ("洗濯物を取り込む",)
 
 
 @pytest.mark.unit
@@ -63,7 +64,8 @@ def test_candidate_dtos_reject_invalid_enums() -> None:
             valid_until=now + timedelta(minutes=3),
             context_snapshot=ArrivalContextSnapshot(
                 device_id="kitchen",
-                observed_at=now,
+                computed_at=now,
+                local_time="12:00",
             ),
             behavior="wave",
             utterance_text=None,
@@ -141,26 +143,42 @@ async def test_candidate_store_fetches_latest_fresh_arrival_candidate() -> None:
     store = InMemoryCandidateStore()
 
     stale = await store.insert_arrival_candidate(
-        context_snapshot=ArrivalContextSnapshot(device_id="kitchen", observed_at=now),
+        context_snapshot=ArrivalContextSnapshot(
+            device_id="kitchen",
+            computed_at=now,
+            local_time="12:00",
+        ),
         behavior="wait_silent",
         computed_at=now - timedelta(minutes=10),
         valid_until=now - timedelta(seconds=1),
     )
     older = await store.insert_arrival_candidate(
-        context_snapshot=ArrivalContextSnapshot(device_id="kitchen", observed_at=now),
+        context_snapshot=ArrivalContextSnapshot(
+            device_id="kitchen",
+            computed_at=now,
+            local_time="12:00",
+        ),
         behavior="subtle_react",
         computed_at=now - timedelta(minutes=2),
         valid_until=now + timedelta(minutes=1),
     )
     latest = await store.insert_arrival_candidate(
-        context_snapshot=ArrivalContextSnapshot(device_id="kitchen", observed_at=now),
+        context_snapshot=ArrivalContextSnapshot(
+            device_id="kitchen",
+            computed_at=now,
+            local_time="12:00",
+        ),
         behavior="speak_first",
         computed_at=now - timedelta(seconds=30),
         valid_until=now + timedelta(minutes=2),
         utterance_text="おかえり。今ちょうど考えてた。",
     )
     other_device = await store.insert_arrival_candidate(
-        context_snapshot=ArrivalContextSnapshot(device_id="living", observed_at=now),
+        context_snapshot=ArrivalContextSnapshot(
+            device_id="living",
+            computed_at=now,
+            local_time="12:00",
+        ),
         behavior="speak_first",
         computed_at=now,
         valid_until=now + timedelta(minutes=2),

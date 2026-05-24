@@ -73,9 +73,10 @@ async def test_postgres_candidate_store_round_trip() -> None:
         arrival = await store.insert_arrival_candidate(
             context_snapshot=ArrivalContextSnapshot(
                 device_id="kitchen",
-                observed_at=now,
-                time_of_day="noon",
-                recent_summary="昼前に買い物の話をした",
+                computed_at=now,
+                local_time="12:00",
+                session_count_today=2,
+                persona_hint="昼前に買い物の話をした",
             ),
             behavior="speak_first",
             computed_at=now,
@@ -89,7 +90,7 @@ async def test_postgres_candidate_store_round_trip() -> None:
             device_id="kitchen",
         )
         assert fresh == arrival
-        assert fresh.context_snapshot.recent_summary == "昼前に買い物の話をした"
+        assert fresh.context_snapshot.persona_hint == "昼前に買い物の話をした"
 
         await store.mark_arrival_used(arrival.id, used_at=now)
         assert (
