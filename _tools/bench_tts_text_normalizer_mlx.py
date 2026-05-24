@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from tools.normalize_tts_text_mlx import (  # noqa: E402
+from _tools.normalize_tts_text_mlx import (  # noqa: E402
     DEFAULT_MODEL,
     DEFAULT_RUNNER,
     _load_model,

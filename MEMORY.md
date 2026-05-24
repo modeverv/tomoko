@@ -919,7 +919,7 @@ stale として捨てる。
 これにより内部実装を作り変えても、メイン層を薄い adapter のまま維持できる。
 
 ### 外部LLMとの会話原文
-[会話原文](reference/2026-05-24-1200_設計評価と改善提案.md)
+[会話原文](_reference/2026-05-24-1200_設計評価と改善提案.md)
 
 ## 2026-05-24 追記
 
@@ -927,4 +927,4 @@ stale として捨てる。
 過去の「TTS聞き比べ用 WAV を `artifacts/tts-bench-cached/` に保存する」という運用は否定する。
 
 `artifacts/` はプログラムが生成する成果物置き場であり、リポジトリのルートに置いて git 管理する対象ではない。
-`tools/bench_tts_backends.py` の出力先は `logs/tts-bench/` とし、WAV は git 管理外のローカル生成物として扱う。
+`_tools/bench_tts_backends.py` の出力先は `logs/tts-bench/` とし、WAV は git 管理外のローカル生成物として扱う。

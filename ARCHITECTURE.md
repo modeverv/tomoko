@@ -370,7 +370,7 @@ pytest -m perf --tb=short  # latency.md に実測値が追記される
 ```
 
 **InferenceRouter があるので A/B テストが設定ファイルの切り替えだけでできる。**
-`docs/latency.md` に Ollama と MLX の実測値を並べて判断する。
+`_docs/latency.md` に Ollama と MLX の実測値を並べて判断する。
 
 ---
 
@@ -500,7 +500,7 @@ pip install kokoro-mlx misaki[ja]
 
 # 3. 日本語品質を確認
 pytest -m perf --tb=short
-# docs/latency.md に say vs kokoro-mlx の実測値が並ぶ
+# _docs/latency.md に say vs kokoro-mlx の実測値が並ぶ
 
 # 4. 品質が厳しければ VOICEVOX に切り替え（同じ抽象なので差し替え可能）
 ```
@@ -844,7 +844,7 @@ class BackendHealthMonitor:
 
 - 過去5分の中央値が閾値超え → クラウドに切り替え
 - テストで「この構成は成立するか」を再現可能な形で検証できる
-- `docs/latency.md` への自動追記でトレンドが見える
+- `_docs/latency.md` への自動追記でトレンドが見える
 
 ---
 
@@ -1277,7 +1277,7 @@ tomoko-voice/
 │   ├── unit/
 │   ├── integration/
 │   └── perf/
-├── docs/
+├── _docs/
 │   └── latency.md              計測ログ
 ├── docker-compose.yml
 └── pyproject.toml

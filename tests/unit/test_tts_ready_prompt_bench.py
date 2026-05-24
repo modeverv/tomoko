@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tools.bench_tts_ready_prompt import evaluate_tts_ready, split_emotion_header
+from _tools.bench_tts_ready_prompt import evaluate_tts_ready, split_emotion_header
 
 
 @pytest.mark.unit

@@ -109,13 +109,13 @@ make server-debug
 | M4 | インフラが安定したTomoko | 未着手 |
 | M5 | 家族のTomoko | 未着手 |
 
-## reference/ について
+## _reference/ について
 
 過去の実装経験から得た参考コードを置いている。
 今回の設計が「何を解決しようとしているか」を理解するための資料。
 
-- `reference/unity/MyAIRoomScript.cs` — 音量閾値VAD・OGGエンコード・REST一括APIの旧実装
-- `reference/server/api.py` — OGG→MP3変換・Base64・REST一括返却の旧サーバー実装
+- `_reference/unity/MyAIRoomScript.cs` — 音量閾値VAD・OGGエンコード・REST一括APIの旧実装
+- `_reference/server/api.py` — OGG→MP3変換・Base64・REST一括返却の旧サーバー実装
 
 今回はこれらの「逆」を実装する。
 
