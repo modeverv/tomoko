@@ -2191,6 +2191,276 @@ ReplyPipeline
 状態を持つものと、判定だけを行うものは分ける。
 authoritative な会話 state / attention state は引き続き `TomoroSession` が所有する。
 
+---
+
+## 2026-05-24 追記: TomoroSession の状態管理戦略
+
+Tomoko のオンライン経路では、音声入力、VAD、STT、参加判断、attention、playback telemetry、
+barge-in、conversation session、context build、LLM、TTS、WebSocket 出力が同時に進む。
+これらは non-blocking / parallel に動く一方で、状態遷移は順序に依存する。
+
+そのため、メイン層に制御判断を残さない。
+メイン層は I/O adapter と command executor に寄せ、`TomoroSession` を stateful control core とする。
+
+```text
+Main layer:
+  WebSocket / timer / backend result を SessionEvent に変換する
+  TomoroSession から返された StateEmission / SessionCommand を実行する
+  participation / playback / session lifecycle の判断はしない
+
+TomoroSession:
+  TomoroRuntimeState を所有する
+  状態変更の入口を post_event(event) に集約する
+  event と現在 state から制御判断する
+  new_state / emissions / commands を返す
+```
+
+### 一方向の制御フロー
+
+`TomoroSession` の外側は、状態を直接変更しない。
+外部入力はすべて `SessionEvent` として `TomoroSession` に渡す。
+`TomoroSession` は判断済みの結果だけを `StateEmission` / `SessionCommand` として外へ出す。
+
+```text
+external input
+  WebSocket binary
+  playback_started / playback_ended
+  transcript_finalized
+  timer_tick
+  context_build_completed
+  llm_delta
+  tts_chunk_ready
+        │
+        ▼
+TomoroSession.post_event(event)
+        │
+        ▼
+TomoroSession._reduce(event, state)
+        │
+        ▼
+TransitionResult
+  new_state
+  state_emissions
+  session_commands
+        │
+        ▼
+Main layer
+  emissions を WebSocket / log / metrics に流す
+  commands を実行する
+  command 結果を event として TomoroSession に戻す
+```
+
+この流れにより、メイン層に「今は返答すべきか」「これは echo か」
+「session に入れるべきか」「audio stop すべきか」といった判断を残さない。
+
+### TomoroRuntimeState
+
+直交する状態は `TomoroRuntimeState` に集約する。
+ただし、state は「今どうなっているか」を表すだけで、制御ロジックは持たない。
+
+```python
+@dataclass(frozen=True)
+class TomoroRuntimeState:
+    attention_mode: AttentionMode
+    vad_state: VadState
+    playback_state: PlaybackState
+    active_session_id: UUID | None
+    active_turn_id: UUID | None
+    speaking_turn_id: UUID | None
+    context_build_id: UUID | None
+    updated_at: datetime
+```
+
+外部から現在状態を読む場合は `get_now_state()` を使う。
+返すのは snapshot であり、外部は state を変更しない。
+
+### SessionEvent と TransitionResult
+
+状態を変える入力は `SessionEvent` として表現する。
+初期実装では文字列 `type` でよい。
+必要になった段階で `TranscriptFinalized` / `PlaybackStarted` /
+`ContextBuildCompleted` などの個別 dataclass に分ける。
+
+```python
+@dataclass(frozen=True)
+class SessionEvent:
+    type: str
+    payload: dict[str, Any]
+    occurred_at: datetime
+
+
+@dataclass(frozen=True)
+class StateEmission:
+    type: str
+    payload: dict[str, Any]
+    state_snapshot: TomoroRuntimeState
+    occurred_at: datetime
+
+
+@dataclass(frozen=True)
+class SessionCommand:
+    type: str
+    payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class TransitionResult:
+    state: TomoroRuntimeState
+    emissions: list[StateEmission]
+    commands: list[SessionCommand]
+```
+
+`StateEmission` は観測・通知である。
+WebSocket の状態表示、debug log、metrics、test probe に使う。
+
+`SessionCommand` は副作用要求である。
+DB write、context build、LLM generation、TTS generation、audio control stop、
+WebSocket send など、`await` が必要な処理は command として外に出す。
+
+### reducer の原則
+
+`_reduce()` は可能な限り同期的・短時間・副作用なしに寄せる。
+`await` をまたいで中途半端な state を残さない。
+
+```python
+def _reduce(self, event: SessionEvent) -> TransitionResult:
+    match event.type:
+        case "transcript_finalized":
+            return self._resolve_transcript_event(event)
+        case "playback_started":
+            return self._resolve_playback_started(event)
+        case "playback_ended":
+            return self._resolve_playback_ended(event)
+        case "timer_tick":
+            return self._resolve_timer_tick(event)
+        case _:
+            return TransitionResult(
+                state=self._state,
+                emissions=[],
+                commands=[],
+            )
+```
+
+重い処理は command として起動し、その結果を再び event として `TomoroSession` に戻す。
+
+```text
+SessionCommand("build_context")
+  -> ContextSnapshotBuilder.build(...)
+  -> SessionEvent("context_build_completed")
+
+SessionCommand("start_llm_reply")
+  -> LLM streaming
+  -> SessionEvent("llm_delta")
+  -> SessionEvent("llm_completed")
+
+SessionCommand("start_tts")
+  -> TTS chunk generation
+  -> SessionEvent("tts_chunk_ready")
+```
+
+### 優先順位の解決箇所
+
+直交する状態と優先順位の解決は `TomoroSession` に閉じ込める。
+判定器は部品として使うが、最終的な制御判断は `TomoroSession` が行う。
+
+例:
+
+```text
+transcript_finalized を受けたとき:
+  withdrawn か
+  active playback chunk 中か
+  playback ended grace 中か
+  echo か
+  hard interrupt か
+  wake word か
+  follow-up として扱うか
+  active session に紐づけるか
+  Tomoko turn を interrupted 保存するか
+  audio_control stop を出すか
+  reply generation を開始するか
+```
+
+これらの判断をメイン層、`BargeInDetector`、`ParticipationJudge`、`PlaybackTracker` に分散させない。
+各 detector / judge は分類結果を返すだけにし、それをどう優先するかは
+`TomoroSession` の `_resolve_transcript_event()` で決める。
+
+### event-shaped session runtime
+
+これは本格的な event-driven architecture ではない。
+外部 EventBus、pub/sub、状態機械ライブラリ、event sourcing は初期段階では導入しない。
+
+初期実装は `TomoroSession` 内部の小さな reducer と command 境界に留める。
+M2 では `post_event()` の入口と `TransitionResult` の契約を作り、必要になった段階で
+小さな event queue / drain loop を足す。
+
+```python
+class TomoroSession:
+    async def post_event(self, event: SessionEvent) -> TransitionResult:
+        result = self._reduce(event)
+        self._state = result.state
+        return result
+```
+
+M3 の自発発話や arrival で競合が増えた場合は、event queue / drain loop を追加し、
+command result を必ず `SessionEvent` として戻す。
+
+```python
+class TomoroSession:
+    async def post_event(self, event: SessionEvent) -> None:
+        await self._event_queue.put(event)
+        await self._drain_events()
+
+    async def _drain_events(self) -> None:
+        if self._draining:
+            return
+
+        self._draining = True
+        try:
+            while not self._event_queue.empty():
+                event = await self._event_queue.get()
+                result = self._reduce(event)
+                self._state = result.state
+
+                for emission in result.emissions:
+                    await self._emit(emission)
+
+                for command in result.commands:
+                    self._start_command(command)
+        finally:
+            self._draining = False
+```
+
+timer や background worker は polling してよい。
+ただし、状態を変える場合は直接 state を変更せず、必ず `SessionEvent` として
+`post_event()` に渡す。
+
+### stale result の破棄
+
+非同期処理では、古い LLM delta、TTS chunk、context build result、playback telemetry が
+遅れて戻ることがある。
+
+そのため、event / command には必要に応じて次の ID を持たせる。
+
+```text
+session_id
+turn_id
+chunk_id
+context_build_id
+```
+
+`TomoroSession` は現在の `TomoroRuntimeState` と照合し、現在 state と一致しない結果は
+stale として捨てる。
+
+### 将来の切り出し方針
+
+現時点では `TomoroSession` に複雑さを集約する。
+これは巨大クラス化を目的にするのではなく、現実の依存関係を観察し、
+安定した境界から component へ切り出すためである。
+
+切り出し後も、メイン層との契約は `SessionEvent` / `StateEmission` / `SessionCommand`
+に保つ。
+これにより、内部実装を作り変えてもメイン層を薄い adapter のまま維持できる。
+
 ### DTO
 
 ```python

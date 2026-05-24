@@ -21,6 +21,30 @@
 
 ---
 
+## 2026-05-24 セッション26
+
+### やること（開始時に書く）
+- 外部LLMから追加指摘された TomoroSession state/control 設計を評価する
+- 妥当な内容を `PLAN.md` / `ARCHITECTURE.md` / `MEMORY.md` / `AGENTS.md` に反映する
+- `reference/2026-05-24-1200_設計評価と改善提案.md` は原文として参照のみ行い、変更しない
+
+### やったこと
+- 指摘は妥当と判断した
+  - M2 では本格的な event-driven architecture ではなく、`post_event()` / reducer / command 境界の最小足場に留める
+  - M3 で自発発話や arrival による競合が増えた段階で、event queue / drain loop / 個別 event dataclass を強化する
+- `PLAN.md` に Phase 8.8.5 `TomoroSession 状態管理の最小足場` を追加した
+- `PLAN.md` に Phase 10.5 `TomoroSession runtime hardening` を追加した
+- `ARCHITECTURE.md` に `TomoroSession` の stateful control core / one-way control flow / reducer / command / stale result 方針を追記した
+- `MEMORY.md` に state と制御判断の集約、event-shaped runtime、stale result 破棄の判断を追記した
+- `AGENTS.md` に今後の作業規約として `TomoroSession` state/control 境界を追記した
+
+### 詰まったこと・解決したこと
+- `git diff --check` はユーザー更新済みの `reference/2026-05-24-1200_設計評価と改善提案.md` に含まれる trailing whitespace で失敗した
+  → 原文ファイルは変更せず、こちらが編集した Markdown 5 ファイルだけに絞って `git diff --check -- AGENTS.md ARCHITECTURE.md LOG.md MEMORY.md PLAN.md` を実行し、問題なしを確認した
+
+### 次のセッションでやること
+- 実装へ進む場合は Phase 8.8 の `ContextSnapshotBuilder` DTO / unit test か、Phase 8.8.5 の `SessionEvent` / `TransitionResult` DTO から着手する
+
 ## 2026-05-24 セッション20
 
 ### やること（開始時に書く）

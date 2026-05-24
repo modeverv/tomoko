@@ -772,5 +772,151 @@ VAD/STT/TTS、playback telemetry、barge-in、attention mode、conversation sess
 状態更新の入口を `TomoroSession` に集約し、重い処理は command 化し、結果を event として戻す。
 `session_id` / `turn_id` / `chunk_id` / `context_build_id` で stale result を捨てる。
 
+### 確定した判断: TomoroSession に状態と制御判断を集約する
+
+Tomoko のオンライン経路は non-blocking / parallel / state machine が同時に動く。
+音声入力、VAD、STT、playback telemetry、barge-in、attention、conversation session、
+context build、LLM、TTS、WebSocket 出力が並行して進むため、メイン層に判断が残ると
+状態機械が二重化して見通しが悪くなる。
+
+そのため、メイン層から participation / playback / session lifecycle の判断を剥がし、
+`TomoroSession` に状態と制御判断を集約する。
+
+メイン層の責務:
+
+- WebSocket / timer / backend result を `SessionEvent` に変換する
+- `TomoroSession` から返された `StateEmission` を WebSocket / log / metrics に流す
+- `TomoroSession` から返された `SessionCommand` を実行する
+- command の結果を再び `SessionEvent` として `TomoroSession` に戻す
+
+`TomoroSession` の責務:
+
+- `TomoroRuntimeState` を所有する
+- 状態変更の入口を `post_event(event)` に寄せる
+- event と現在 state から制御判断する
+- `TransitionResult(new_state, emissions, commands)` を返す
+- 直交状態や優先順位の解決を一箇所に閉じ込める
+
+外部は `get_now_state()` で現在状態を snapshot として読むことはできるが、
+state を直接変更しない。
+
+### 確定した判断: event-shaped session runtime を段階導入する
+
+本格的な event-driven architecture はまだ導入しない。
+外部 EventBus、pub/sub、状態機械ライブラリ、event sourcing は現時点ではやりすぎ。
+
+代わりに、まず `TomoroSession` 内部だけを event-shaped にする。
+
+- `SessionEvent`
+- `TomoroRuntimeState`
+- `StateEmission`
+- `SessionCommand`
+- `TransitionResult`
+- `post_event()`
+- `_reduce()`
+
+M2 では playback telemetry と transcript finalized の判断集約を優先し、
+event queue / drain loop や個別 event dataclass は M3 の競合が増えた段階で厚くする。
+
+timer や background worker は polling してよい。
+ただし、状態を変える場合は直接 state を変更せず、必ず `SessionEvent` として
+`TomoroSession` に渡す。
+
+### 確定した判断: state と制御ロジックを分ける
+
+`TomoroRuntimeState` は「今どうなっているか」を表すだけにする。
+制御ロジックは state 自体ではなく、`TomoroSession` の reducer / resolver に置く。
+
+state の例:
+
+- `attention_mode`
+- `vad_state`
+- `playback_state`
+- `active_session_id`
+- `active_turn_id`
+- `speaking_turn_id`
+- `context_build_id`
+
+制御ロジックの例:
+
+- withdrawn 中の transcript をどう扱うか
+- active playback 中の transcript を echo と見るか
+- hard interrupt を playback echo より優先するか
+- Tomoko turn を `interrupted` として保存するか
+- audio stop command を出すか
+- reply generation を開始するか
+
+これらは `TomoroSession` の `_resolve_transcript_event()` などに閉じ込める。
+
+### 確定した判断: メイン層には判断済みの command / emission だけを返す
+
+メイン層に低レベルな判断材料を返さない。
+
+悪い例:
+
+```python
+{
+    "attention_mode": "engaged",
+    "playback_active": True,
+    "should_stop_audio": maybe,
+}
+```
+
+これはメイン層に再判断を発生させるため避ける。
+
+良い例:
+
+```python
+TransitionResult(
+    state=new_state,
+    emissions=[
+        StateEmission(type="attention_changed", ...)
+    ],
+    commands=[
+        SessionCommand(type="send_audio_control_stop", ...),
+        SessionCommand(type="save_tomoko_turn", ...),
+        SessionCommand(type="start_reply_generation", ...),
+    ],
+)
+```
+
+メイン層は command を実行するだけにする。
+command の結果は event として `TomoroSession` に戻す。
+
+### 確定した判断: await をまたいで中途半端な state を残さない
+
+`TomoroSession` の `_reduce()` は可能な限り同期的・短時間・副作用なしに寄せる。
+DB、context build、LLM、TTS、WebSocket send など `await` が必要な処理は
+`SessionCommand` として外に出す。
+
+`SessionCommand` の実行結果は、再び `SessionEvent` として `TomoroSession` に戻す。
+これにより、非同期処理の結果も必ず `TomoroSession` の state transition を通る。
+
+### 確定した判断: stale result を state 側で捨てる
+
+非同期処理では、古い LLM delta、TTS chunk、context build result、playback telemetry が
+遅れて戻ることがある。
+
+そのため、event / command には必要に応じて次の ID を持たせる。
+
+- `session_id`
+- `turn_id`
+- `chunk_id`
+- `context_build_id`
+
+`TomoroSession` は現在の `TomoroRuntimeState` と照合し、現在 state と一致しない結果は
+stale として捨てる。
+
+### 気づき: 早すぎる分割より、まず TomoroSession に複雑さを集約する
+
+現時点でいきなり `AttentionStateMachine`、`PlaybackTracker`、`TurnLifecycleManager` などに
+完全分割すると、抽象の切り方を間違える可能性が高い。
+
+まず `TomoroSession` に状態と制御判断を集約し、現実の依存関係を観察する。
+そのうえで、安定した境界から順に component へ切り出す。
+
+切り出し後も、メイン層との契約は `SessionEvent` / `StateEmission` / `SessionCommand` に保つ。
+これにより内部実装を作り変えても、メイン層を薄い adapter のまま維持できる。
+
 ### 外部LLMとの会話原文
 [会話原文](reference/2026-05-24-1200_設計評価と改善提案.md)
