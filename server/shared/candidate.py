@@ -286,6 +286,13 @@ class CandidateStore(Protocol):
         spoken_at: datetime,
     ) -> None: ...
 
+    async def mark_utterance_pregenerated(
+        self,
+        candidate_id: UUID,
+        *,
+        generated_audio: bytes,
+    ) -> None: ...
+
     async def dismiss_utterance_candidate(
         self,
         candidate_id: UUID,
@@ -448,6 +455,18 @@ class InMemoryCandidateStore:
             spoken_at=spoken_at,
         )
 
+    async def mark_utterance_pregenerated(
+        self,
+        candidate_id: UUID,
+        *,
+        generated_audio: bytes,
+    ) -> None:
+        self._replace_utterance(
+            candidate_id,
+            generated_audio=generated_audio,
+            maturity=2,
+        )
+
     async def dismiss_utterance_candidate(
         self,
         candidate_id: UUID,
@@ -541,6 +560,8 @@ class InMemoryCandidateStore:
         *,
         spoken_at: datetime | None = None,
         dismissed_at: datetime | None = None,
+        generated_audio: bytes | None = None,
+        maturity: CandidateMaturity | None = None,
     ) -> None:
         for index, candidate in enumerate(self.utterance_candidates):
             if candidate.id == candidate_id:
@@ -548,14 +569,14 @@ class InMemoryCandidateStore:
                     id=candidate.id,
                     seed=candidate.seed,
                     generated_text=candidate.generated_text,
-                    generated_audio=candidate.generated_audio,
+                    generated_audio=generated_audio or candidate.generated_audio,
                     priority=candidate.priority,
                     urgent=candidate.urgent,
                     created_at=candidate.created_at,
                     expires_at=candidate.expires_at,
                     spoken_at=spoken_at or candidate.spoken_at,
                     dismissed_at=dismissed_at or candidate.dismissed_at,
-                    maturity=candidate.maturity,
+                    maturity=maturity or candidate.maturity,
                     source=candidate.source,
                     context_tags=candidate.context_tags,
                 )
@@ -792,6 +813,24 @@ class PostgresCandidateStore:
                     WHERE id = %s
                     """,
                     (spoken_at, candidate_id),
+                )
+
+    async def mark_utterance_pregenerated(
+        self,
+        candidate_id: UUID,
+        *,
+        generated_audio: bytes,
+    ) -> None:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE utterance_candidates
+                    SET generated_audio = %s,
+                        maturity = GREATEST(maturity, 2)
+                    WHERE id = %s
+                    """,
+                    (generated_audio, candidate_id),
                 )
 
     async def dismiss_utterance_candidate(

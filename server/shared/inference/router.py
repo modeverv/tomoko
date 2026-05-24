@@ -110,7 +110,9 @@ class InferenceRouter:
             return None
 
         metrics = await self.monitor.latest(backend_name)
-        if metrics is None or metrics.latency_ms <= spec.max_latency_ms:
+        if metrics is None:
+            return None
+        if metrics.latency_ms is not None and metrics.latency_ms <= spec.max_latency_ms:
             return None
 
         if fallback_name is None or fallback_name not in self.backends:

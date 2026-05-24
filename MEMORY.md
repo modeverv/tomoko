@@ -1117,3 +1117,75 @@ local thinker process loop が動き、`make thinker-once` と Phase 9 の unit 
 `utterance_candidates` / `arrival_candidates` は実運用データが残る共有テーブルなので、integration test は
 fetch 結果全体の先頭だけを前提にしない。
 テスト自身が挿入した ID / device_id / context_tags で絞り、開始時と終了時にテスト用 row を削除して隔離する。
+
+### 確定した判断: Phase 10 candidate consumption 分解
+Phase 10 は、Phase 9 で作った `utterance_candidates` / `arrival_candidates` を online `/ws` 経路から
+`TomoroSession` が消費するための境界を固定する Phase とする。
+
+最初に `session_started` / `idle_timer_elapsed` / `initiative_candidate_loaded` /
+`arrival_candidate_loaded` と、`fetch_initiative_candidate` / `fetch_arrival_candidate` /
+`start_initiative_reply` / `start_arrival_reply` / `mark_*` 系 command の契約を固定する。
+
+DB read / DB write は `TomoroSession._reduce()` 内で await せず、`SessionCommand` として外へ出す。
+adapter は timer / WebSocket / DB result を `SessionEvent` に変換し、最終判断は `TomoroSession` に閉じる。
+
+Phase 10 では Phase 10.5 の event queue / drain loop / 個別 event dataclass へはまだ進まない。
+自発発話や arrival と人間発話の競合が実際に読みにくくなった段階で runtime hardening を行う。
+
+### 確定した判断: Phase 10 online candidate consumption 初段
+Phase 10 の初段では、`CandidateCommandRunner` を `/ws` adapter 側に置き、
+`TomoroSession` は候補 fetch / mark の DB I/O を直接実行しない。
+
+WebSocket 接続時に `session_started` event を投げて fresh arrival candidate を取得し、
+45秒ごとの adapter timer で `idle_timer_elapsed` event を投げて initiative candidate を取得する。
+timer は state の source of truth ではなく、最終判断は `TomoroSession._reduce()` が
+`attention_mode == ambient` / `vad_state == idle` / `playback_state == idle` を見て行う。
+
+text-ready candidate は `TomoroSession.start_precomputed_reply()` で既存の reply/audio 出力経路に流す。
+arrival / initiative による発話は会話 session を `start_reason=arrival` / `initiative` として開始し、
+follow-up を受けられるよう attention を `engaged` にする。
+
+### 確定した判断: Phase 11.3 の cached audio 消費
+`utterance_candidates.generated_audio` / `arrival_candidates.utterance_audio` は、online 経路では
+TTS 推論を省略するための再生成可能 cache として扱う。
+
+`CandidateCommandRunner` は `maturity >= 2` かつ `generated_audio` がある initiative candidate を優先して選び、
+`start_initiative_reply` / `start_arrival_reply` payload に cached audio を渡す。
+`TomoroSession.start_precomputed_reply()` は cached audio があれば `TTSBackend` を呼ばず、
+`audio_start` の後に binary chunk をそのまま送る。
+
+現行の既存 TTS 経路に合わせ、precomputed reply のイベント順序は
+`reply_text` → `audio_start` → binary audio → `reply_done` → `audio_end` とする。
+`audio_end` と `reply_done` の順序を変更する場合は、既存 TTS 経路の互換性をまとめて確認してから行う。
+
+### 確定した判断: Phase 11 pregenerator 初段
+Phase 11 の初段では、`generated_audio` を「即再生できる最初の RIFF/WAVE chunk cache」として扱う。
+複数 audio chunk を完全に事前生成して順序付きに保存する設計は、単一 `generated_audio` カラムでは表現が弱いため、
+必要になった時に別テーブルまたは JSONB manifest を検討する。
+
+`UtterancePregenerator` は background thinker 側でだけ動かし、online `/ws` 経路からは呼ばない。
+対象は active `maturity=1` かつ `priority >= 0.8` かつ `generated_text` ありの candidate とし、
+TTS 失敗時は candidate を壊さず warning log と `error_count` に閉じる。
+
+`ThinkerProcess.run_once()` は candidate generation → pregeneration → arrival precompute の順に実行する。
+`candidate_generation_loop` でも candidate generation の直後に pregeneration を実行するが、
+外部 queue / pub-sub は導入しない。
+
+### 確定した判断: Phase 12 diary entry 初段
+Phase 12.0 では `diary_entries` を派生テキストとして追加した。
+原本は引き続き `conversation_logs` / `ambient_logs` / `conversation_sessions` / candidate lifecycle であり、
+日記はそれらから再生成可能な解釈ログとして扱う。
+
+`DiaryEntry` は `diary_date` / `body_text` / `source_session_ids` / `source_candidate_ids` /
+`mood` / `schema_version` を持つ。
+同じ日付の日記を再生成する時に overwrite するか version を積むかはまだ確定していないため、
+writer 実装前に Phase 12.0 の残項目として判断する。
+
+### 確定した判断: Phase 13 monitor 初段
+`InferenceRouter.select()` は online 経路で重い probe を実行しない。
+実測は `BackendHealthMonitor` が background 的に行い、`inference_metrics` に
+backend name / task type / latency / error / measured_at を保存する。
+
+probe failure は例外を外へ投げず、`InferenceMetricSample.error` として記録する。
+router は latest metric を読むだけで、`latency_ms is None` の error sample は fallback 判断対象にする。
+`priority="privacy"` の場合は引き続き `privacy_allowed=False` backend へ fallback しない。

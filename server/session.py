@@ -22,6 +22,7 @@ from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
 from server.gateway.thinking.base import ThinkingMode
 from server.gateway.thinking.selector import should_use_deep_memory
 from server.gateway.turn_taking.barge_in import BargeInDetector
+from server.shared.candidate import ArrivalCandidate, UtteranceCandidate
 from server.shared.db import AmbientLogWriter, ConversationLogWriter, ConversationSessionStore
 from server.shared.inference.embedding.base import EmbeddingBackend
 from server.shared.inference.router import InferenceRouter
@@ -190,7 +191,212 @@ class TomoroSession:
             )
         if event.type == "transcript_finalized":
             return self._reduce_transcript_finalized(event)
+        if event.type == "idle_timer_elapsed":
+            return self._reduce_idle_timer_elapsed(event)
+        if event.type == "session_started":
+            return self._reduce_session_started(event)
+        if event.type == "initiative_candidate_loaded":
+            return self._reduce_initiative_candidate_loaded(event)
+        if event.type == "arrival_candidate_loaded":
+            return self._reduce_arrival_candidate_loaded(event)
+        if event.type == "candidate_command_failed":
+            return self._transition_result(
+                "candidate_command_failed",
+                payload=dict(event.payload),
+            )
         return TransitionResult(state=self.get_now_state())
+
+    def _reduce_idle_timer_elapsed(self, event: SessionEvent) -> TransitionResult:
+        if not self._can_start_candidate_reply():
+            return self._transition_result(
+                "initiative_skipped",
+                payload={
+                    "reason": "not_speakable",
+                    "event": event.type,
+                    "attention_mode": self.attention_mode,
+                    "vad_state": self.state,
+                    "playback_state": self.audio_turns.playback_state,
+                },
+            )
+        return self._transition_result(
+            "initiative_fetch_requested",
+            payload={"reason": "idle_timer_elapsed"},
+            commands=[
+                SessionCommand(
+                    type="fetch_initiative_candidate",
+                    payload={"reason": "initiative"},
+                )
+            ],
+        )
+
+    def _reduce_session_started(self, event: SessionEvent) -> TransitionResult:
+        if not self._can_start_candidate_reply():
+            return self._transition_result(
+                "arrival_skipped",
+                payload={
+                    "reason": "not_speakable",
+                    "event": event.type,
+                    "attention_mode": self.attention_mode,
+                    "vad_state": self.state,
+                    "playback_state": self.audio_turns.playback_state,
+                },
+            )
+        return self._transition_result(
+            "arrival_fetch_requested",
+            payload={"reason": "session_started"},
+            commands=[
+                SessionCommand(
+                    type="fetch_arrival_candidate",
+                    payload={
+                        "reason": "arrival",
+                        "device_id": event.payload.get("device_id"),
+                    },
+                )
+            ],
+        )
+
+    def _reduce_initiative_candidate_loaded(
+        self,
+        event: SessionEvent,
+    ) -> TransitionResult:
+        candidate = event.payload.get("candidate")
+        if candidate is None:
+            return self._transition_result(
+                "initiative_skipped",
+                payload={"reason": "candidate_not_found"},
+            )
+        if not isinstance(candidate, UtteranceCandidate):
+            return self._transition_result(
+                "initiative_skipped",
+                payload={"reason": "invalid_candidate_payload"},
+            )
+        if not self._can_start_candidate_reply():
+            return self._transition_result(
+                "initiative_skipped",
+                payload={
+                    "reason": "not_speakable",
+                    "candidate_id": candidate.id,
+                },
+            )
+        if candidate.maturity < 1 or candidate.generated_text is None:
+            return self._transition_result(
+                "initiative_skipped",
+                payload={
+                    "reason": "not_text_ready",
+                    "candidate_id": candidate.id,
+                    "maturity": candidate.maturity,
+                },
+                commands=[
+                    SessionCommand(
+                        type="dismiss_utterance_candidate",
+                        payload={
+                            "candidate_id": candidate.id,
+                            "reason": "not_text_ready",
+                        },
+                    )
+                ],
+            )
+
+        return self._transition_result(
+            "initiative_reply_requested",
+            payload={"candidate_id": candidate.id},
+            commands=[
+                SessionCommand(
+                    type="start_initiative_reply",
+                    payload={
+                        "candidate_id": candidate.id,
+                        "text": candidate.generated_text,
+                        "generated_audio": candidate.generated_audio,
+                        "reason": "initiative",
+                        "started_by": "initiative",
+                    },
+                ),
+                SessionCommand(
+                    type="mark_utterance_spoken",
+                    payload={
+                        "candidate_id": candidate.id,
+                        "spoken_at": event.occurred_at,
+                        "reason": "initiative",
+                    },
+                ),
+            ],
+        )
+
+    def _reduce_arrival_candidate_loaded(self, event: SessionEvent) -> TransitionResult:
+        candidate = event.payload.get("candidate")
+        if candidate is None:
+            return self._transition_result(
+                "arrival_skipped",
+                payload={"reason": "candidate_not_found"},
+            )
+        if not isinstance(candidate, ArrivalCandidate):
+            return self._transition_result(
+                "arrival_skipped",
+                payload={"reason": "invalid_candidate_payload"},
+            )
+        if not self._can_start_candidate_reply():
+            return self._transition_result(
+                "arrival_skipped",
+                payload={
+                    "reason": "not_speakable",
+                    "arrival_candidate_id": candidate.id,
+                },
+            )
+
+        mark_used = SessionCommand(
+            type="mark_arrival_used",
+            payload={
+                "arrival_candidate_id": candidate.id,
+                "used_at": event.occurred_at,
+                "reason": "arrival",
+            },
+        )
+        if candidate.behavior == "wait_silent":
+            return self._transition_result(
+                "arrival_wait_silent",
+                payload={"arrival_candidate_id": candidate.id},
+                commands=[mark_used],
+            )
+        if candidate.behavior == "subtle_react":
+            return self._transition_result(
+                "arrival_subtle_react",
+                payload={"arrival_candidate_id": candidate.id},
+                commands=[mark_used],
+            )
+        if candidate.utterance_text is None:
+            return self._transition_result(
+                "arrival_skipped",
+                payload={
+                    "reason": "missing_utterance_text",
+                    "arrival_candidate_id": candidate.id,
+                },
+                commands=[mark_used],
+            )
+
+        return self._transition_result(
+            "arrival_reply_requested",
+            payload={"arrival_candidate_id": candidate.id},
+            commands=[
+                SessionCommand(
+                    type="start_arrival_reply",
+                    payload={
+                        "arrival_candidate_id": candidate.id,
+                        "text": candidate.utterance_text,
+                        "generated_audio": candidate.utterance_audio,
+                        "reason": "arrival",
+                        "started_by": "arrival",
+                    },
+                ),
+                mark_used,
+            ],
+        )
+
+    def _can_start_candidate_reply(self) -> bool:
+        return (
+            self.attention_mode == "ambient"
+            and self.state == "idle"
+            and self.audio_turns.playback_state == "idle"
+        )
 
     def _reduce_transcript_finalized(self, event: SessionEvent) -> TransitionResult:
         transcript = event.payload.get("transcript")
@@ -562,6 +768,49 @@ class TomoroSession:
             telemetry.audio_context_time,
             telemetry.performance_now_ms,
         )
+
+    async def start_precomputed_reply(
+        self,
+        *,
+        text: str,
+        device_id: str,
+        reason: str,
+        audio_data: bytes | None = None,
+    ) -> None:
+        """Speak a text-ready initiative/arrival candidate through the normal output path."""
+        if not text.strip():
+            return
+
+        await self._cancel_reply_generation(status="cancelled")
+        self._reset_latency_probe()
+        self._latency_reply_start_at = time.perf_counter()
+        await self._ensure_conversation_session(
+            device_id=device_id,
+            start_reason=reason,
+        )
+        await self._transition_attention("engaged")
+        await self._send_event({"type": "reply_text", "delta": text})
+        self._begin_audio_turn()
+        try:
+            if audio_data is None:
+                await self._flush_tts_text(text, style="neutral")
+            else:
+                await self._ensure_audio_turn_started()
+                outgoing = await self._reserve_audio_chunk(
+                    text=text,
+                    chunk=AudioChunkOut(data=audio_data, sequence=0, is_last=True),
+                )
+                await self._send_audio_chunk(outgoing)
+            await self._write_tomoko_turn(
+                text=text,
+                emotion="neutral",
+                device_id=device_id,
+                status="completed",
+            )
+            await self._send_event({"type": "reply_done"})
+        finally:
+            await self._end_audio_turn()
+            self._note_attention_activity()
 
     async def _transition(self, state: str) -> None:
         if state not in {"idle", "listening", "processing"}:

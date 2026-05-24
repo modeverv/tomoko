@@ -1258,15 +1258,201 @@ arrival precompute、local thinker process loop が動き、`make thinker-once` 
 
 ## Phase 10: 自発発話 + 入室時の初手
 
-- [ ] session に自発発話タイマーを追加（idle で N 秒 → キューから取り出す）
-- [ ] 期限切れ候補の cleanup（dismissed_at を記録して削除）
-- [ ] `on_session_start()` を実装
-  - arrival_candidates から最新を取り出す
-  - behavior に応じて振る舞う（speak_first / wait_silent / subtle_react）
+Phase 9 までは background 側で `utterance_candidates` / `arrival_candidates` を作るだけだった。
+Phase 10 では、それらを online `/ws` 経路に接続し、`TomoroSession` から消費できるようにする。
+
+この Phase の主目的は「自発発話を賢くすること」ではなく、
+候補消費の入口と lifecycle 更新を `TomoroSession` の event / command 境界に固定すること。
+
+まだ Phase 10.5 の event queue / drain loop / 個別 event dataclass へは進まない。
+ただし、メイン層に priority 判断や arrival behavior 判断を置かない。
+メイン層は timer / WebSocket / DB result を `SessionEvent` に変換し、
+`TomoroSession` から返った `SessionCommand` を実行するだけにする。
+
+### Phase 10.0: initiative / arrival の session 契約
+
+**目標**: 候補消費に必要な `SessionEvent` / `SessionCommand` の文字列契約を先に固定する。
+
+- [x] `SessionEvent` の type 契約を追加する
+  - `session_started`
+  - `idle_timer_elapsed`
+  - `initiative_candidate_loaded`
+  - `arrival_candidate_loaded`
+  - `candidate_command_failed`
+- [x] `SessionCommand` の type 契約を追加する
+  - `fetch_initiative_candidate`
+  - `fetch_arrival_candidate`
+  - `start_initiative_reply`
+  - `start_arrival_reply`
+  - `mark_utterance_spoken`
+  - `dismiss_utterance_candidate`
+  - `mark_arrival_used`
+- [x] command payload に必要な ID を入れる
+  - `candidate_id`
+  - `arrival_candidate_id`
+  - `reason`: `initiative` / `arrival`
+  - `started_by`: `initiative` / `arrival`
+  - 必要なら `session_id` / `turn_id`
+- [x] DB read / DB write は `TomoroSession._reduce()` では実行しない
+  - `fetch_*` / `mark_*` は `SessionCommand` として外へ出す
+  - 実行結果は `*_candidate_loaded` event として戻す
+- [x] `TomoroSession` は `get_now_state()` の snapshot を読んで発話可能か判断する
+  - `attention_mode == "ambient"`
+  - `vad_state == "idle"`
+  - `playback_state` が再生中ではない
+  - `withdrawn` では initiative / arrival を抑制する
+
+**テスト観点**:
+- `idle_timer_elapsed` は発話可能 state の時だけ `fetch_initiative_candidate` を返す
+- `session_started` は発話可能 state の時だけ `fetch_arrival_candidate` を返す
+- `withdrawn` / playback 中 / listening 中 / processing 中は候補 fetch command を返さない
+- DB read / write を mock command として観測できる
 
 **完了条件**:
-- 何も話しかけなくても Tomoko が話しかけてくる
-- ブラウザを開くと時刻・状況に応じた一言が出る
+- 候補消費の判断入口が `TomoroSession.post_event()` に閉じている
+- メイン層が発話可否や behavior を再判断しない形になっている
+- `pytest -m unit tests/unit/test_phase10_session_contract.py` が通る
+
+### Phase 10.1: 自発発話 candidate の消費
+
+**目標**: idle が一定時間続いた時、active な `utterance_candidates` から 1 件を選んで話せるようにする。
+
+- [x] idle timer は adapter 側で管理し、期限到達時に `idle_timer_elapsed` event を投げる
+  - timer は state の source of truth ではない
+  - timer は `TomoroSession` の state を直接変更しない
+- [x] `fetch_initiative_candidate` command runner を実装する
+  - `CandidateStore.fetch_active_utterance_candidates(now, limit=...)` を呼ぶ
+  - 選択は Phase 9.1 の `HighestPriority` と同じ規則にする
+  - 候補なしなら `initiative_candidate_loaded` に `candidate=None` を入れて戻す
+- [x] `initiative_candidate_loaded` の reducer を実装する
+  - 候補なしなら何もしない
+  - `generated_text` がある candidate だけ `start_initiative_reply` command を返す
+  - `maturity=0` / `generated_text is None` は Phase 10 では話さず `dismiss_utterance_candidate` へ回す
+- [x] 発話開始後または発話完了後に `mark_utterance_spoken` command を返す
+  - 初段では「reply 開始 command を出した時点」で spoken としてよい
+  - 将来、TTS 失敗時の retry が必要になったら lifecycle を見直す
+- [x] expired cleanup は物理削除ではなく `mark_expired_utterance_candidates(now)` による `dismissed_at` 更新にする
+  - cleanup は thinker loop でも行う
+  - online 側では initiative fetch 前の軽い command として呼んでよい
+
+**テスト観点**:
+- active candidate がない時は何も話さない
+- `generated_text` がある最高優先 candidate が `start_initiative_reply` になる
+- `generated_text` がない seed-only candidate は online では話さない
+- spoken 済み / dismissed 済み / expired candidate は選ばれない
+- 発話に使った candidate は `mark_utterance_spoken` される
+- expired cleanup は削除ではなく `dismissed_at` 更新になる
+
+**完了条件**:
+- 何も話しかけなくても、ambient idle 中に Tomoko が候補から一言話せる
+- 自発発話 candidate の lifecycle が `spoken_at` / `dismissed_at` で追える
+- WebSocket endpoint は増えていない
+- クライアントに自発発話判断ロジックがない
+- `pytest -m unit tests/unit/test_phase101_initiative_consumption.py` が通る
+
+### Phase 10.2: arrival candidate の消費
+
+**目標**: ブラウザ接続または入室検知時に、fresh な `arrival_candidates` を 1 件だけ消費する。
+
+- [x] online adapter は接続開始時または存在検知時に `session_started` event を投げる
+  - `on_session_start()` という別入口は作らず、`post_event(SessionEvent(type="session_started"))` に寄せる
+  - device 判定がある場合は event payload に `device_id` を入れる
+- [x] `fetch_arrival_candidate` command runner を実装する
+  - `CandidateStore.fetch_latest_fresh_arrival_candidate(now, device_id)` を呼ぶ
+  - fresh candidate がなければ `arrival_candidate_loaded` に `candidate=None` を入れて戻す
+- [x] `arrival_candidate_loaded` の reducer を実装する
+  - `candidate=None`: 何もしない
+  - `behavior="speak_first"`: `start_arrival_reply` command を返す
+  - `behavior="wait_silent"`: 発話せず `mark_arrival_used` command だけ返す
+  - `behavior="subtle_react"`: Phase 10 では発話せず `arrival_subtle_react` emission と `mark_arrival_used` command を返す
+- [x] `speak_first` なのに `utterance_text is None` の candidate は話さない
+  - Phase 9.3 の fallback と同じく安全側に倒す
+  - `mark_arrival_used` は実行して、同じ壊れた candidate を繰り返さない
+- [x] arrival 発話は会話開始理由 `arrival` として扱う
+  - ただし Phase 10.5 の `started_by` state 強化までは command payload に閉じる
+
+**テスト観点**:
+- fresh arrival candidate がない時は何も話さない
+- `speak_first` は `start_arrival_reply` になる
+- `wait_silent` は発話 command を返さない
+- `subtle_react` は発話 command を返さず emission だけ返す
+- `speak_first` で text がない場合は発話しない
+- 消費した arrival candidate は `mark_arrival_used` される
+- used 済み / expired / device 不一致 candidate は使われない
+
+**完了条件**:
+- ブラウザを開いた時、fresh な arrival candidate に応じて初手が出る
+- `wait_silent` / `subtle_react` が勝手に発話へ化けない
+- arrival の消費履歴が `used_at` で追える
+- `pytest -m unit tests/unit/test_phase102_arrival_consumption.py` が通る
+
+### Phase 10.3: online adapter / command runner 接続
+
+**目標**: Phase 10.0〜10.2 の session 契約を、既存 `/ws` の薄い adapter として実行できるようにする。
+
+- [x] `server/edge/main.py` または既存の WebSocket handler に command runner を追加する
+  - `fetch_initiative_candidate`
+  - `fetch_arrival_candidate`
+  - `mark_utterance_spoken`
+  - `dismiss_utterance_candidate`
+  - `mark_arrival_used`
+  - `start_initiative_reply`
+  - `start_arrival_reply`
+- [x] command runner は state を直接変更しない
+  - DB / reply start / WebSocket send を実行する
+  - 結果や失敗は `SessionEvent` として `TomoroSession` に戻す
+- [x] idle timer loop を追加する
+  - interval は短くしすぎない
+  - `TomoroSession.get_now_state()` を読んで、必要な時だけ `idle_timer_elapsed` を投げる
+  - timer が発話可否を決めず、最終判断は `TomoroSession` に任せる
+- [x] log を追加する
+  - idle timer elapsed
+  - initiative fetch result
+  - initiative selected / skipped reason
+  - arrival fetched behavior
+  - arrival used / skipped reason
+  - command failed
+- [ ] `_docs/latency.md` に実測を追記する
+  - idle timer event から first audio chunk まで
+  - arrival session_started から first audio chunk まで
+
+**テスト観点**:
+- command runner は `SessionCommand` を実行し、結果 event を `post_event()` に戻す
+- command failure は WebSocket handler を落とさず `candidate_command_failed` event になる
+- idle timer は withdrawn / playback 中に発話を開始しない
+- `/ws` endpoint は 1 本のまま
+
+**完了条件**:
+- 実 browser session で arrival 初手と idle 自発発話が確認できる
+- state 遷移と候補消費が log で追える
+- `_docs/latency.md` に Phase 10 の実測が残っている
+- `pytest -m unit` が通る
+
+### Phase 10.4: Phase 10 全体の regression / 完了判定
+
+- [ ] Phase 10 の unit test をまとめて実行する
+  - `tests/unit/test_phase10_session_contract.py`
+  - `tests/unit/test_phase101_initiative_consumption.py`
+  - `tests/unit/test_phase102_arrival_consumption.py`
+- [ ] 必要なら integration smoke を追加する
+  - test DB に initiative / arrival candidate を挿入する
+  - command runner 経由で spoken_at / used_at が更新される
+  - 既存候補データと干渉しないよう device_id / context_tags / inserted IDs で隔離する
+- [ ] `pytest -m unit` を通す
+- [ ] `pytest -m integration tests/integration/test_phase10_candidate_consumption.py` を通す
+  - integration smoke を追加した場合のみ
+- [ ] `pytest -m perf --tb=short` で Phase 10 追加 perf を通す
+  - perf test を追加した場合のみ
+
+**Phase 10 全体の完了条件**:
+- `TomoroSession` が initiative / arrival の最終判断を持つ
+- メイン層は timer / WebSocket / DB result と command runner だけを担当する
+- active candidate から自発発話できる
+- fresh arrival candidate から入室時の初手を出せる
+- used / spoken / dismissed lifecycle が DB で追える
+- WebSocket endpoint を増やしていない
+- Redis / pub-sub / EventBus / event sourcing を導入していない
+- `pytest -m unit` が通る
 
 ---
 
@@ -1381,6 +1567,61 @@ resume_unspoken:
 
 **完了条件**: 高優先度の自発発話が即再生される（10ms 以内）。
 
+### 2026-05-24 追記: Phase 11 の実装粒度を補正する
+
+上の Phase 11 は「pregenerator」と「gateway 優先選択」だけでは実装判断が残るため、その粒度のまま進める方針は否定する。
+Phase 11 は以下の小 Phase に分け、DB row / DTO / background / online 消費の順に固定する。
+
+#### Phase 11.0: maturity=2 の保存契約
+
+- [ ] `UtteranceCandidate.generated_audio` の保存形式を RIFF/WAVE bytes として明記する
+- [ ] `generated_audio` は TTS backend 出力そのものであり、音声原本ではなく再生成可能な cache として扱う
+- [ ] `maturity=2` は `generated_text` と `generated_audio` の両方がある candidate と定義する
+- [ ] `InMemoryCandidateStore` / `PostgresCandidateStore` の round-trip test で `generated_audio` を固定する
+
+**完了条件**:
+- `maturity=2` candidate を保存・取得して bytes が壊れない
+- `pytest -m unit tests/unit/test_phase110_pregenerated_candidate.py` が通る
+
+#### Phase 11.1: Pregenerator
+
+- [x] `server/thinker/pregenerator.py` を追加する
+- [x] active `maturity=1` candidate のうち `priority >= 0.8` を対象にする
+- [x] `TTSBackend.synthesize(TTSInput(...))` を使い、最初の audio chunk を `generated_audio` に保存する
+- [x] TTS 失敗時は candidate を壊さず log に閉じる
+- [x] online `/ws` 経路から pregenerator を呼ばない
+
+**完了条件**:
+- 高優先度 text-ready candidate が background で `maturity=2` へ進む
+- TTS failure が online 会話に影響しない
+- `pytest -m unit tests/unit/test_phase111_pregenerator.py` が通る
+
+#### Phase 11.2: thinker loop 接続
+
+- [x] `ThinkerProcess.run_once()` に pregeneration step を追加する
+- [x] `make thinker-once` で candidate generation → evaluation → pregeneration → arrival precompute の順に実行する
+- [x] pregeneration count / error count / elapsed_ms を log に出す
+- [x] `make thinker` の loop でも periodic に pregeneration を実行する
+
+**完了条件**:
+- `make thinker-once` で `maturity=2` candidate が作られる
+- `pytest -m unit tests/unit/test_phase112_thinker_pregeneration.py` が通る
+
+#### Phase 11.3: gateway maturity=2 消費
+
+- [x] `CandidateCommandRunner` は `generated_audio` 付き candidate を優先する
+- [x] `start_initiative_reply` payload に `generated_audio` を載せる
+- [x] `TomoroSession.start_precomputed_reply()` は audio cache があれば TTS を呼ばずに送る
+- [ ] `generated_audio` を使った場合も `reply_text` / `audio_start` / binary / `audio_end` / `reply_done` の順序を守る
+
+**完了条件**:
+- 高優先度自発発話が TTS 推論なしに再生される
+- `pytest -m unit tests/unit/test_phase113_pregenerated_audio_consumption.py` が通る
+
+補足: 現行の既存音声経路に合わせ、実装済みの precomputed reply は
+`reply_text` / `audio_start` / binary / `reply_done` / `audio_end` の順序で送る。
+`audio_end` と `reply_done` の厳密な順序を変える場合は、既存 TTS 経路全体の互換性を確認してから行う。
+
 ---
 
 ## Phase 12: journalist（日記）
@@ -1398,6 +1639,73 @@ resume_unspoken:
 - 日記が毎日書かれる
 - 翌日に「昨日日記に書いたんだけど」と話しかけてくる
 - 「言えなかったこと」が日記に記録されている
+
+### 2026-05-24 追記: Phase 12 の実装粒度を補正する
+
+上の Phase 12 は DB / prompt / scheduler / DiarySource が混ざっているため、そのまま実装する方針は否定する。
+journalist は online 経路に入れず、閉じた session と dismissed candidate を読む background worker として分解する。
+
+#### Phase 12.0: diary schema / DTO / store
+
+- [x] `diary_entries` テーブルを作成する
+  - `id`
+  - `diary_date`
+  - `body_text`
+  - `source_session_ids`
+  - `source_candidate_ids`
+  - `mood`
+  - `schema_version`
+  - `created_at`
+- [x] `server/shared/diary.py` に `DiaryEntry` / `DiaryStore` / `PostgresDiaryStore` を追加する
+- [ ] 同じ日付の再生成は insert duplicate ではなく version または overwrite 方針を明記してから実装する
+
+**完了条件**:
+- diary entry の DB round-trip ができる
+- `pytest -m unit tests/unit/test_phase120_diary_store.py` が通る
+
+#### Phase 12.1: Journalist input builder
+
+- [ ] `conversation_sessions` の completed summary を日付範囲で読む
+- [ ] `conversation_logs` の interrupted / completed turn を日付範囲で読む
+- [ ] `ambient_logs` は raw 全量ではなく count / 印象的な短い抜粋だけに絞る
+- [ ] dismissed / unspoken candidate を source として読む
+- [ ] `JournalistInputSnapshot` DTO にまとめ、生 DB row / dict を prompt 層へ渡さない
+
+**完了条件**:
+- 日記生成に渡す材料が DTO として固定される
+- `pytest -m unit tests/unit/test_phase121_journalist_input.py` が通る
+
+#### Phase 12.2: Diary writer
+
+- [ ] `server/journalist/main.py` を追加する
+- [ ] `InferenceRouter.select("diary", "privacy")` で日記本文を生成する
+- [ ] malformed / empty output は `error` log に閉じ、原本を変更しない
+- [ ] generated diary は `DiaryStore` に保存する
+
+**完了条件**:
+- fake backend で日記が 1 件保存される
+- `pytest -m unit tests/unit/test_phase122_journalist_writer.py` が通る
+
+#### Phase 12.3: DiarySource
+
+- [ ] `server/thinker/sources/diary.py` を追加する
+- [ ] 昨日または直近 diary から `CandidateSeed` を作る
+- [ ] seed は `dedupe:diary:<diary_id>` で重複生成を避ける
+- [ ] diary 本文全量ではなく短い話しかけ候補だけを seed にする
+
+**完了条件**:
+- 日記由来 candidate が thinker に積まれる
+- `pytest -m unit tests/unit/test_phase123_diary_source.py` が通る
+
+#### Phase 12.4: local process / Makefile
+
+- [ ] `background-process/run_journalist.py` を追加する
+- [ ] `make journalist-once` / `make journalist` を追加する
+- [ ] docker-compose service 化は app image 方針が決まるまで M4 に送る
+
+**完了条件**:
+- `make journalist-once` がローカルで実行できる
+- `pytest -m unit` が通る
 
 ### ✅ M3 完了条件
 
@@ -1448,6 +1756,43 @@ async def test_privacy_never_goes_to_cloud():
 
 **完了条件**: ローカルが詰まった時に自動でクラウドに切り替わる。`pytest -m unit` 全通過。
 
+### 2026-05-24 追記: Phase 13 の実装粒度を補正する
+
+上の Phase 13 は cloud fallback まで一気に進める粒度であり、privacy 境界を誤りやすいため、そのまま実装する方針は否定する。
+まず monitor / metrics / routing policy / cloud backend の順に分ける。
+
+#### Phase 13.0: inference_metrics schema / DTO
+
+- [x] `inference_metrics` テーブルを作成する
+- [x] `InferenceMetricSample` DTO を追加する
+- [x] backend name / task type / latency / error / measured_at を保存する
+- [ ] unit test と integration smoke で保存・最新取得を固定する
+
+#### Phase 13.1: BackendHealthMonitor
+
+- [x] `server/shared/inference/monitor.py` を追加する
+- [x] backend の `warm_up` または短い probe を使って latency を測る
+- [x] probe failure は metric error として保存し、router 例外にしない
+- [x] background で periodic probe できるが、online select では重い probe を実行しない
+
+#### Phase 13.2: routing policy
+
+- [ ] `InferenceRouter.select()` を実測 metric 参照に対応させる
+- [ ] `priority="privacy"` では `privacy_allowed=False` backend を絶対に返さない
+- [ ] fallback が privacy 不可なら local backend を返す
+- [ ] task type ごとの backend / fallback を unit test で全パターン固定する
+
+#### Phase 13.3: AnthropicBackend
+
+- [ ] `AnthropicBackend` を追加する
+- [ ] `privacy_allowed=False` を固定する
+- [ ] conversation privacy では選ばれないことを test で保証する
+- [ ] cloud を使う task は privacy 非依存 task に限定する
+
+**完了条件**:
+- latency fallback と privacy block が両方テストで保証される
+- `pytest -m unit tests/unit/test_phase13_inference_router_hardening.py` が通る
+
 ---
 
 ## Phase 14: エッジ分離 + 回り込み除去
@@ -1477,6 +1822,50 @@ async def test_loudest_edge_is_primary():
     assert primary.device_id == "living"
 ```
 
+### 2026-05-24 追記: Phase 14 の実装粒度を補正する
+
+上の Phase 14 はプロセス分離、presence、dedupe、docker-compose が混ざっているため、そのまま実装する方針は否定する。
+まず DB 契約と純粋判定器を固定し、音声を中央へ送らない境界を守る。
+
+#### Phase 14.0: presence / edge_status schema
+
+- [ ] `presence_reports` / `edge_status` テーブルを作成する
+- [ ] `PresenceReport` / `EdgeStatus` DTO を追加する
+- [ ] 音声 bytes は保存しない
+- [ ] device_id / audio_level_db / observed_at / transcript_id を保存する
+
+#### Phase 14.1: DirectSpeakerResolver
+
+- [ ] `server/gateway/resolver.py` を追加する
+- [ ] 同一時間窓の presence から正規 device を選ぶ
+- [ ] 初段は audio_level_db 最大 + recency で deterministic に決める
+- [ ] resolver は DB write を持たない純粋判定器にする
+
+#### Phase 14.2: DuplicateSpeechFilter
+
+- [ ] `server/gateway/dedup.py` を追加する
+- [ ] 時間窓、device 差、文字列類似度で duplicate を判定する
+- [ ] embedding 類似度を主判定にしない
+- [ ] hard interrupt keyword は duplicate より優先する
+
+#### Phase 14.3: edge / gateway process split
+
+- [ ] edge は VAD / STT / TTS / presence report を担当する
+- [ ] gateway は text event / DirectSpeakerResolver / TomoroSession を担当する
+- [ ] WebSocket は各 edge と gateway 間でも 1 本の protocol を保つ
+- [ ] 音声データは edge 外へ出さない
+
+#### Phase 14.4: local multi-process smoke
+
+- [ ] `config/edge_kitchen.toml` / `config/central_realtime.toml` の責務差を固定する
+- [ ] `make edge-kitchen` / `make gateway` を追加する
+- [ ] docker-compose service 化は app image 方針が決まってから行う
+
+**完了条件**:
+- 二重 STT / 回り込みが duplicate として抑制される
+- 音声 bytes が中央 DB / gateway に流れない
+- `pytest -m unit tests/unit/test_phase14_edge_split.py` が通る
+
 ---
 
 ## Phase 15: エッジ軽量 LLM
@@ -1493,6 +1882,41 @@ async def test_edge_config_uses_gemma():
     assert backend.model == "gemma3:2b"
 ```
 
+### 2026-05-24 追記: Phase 15 の実装粒度を補正する
+
+上の Phase 15 は config 追加と品質評価だけでは fallback 境界が曖昧なため、そのまま実装する方針は否定する。
+edge LLM は「中央が詰まった時の短い返答 fallback」として、privacy と latency を守る形で分解する。
+
+#### Phase 15.0: edge config contract
+
+- [ ] `config/edge_kitchen.toml` を追加する
+- [ ] `node.role="edge"` / `device_id="kitchen"` を固定する
+- [ ] `conversation_backend="central_gateway"` / fallback `local_gemma` のように責務を明記する
+- [ ] config load unit test を追加する
+
+#### Phase 15.1: local_gemma backend
+
+- [ ] edge 用 backend spec を `InferenceRouter` で読めるようにする
+- [ ] `gemma3:2b` または MLX 相当の軽量 backend を追加する
+- [ ] edge fallback は privacy_allowed=True の local backend のみにする
+
+#### Phase 15.2: central down fallback smoke
+
+- [ ] central backend failure を fake monitor / fake backend で再現する
+- [ ] edge router が local_gemma を選ぶことを test で固定する
+- [ ] privacy task が cloud に出ないことを再確認する
+
+#### Phase 15.3: quality / latency memo
+
+- [ ] edge local_gemma の応答品質差を `_docs/edge_llm.md` に記録する
+- [ ] first token latency / first audio latency を `_docs/latency.md` に記録する
+- [ ] 品質が低い場合は「短い安全な返答」用途に限定する
+
+**完了条件**:
+- 中央 unavailable 時に edge local LLM で短い返答ができる
+- privacy task は edge local から外へ出ない
+- `pytest -m unit tests/unit/test_phase15_edge_llm.py` が通る
+
 ### ✅ M4 完了条件
 
 ```
@@ -1507,6 +1931,18 @@ async def test_edge_config_uses_gemma():
 キッチンで話す
   → リビングに回り込んでも二重応答しない
 ```
+
+### 2026-05-24 M4 完了条件確認
+
+現時点では M4 は未達。
+Phase 13.0 / 13.1 の monitor 初段は入ったが、以下が残っている。
+
+- [ ] latency fallback を実機 metric store / periodic probe と接続する
+- [ ] cloud backend を privacy 非依存 task 限定で追加する
+- [ ] Phase 14 の edge / gateway 分離を実装する
+- [ ] DirectSpeakerResolver / DuplicateSpeechFilter を実装する
+- [ ] Phase 15 の edge local LLM fallback を実装する
+- [ ] M4 完了条件の手動 smoke を実施して `_docs/latency.md` / `_docs/edge_llm.md` に記録する
 
 ---
 

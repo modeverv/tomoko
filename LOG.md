@@ -4,6 +4,87 @@
 
 ---
 
+## 2026-05-24 セッション53
+
+### やること（開始時に書く）
+- Phase 10: 自発発話 + 入室時の初手を、テスト先行で進められるところまで実装する
+- 必要になった場合だけ Phase 10.5 runtime hardening に進む
+- Phase 11〜15 は、実装が迷わないように先に `PLAN.md` へタスク分解を追記してから順番に進める
+- M4 完了条件を確認し、不足している対応を進める
+
+### やったこと
+- Phase 10 の online candidate consumption 初段を実装した
+  - `TomoroSession` に `session_started` / `idle_timer_elapsed` / `initiative_candidate_loaded` / `arrival_candidate_loaded` reducer を追加
+  - `CandidateCommandRunner` を追加し、candidate fetch / mark / start reply を command として実行するようにした
+  - `/ws` 接続時に arrival fetch、45秒 idle loop で initiative fetch を投げるようにした
+- Phase 11 を実装しやすい粒度へ `PLAN.md` に追記し、初段を実装した
+  - `UtterancePregenerator` を追加
+  - `ThinkerProcess.run_once()` / candidate loop に pregeneration step を追加
+  - `generated_audio` 付き candidate を gateway で優先し、TTS を呼ばずに cached audio を送れるようにした
+- Phase 12 を実装しやすい粒度へ `PLAN.md` に追記し、Phase 12.0 diary store 初段を実装した
+  - `diary_entries` DDL
+  - `DiaryEntry` / `DiaryStore` / `InMemoryDiaryStore` / `PostgresDiaryStore`
+- Phase 13〜15 を実装しやすい粒度へ `PLAN.md` に追記した
+- Phase 13.0 / 13.1 の monitor 初段を実装した
+  - `inference_metrics` DDL
+  - `InferenceMetricSample` / metric stores / `BackendHealthMonitor`
+  - router が error metric を fallback 判断対象にできるようにした
+- `MEMORY.md` と `_docs/latency.md` に今回の判断・検証結果を追記した
+
+### 詰まったこと・解決したこと
+- `generated_audio` に複数 chunk を完全保存するには単一 bytea では表現が弱い
+  → Phase 11 初段では「最初の再生可能 RIFF/WAVE chunk cache」として扱い、完全な multi-chunk 事前生成は必要になった時に別テーブルまたは manifest を検討する方針にした
+- precomputed reply の `reply_done` / `audio_end` 順序は Phase 11.3 の追記案と既存 TTS 経路でズレがあった
+  → 今回は既存経路に合わせて `reply_text` → `audio_start` → binary → `reply_done` → `audio_end` とし、順序変更は既存 TTS 経路全体の互換性確認後に回した
+- Phase 12 の同日 diary 再生成方針は overwrite か version か未確定
+  → writer 実装前の残項目として `PLAN.md` / `MEMORY.md` に残した
+
+### 次のセッションでやること
+- Phase 10 は browser 実測で arrival / idle initiative の first audio latency を `_docs/latency.md` に追記する
+- Phase 11 は multi-chunk 事前生成を現行 `generated_audio` のまま進めるか、別テーブル化するか判断する
+- Phase 12 は diary 同日再生成方針を決めてから Journalist input builder / writer へ進む
+- Phase 13 は metric store の integration smoke と periodic probe runner を追加する
+- Phase 14 / 15 は今回の PLAN 分解に沿って DB/DTO から進める
+- M4 完了条件は Phase 14 / 15 が未実装のため未達
+
+### 検証
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase10_session_contract.py tests/unit/test_phase10_candidate_command_runner.py tests/unit/test_phase1_echo.py tests/unit/test_phase885_session_runtime.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase94_thinker_loop.py tests/unit/test_phase111_pregenerator.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase120_diary_store.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase13_inference_monitor.py tests/unit/test_router.py`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+
+## 2026-05-24 セッション52
+
+### やること（開始時に書く）
+- markdown 編集制限ルールの一時解除を受け、`PLAN.md` の Phase 10 を実装しやすい粒度へ分解する
+- `TomoroSession` が candidate / arrival を消費する event / command 境界を明文化する
+- LLM がテスト先行で迷わない完了条件とテスト観点を追記する
+
+### やったこと
+- `PLAN.md` の Phase 10 を 10.0〜10.4 に分解した
+  - 10.0: initiative / arrival の session 契約
+  - 10.1: 自発発話 candidate の消費
+  - 10.2: arrival candidate の消費
+  - 10.3: online adapter / command runner 接続
+  - 10.4: regression / 完了判定
+- Phase 10 では event queue / drain loop / 個別 event dataclass へ進まず、既存の `SessionEvent` / `SessionCommand` 文字列契約で候補消費を固定する方針を明記した
+- timer / WebSocket / DB result は adapter が event に変換し、最終判断は `TomoroSession` に閉じることを明記した
+- `MEMORY.md` に Phase 10 分解方針を追記した
+
+### 詰まったこと・解決したこと
+- 元の Phase 10 は「timer」「候補 cleanup」「on_session_start」が混ざっており、DB read/write を session 内で直呼びするか、メイン層で behavior 判断するかが曖昧だった
+  → 先に event / command 契約を固定し、DB read/write は command runner、判断は `TomoroSession` に寄せる粒度へ分解した
+
+### 次のセッションでやること
+- Phase 10.0 実装時は `tests/unit/test_phase10_session_contract.py` を先に追加し、`session_started` / `idle_timer_elapsed` が返す command を固定する
+
+### 検証
+- `git diff -- PLAN.md LOG.md`
+- `rg -n "Phase 10|Phase 10\\.0|Phase 10\\.1|Phase 10\\.2|Phase 10\\.3|Phase 10\\.4|Phase 10\\.5|session_started|idle_timer_elapsed|fetch_initiative_candidate|fetch_arrival_candidate|start_arrival_reply" PLAN.md`
+- `git diff --check -- PLAN.md LOG.md`
+
 ## 2026-05-24 セッション51
 
 ### やること（開始時に書く）

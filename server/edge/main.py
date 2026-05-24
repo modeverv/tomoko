@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import time
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -20,11 +21,13 @@ from server.edge.pipeline.stt import (
 )
 from server.edge.pipeline.stt_filter import TranscriptFilter
 from server.edge.pipeline.vad import create_vad_processor
+from server.gateway.candidate_commands import CandidateCommandRunner
 from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
 from server.gateway.thinking.deep import ThinkDeepMode
 from server.gateway.thinking.fast import ThinkFastMode
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.session import TomoroSession
+from server.shared.candidate import PostgresCandidateStore
 from server.shared.config import NodeConfig
 from server.shared.db import (
     PostgresAmbientLogWriter,
@@ -39,7 +42,7 @@ from server.shared.memory import (
     PostgresConversationMemoryStore,
     PostgresConversationSessionSummaryStore,
 )
-from server.shared.models import PlaybackTelemetry
+from server.shared.models import PlaybackTelemetry, SessionEvent
 from server.shared.persona import PostgresPersonaSnapshotStore
 
 
@@ -253,6 +256,11 @@ async def websocket_session(websocket: WebSocket) -> None:
         "conversation_session_store_factory",
         _create_default_conversation_session_store,
     )
+    candidate_store_factory = getattr(
+        app.state,
+        "candidate_store_factory",
+        _create_default_candidate_store,
+    )
     barge_in_detector_factory = getattr(
         app.state,
         "barge_in_detector_factory",
@@ -287,6 +295,22 @@ async def websocket_session(websocket: WebSocket) -> None:
         barge_in_detector=barge_in_detector_factory(),
         transcript_filter=TranscriptFilter(),
     )
+    candidate_runner = CandidateCommandRunner(
+        session=session,
+        store=candidate_store_factory(),
+        device_id=session.vad_processor.device_id,
+    )
+    await candidate_runner.run_result(
+        await session.post_event(
+            SessionEvent(
+                type="session_started",
+                payload={"device_id": session.vad_processor.device_id},
+            )
+        )
+    )
+    initiative_task = asyncio.create_task(
+        _initiative_idle_loop(session, candidate_runner)
+    )
     logger.info("phase4 websocket connected")
     try:
         while True:
@@ -304,6 +328,10 @@ async def websocket_session(websocket: WebSocket) -> None:
             chunk_count += 1
     except WebSocketDisconnect:
         logger.info("phase4 websocket disconnected after %s chunks", chunk_count)
+    finally:
+        initiative_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await initiative_task
 
 
 def _load_config() -> NodeConfig:
@@ -443,6 +471,21 @@ def _create_default_conversation_log_writer() -> PostgresConversationLogWriter:
 def _create_default_conversation_session_store() -> PostgresConversationSessionStore:
     config = _load_config()
     return PostgresConversationSessionStore(config.database.dsn)
+
+
+def _create_default_candidate_store() -> PostgresCandidateStore:
+    config = _load_config()
+    return PostgresCandidateStore(config.database.dsn)
+
+
+async def _initiative_idle_loop(
+    session: TomoroSession,
+    candidate_runner: CandidateCommandRunner,
+) -> None:
+    while True:
+        await asyncio.sleep(45)
+        result = await session.post_event(SessionEvent(type="idle_timer_elapsed"))
+        await candidate_runner.run_result(result)
 
 
 async def _handle_client_text_event(session: TomoroSession, text: str) -> None:

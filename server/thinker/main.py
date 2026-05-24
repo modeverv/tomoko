@@ -17,9 +17,11 @@ from server.shared.candidate import (
 )
 from server.shared.config import NodeConfig
 from server.shared.inference.router import InferenceRouter
+from server.shared.inference.tts import create_tts_backend
 from server.thinker.arrival import ArrivalPrecomputer
 from server.thinker.evaluator.base import UtteranceEvaluator
 from server.thinker.evaluator.llm import LLMUtteranceEvaluator
+from server.thinker.pregenerator import PregenerationResult, UtterancePregenerator
 from server.thinker.sources.base import InformationSource
 from server.thinker.sources.time_based import TimeBasedSource
 
@@ -56,6 +58,7 @@ class ArrivalPrecomputeResult:
 @dataclass(frozen=True)
 class ThinkerRunOnceResult:
     candidate: CandidateGenerationResult
+    pregeneration: PregenerationResult | None
     arrival: ArrivalPrecomputeResult | None
 
 
@@ -66,22 +69,31 @@ class ThinkerProcess:
         store: CandidateStore,
         sources: Sequence[InformationSource],
         evaluator: UtteranceEvaluator,
+        pregenerator: UtterancePregenerator | None = None,
         arrival_precomputer: ArrivalPrecomputer | None = None,
         config: ThinkerLoopConfig | None = None,
     ) -> None:
         self.store = store
         self.sources = tuple(sources)
         self.evaluator = evaluator
+        self.pregenerator = pregenerator
         self.arrival_precomputer = arrival_precomputer
         self.config = config or ThinkerLoopConfig()
 
     async def run_once(self, *, now: datetime | None = None) -> ThinkerRunOnceResult:
         observed_at = now or datetime.now(UTC)
         candidate = await self.run_candidate_generation_once(now=observed_at)
+        pregeneration = None
+        if self.pregenerator is not None:
+            pregeneration = await self.run_pregeneration_once(now=observed_at)
         arrival = None
         if self.arrival_precomputer is not None:
             arrival = await self.run_arrival_precompute_once(now=observed_at)
-        return ThinkerRunOnceResult(candidate=candidate, arrival=arrival)
+        return ThinkerRunOnceResult(
+            candidate=candidate,
+            pregeneration=pregeneration,
+            arrival=arrival,
+        )
 
     async def run_candidate_generation_once(
         self,
@@ -191,6 +203,15 @@ class ThinkerProcess:
         )
         return result
 
+    async def run_pregeneration_once(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> PregenerationResult:
+        if self.pregenerator is None:
+            raise RuntimeError("pregenerator is not configured")
+        return await self.pregenerator.pregenerate_once(now=now)
+
     async def run_arrival_precompute_once(
         self,
         *,
@@ -247,6 +268,8 @@ async def candidate_generation_loop(
 ) -> None:
     while True:
         await thinker.run_candidate_generation_once(now=now_factory())
+        if thinker.pregenerator is not None:
+            await thinker.run_pregeneration_once(now=now_factory())
         await sleep(thinker.config.candidate_interval_sec)
 
 
@@ -273,10 +296,12 @@ def build_default_thinker(config: NodeConfig) -> ThinkerProcess:
 
     store = PostgresCandidateStore(config.database.dsn)
     router = InferenceRouter(config=config)
+    tts_backend = create_tts_backend(config.backends[config.inference.tts_backend])
     return ThinkerProcess(
         store=store,
         sources=[TimeBasedSource()],
         evaluator=LLMUtteranceEvaluator(router=router),
+        pregenerator=UtterancePregenerator(store=store, tts_backend=tts_backend),
         arrival_precomputer=ArrivalPrecomputer(store=store, router=router),
         config=ThinkerLoopConfig(device_id=config.node.device_id),
     )
@@ -318,6 +343,7 @@ async def async_main(argv: Sequence[str] | None = None) -> int:
         f"{result.candidate.generated_seed_count} "
         f"candidate_inserted={result.candidate.inserted_seed_count} "
         f"candidate_kept={result.candidate.kept_candidate_count} "
+        f"pregenerated={result.pregeneration.pregenerated_count if result.pregeneration else 0} "
         f"arrival_behavior={result.arrival.behavior if result.arrival else 'none'}"
     )
     return 0

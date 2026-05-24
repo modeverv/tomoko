@@ -19,6 +19,7 @@ from server.thinker.main import (
     ThinkerProcess,
     candidate_generation_loop,
 )
+from server.thinker.pregenerator import PregenerationResult
 
 
 @dataclass
@@ -88,6 +89,24 @@ class FakeRouter:
         return FakeBackend()
 
 
+class RecordingPregenerator:
+    def __init__(self) -> None:
+        self.calls: list[datetime | None] = []
+
+    async def pregenerate_once(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> PregenerationResult:
+        self.calls.append(now)
+        return PregenerationResult(
+            scanned_count=2,
+            pregenerated_count=1,
+            error_count=0,
+            elapsed_ms=1.0,
+        )
+
+
 def _seed(now: datetime) -> CandidateSeed:
     return CandidateSeed(
         seed_text="午後なので軽く様子を聞く",
@@ -105,10 +124,12 @@ async def test_run_once_generates_candidate_and_arrival() -> None:
     store = InMemoryCandidateStore()
     source = FakeSource(_seed(now))
     evaluator = RecordingEvaluator()
+    pregenerator = RecordingPregenerator()
     thinker = ThinkerProcess(
         store=store,
         sources=[source],
         evaluator=evaluator,
+        pregenerator=pregenerator,  # type: ignore[arg-type]
         arrival_precomputer=ArrivalPrecomputer(
             store=store,
             router=FakeRouter(),  # type: ignore[arg-type]
@@ -121,12 +142,15 @@ async def test_run_once_generates_candidate_and_arrival() -> None:
     assert result.candidate.generated_seed_count == 1
     assert result.candidate.inserted_seed_count == 1
     assert result.candidate.kept_candidate_count == 1
+    assert result.pregeneration is not None
+    assert result.pregeneration.pregenerated_count == 1
     assert result.arrival is not None
     assert result.arrival.behavior == "wait_silent"
     active = await store.fetch_active_utterance_candidates(now=now, limit=10)
     assert [candidate.maturity for candidate in active] == [1, 0]
     assert active[0].generated_text == "そろそろ休憩する？"
     assert source.calls == 1
+    assert pregenerator.calls == [now]
     assert evaluator.calls[0][1].device_id == "desk"
 
 
