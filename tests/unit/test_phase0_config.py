@@ -19,6 +19,7 @@ def test_central_realtime_config_uses_lm_studio_gemma_for_main_conversation() ->
     assert config.inference.conversation_backend == "lmstudio_gemma4_e2b"
     assert config.inference.conversation_fallback == "local_gemma4_e2b_mlx"
     assert config.inference.tts_backend == "kokoro_mlx"
+    assert config.inference.embedding_backend == "local_multilingual_e5_small"
     assert config.inference.speech_normalizer_enabled is False
 
     backend = config.backends["lmstudio_gemma4_e2b"]
@@ -31,6 +32,11 @@ def test_central_realtime_config_uses_lm_studio_gemma_for_main_conversation() ->
     assert fallback_backend.type == "gemma_mlx"
     assert fallback_backend.model == "mlx-community/gemma-4-e2b-it-4bit"
     assert fallback_backend.privacy_allowed is True
+
+    embedding_backend = config.backends["local_multilingual_e5_small"]
+    assert embedding_backend.type == "multilingual_e5_small"
+    assert embedding_backend.model == "intfloat/multilingual-e5-small"
+    assert embedding_backend.privacy_allowed is True
 
     tts_backend = config.backends["kokoro_mlx"]
     assert tts_backend.type == "kokoro_mlx"

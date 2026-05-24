@@ -1560,3 +1560,32 @@ STT final while reply/TTS active
 クライアントは引き続き判定しない。
 `audio_control stop` を受けたら再生中/予約済み source を止めるだけで、
 barge-in 判定と TTS cancel の判断はサーバー側 `TomoroSession` に残す。
+
+---
+
+## 2026-05-24 追記: 長期記憶（エピソード記憶）
+
+Phase 8 では、会話ログ本体と embedding を分離する。
+`conversation_logs` は人間が読める会話原本として保持し、検索用 vector は
+`conversation_embeddings` に保存する。
+
+```text
+conversation_logs
+  id / recorded_at / role / transcript / emotion / status
+        │
+        ▼
+conversation_embeddings
+  conversation_log_id / embedding vector(384) / model / embedded_at
+```
+
+embedding は `intfloat/multilingual-e5-small` をローカル実行する。
+音声データは関与せず、保存済みの会話テキストだけを `passage: ...` として embedding 化する。
+検索時は現在発話を `query: ...` として embedding 化し、pgvector cosine search で top-K を取得する。
+
+`ThinkDeepMode` は FastMode の WebSocket 出力契約を変えない。
+`ThinkingInput.long_term_memory` に入った `MemoryHit` を system prompt に追加し、
+返答ストリーミング、emotion 分離、TTS への流れは既存のまま使う。
+
+`TomoroSession` は短い発話では `ThinkFastMode`、記憶 cue がある発話や長めの相談文では
+`ThinkDeepMode` を選ぶ。
+この選択もサーバー側に閉じ、クライアントへ判断ロジックは移さない。

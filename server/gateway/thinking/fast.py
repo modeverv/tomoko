@@ -29,6 +29,10 @@ class ThinkFastMode(ThinkingMode):
             return self.persona_path.read_text(encoding="utf-8")
         return "あなたはトモコです。短く答えてください。"
 
+    def _build_system_prompt(self, thinking_input: ThinkingInput) -> str:
+        del thinking_input
+        return self.system_prompt
+
     async def think(
         self, backend: InferenceBackend, thinking_input: ThinkingInput
     ) -> AsyncGenerator[ThinkingEvent, None]:
@@ -42,7 +46,10 @@ class ThinkFastMode(ThinkingMode):
         messages.append({"role": "user", "content": thinking_input.text})
         header_buffer = ""
         header_parsed = False
-        async for chunk in backend.chat_stream(self.system_prompt, messages):
+        async for chunk in backend.chat_stream(
+            self._build_system_prompt(thinking_input),
+            messages,
+        ):
             if not chunk:
                 continue
 

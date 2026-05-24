@@ -37,6 +37,14 @@ class FakeWarmableSpeechNormalizer:
         self.warm_up_count += 1
 
 
+class FakeWarmableEmbeddingBackend:
+    def __init__(self) -> None:
+        self.warm_up_count = 0
+
+    async def warm_up(self) -> None:
+        self.warm_up_count += 1
+
+
 class FakeWarmableConversationBackend:
     name = "fake_conversation"
 
@@ -63,6 +71,7 @@ async def test_startup_warms_configured_transcriber_tts_and_speech_normalizer() 
     transcriber = FakeWarmableTranscriber()
     tts = FakeWarmableTTS()
     speech_normalizer = FakeWarmableSpeechNormalizer()
+    embedding_backend = FakeWarmableEmbeddingBackend()
     conversation = FakeWarmableConversationBackend()
     config = NodeConfig(
         node=NodeSection(role="edge"),
@@ -70,6 +79,7 @@ async def test_startup_warms_configured_transcriber_tts_and_speech_normalizer() 
             conversation_backend="local_qwen7b",
             tts_backend="say",
             stt_backend="local_whisper_mlx_small",
+            embedding_backend="local_multilingual_e5_small",
         ),
         backends={
             "local_whisper_mlx_small": BackendSpec(
@@ -78,6 +88,11 @@ async def test_startup_warms_configured_transcriber_tts_and_speech_normalizer() 
                 model="mlx-community/whisper-small-mlx",
             ),
             "say": BackendSpec(name="say", type="say", voice="Kyoko"),
+            "local_multilingual_e5_small": BackendSpec(
+                name="local_multilingual_e5_small",
+                type="multilingual_e5_small",
+                model="intfloat/multilingual-e5-small",
+            ),
             "local_qwen7b": BackendSpec(
                 name="local_qwen7b",
                 type="ollama",
@@ -94,6 +109,7 @@ async def test_startup_warms_configured_transcriber_tts_and_speech_normalizer() 
         app.state.tts_backend_factory = lambda: tts
         app.state.router_factory = lambda: FakeRouter(conversation)
         app.state.speech_normalizer_factory = lambda: speech_normalizer
+        app.state.embedding_backend_factory = lambda: embedding_backend
         app.state.skip_warm_up = False
 
         await _warm_up_app()
@@ -101,6 +117,7 @@ async def test_startup_warms_configured_transcriber_tts_and_speech_normalizer() 
         assert transcriber.warm_up_count == 1
         assert tts.warm_up_count == 1
         assert conversation.warm_up_count == 1
+        assert embedding_backend.warm_up_count == 1
         assert speech_normalizer.warm_up_count == 1
     finally:
         app.state._state.clear()

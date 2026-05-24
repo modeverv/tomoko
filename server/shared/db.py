@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Protocol
+from uuid import UUID
 
 import psycopg
 
@@ -31,7 +32,7 @@ class ConversationLogWriter(Protocol):
         transcript: Transcript,
         *,
         participation_mode: ParticipationMode,
-    ) -> None: ...
+    ) -> UUID | None: ...
 
     async def write_tomoko_turn(
         self,
@@ -40,7 +41,7 @@ class ConversationLogWriter(Protocol):
         emotion: str,
         device_id: str,
         status: ConversationLogStatus = "completed",
-    ) -> None: ...
+    ) -> UUID | None: ...
 
     async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]: ...
 
@@ -114,7 +115,7 @@ class PostgresConversationLogWriter:
         transcript: Transcript,
         *,
         participation_mode: ParticipationMode,
-    ) -> None:
+    ) -> UUID | None:
         async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
@@ -129,6 +130,7 @@ class PostgresConversationLogWriter:
                         participation_mode
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
                     """,
                     (
                         transcript.recorded_at,
@@ -140,6 +142,8 @@ class PostgresConversationLogWriter:
                         participation_mode,
                     ),
                 )
+                row = await cur.fetchone()
+                return row[0] if row is not None else None
 
     async def write_tomoko_turn(
         self,
@@ -148,7 +152,7 @@ class PostgresConversationLogWriter:
         emotion: str,
         device_id: str,
         status: ConversationLogStatus = "completed",
-    ) -> None:
+    ) -> UUID | None:
         async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
@@ -163,6 +167,7 @@ class PostgresConversationLogWriter:
                         status
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
                     """,
                     (
                         device_id,
@@ -174,6 +179,8 @@ class PostgresConversationLogWriter:
                         status,
                     ),
                 )
+                row = await cur.fetchone()
+                return row[0] if row is not None else None
 
     async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]:
         async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
@@ -211,7 +218,7 @@ class NullConversationLogWriter:
         transcript: Transcript,
         *,
         participation_mode: ParticipationMode,
-    ) -> None:
+    ) -> UUID | None:
         del transcript, participation_mode
         return None
 
@@ -222,7 +229,7 @@ class NullConversationLogWriter:
         emotion: str,
         device_id: str,
         status: ConversationLogStatus = "completed",
-    ) -> None:
+    ) -> UUID | None:
         del text, emotion, device_id, status
         return None
 

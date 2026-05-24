@@ -18,10 +18,13 @@ from server.gateway.audio_turn import AudioTurnController
 from server.gateway.reply import ReplyPipeline
 from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
 from server.gateway.thinking.base import ThinkingMode
+from server.gateway.thinking.selector import should_use_deep_memory
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.shared.db import AmbientLogWriter, ConversationLogWriter
+from server.shared.inference.embedding.base import EmbeddingBackend
 from server.shared.inference.router import InferenceRouter
 from server.shared.inference.tts.base import TTSBackend
+from server.shared.memory import ConversationMemoryStore
 from server.shared.models import (
     AttentionMode,
     AudioChunkOut,
@@ -41,6 +44,7 @@ SessionState = Literal["idle", "listening", "processing"]
 
 logger = logging.getLogger(__name__)
 RECENT_CONTEXT_TURN_LIMIT = 12
+LONG_TERM_MEMORY_LIMIT = 5
 
 
 class TomoroSession:
@@ -56,7 +60,10 @@ class TomoroSession:
         conversation_log_writer: ConversationLogWriter | None = None,
         router: InferenceRouter | None = None,
         thinking_mode: ThinkingMode | None = None,
+        deep_thinking_mode: ThinkingMode | None = None,
         tts_backend: TTSBackend | None = None,
+        embedding_backend: EmbeddingBackend | None = None,
+        memory_store: ConversationMemoryStore | None = None,
         speech_normalizer: ReplySpeechNormalizer | None = None,
         barge_in_detector: BargeInDetector | None = None,
         transcript_filter: TranscriptFilter | None = None,
@@ -73,7 +80,10 @@ class TomoroSession:
         self.conversation_log_writer = conversation_log_writer
         self.router = router
         self.thinking_mode = thinking_mode
+        self.deep_thinking_mode = deep_thinking_mode
         self.tts_backend = tts_backend
+        self.embedding_backend = embedding_backend
+        self.memory_store = memory_store
         self.speech_normalizer = speech_normalizer
         self.barge_in_detector = barge_in_detector
         self.transcript_filter = transcript_filter
@@ -213,11 +223,16 @@ class TomoroSession:
             await self._transition_attention("engaged")
             await self._send_event({"type": "participation", "mode": decision.mode})
             if self.conversation_log_writer is not None:
-                await self.conversation_log_writer.write_user_turn(
+                conversation_log_id = await self.conversation_log_writer.write_user_turn(
                     transcript,
                     participation_mode=decision.mode,
                 )
-            
+                if conversation_log_id is not None:
+                    self._schedule_conversation_embedding(
+                        conversation_log_id=conversation_log_id,
+                        text=transcript.text,
+                    )
+
             if self.router is not None and self.thinking_mode is not None:
                 await self._start_reply_task(transcript)
 
@@ -289,12 +304,40 @@ class TomoroSession:
             backend.name,
             self._elapsed_since_speech_end_ms(),
         )
+        thinking_mode = self.thinking_mode
+        long_term_memory = []
+        if (
+            self.deep_thinking_mode is not None
+            and self.memory_store is not None
+            and self.embedding_backend is not None
+            and should_use_deep_memory(transcript.text)
+        ):
+            query_embedding = await self.embedding_backend.embed_query(transcript.text)
+            long_term_memory = await self.memory_store.search_similar(
+                embedding=query_embedding,
+                limit=LONG_TERM_MEMORY_LIMIT,
+            )
+            long_term_memory = [
+                memory
+                for memory in long_term_memory
+                if not (memory.speaker == "user" and memory.text == transcript.text)
+            ]
+            if long_term_memory:
+                thinking_mode = self.deep_thinking_mode
+                logger.info(
+                    "TomoroSession deep memory selected hits=%s text=%r",
+                    len(long_term_memory),
+                    transcript.text,
+                )
+
+        assert thinking_mode is not None
         thinking_input = ThinkingInput(
             text=transcript.text,
             speaker=transcript.speaker,
             context=await self._load_recent_context(transcript),
             emotion="neutral",
             device_id=transcript.device_id,
+            long_term_memory=long_term_memory,
         )
         reply = ReplyPipeline(initial_emotion=thinking_input.emotion)
         self._begin_audio_turn()
@@ -303,7 +346,7 @@ class TomoroSession:
         self._tts_queue = tts_queue
         self._tts_worker_task = tts_worker
         try:
-            async for event in self.thinking_mode.think(backend, thinking_input):
+            async for event in thinking_mode.think(backend, thinking_input):
                 for command in reply.handle_event(event):
                     if command.action == "emotion":
                         assert command.image is not None
@@ -636,12 +679,59 @@ class TomoroSession:
     ) -> None:
         if self.conversation_log_writer is None:
             return
-        await self.conversation_log_writer.write_tomoko_turn(
+        conversation_log_id = await self.conversation_log_writer.write_tomoko_turn(
             text=text,
             emotion=emotion,
             device_id=device_id,
             status=status,
         )
+        if status == "completed" and conversation_log_id is not None:
+            self._schedule_conversation_embedding(
+                conversation_log_id=conversation_log_id,
+                text=text,
+            )
+
+    def _schedule_conversation_embedding(
+        self,
+        *,
+        conversation_log_id,
+        text: str,
+    ) -> None:
+        if self.embedding_backend is None or self.memory_store is None or not text.strip():
+            return
+        asyncio.create_task(
+            self._write_conversation_embedding(
+                conversation_log_id=conversation_log_id,
+                text=text,
+            )
+        )
+
+    async def _write_conversation_embedding(
+        self,
+        *,
+        conversation_log_id,
+        text: str,
+    ) -> None:
+        if self.embedding_backend is None or self.memory_store is None:
+            return
+        try:
+            embedding = await self.embedding_backend.embed_passage(text)
+            await self.memory_store.write_embedding(
+                conversation_log_id=conversation_log_id,
+                embedding=embedding,
+                model=self.embedding_backend.model,
+            )
+            logger.info(
+                "TomoroSession conversation embedding stored log_id=%s model=%s",
+                conversation_log_id,
+                self.embedding_backend.model,
+            )
+        except Exception as e:
+            logger.warning(
+                "TomoroSession conversation embedding failed log_id=%s error=%s",
+                conversation_log_id,
+                e,
+            )
 
     def _elapsed_since_speech_end_ms(self) -> float:
         return _elapsed_ms(self._latency_speech_end_at)

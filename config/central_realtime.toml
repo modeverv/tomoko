@@ -15,6 +15,7 @@ conversation_fallback = "local_gemma4_e2b_mlx"
 stt_backend = "local_whisper_mlx_small"
 vad_backend = "silero_vad"
 tts_backend = "kokoro_mlx"
+embedding_backend = "local_multilingual_e5_small"
 speech_normalizer_enabled = false
 
 [backends.local_qwen7b]
@@ -55,6 +56,12 @@ privacy_allowed = true
 streaming = true
 stream_interval_ms = 1000
 stream_min_audio_ms = 1000
+
+[backends.local_multilingual_e5_small]
+type = "multilingual_e5_small"
+model = "intfloat/multilingual-e5-small"
+max_latency_ms = 300
+privacy_allowed = true
 
 [backends.silero_vad]
 type = "silero_vad"

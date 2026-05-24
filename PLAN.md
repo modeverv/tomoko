@@ -168,13 +168,13 @@ async def test_e2e_latency_under_800ms():
 
 ### M1完了後: KokoroMLXBackend に切り替え
 
-- [ ] `pip install kokoro-mlx misaki[ja]`
-- [ ] `server/shared/inference/tts/kokoro_mlx.py`: `KokoroMLXBackend`
+- [x] `pip install kokoro-mlx misaki[ja]`
+- [x] `server/shared/inference/tts/kokoro_mlx.py`: `KokoroMLXBackend`
   - Gapless streaming 対応
   - emotion → voice のマッピング（jf_alpha / jf_beta）
-- [ ] `config/central_realtime.toml` の `tts_backend` を `"say"` → `"kokoro_mlx"` に変更
-- [ ] 日本語品質を確認して `docs/latency.md` に実測値を記録
-- [ ] 品質が厳しければ VOICEVOX に切り替え（TTSBackend 抽象で差し替え可能）
+- [x] `config/central_realtime.toml` の `tts_backend` を `"say"` → `"kokoro_mlx"` に変更
+- [x] 日本語品質を確認して `docs/latency.md` に実測値を記録
+- [x] 品質が厳しければ VOICEVOX に切り替え（TTSBackend 抽象で差し替え可能）
 
 ---
 
@@ -278,13 +278,29 @@ Phase 7 は既存 `conversation_logs` の role 行保存を活かし、短期文
 
 ## Phase 8: 長期記憶（エピソード記憶）
 
-- [ ] multilingual-e5-small でローカル embedding 生成
-- [ ] pgvector に格納
-- [ ] `server/gateway/thinking/deep.py`: `ThinkDeepMode`
+- [x] multilingual-e5-small でローカル embedding 生成
+- [x] pgvector に格納
+- [x] `server/gateway/thinking/deep.py`: `ThinkDeepMode`
   - 類似検索で top-K の過去会話をプロンプトに差し込む
-- [ ] 短い発話 → fast、深い話題 → deep のモード選択
+- [x] 短い発話 → fast、深い話題 → deep のモード選択
 
 **完了条件**: 数日前の話題を「そういえばあの時...」として引き出せる。
+
+### 2026-05-24 実装結果
+
+Phase 8 は、既存 `conversation_logs` を原本として保ち、embedding だけを
+`conversation_embeddings` に分離する形で実装した。
+
+- `sentence-transformers` の `intfloat/multilingual-e5-small` を `EmbeddingBackend` として追加した
+- `conversation_embeddings(conversation_log_id, embedding vector(384), model, embedded_at)` を追加した
+- `PostgresConversationMemoryStore` で未embedding turn の backfill と cosine 類似検索を実装した
+- `ThinkDeepMode` は top-K の `MemoryHit` を system prompt に差し込み、通常の emotion/text streaming 契約は維持する
+- `TomoroSession` は記憶 cue や長めの相談文では deep、短い発話では fast を選ぶ
+- 現在の user transcript 自身が検索結果に混ざった場合は除外する
+- `tools/embed_conversation_logs.py --limit N` で既存 `conversation_logs` を backfill できる
+- ローカル PostgreSQL に `conversation_embeddings` を適用し、3件の既存 turn を embedding 済み
+- 実測は `docs/latency.md` に記録した
+- `ruff check .`、`pytest -m unit`、`pytest -m perf --tb=short tests/perf/test_phase5_latency.py` が通過した
 
 ### ✅ M2 完了条件
 

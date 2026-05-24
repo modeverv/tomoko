@@ -21,6 +21,54 @@
 
 ---
 
+## 2026-05-24 セッション20
+
+### やること（開始時に書く）
+- M2 Phase 8: 長期記憶（エピソード記憶）を実装する
+- `conversation_logs` からローカル embedding を生成して pgvector に保存する
+- `ThinkDeepMode` で類似検索した過去会話をプロンプトに差し込む
+- 短い発話は fast、深い話題は deep に振り分ける最小モード選択を入れる
+
+### 作業メモ
+- 既存の Phase 7 方針を維持し、`conversation_logs` は role 行形式のまま長期記憶の原本として扱う
+- WebSocket エンドポイントは増やさず、クライアント側判断も追加しない
+- embedding 生成と記憶検索は DTO / DB 境界を守り、`server/gateway/thinking/*.py` は FastAPI に依存させない
+
+### やったこと
+- `MemoryHit` と `ThinkingInput.long_term_memory` を追加した
+- `server/shared/inference/embedding/` に `intfloat/multilingual-e5-small` 用 embedding backend を追加した
+- `conversation_embeddings` テーブルと pgvector HNSW index を追加した
+- `PostgresConversationMemoryStore` を追加し、backfill / embedding 保存 / 類似検索を実装した
+- `ThinkDeepMode` を追加し、top-K の過去会話を system prompt に差し込むようにした
+- `should_use_deep_memory()` で短い発話は fast、記憶 cue や長めの相談文は deep に振り分けるようにした
+- `TomoroSession` に deep mode / embedding backend / memory store を接続した
+- 現在の user transcript 自身が deep memory 検索に混ざった場合は除外するようにした
+- 起動時 warm-up に embedding backend を追加した
+- `tools/embed_conversation_logs.py` を追加し、既存 `conversation_logs` の embedding backfill を可能にした
+- ローカル PostgreSQL に `conversation_embeddings` を適用し、既存 turn 3件を backfill した
+- `docs/latency.md` / `PLAN.md` / `MEMORY.md` / `ARCHITECTURE.md` に Phase 8 の結果を追記した
+
+### 詰まったこと・解決したこと
+- `tools/embed_conversation_logs.py` を直接実行すると `server` package が import できなかった
+  → repository root を `sys.path` に入れ、script 単体でも動くようにした
+- `sentence-transformers` 追加後、初回 lock / install で `scikit-learn` などが入った
+  → `uv.lock` を更新し、unit test で依存指定の PEP 508 妥当性を確認した
+- 現在発話の embedding が非同期保存された場合、検索結果に自分自身が入る可能性がある
+  → deep memory hits から同一 user transcript を除外する回帰テストを追加した
+
+### 検証
+- `docker exec -i tomoko-postgres psql -U tomoko -d tomoko < docker/postgres/init/003_conversation_embeddings.sql`
+- `mise exec -- uv run python tools/embed_conversation_logs.py --limit 3`
+- `docker exec tomoko-postgres psql -U tomoko -d tomoko -c "SELECT count(*) FROM conversation_embeddings;"`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m perf --tb=short tests/perf/test_phase5_latency.py`
+
+### 次のセッションでやること
+- Chrome 実セッションで「この前話してた〇〇覚えてる？」が deep memory を引くか確認する
+- 実会話ログが増えたら `tools/embed_conversation_logs.py --limit 100` で backfill する
+- 必要なら deep/fast selector の cue と長さ閾値を実ログに合わせて調整する
+
 ## 2026-05-24 セッション18
 
 ### やること（開始時に書く）

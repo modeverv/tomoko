@@ -21,14 +21,17 @@ from server.edge.pipeline.stt import (
 from server.edge.pipeline.stt_filter import TranscriptFilter
 from server.edge.pipeline.vad import create_vad_processor
 from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
+from server.gateway.thinking.deep import ThinkDeepMode
 from server.gateway.thinking.fast import ThinkFastMode
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.session import TomoroSession
 from server.shared.config import NodeConfig
 from server.shared.db import PostgresAmbientLogWriter, PostgresConversationLogWriter
+from server.shared.inference.embedding import EmbeddingBackend, create_embedding_backend
 from server.shared.inference.router import InferenceRouter
 from server.shared.inference.tts import create_tts_backend
 from server.shared.inference.tts.base import TTSBackend
+from server.shared.memory import PostgresConversationMemoryStore
 from server.shared.models import PlaybackTelemetry
 
 
@@ -110,6 +113,10 @@ def _create_default_thinking_mode() -> ThinkFastMode:
     return ThinkFastMode(persona_path=ROOT_DIR / "prompts" / "base_persona.md")
 
 
+def _create_default_deep_thinking_mode() -> ThinkDeepMode:
+    return ThinkDeepMode(persona_path=ROOT_DIR / "prompts" / "base_persona.md")
+
+
 def _create_default_tts_backend() -> TTSBackend:
     cached_backend = getattr(app.state, "_default_tts_backend", None)
     if cached_backend is not None:
@@ -131,6 +138,23 @@ def _create_default_speech_normalizer() -> ReplySpeechNormalizer:
 
 def _is_speech_normalizer_enabled() -> bool:
     return _load_config().inference.speech_normalizer_enabled
+
+
+def _create_default_embedding_backend() -> EmbeddingBackend | None:
+    cached_backend = getattr(app.state, "_default_embedding_backend", None)
+    if cached_backend is not None:
+        return cached_backend
+    config = _load_config()
+    if config.inference.embedding_backend is None:
+        return None
+    backend = create_embedding_backend(config.backends[config.inference.embedding_backend])
+    app.state._default_embedding_backend = backend
+    return backend
+
+
+def _create_default_memory_store() -> PostgresConversationMemoryStore:
+    config = _load_config()
+    return PostgresConversationMemoryStore(config.database.dsn)
 
 
 @app.websocket("/ws")
@@ -175,12 +199,27 @@ async def websocket_session(websocket: WebSocket) -> None:
         "thinking_mode_factory",
         _create_default_thinking_mode,
     )
+    deep_thinking_mode_factory = getattr(
+        app.state,
+        "deep_thinking_mode_factory",
+        _create_default_deep_thinking_mode,
+    )
     tts_backend_factory = getattr(
         app.state,
         "tts_backend_factory",
         _create_default_tts_backend,
     )
     speech_normalizer_factory = getattr(app.state, "speech_normalizer_factory", None)
+    embedding_backend_factory = getattr(
+        app.state,
+        "embedding_backend_factory",
+        _create_default_embedding_backend,
+    )
+    memory_store_factory = getattr(
+        app.state,
+        "memory_store_factory",
+        _create_default_memory_store,
+    )
     barge_in_detector_factory = getattr(
         app.state,
         "barge_in_detector_factory",
@@ -196,7 +235,10 @@ async def websocket_session(websocket: WebSocket) -> None:
         conversation_log_writer=conversation_log_writer_factory(),
         router=router_factory(),
         thinking_mode=thinking_mode_factory(),
+        deep_thinking_mode=deep_thinking_mode_factory(),
         tts_backend=tts_backend_factory(),
+        embedding_backend=embedding_backend_factory(),
+        memory_store=memory_store_factory(),
         speech_normalizer=(
             speech_normalizer_factory()
             if speech_normalizer_factory is not None
@@ -308,6 +350,31 @@ async def _warm_up_app() -> None:
         conversation_backend.name,
         elapsed_ms,
     )
+
+    if config.inference.embedding_backend is not None:
+        embedding_backend_name = config.inference.embedding_backend
+        embedding_spec = config.backends[embedding_backend_name]
+        started_at = time.perf_counter()
+        logger.info(
+            "startup warm-up started target=embedding backend=%s type=%s model=%s",
+            embedding_backend_name,
+            embedding_spec.type,
+            embedding_spec.model,
+        )
+        embedding_backend_factory = getattr(
+            app.state,
+            "embedding_backend_factory",
+            _create_default_embedding_backend,
+        )
+        embedding_backend = embedding_backend_factory()
+        if embedding_backend is not None:
+            await embedding_backend.warm_up()
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.info(
+            "startup warm-up completed target=embedding backend=%s elapsed_ms=%.1f",
+            embedding_backend_name,
+            elapsed_ms,
+        )
 
     if not config.inference.speech_normalizer_enabled:
         logger.info("startup warm-up skipped target=tts_text_normalizer disabled=true")

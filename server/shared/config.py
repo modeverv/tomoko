@@ -18,6 +18,7 @@ class InferenceSection:
     tts_backend: str
     stt_backend: str | None = None
     vad_backend: str | None = None
+    embedding_backend: str | None = None
     conversation_fallback: str | None = None
     speech_normalizer_enabled: bool = True
 

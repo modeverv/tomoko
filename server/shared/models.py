@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
 
@@ -110,6 +110,15 @@ class ConversationTurn:
     emotion: str | None = None
 
 
+@dataclass(frozen=True)
+class MemoryHit:
+    speaker: Literal["user", "tomoko"]
+    text: str
+    timestamp: datetime
+    similarity: float
+    emotion: str | None = None
+
+
 @dataclass
 class ThinkingInput:
     text: str
@@ -117,6 +126,7 @@ class ThinkingInput:
     context: list[ConversationTurn]
     emotion: str
     device_id: str
+    long_term_memory: list[MemoryHit] = field(default_factory=list)
 
 
 @dataclass(slots=True)
