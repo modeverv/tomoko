@@ -165,6 +165,12 @@ class UtteranceCandidate:
     def __post_init__(self) -> None:
         if self.maturity not in _VALID_MATURITIES:
             raise ValueError(f"Unsupported candidate maturity: {self.maturity}")
+        if self.maturity == 2 and (
+            self.generated_text is None or self.generated_audio is None
+        ):
+            raise ValueError(
+                "maturity=2 requires generated_text and generated_audio"
+            )
 
     @classmethod
     def from_db_row(cls, row: tuple[object, ...]) -> UtteranceCandidate:
@@ -238,6 +244,46 @@ class ArrivalCandidate:
             utterance_text=_optional_str(utterance_text),
             utterance_audio=bytes(utterance_audio) if utterance_audio is not None else None,
             used_at=_optional_datetime(used_at),
+        )
+
+
+@dataclass(frozen=True)
+class PregeneratedAudioChunk:
+    id: UUID
+    utterance_candidate_id: UUID
+    chunk_index: int
+    audio_data: bytes
+    audio_format: str
+    is_last: bool
+    created_at: datetime
+
+    def __post_init__(self) -> None:
+        if self.chunk_index < 0:
+            raise ValueError("chunk_index must be non-negative")
+        if not self.audio_data:
+            raise ValueError("audio_data must not be empty")
+        if not self.audio_format:
+            raise ValueError("audio_format must not be empty")
+
+    @classmethod
+    def from_db_row(cls, row: tuple[object, ...]) -> PregeneratedAudioChunk:
+        (
+            chunk_id,
+            utterance_candidate_id,
+            chunk_index,
+            audio_data,
+            audio_format,
+            is_last,
+            created_at,
+        ) = row
+        return cls(
+            id=_as_uuid(chunk_id),
+            utterance_candidate_id=_as_uuid(utterance_candidate_id),
+            chunk_index=int(chunk_index),
+            audio_data=bytes(audio_data),
+            audio_format=str(audio_format),
+            is_last=bool(is_last),
+            created_at=_as_datetime(created_at),
         )
 
 
@@ -326,6 +372,22 @@ class CandidateStore(Protocol):
         *,
         used_at: datetime,
     ) -> None: ...
+
+
+class PregeneratedAudioChunkStore(Protocol):
+    async def replace_chunks(
+        self,
+        candidate_id: UUID,
+        chunks: tuple[bytes, ...],
+        *,
+        audio_format: str = "riff_wave",
+        created_at: datetime | None = None,
+    ) -> tuple[PregeneratedAudioChunk, ...]: ...
+
+    async def fetch_chunks(
+        self,
+        candidate_id: UUID,
+    ) -> tuple[PregeneratedAudioChunk, ...]: ...
 
 
 class InMemoryCandidateStore:
@@ -581,6 +643,55 @@ class InMemoryCandidateStore:
                     context_tags=candidate.context_tags,
                 )
                 return
+
+
+class InMemoryPregeneratedAudioChunkStore:
+    def __init__(self) -> None:
+        self.chunks: list[PregeneratedAudioChunk] = []
+
+    async def replace_chunks(
+        self,
+        candidate_id: UUID,
+        chunks: tuple[bytes, ...],
+        *,
+        audio_format: str = "riff_wave",
+        created_at: datetime | None = None,
+    ) -> tuple[PregeneratedAudioChunk, ...]:
+        now = created_at or datetime.now(UTC)
+        self.chunks = [
+            chunk
+            for chunk in self.chunks
+            if chunk.utterance_candidate_id != candidate_id
+        ]
+        inserted = tuple(
+            PregeneratedAudioChunk(
+                id=uuid4(),
+                utterance_candidate_id=candidate_id,
+                chunk_index=index,
+                audio_data=audio_data,
+                audio_format=audio_format,
+                is_last=index == len(chunks) - 1,
+                created_at=now,
+            )
+            for index, audio_data in enumerate(chunks)
+        )
+        self.chunks.extend(inserted)
+        return inserted
+
+    async def fetch_chunks(
+        self,
+        candidate_id: UUID,
+    ) -> tuple[PregeneratedAudioChunk, ...]:
+        return tuple(
+            sorted(
+                (
+                    chunk
+                    for chunk in self.chunks
+                    if chunk.utterance_candidate_id == candidate_id
+                ),
+                key=lambda chunk: chunk.chunk_index,
+            )
+        )
 
 
 class PostgresCandidateStore:
@@ -964,6 +1075,91 @@ class PostgresCandidateStore:
                     """,
                     (used_at, candidate_id),
                 )
+
+
+class PostgresPregeneratedAudioChunkStore:
+    def __init__(self, dsn: str) -> None:
+        self.dsn = dsn
+
+    async def replace_chunks(
+        self,
+        candidate_id: UUID,
+        chunks: tuple[bytes, ...],
+        *,
+        audio_format: str = "riff_wave",
+        created_at: datetime | None = None,
+    ) -> tuple[PregeneratedAudioChunk, ...]:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    DELETE FROM pregenerated_audio_chunks
+                    WHERE utterance_candidate_id = %s
+                    """,
+                    (candidate_id,),
+                )
+                rows: list[tuple[object, ...]] = []
+                for index, audio_data in enumerate(chunks):
+                    await cur.execute(
+                        """
+                        INSERT INTO pregenerated_audio_chunks (
+                            utterance_candidate_id,
+                            chunk_index,
+                            audio_data,
+                            audio_format,
+                            is_last,
+                            created_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s, COALESCE(%s, now()))
+                        RETURNING
+                            id,
+                            utterance_candidate_id,
+                            chunk_index,
+                            audio_data,
+                            audio_format,
+                            is_last,
+                            created_at
+                        """,
+                        (
+                            candidate_id,
+                            index,
+                            audio_data,
+                            audio_format,
+                            index == len(chunks) - 1,
+                            created_at,
+                        ),
+                    )
+                    row = await cur.fetchone()
+                    if row is None:
+                        raise RuntimeError("pregenerated audio insert returned no row")
+                    rows.append(row)
+            await conn.commit()
+        return tuple(PregeneratedAudioChunk.from_db_row(row) for row in rows)
+
+    async def fetch_chunks(
+        self,
+        candidate_id: UUID,
+    ) -> tuple[PregeneratedAudioChunk, ...]:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT
+                        id,
+                        utterance_candidate_id,
+                        chunk_index,
+                        audio_data,
+                        audio_format,
+                        is_last,
+                        created_at
+                    FROM pregenerated_audio_chunks
+                    WHERE utterance_candidate_id = %s
+                    ORDER BY chunk_index ASC
+                    """,
+                    (candidate_id,),
+                )
+                rows = await cur.fetchall()
+        return tuple(PregeneratedAudioChunk.from_db_row(row) for row in rows)
 
 
 def _as_sequence(value: object) -> tuple[object, ...]:

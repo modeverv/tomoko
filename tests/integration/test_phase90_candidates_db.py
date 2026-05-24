@@ -5,7 +5,11 @@ from datetime import UTC, datetime, timedelta
 import psycopg
 import pytest
 
-from server.shared.candidate import ArrivalContextSnapshot, PostgresCandidateStore
+from server.shared.candidate import (
+    ArrivalContextSnapshot,
+    PostgresCandidateStore,
+    PostgresPregeneratedAudioChunkStore,
+)
 from server.shared.config import NodeConfig
 
 
@@ -13,11 +17,24 @@ from server.shared.config import NodeConfig
 async def test_postgres_candidate_store_round_trip() -> None:
     config = NodeConfig.load("config/central_realtime.toml")
     dsn = config.database.dsn
-    ddl = "docker/postgres/init/006_candidates.sql"
+    candidate_ddl = "docker/postgres/init/006_candidates.sql"
+    pregenerated_audio_ddl = "docker/postgres/init/009_pregenerated_audio_chunks.sql"
 
     async with await psycopg.AsyncConnection.connect(dsn) as conn:
         async with conn.cursor() as cur:
-            await cur.execute(open(ddl, encoding="utf-8").read())
+            await cur.execute(open(candidate_ddl, encoding="utf-8").read())
+            await cur.execute(open(pregenerated_audio_ddl, encoding="utf-8").read())
+            await cur.execute(
+                """
+                DELETE FROM pregenerated_audio_chunks
+                WHERE utterance_candidate_id IN (
+                    SELECT id
+                    FROM utterance_candidates
+                    WHERE source = 'integration'
+                      AND 'phase90_integration' = ANY(context_tags)
+                )
+                """
+            )
             await cur.execute(
                 """
                 DELETE FROM utterance_candidates
@@ -34,6 +51,7 @@ async def test_postgres_candidate_store_round_trip() -> None:
         await conn.commit()
 
     store = PostgresCandidateStore(dsn)
+    audio_chunks = PostgresPregeneratedAudioChunkStore(dsn)
     now = datetime(2099, 5, 24, 12, 0, tzinfo=UTC)
     device_id = "phase90-integration"
     inserted_ids: list[object] = []
@@ -78,6 +96,39 @@ async def test_postgres_candidate_store_round_trip() -> None:
         assert active[0].generated_text == "今なら少し話せそう。"
         assert active[0].maturity == 1
         assert active[0].context_tags == ("phase90_integration", "priority")
+
+        generated_audio = b"RIFF\x24\x00\x00\x00WAVEfmt integration"
+        await store.mark_utterance_pregenerated(
+            high.id,
+            generated_audio=generated_audio,
+        )
+        active_after_pregeneration = await store.fetch_active_utterance_candidates(
+            now=now,
+            limit=1000,
+        )
+        pregenerated = next(
+            candidate
+            for candidate in active_after_pregeneration
+            if candidate.id == high.id
+        )
+        assert pregenerated.maturity == 2
+        assert pregenerated.generated_audio == generated_audio
+
+        inserted_chunks = await audio_chunks.replace_chunks(
+            high.id,
+            (b"RIFF-part-1", b"RIFF-part-2"),
+            created_at=now,
+        )
+        fetched_chunks = await audio_chunks.fetch_chunks(high.id)
+        assert tuple(chunk.audio_data for chunk in inserted_chunks) == (
+            b"RIFF-part-1",
+            b"RIFF-part-2",
+        )
+        assert tuple(chunk.audio_data for chunk in fetched_chunks) == (
+            b"RIFF-part-1",
+            b"RIFF-part-2",
+        )
+        assert fetched_chunks[-1].is_last is True
 
         await store.mark_utterance_spoken(high.id, spoken_at=now)
         active_after_spoken = await store.fetch_active_utterance_candidates(

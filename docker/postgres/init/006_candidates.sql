@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS utterance_candidates (
     context_tags TEXT[] NOT NULL DEFAULT '{}',
     CONSTRAINT utterance_candidates_maturity_check
         CHECK (maturity IN (0, 1, 2)),
+    CONSTRAINT utterance_candidates_maturity2_payload_check
+        CHECK (maturity <> 2 OR (generated_text IS NOT NULL AND generated_audio IS NOT NULL)),
     CONSTRAINT utterance_candidates_terminal_once_check
         CHECK (spoken_at IS NULL OR dismissed_at IS NULL)
 );

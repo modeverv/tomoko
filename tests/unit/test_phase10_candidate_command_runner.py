@@ -178,8 +178,8 @@ async def test_runner_uses_pregenerated_audio_without_tts() -> None:
     assert events[-4:] == [
         {"type": "reply_text", "delta": "今ならすぐ言えるよ。"},
         {"type": "audio_start", "turn_id": events[-3]["turn_id"]},
-        {"type": "reply_done"},
         {"type": "audio_end", "turn_id": events[-3]["turn_id"]},
+        {"type": "reply_done"},
     ]
     assert audio_chunks == [audio]
 

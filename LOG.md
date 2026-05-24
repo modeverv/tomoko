@@ -4,6 +4,42 @@
 
 ---
 
+## 2026-05-24 セッション55
+
+### やること（開始時に書く）
+- Phase 11.3 の cached audio 送信順を PLAN 通り `reply_text` / `audio_start` / binary / `audio_end` / `reply_done` に修正する
+- `generated_audio` は first RIFF/WAVE chunk cache のまま維持する判断を `PLAN.md` / `MEMORY.md` に反映する
+- multi-chunk 完全事前生成は別テーブル方針として DB/DTO/store の足場を追加する
+- Phase 11.0 / 11.3 の未チェック項目をテストで倒す
+
+### やったこと
+- `TomoroSession` の通常 TTS 経路と precomputed reply 経路を、`reply_text` / `audio_start` / binary / `audio_end` / `reply_done` の順序へ揃えた
+- `UtteranceCandidate` の `maturity=2` を `generated_text` + `generated_audio` 必須として DTO で固定した
+- `generated_audio` は first RIFF/WAVE chunk cache として維持し、完全 multi-chunk 事前生成用に `pregenerated_audio_chunks` 別テーブルを追加した
+- `PregeneratedAudioChunk` DTO と `InMemoryPregeneratedAudioChunkStore` / `PostgresPregeneratedAudioChunkStore` を追加した
+- `PLAN.md` / `MEMORY.md` に、前回の `reply_done` before `audio_end` 方針を否定する追記と別テーブル方針を記録した
+- Phase 11.0 / 11.3 / 11.4 の実装済みチェックを更新した
+
+### 詰まったこと・解決したこと
+- 既存経路は `reply_done` が `audio_end` より先だったが、今回の人間判断により PLAN 経路を正とした
+  → cached audio だけでなく通常 TTS 経路も同じ順序へ修正した
+- `generated_audio` に multi-chunk を詰めると first chunk cache と完全事前生成 manifest の意味が混ざる
+  → first chunk cache は維持し、multi-chunk は `pregenerated_audio_chunks` へ分離した
+
+### 次のセッションでやること
+- Phase 11 をさらに進めるなら、pregenerator が全 chunk を `pregenerated_audio_chunks` に保存し、gateway が順序付き multi-chunk cache を送る実装へ進む
+- ただし現時点の online 消費は first chunk cache の `generated_audio` で成立している
+
+### 検証
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase110_pregenerated_candidate.py tests/unit/test_phase10_candidate_command_runner.py`
+- `mise exec -- uv run ruff check server/session.py server/shared/candidate.py tests/unit/test_phase110_pregenerated_candidate.py tests/unit/test_phase10_candidate_command_runner.py tests/integration/test_phase90_candidates_db.py`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase90_candidates_db.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase113_pregenerated_audio_consumption.py`
+- `mise exec -- uv run ruff check tests/unit/test_phase113_pregenerated_audio_consumption.py`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `git diff --check`
+
 ## 2026-05-24 セッション53
 
 ### やること（開始時に書く）

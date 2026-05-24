@@ -720,8 +720,8 @@ class TomoroSession:
                                 device_id=transcript.device_id,
                                 status="completed",
                             )
-                        await self._send_event({"type": "reply_done"})
                         await self._end_audio_turn()
+                        await self._send_event({"type": "reply_done"})
                         self._note_attention_activity()
         except asyncio.CancelledError:
             tts_worker.cancel()
@@ -805,6 +805,7 @@ class TomoroSession:
                 device_id=device_id,
                 status="completed",
             )
+            await self._end_audio_turn()
             await self._send_event({"type": "reply_done"})
         finally:
             await self._end_audio_turn()
