@@ -86,7 +86,9 @@ logger = logging.getLogger(__name__)
 ROOT_DIR = Path(__file__).resolve().parents[2]
 CLIENT_DIR = ROOT_DIR / "client"
 ASSETS_DIR = ROOT_DIR / "assets"
-CONFIG_PATH = ROOT_DIR / "config" / "central_realtime.toml"
+CONFIG_PATH = Path(
+    os.environ.get("TOMOKO_CONFIG", ROOT_DIR / "config" / "central_realtime.toml")
+)
 
 
 @asynccontextmanager

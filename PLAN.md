@@ -1865,11 +1865,11 @@ async def test_privacy_never_goes_to_cloud():
 
 - [ ] `server/edge/main.py` をエッジ専用に整理
   - STT 結果をテキストで中央に送信（音声は外に出さない）
-- [ ] `presence` / `edge_status` テーブル作成
-- [ ] `server/gateway/resolver.py`: `DirectSpeakerResolver`
-- [ ] `server/gateway/dedup.py`: `DuplicateSpeechFilter`
-- [ ] `server/gateway/presence.py`: `PresenceManager`
-- [ ] `config/edge_kitchen.toml` 作成
+- [x] `presence` / `edge_status` テーブル作成
+- [x] `server/gateway/resolver.py`: `DirectSpeakerResolver`
+- [x] `server/gateway/dedup.py`: `DuplicateSpeechFilter`
+- [x] `server/gateway/presence.py`: `PresenceManager`
+- [x] `config/edge_kitchen.toml` 作成
 - [ ] docker-compose でエッジと中央を別サービスに分離
 
 ```python
@@ -1895,24 +1895,24 @@ async def test_loudest_edge_is_primary():
 
 #### Phase 14.0: presence / edge_status schema
 
-- [ ] `presence_reports` / `edge_status` テーブルを作成する
-- [ ] `PresenceReport` / `EdgeStatus` DTO を追加する
-- [ ] 音声 bytes は保存しない
-- [ ] device_id / audio_level_db / observed_at / transcript_id を保存する
+- [x] `presence_reports` / `edge_status` テーブルを作成する
+- [x] `PresenceReport` / `EdgeStatus` DTO を追加する
+- [x] 音声 bytes は保存しない
+- [x] device_id / audio_level_db / observed_at / transcript_id を保存する
 
 #### Phase 14.1: DirectSpeakerResolver
 
-- [ ] `server/gateway/resolver.py` を追加する
-- [ ] 同一時間窓の presence から正規 device を選ぶ
-- [ ] 初段は audio_level_db 最大 + recency で deterministic に決める
-- [ ] resolver は DB write を持たない純粋判定器にする
+- [x] `server/gateway/resolver.py` を追加する
+- [x] 同一時間窓の presence から正規 device を選ぶ
+- [x] 初段は audio_level_db 最大 + recency で deterministic に決める
+- [x] resolver は DB write を持たない純粋判定器にする
 
 #### Phase 14.2: DuplicateSpeechFilter
 
-- [ ] `server/gateway/dedup.py` を追加する
-- [ ] 時間窓、device 差、文字列類似度で duplicate を判定する
-- [ ] embedding 類似度を主判定にしない
-- [ ] hard interrupt keyword は duplicate より優先する
+- [x] `server/gateway/dedup.py` を追加する
+- [x] 時間窓、device 差、文字列類似度で duplicate を判定する
+- [x] embedding 類似度を主判定にしない
+- [x] hard interrupt keyword は duplicate より優先する
 
 #### Phase 14.3: edge / gateway process split
 
@@ -1923,14 +1923,46 @@ async def test_loudest_edge_is_primary():
 
 #### Phase 14.4: local multi-process smoke
 
-- [ ] `config/edge_kitchen.toml` / `config/central_realtime.toml` の責務差を固定する
-- [ ] `make edge-kitchen` / `make gateway` を追加する
-- [ ] docker-compose service 化は app image 方針が決まってから行う
+- [x] `config/edge_kitchen.toml` / `config/central_realtime.toml` の責務差を固定する
+- [x] `make edge-kitchen` / `make gateway` を追加する
+- [x] docker-compose service 化は app image 方針が決まってから行う
 
 **完了条件**:
 - 二重 STT / 回り込みが duplicate として抑制される
 - 音声 bytes が中央 DB / gateway に流れない
 - `pytest -m unit tests/unit/test_phase14_edge_split.py` が通る
+
+#### Phase 14 実装結果: 2026-05-24
+
+Phase 14 は、まず DB 契約と純粋判定器まで実装した。
+完全な edge / gateway 間 protocol 分離はまだ行わない。
+ブラウザは引き続き dumb client のままとし、判断ロジックは Python 側に残す。
+
+実装済み:
+- `presence_reports` / `edge_status` DDL
+- `PresenceReport` / `EdgeStatus` DTO
+- `InMemoryPresenceStore` / `PostgresPresenceStore`
+- `DirectSpeakerResolver`
+- `DuplicateSpeechFilter`
+- `PresenceManager`
+- `config/edge_kitchen.toml`
+- `make edge-kitchen` / `make gateway`
+
+境界:
+- presence / edge_status は `device_id` / `audio_level_db` / `observed_at` / `transcript_id` / optional transcript text だけを保存する
+- 音声 bytes は `presence_reports` / `edge_status` に保存しない
+- DirectSpeakerResolver は DB write を持たない純粋判定器
+- DuplicateSpeechFilter は時間窓、device 差、文字列類似度で duplicate を判定し、embedding 類似度を主判定にしない
+- hard interrupt keyword は duplicate より優先する
+
+未実装:
+- edge / gateway 間の独立 WebSocket protocol
+- STT 後 text event を gateway へ送る実 network adapter
+- central gateway process からの `TomoroSession` 完全分離
+
+検証:
+- `pytest -m unit tests/unit/test_phase14_edge_split.py`
+- `pytest -m integration tests/integration/test_phase14_presence_db.py`
 
 ---
 

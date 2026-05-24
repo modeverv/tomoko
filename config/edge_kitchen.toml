@@ -1,0 +1,117 @@
+[node]
+role = "edge"
+device_id = "kitchen"
+
+[database]
+dsn = "postgresql://tomoko:tomoko@localhost:5432/tomoko"
+
+[audio]
+sample_rate = 16000
+chunk_ms = 32
+vad_silence_ms = 400
+
+[inference]
+conversation_backend = "lmstudio_gemma4_e2b"
+conversation_fallback = "local_gemma4_e2b_mlx"
+session_summary_backend = "lmstudio_gemma4_e2b"
+session_summary_fallback = "local_gemma4_e2b_mlx"
+candidate_gen_backend = "lmstudio_gemma4_e2b"
+candidate_gen_fallback = "local_gemma4_e2b_mlx"
+diary_backend = "lmstudio_gemma4_e2b"
+diary_fallback = "local_gemma4_e2b_mlx"
+stt_backend = "local_whisper_mlx_small"
+vad_backend = "silero_vad"
+tts_backend = "kokoro_mlx"
+embedding_backend = "local_multilingual_e5_small"
+speech_normalizer_enabled = false
+
+[backends.local_qwen7b]
+type = "ollama"
+url = "http://localhost:11434"
+model = "qwen2.5:7b"
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.local_qwen_mlx]
+type = "mlx"
+model = "mlx-community/Qwen2.5-7B-Instruct-4bit"
+max_latency_ms = 300
+privacy_allowed = true
+
+[backends.local_gemma4_e2b_mlx]
+type = "gemma_mlx"
+model = "mlx-community/gemma-4-e2b-it-4bit"
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.lmstudio_gemma4_e2b]
+type = "lm_studio"
+url = "http://192.168.11.66:1234"
+model = "gemma-4-e2b-it-mlx"
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.local_whisper_small]
+type = "faster_whisper"
+model = "small"
+privacy_allowed = true
+
+[backends.local_whisper_mlx_small]
+type = "mlx_whisper"
+model = "mlx-community/whisper-small-mlx"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
+
+[backends.local_multilingual_e5_small]
+type = "multilingual_e5_small"
+model = "intfloat/multilingual-e5-small"
+max_latency_ms = 300
+privacy_allowed = true
+
+[backends.silero_vad]
+type = "silero_vad"
+model = "snakers4/silero-vad"
+privacy_allowed = true
+
+[backends.say]
+type = "say"
+voice = "Kyoko"
+max_latency_ms = 10
+privacy_allowed = true
+
+[backends.kokoro_mlx]
+type = "kokoro_mlx"
+model = "mlx-community/Kokoro-82M-bf16"
+voice = "jf_alpha"
+max_latency_ms = 200
+privacy_allowed = true
+
+[backends.irodori_mlx]
+type = "irodori_mlx"
+model = "mlx-community/Irodori-TTS-500M-v3-8bit"
+voice = "none"
+max_latency_ms = 3500
+privacy_allowed = true
+
+[backends.irodori_mlx_stream]
+type = "irodori_mlx_stream"
+model = "mlx-community/Irodori-TTS-500M-v3-8bit"
+voice = "none"
+max_latency_ms = 500
+privacy_allowed = true
+
+[backends.qwen3_tts_mlx_small]
+type = "qwen3_mlx"
+model = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit"
+voice = "none"
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.qwen3_tts_mlx_large]
+type = "qwen3_mlx"
+model = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
+voice = "none"
+max_latency_ms = 1200
+privacy_allowed = true

@@ -1249,3 +1249,26 @@ backend name / task type / latency / error / measured_at を保存する。
 probe failure は例外を外へ投げず、`InferenceMetricSample.error` として記録する。
 router は latest metric を読むだけで、`latency_ms is None` の error sample は fallback 判断対象にする。
 `priority="privacy"` の場合は引き続き `privacy_allowed=False` backend へ fallback しない。
+
+### 確定した判断: Phase 14 edge split 初段
+Phase 14 は一度に完全な edge / gateway process split へ進めず、まず presence と duplicate 判定の
+DB / DTO / 純粋判定器を固定する。
+
+ブラウザは引き続き dumb client のままにする。
+Phase 14 の edge は Python server 側の責務分離であり、ブラウザへ VAD / STT / duplicate / resolver 判断を移さない。
+
+`presence_reports` / `edge_status` は edge の観測状態を保存するが、音声 bytes は保存しない。
+保存するのは `device_id` / `observed_at` / `audio_level_db` / `transcript_id` / optional transcript text /
+edge status metadata までとする。
+
+`DirectSpeakerResolver` は同一時間窓の `PresenceReport` から正規発話元 edge を選ぶ純粋判定器であり、
+DB write を持たない。
+初段は `audio_level_db` 最大、同値なら recency、さらに同値なら `device_id` で deterministic に決める。
+
+`DuplicateSpeechFilter` は時間窓、device 差、文字列類似度で二重 STT / 回り込みを duplicate として抑制する。
+会話は意味的に近い発話が自然に続くため、embedding 類似度は主判定にしない。
+hard interrupt keyword は duplicate より優先し、別 edge が同じ語を拾っていても捨てない。
+
+`config/edge_kitchen.toml` は `node.role="edge"` / `device_id="kitchen"` として追加した。
+`make edge-kitchen` / `make gateway` は local multi-process smoke 用の足場であり、
+docker-compose service 化は app image / Apple Silicon MLX / LM Studio runtime 方針が M4 で決まるまで行わない。

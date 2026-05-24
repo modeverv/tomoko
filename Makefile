@@ -1,5 +1,6 @@
 HOST ?= 127.0.0.1
 PORT ?= 8000
+EDGE_KITCHEN_PORT ?= 8001
 UVICORN_LOG_LEVEL ?= info
 TOMOKO_LOG_LEVEL ?= INFO
 TOMOKO_LOG_FILE ?= logs/server.log
@@ -16,7 +17,8 @@ THINKER_ARRIVAL_INTERVAL_SEC ?= 180
 JOURNALIST_INTERVAL_SEC ?= 3600
 JOURNALIST_DATE ?=
 
-.PHONY: deps server server-reload server-debug session-summarizer session-summarizer-once
+.PHONY: deps server server-reload server-debug gateway edge-kitchen
+.PHONY: session-summarizer session-summarizer-once
 .PHONY: persona-updater persona-updater-once thinker thinker-once journalist journalist-once
 .PHONY: db-up db-stop db-down db-dump test-unit bench-stt lint check
 
@@ -32,6 +34,12 @@ server-reload:
 server-debug:
 	mkdir -p logs
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=DEBUG TOMOKO_LOG_FILE= mise exec -- uv run uvicorn server.edge.main:app --host $(HOST) --port $(PORT) --log-level info --reload 2>&1 | tee -a $(TOMOKO_DEBUG_LOG_FILE)
+
+gateway:
+	PYTHONUNBUFFERED=1 TOMOKO_CONFIG=config/central_realtime.toml TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TOMOKO_LOG_FILE) mise exec -- uv run uvicorn server.edge.main:app --host $(HOST) --port $(PORT) --log-level $(UVICORN_LOG_LEVEL)
+
+edge-kitchen:
+	PYTHONUNBUFFERED=1 TOMOKO_CONFIG=config/edge_kitchen.toml TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=logs/edge-kitchen.log mise exec -- uv run uvicorn server.edge.main:app --host $(HOST) --port $(EDGE_KITCHEN_PORT) --log-level $(UVICORN_LOG_LEVEL)
 
 session-summarizer:
 	PYTHONUNBUFFERED=1 mise exec -- uv run python background-process/summarize_pending_sessions.py --limit $(SESSION_SUMMARY_LIMIT) --watch --interval-sec $(SESSION_SUMMARY_INTERVAL_SEC)

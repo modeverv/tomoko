@@ -4,6 +4,50 @@
 
 ---
 
+## 2026-05-24 セッション57
+
+### やること（開始時に書く）
+- Phase 14: エッジ分離 + 回り込み除去を、PLAN の小 Phase に沿って進められるところまで実装する
+- Phase 14.0 presence / edge_status の DB / DTO / store 契約を固定する
+- Phase 14.1 DirectSpeakerResolver と Phase 14.2 DuplicateSpeechFilter をテスト先行で追加する
+- Phase 14.3 / 14.4 は、ブラウザを dumb client のまま保つ前提で local config / Makefile の足場まで進める
+
+### やったこと
+- Phase 14.0 presence / edge_status の初段を実装した
+  - `presence_reports` / `edge_status` DDL を追加した
+  - `PresenceReport` / `EdgeStatus` DTO を追加した
+  - `InMemoryPresenceStore` / `PostgresPresenceStore` を追加した
+  - 音声 bytes を保存しないことを unit / integration test で固定した
+- Phase 14.1 DirectSpeakerResolver を実装した
+  - audio level 最大、同値なら recency、さらに同値なら device_id で deterministic に primary edge を選ぶ
+  - DB write を持たない純粋判定器として追加した
+- Phase 14.2 DuplicateSpeechFilter を実装した
+  - 時間窓、device 差、文字列類似度で duplicate を判定する
+  - embedding 類似度は使わない
+  - hard interrupt keyword は duplicate より優先する
+- Phase 14.4 local multi-process smoke の足場を追加した
+  - `config/edge_kitchen.toml`
+  - `make edge-kitchen` / `make gateway`
+  - `TOMOKO_CONFIG` で `server.edge.main` の config path を切り替えられるようにした
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` を更新した
+
+### 詰まったこと・解決したこと
+- Phase 14 を一気に完全分離すると、edge / gateway 間 protocol と TomoroSession の配置まで巻き込んで大きくなる
+  → 今回は DB 契約と純粋判定器、local 起動足場までに絞った
+- ブラウザに判断ロジックを置く方向ではない
+  → `edge_kitchen` も Python server として起動し、ブラウザは引き続き音声 chunk / playback telemetry の事実送信に留める
+
+### 次のセッションでやること
+- Phase 14 をさらに進めるなら、edge が STT 後 text event を gateway へ送る adapter と、gateway 側で `DirectSpeakerResolver` / `DuplicateSpeechFilter` を実際の online path に挟む
+- Phase 15 に進む場合は、今回追加した `edge_kitchen.toml` に edge local LLM fallback を載せる
+
+### 検証
+- `mise exec -- uv run ruff check server/shared/presence.py server/gateway/resolver.py server/gateway/dedup.py server/gateway/presence.py server/edge/main.py tests/unit/test_phase14_edge_split.py tests/integration/test_phase14_presence_db.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase14_edge_split.py`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase14_presence_db.py`
+- `make -n edge-kitchen gateway`
+- `mise exec -- uv run python - <<'PY' ...`
+
 ## 2026-05-24 セッション56
 
 ### やること（開始時に書く）
