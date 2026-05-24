@@ -12,6 +12,8 @@ vad_silence_ms = 400
 [inference]
 conversation_backend = "lmstudio_gemma4_e2b"
 conversation_fallback = "local_gemma4_e2b_mlx"
+session_summary_backend = "lmstudio_gemma4_e2b"
+session_summary_fallback = "local_gemma4_e2b_mlx"
 stt_backend = "local_whisper_mlx_small"
 vad_backend = "silero_vad"
 tts_backend = "kokoro_mlx"

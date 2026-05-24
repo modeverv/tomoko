@@ -16,12 +16,16 @@ def make_config(
     *,
     conversation_backend: str = "local",
     conversation_fallback: str | None = "cloud",
+    session_summary_backend: str | None = None,
+    session_summary_fallback: str | None = None,
 ) -> NodeConfig:
     return NodeConfig(
         node=NodeSection(role="central_realtime"),
         inference=InferenceSection(
             conversation_backend=conversation_backend,
             conversation_fallback=conversation_fallback,
+            session_summary_backend=session_summary_backend,
+            session_summary_fallback=session_summary_fallback,
             stt_backend=None,
             vad_backend=None,
             tts_backend="say",
@@ -99,3 +103,19 @@ async def test_privacy_preference_does_not_use_non_private_fallback_when_primary
     backend = await router.select("conversation", "privacy")
 
     assert backend.name == "local"
+
+
+@pytest.mark.unit
+async def test_session_summary_role_uses_configured_backend_and_fallback() -> None:
+    config = make_config(
+        session_summary_backend="local",
+        session_summary_fallback="local_fallback",
+    )
+    router = InferenceRouter(
+        config=config,
+        monitor=MockMonitor({"local": InferenceMetrics(latency_ms=600)}),
+    )
+
+    backend = await router.select("session_summary", "privacy")
+
+    assert backend.name == "local_fallback"

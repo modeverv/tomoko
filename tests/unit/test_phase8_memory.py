@@ -12,7 +12,13 @@ from server.gateway.thinking.selector import should_use_deep_memory
 from server.session import TomoroSession
 from server.shared.inference.backends.base import InferenceBackend
 from server.shared.memory import NullConversationMemoryStore, _to_vector_literal
-from server.shared.models import MemoryHit, ThinkingEvent, ThinkingInput, Transcript
+from server.shared.models import (
+    MemoryHit,
+    SessionSummaryHit,
+    ThinkingEvent,
+    ThinkingInput,
+    Transcript,
+)
 
 
 class FakeBackend(InferenceBackend):
@@ -105,6 +111,42 @@ class FakeMemoryStore:
     async def embed_missing_turns(self, **kwargs) -> int:
         del kwargs
         return 0
+
+
+class FakeSessionSummaryStore:
+    def __init__(self) -> None:
+        self.searches: list[list[float]] = []
+        self.session_id = uuid4()
+
+    async def search_similar_summaries(
+        self,
+        *,
+        embedding: list[float],
+        limit: int,
+    ) -> list[SessionSummaryHit]:
+        self.searches.append(embedding)
+        assert limit == 3
+        return [
+            SessionSummaryHit(
+                session_id=self.session_id,
+                summary_text="カレーの材料とスパイスの買い物について話した。",
+                started_at=datetime(2026, 5, 21, 20, 0, tzinfo=UTC),
+                ended_at=datetime(2026, 5, 21, 20, 5, tzinfo=UTC),
+                similarity=0.95,
+            )
+        ]
+
+    async def claim_pending_sessions(self, **kwargs) -> list[object]:
+        raise AssertionError("online TomoroSession must not claim summaries")
+
+    async def read_session_turns(self, **kwargs) -> list[object]:
+        raise AssertionError("online TomoroSession must not summarize sessions")
+
+    async def complete_summary(self, **kwargs) -> None:
+        raise AssertionError("online TomoroSession must not complete summaries")
+
+    async def mark_summary_error(self, **kwargs) -> None:
+        raise AssertionError("online TomoroSession must not update summary status")
 
 
 @pytest.mark.unit
@@ -210,3 +252,40 @@ async def test_session_uses_deep_mode_when_memory_cue_is_present() -> None:
     assert deep.inputs[0].long_term_memory[0].text == "前にカレーの話をした"
     assert memory_store.searches == [[0.1, 0.2, 0.3]]
     assert {"type": "reply_done"} in events
+
+
+@pytest.mark.unit
+async def test_session_summary_hits_are_used_as_deep_memory_without_summarizing() -> None:
+    fast = RecordingMode()
+    deep = RecordingMode()
+    memory_store = FakeMemoryStore()
+    summary_store = FakeSessionSummaryStore()
+    session = TomoroSession(
+        vad_processor=object(),  # type: ignore[arg-type]
+        send_event=lambda event: None,
+        router=FakeRouter(),  # type: ignore[arg-type]
+        thinking_mode=fast,
+        deep_thinking_mode=deep,
+        embedding_backend=FakeEmbeddingBackend(),  # type: ignore[arg-type]
+        memory_store=memory_store,  # type: ignore[arg-type]
+        session_summary_store=summary_store,  # type: ignore[arg-type]
+    )
+
+    await session._reply_to(
+        Transcript(
+            text="トモコ、この前話したカレーの材料って覚えてる？",
+            device_id="browser",
+            speaker=None,
+            audio_level_db=-20.0,
+            recorded_at=datetime.now(UTC),
+            is_final=True,
+        )
+    )
+
+    assert fast.inputs == []
+    assert len(deep.inputs) == 1
+    assert deep.inputs[0].long_term_memory[0].text == (
+        "会話セッション要約: カレーの材料とスパイスの買い物について話した。"
+    )
+    assert summary_store.searches == [[0.1, 0.2, 0.3]]
+    assert memory_store.searches == [[0.1, 0.2, 0.3]]

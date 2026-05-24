@@ -949,3 +949,18 @@ stale として捨てる。
 
 短期文脈は active session の completed turn を優先し、足りない場合だけ最近の completed turn で補う。
 `ThinkingInput.context` の DTO 契約と WebSocket protocol は変更しない。
+
+### 確定した判断: Phase 8.6 のセッション要約索引実装
+閉じた会話セッションの要約生成と summary embedding 生成は、online `TomoroSession` 経路ではなく
+background `SessionSummarizer` が担当する。
+
+`TomoroSession` は session close 時に `summary_status='pending'` へ進めるだけにする。
+`SessionSummarizer` は pending session を `processing` として claim し、session 内の completed turn を時系列で読み、
+`InferenceRouter.select("session_summary", "privacy")` で要約を生成する。
+
+要約と embedding は `conversation_sessions.summary_text` / `summary_embedding` に保存し、別テーブルは作らない。
+`conversation_sessions.summary_embedding` には HNSW cosine index を張り、deep memory の粗い会話単位検索に使う。
+既存 `conversation_embeddings` は turn-level の細かい検索用として残す。
+
+失敗時は `summary_status='error'` と `summary_error` を残し、原本 `conversation_logs` は変更しない。
+再実行したい場合は人間または運用スクリプトが status を `pending` に戻す。

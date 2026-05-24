@@ -35,7 +35,10 @@ from server.shared.inference.embedding import EmbeddingBackend, create_embedding
 from server.shared.inference.router import InferenceRouter
 from server.shared.inference.tts import create_tts_backend
 from server.shared.inference.tts.base import TTSBackend
-from server.shared.memory import PostgresConversationMemoryStore
+from server.shared.memory import (
+    PostgresConversationMemoryStore,
+    PostgresConversationSessionSummaryStore,
+)
 from server.shared.models import PlaybackTelemetry
 
 
@@ -161,6 +164,11 @@ def _create_default_memory_store() -> PostgresConversationMemoryStore:
     return PostgresConversationMemoryStore(config.database.dsn)
 
 
+def _create_default_session_summary_store() -> PostgresConversationSessionSummaryStore:
+    config = _load_config()
+    return PostgresConversationSessionSummaryStore(config.database.dsn)
+
+
 @app.websocket("/ws")
 async def websocket_session(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -224,6 +232,11 @@ async def websocket_session(websocket: WebSocket) -> None:
         "memory_store_factory",
         _create_default_memory_store,
     )
+    session_summary_store_factory = getattr(
+        app.state,
+        "session_summary_store_factory",
+        _create_default_session_summary_store,
+    )
     conversation_session_store_factory = getattr(
         app.state,
         "conversation_session_store_factory",
@@ -249,6 +262,7 @@ async def websocket_session(websocket: WebSocket) -> None:
         tts_backend=tts_backend_factory(),
         embedding_backend=embedding_backend_factory(),
         memory_store=memory_store_factory(),
+        session_summary_store=session_summary_store_factory(),
         speech_normalizer=(
             speech_normalizer_factory()
             if speech_normalizer_factory is not None

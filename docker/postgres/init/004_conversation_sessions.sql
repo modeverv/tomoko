@@ -57,6 +57,11 @@ CREATE INDEX IF NOT EXISTS conversation_sessions_summary_status_idx
     ON conversation_sessions (summary_status, ended_at)
     WHERE ended_at IS NOT NULL;
 
+CREATE INDEX IF NOT EXISTS conversation_sessions_summary_embedding_idx
+    ON conversation_sessions
+    USING hnsw (summary_embedding vector_cosine_ops)
+    WHERE summary_embedding IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS conversation_logs_session_recorded_at_idx
     ON conversation_logs (conversation_session_id, recorded_at DESC)
     WHERE conversation_session_id IS NOT NULL;

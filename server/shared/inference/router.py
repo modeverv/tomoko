@@ -51,7 +51,23 @@ class InferenceRouter:
         if role == "conversation":
             backend_name = self.config.inference.conversation_backend
             backend = self._get_backend(backend_name, role, preference)
-            fallback = await self._fallback_if_needed(backend_name, preference)
+            fallback = await self._fallback_if_needed(
+                backend_name,
+                preference,
+                fallback_name=self.config.inference.conversation_fallback,
+            )
+            return fallback or backend
+        if role == "session_summary":
+            backend_name = (
+                self.config.inference.session_summary_backend
+                or self.config.inference.conversation_backend
+            )
+            backend = self._get_backend(backend_name, role, preference)
+            fallback = await self._fallback_if_needed(
+                backend_name,
+                preference,
+                fallback_name=self.config.inference.session_summary_fallback,
+            )
             return fallback or backend
         raise ValueError(f"Unknown role: {role}")
 
@@ -68,7 +84,10 @@ class InferenceRouter:
         raise ValueError(f"No suitable backend found for role: {role}")
 
     async def _fallback_if_needed(
-        self, backend_name: str, preference: str
+        self,
+        backend_name: str,
+        preference: str,
+        fallback_name: str | None,
     ) -> InferenceBackend | None:
         if self.monitor is None:
             return None
@@ -81,7 +100,6 @@ class InferenceRouter:
         if metrics is None or metrics.latency_ms <= spec.max_latency_ms:
             return None
 
-        fallback_name = self.config.inference.conversation_fallback
         if fallback_name is None or fallback_name not in self.backends:
             return None
 

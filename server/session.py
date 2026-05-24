@@ -25,7 +25,7 @@ from server.shared.db import AmbientLogWriter, ConversationLogWriter, Conversati
 from server.shared.inference.embedding.base import EmbeddingBackend
 from server.shared.inference.router import InferenceRouter
 from server.shared.inference.tts.base import TTSBackend
-from server.shared.memory import ConversationMemoryStore
+from server.shared.memory import ConversationMemoryStore, ConversationSessionSummaryStore
 from server.shared.models import (
     AttentionMode,
     AudioChunkOut,
@@ -33,9 +33,11 @@ from server.shared.models import (
     BargeInDecision,
     ConversationLogStatus,
     ConversationTurn,
+    MemoryHit,
     ParticipationContext,
     ParticipationMode,
     PlaybackTelemetry,
+    SessionSummaryHit,
     SpeechSegment,
     ThinkingInput,
     Transcript,
@@ -47,6 +49,7 @@ SessionState = Literal["idle", "listening", "processing"]
 logger = logging.getLogger(__name__)
 RECENT_CONTEXT_TURN_LIMIT = 12
 LONG_TERM_MEMORY_LIMIT = 5
+SESSION_SUMMARY_MEMORY_LIMIT = 3
 
 
 class TomoroSession:
@@ -67,6 +70,7 @@ class TomoroSession:
         tts_backend: TTSBackend | None = None,
         embedding_backend: EmbeddingBackend | None = None,
         memory_store: ConversationMemoryStore | None = None,
+        session_summary_store: ConversationSessionSummaryStore | None = None,
         speech_normalizer: ReplySpeechNormalizer | None = None,
         barge_in_detector: BargeInDetector | None = None,
         transcript_filter: TranscriptFilter | None = None,
@@ -88,6 +92,7 @@ class TomoroSession:
         self.tts_backend = tts_backend
         self.embedding_backend = embedding_backend
         self.memory_store = memory_store
+        self.session_summary_store = session_summary_store
         self.speech_normalizer = speech_normalizer
         self.barge_in_detector = barge_in_detector
         self.transcript_filter = transcript_filter
@@ -322,9 +327,21 @@ class TomoroSession:
             and should_use_deep_memory(transcript.text)
         ):
             query_embedding = await self.embedding_backend.embed_query(transcript.text)
-            long_term_memory = await self.memory_store.search_similar(
-                embedding=query_embedding,
-                limit=LONG_TERM_MEMORY_LIMIT,
+            if self.session_summary_store is not None:
+                summary_hits = (
+                    await self.session_summary_store.search_similar_summaries(
+                        embedding=query_embedding,
+                        limit=SESSION_SUMMARY_MEMORY_LIMIT,
+                    )
+                )
+                long_term_memory.extend(
+                    _session_summary_hit_to_memory(hit) for hit in summary_hits
+                )
+            long_term_memory.extend(
+                await self.memory_store.search_similar(
+                    embedding=query_embedding,
+                    limit=LONG_TERM_MEMORY_LIMIT,
+                )
             )
             long_term_memory = [
                 memory
@@ -894,6 +911,15 @@ def _same_context_turn_exists(
         and other.text == turn.text
         and other.timestamp == turn.timestamp
         for other in others
+    )
+
+
+def _session_summary_hit_to_memory(hit: SessionSummaryHit) -> MemoryHit:
+    return MemoryHit(
+        speaker="tomoko",
+        text=f"会話セッション要約: {hit.summary_text}",
+        timestamp=hit.ended_at or hit.started_at,
+        similarity=hit.similarity,
     )
 
 

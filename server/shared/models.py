@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 import numpy as np
 
@@ -19,6 +20,7 @@ BargeInAction = Literal["continue_speaking", "finish_sentence", "restart_turn"]
 PlaybackEventType = Literal["playback_started", "playback_ended"]
 TranscriptFilterAction = Literal["accept", "suppress_partial", "drop"]
 ConversationLogStatus = Literal["completed", "interrupted", "cancelled", "error"]
+SummaryStatus = Literal["not_ready", "pending", "processing", "completed", "error"]
 
 
 @dataclass
@@ -117,6 +119,15 @@ class MemoryHit:
     timestamp: datetime
     similarity: float
     emotion: str | None = None
+
+
+@dataclass(frozen=True)
+class SessionSummaryHit:
+    session_id: UUID
+    summary_text: str
+    started_at: datetime
+    ended_at: datetime | None
+    similarity: float
 
 
 @dataclass

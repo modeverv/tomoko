@@ -26,6 +26,45 @@
 
 ---
 
+## 2026-05-24 セッション38
+
+### やること（開始時に書く）
+- M2 Phase 8.6: セッション要約索引を実装する
+- `summary_status='pending'` の会話セッションを background worker が要約し、要約 embedding とともに `conversation_sessions` へ保存する
+- online `TomoroSession` 経路では要約生成を呼ばないことをテストで保証する
+
+### やったこと
+- `server/background/session_summarizer.py` を追加した
+  - pending session を処理し、要約と summary embedding を `conversation_sessions` に保存する
+  - 失敗時は `summary_status='error'` と `summary_error` を残す
+- `PostgresConversationSessionSummaryStore` を追加した
+  - pending claim、session turn 読み出し、completed/error 更新、summary vector search を実装した
+- `_tools/summarize_pending_sessions.py` を追加した
+  - background worker 相当として pending session を処理できる
+- `InferenceRouter` / `config/central_realtime.toml` に `session_summary` backend を追加した
+- `TomoroSession` の deep memory 検索に completed session summary search を追加した
+  - 要約生成系メソッドは online 経路で呼ばない
+  - 既存 turn-level `conversation_embeddings` 検索は残した
+- `conversation_sessions.summary_embedding` の HNSW index を DDL に追加し、ローカル PostgreSQL に適用した
+- `tests/unit/test_phase86_session_summary.py` と `tests/integration/test_phase86_session_summary_db.py` を追加した
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` を更新した
+
+### 詰まったこと・解決したこと
+- integration test の cleanup で、`conversation_logs` が session を参照しているため session 行を先に消せなかった
+  → cleanup で該当 `conversation_logs` を先に削除してから `conversation_sessions` を削除するようにした
+- `SessionSummarizer` が要約生成後に model 名取得のため router を二度呼びそうになった
+  → `_summarize()` が summary text と backend name を一緒に返す形にし、要約 LLM selection は一度だけにした
+
+### 次のセッションでやること
+- Phase 8.7 に進む場合は、`persona_lexicon_versions` / `persona_state_versions` の JSONB DDL と model round-trip test から始める
+
+### 検証
+- `docker exec -i tomoko-postgres psql -U tomoko -d tomoko < docker/postgres/init/004_conversation_sessions.sql`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase86_session_summary_db.py`
+- `mise exec -- uv run pytest -m perf --tb=short tests/perf/test_phase5_latency.py`
+
 ## 2026-05-24 セッション37
 
 ### やること（開始時に書く）
