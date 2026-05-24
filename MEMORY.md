@@ -1215,6 +1215,32 @@ Phase 12.0 では `diary_entries` を派生テキストとして追加した。
 同じ日付の日記を再生成する時に overwrite するか version を積むかはまだ確定していないため、
 writer 実装前に Phase 12.0 の残項目として判断する。
 
+### 確定した判断: Phase 12 journalist 実装
+上の「同じ日付の日記を再生成する時に overwrite するか version を積むかはまだ確定していない」
+という状態は、2026-05-24 の Phase 12 実装で解決した。
+
+同日 diary 再生成は overwrite ではなく version 方式にする。
+`diary_entries.diary_version` を持たせ、同じ `diary_date` に対する追加生成は `1, 2, 3...` と版を積む。
+日記は原本ではなく、`conversation_logs` / `ambient_logs` / `conversation_sessions` /
+`utterance_candidates` から再生成可能な解釈ログであるため、古い版を上書きしない。
+
+`JournalistInputBuilder` は日付範囲内の completed session summary、completed / interrupted turn、
+ambient の count と短い抜粋、dismissed / unspoken candidate を `JournalistInputSnapshot` DTO にまとめる。
+prompt 層へ DB row や JSONB の生 dict は渡さない。
+ambient は raw 全量を渡さず、件数と短い抜粋に絞る。
+
+`DiaryWriter` は background journalist 側でのみ動かし、online `/ws` 経路には入れない。
+`InferenceRouter.select("diary", "privacy")` を使い、empty / malformed 相当の空出力は error log に閉じ、
+原本データを変更しない。
+
+`DiarySource` は昨日または直近 diary から短い `CandidateSeed` を作る。
+dedupe key は `diary:<diary_id>` とし、`CandidateSeed` 側で `dedupe:diary:<diary_id>` tag に変換される。
+diary 本文全量ではなく、最初の短い文だけを話しかけ候補にする。
+
+docker-compose の journalist service 追加は現時点では行わない。
+Tomoko アプリ用 Docker image / Apple Silicon MLX / LM Studio runtime 方針が M4 で決まるまで、
+Phase 12 は `background-process/run_journalist.py` と `make journalist-once` / `make journalist` までを完了範囲とする。
+
 ### 確定した判断: Phase 13 monitor 初段
 `InferenceRouter.select()` は online 経路で重い probe を実行しない。
 実測は `BackendHealthMonitor` が background 的に行い、`inference_metrics` に

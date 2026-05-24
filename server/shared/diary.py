@@ -13,6 +13,7 @@ class DiaryEntry:
     id: UUID
     diary_date: date
     body_text: str
+    diary_version: int = 1
     source_session_ids: tuple[UUID, ...] = field(default_factory=tuple)
     source_candidate_ids: tuple[UUID, ...] = field(default_factory=tuple)
     mood: str | None = None
@@ -22,6 +23,8 @@ class DiaryEntry:
     def __post_init__(self) -> None:
         if not self.body_text.strip():
             raise ValueError("DiaryEntry.body_text must not be empty")
+        if self.diary_version < 1:
+            raise ValueError("DiaryEntry.diary_version must be positive")
         if self.schema_version != 1:
             raise ValueError(f"Unsupported diary schema_version: {self.schema_version}")
 
@@ -31,6 +34,7 @@ class DiaryEntry:
             entry_id,
             diary_date,
             body_text,
+            diary_version,
             source_session_ids,
             source_candidate_ids,
             mood,
@@ -41,6 +45,7 @@ class DiaryEntry:
             id=_as_uuid(entry_id),
             diary_date=_as_date(diary_date),
             body_text=str(body_text),
+            diary_version=int(diary_version),
             source_session_ids=tuple(_as_uuid(item) for item in source_session_ids or ()),
             source_candidate_ids=tuple(
                 _as_uuid(item) for item in source_candidate_ids or ()
@@ -84,6 +89,8 @@ class InMemoryDiaryStore:
             id=uuid4(),
             diary_date=diary_date,
             body_text=body_text,
+            diary_version=1
+            + sum(1 for entry in self.entries if entry.diary_date == diary_date),
             source_session_ids=source_session_ids,
             source_candidate_ids=source_candidate_ids,
             mood=mood,
@@ -118,19 +125,27 @@ class PostgresDiaryStore:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
+                    WITH next_version AS (
+                        SELECT COALESCE(MAX(diary_version), 0) + 1 AS value
+                        FROM diary_entries
+                        WHERE diary_date = %s
+                    )
                     INSERT INTO diary_entries (
                         diary_date,
                         body_text,
+                        diary_version,
                         source_session_ids,
                         source_candidate_ids,
                         mood,
                         created_at
                     )
-                    VALUES (%s, %s, %s, %s, %s, COALESCE(%s, now()))
+                    SELECT %s, %s, next_version.value, %s, %s, %s, COALESCE(%s, now())
+                    FROM next_version
                     RETURNING
                         id,
                         diary_date,
                         body_text,
+                        diary_version,
                         source_session_ids,
                         source_candidate_ids,
                         mood,
@@ -138,6 +153,7 @@ class PostgresDiaryStore:
                         created_at
                     """,
                     (
+                        diary_date,
                         diary_date,
                         body_text,
                         list(source_session_ids),
@@ -160,6 +176,7 @@ class PostgresDiaryStore:
                         id,
                         diary_date,
                         body_text,
+                        diary_version,
                         source_session_ids,
                         source_candidate_ids,
                         mood,

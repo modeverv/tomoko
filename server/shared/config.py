@@ -21,9 +21,11 @@ class InferenceSection:
     embedding_backend: str | None = None
     session_summary_backend: str | None = None
     candidate_gen_backend: str | None = None
+    diary_backend: str | None = None
     conversation_fallback: str | None = None
     session_summary_fallback: str | None = None
     candidate_gen_fallback: str | None = None
+    diary_fallback: str | None = None
     speech_normalizer_enabled: bool = True
 
 

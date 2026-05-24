@@ -4,6 +4,55 @@
 
 ---
 
+## 2026-05-24 セッション56
+
+### やること（開始時に書く）
+- Phase 12 を PLAN の順番に進める
+- 同日 diary 再生成方針を仮決定し、`MEMORY.md` / `PLAN.md` に追記する
+- Phase 12.1 Journalist input builder をテスト先行で実装する
+- Phase 12.2 Diary writer、Phase 12.3 DiarySource、Phase 12.4 local process / Makefile を進められるところまで実装する
+
+### やったこと
+- Phase 12.0 の同日 diary 再生成方針を version 方式に決めた
+  - `diary_entries.diary_version` を追加した
+  - 同じ `diary_date` の追加生成は `1, 2, 3...` と版を積む
+- Phase 12.1 Journalist input builder を実装した
+  - `JournalistInputSnapshot` / session summary / conversation turn / ambient digest / dismissed candidate DTO を追加した
+  - `PostgresJournalistSourceReader` で日付範囲の材料を読むようにした
+  - ambient は raw 全量ではなく count と短い抜粋だけに絞る
+- Phase 12.2 Diary writer を実装した
+  - `server/journalist/main.py` に `DiaryWriter` を追加した
+  - `InferenceRouter.select("diary", "privacy")` で生成するようにした
+  - 空出力は error として扱い、原本を変更しない
+- Phase 12.3 DiarySource を実装した
+  - 昨日または直近 diary から短い `CandidateSeed` を生成する
+  - dedupe key は `diary:<diary_id>` とした
+- Phase 12.4 local process / Makefile を実装した
+  - `background-process/run_journalist.py`
+  - `make journalist-once` / `make journalist`
+- `build_default_thinker()` に `DiarySource` を追加し、日記由来 seed が thinker に入るようにした
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` を更新した
+
+### 詰まったこと・解決したこと
+- 同日 diary を overwrite すると、日記が解釈ログであるにもかかわらず過去解釈を失う
+  → `diary_version` を積む方式にした
+- docker-compose service 化は thinker と同じく app image 方針が未定で半端になる
+  → Phase 12 では local process と Makefile target までを完了範囲にし、service 化は M4 へ送った
+
+### 次のセッションでやること
+- Phase 13 に進む場合は InferenceRouter 強化の未チェック項目を確認する
+- Journalist を実運用で試す場合は `make journalist-once JOURNALIST_DATE=YYYY-MM-DD` で日記生成を確認する
+
+### 検証
+- `mise exec -- uv run ruff check server/shared/diary.py tests/unit/test_phase120_diary_store.py server/journalist/input.py server/journalist/main.py server/thinker/sources/diary.py server/thinker/main.py tests/unit/test_phase121_journalist_input.py tests/unit/test_phase122_journalist_writer.py tests/unit/test_phase123_diary_source.py tests/unit/test_phase124_journalist_process.py tests/unit/test_router.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase120_diary_store.py tests/unit/test_phase121_journalist_input.py tests/unit/test_phase122_journalist_writer.py tests/unit/test_phase123_diary_source.py tests/unit/test_phase124_journalist_process.py tests/unit/test_router.py`
+- `mise exec -- uv run ruff check tests/integration/test_phase120_diary_db.py`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase120_diary_db.py`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run ruff check .`
+- `make -n journalist-once journalist`
+- `mise exec -- uv run python background-process/run_journalist.py --help`
+
 ## 2026-05-24 セッション55
 
 ### やること（開始時に書く）

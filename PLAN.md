@@ -1668,12 +1668,12 @@ Phase 11.3 以降は PLAN の経路を正とし、既存 TTS 経路も含めて
 
 ## Phase 12: journalist（日記）
 
-- [ ] `diary` テーブル作成
-- [ ] `server/journalist/main.py`: 定期実行
+- [x] `diary` テーブル作成
+- [x] `server/journalist/main.py`: 定期実行
   - conversation_logs + ambient_logs + dismissed 候補 + 感情ログを読む
   - LLM に日記を書かせる
   - dismissed_at の候補から「言えなかったこと」を自然に書かせる
-- [ ] `server/thinker/sources/diary.py`: `DiarySource`
+- [x] `server/thinker/sources/diary.py`: `DiarySource`
   - 昨日の日記から utterance_candidates に候補を積む
 - [ ] docker-compose に journalist サービス追加
 
@@ -1699,7 +1699,7 @@ journalist は online 経路に入れず、閉じた session と dismissed candi
   - `schema_version`
   - `created_at`
 - [x] `server/shared/diary.py` に `DiaryEntry` / `DiaryStore` / `PostgresDiaryStore` を追加する
-- [ ] 同じ日付の再生成は insert duplicate ではなく version または overwrite 方針を明記してから実装する
+- [x] 同じ日付の再生成は insert duplicate ではなく version または overwrite 方針を明記してから実装する
 
 **完了条件**:
 - diary entry の DB round-trip ができる
@@ -1707,11 +1707,11 @@ journalist は online 経路に入れず、閉じた session と dismissed candi
 
 #### Phase 12.1: Journalist input builder
 
-- [ ] `conversation_sessions` の completed summary を日付範囲で読む
-- [ ] `conversation_logs` の interrupted / completed turn を日付範囲で読む
-- [ ] `ambient_logs` は raw 全量ではなく count / 印象的な短い抜粋だけに絞る
-- [ ] dismissed / unspoken candidate を source として読む
-- [ ] `JournalistInputSnapshot` DTO にまとめ、生 DB row / dict を prompt 層へ渡さない
+- [x] `conversation_sessions` の completed summary を日付範囲で読む
+- [x] `conversation_logs` の interrupted / completed turn を日付範囲で読む
+- [x] `ambient_logs` は raw 全量ではなく count / 印象的な短い抜粋だけに絞る
+- [x] dismissed / unspoken candidate を source として読む
+- [x] `JournalistInputSnapshot` DTO にまとめ、生 DB row / dict を prompt 層へ渡さない
 
 **完了条件**:
 - 日記生成に渡す材料が DTO として固定される
@@ -1719,10 +1719,10 @@ journalist は online 経路に入れず、閉じた session と dismissed candi
 
 #### Phase 12.2: Diary writer
 
-- [ ] `server/journalist/main.py` を追加する
-- [ ] `InferenceRouter.select("diary", "privacy")` で日記本文を生成する
-- [ ] malformed / empty output は `error` log に閉じ、原本を変更しない
-- [ ] generated diary は `DiaryStore` に保存する
+- [x] `server/journalist/main.py` を追加する
+- [x] `InferenceRouter.select("diary", "privacy")` で日記本文を生成する
+- [x] malformed / empty output は `error` log に閉じ、原本を変更しない
+- [x] generated diary は `DiaryStore` に保存する
 
 **完了条件**:
 - fake backend で日記が 1 件保存される
@@ -1730,10 +1730,10 @@ journalist は online 経路に入れず、閉じた session と dismissed candi
 
 #### Phase 12.3: DiarySource
 
-- [ ] `server/thinker/sources/diary.py` を追加する
-- [ ] 昨日または直近 diary から `CandidateSeed` を作る
-- [ ] seed は `dedupe:diary:<diary_id>` で重複生成を避ける
-- [ ] diary 本文全量ではなく短い話しかけ候補だけを seed にする
+- [x] `server/thinker/sources/diary.py` を追加する
+- [x] 昨日または直近 diary から `CandidateSeed` を作る
+- [x] seed は `dedupe:diary:<diary_id>` で重複生成を避ける
+- [x] diary 本文全量ではなく短い話しかけ候補だけを seed にする
 
 **完了条件**:
 - 日記由来 candidate が thinker に積まれる
@@ -1741,13 +1741,37 @@ journalist は online 経路に入れず、閉じた session と dismissed candi
 
 #### Phase 12.4: local process / Makefile
 
-- [ ] `background-process/run_journalist.py` を追加する
-- [ ] `make journalist-once` / `make journalist` を追加する
-- [ ] docker-compose service 化は app image 方針が決まるまで M4 に送る
+- [x] `background-process/run_journalist.py` を追加する
+- [x] `make journalist-once` / `make journalist` を追加する
+- [x] docker-compose service 化は app image 方針が決まるまで M4 に送る
 
 **完了条件**:
 - `make journalist-once` がローカルで実行できる
 - `pytest -m unit` が通る
+
+#### Phase 12 実装結果: 2026-05-24
+
+Phase 12 の docker-compose service 追加は、Phase 9.4 thinker service と同じ理由で現時点では否定する。
+Tomoko アプリ用 Docker image / Apple Silicon MLX / LM Studio runtime 方針が M4 で決まるまで、
+local process entrypoint と Makefile target までを Phase 12 の完了範囲とする。
+
+同日 diary 再生成は overwrite ではなく version 方式とする。
+`diary_entries.diary_version` を追加し、同じ `diary_date` の追加生成は `1, 2, 3...` と版を積む。
+原本は `conversation_logs` / `ambient_logs` / `conversation_sessions` / `utterance_candidates` に残し、
+日記は再生成可能な解釈ログとして保存する。
+
+実装済み:
+- `JournalistInputBuilder` / `PostgresJournalistSourceReader`
+- `DiaryWriter`
+- `DiarySource`
+- `background-process/run_journalist.py`
+- `make journalist-once` / `make journalist`
+- `InferenceRouter.select("diary", "privacy")`
+
+検証:
+- `pytest -m unit tests/unit/test_phase120_diary_store.py tests/unit/test_phase121_journalist_input.py tests/unit/test_phase122_journalist_writer.py tests/unit/test_phase123_diary_source.py tests/unit/test_phase124_journalist_process.py tests/unit/test_router.py`
+- `pytest -m integration tests/integration/test_phase120_diary_db.py`
+- `pytest -m unit`
 
 ### ✅ M3 完了条件
 

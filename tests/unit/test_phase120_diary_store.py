@@ -53,6 +53,8 @@ async def test_in_memory_diary_store_round_trip_and_recent_order() -> None:
     assert latest.source_session_ids == (session_id,)
     assert latest.source_candidate_ids == (candidate_id,)
     assert latest.mood == "quiet"
+    assert latest.diary_version == 1
+    assert middle.diary_version == 2
 
 
 @pytest.mark.unit
@@ -67,6 +69,7 @@ def test_diary_entry_from_db_row() -> None:
             entry_id,
             date(2026, 5, 24),
             "今日は眠そうだった。",
+            3,
             [session_id],
             [candidate_id],
             "sleepy",
@@ -77,6 +80,7 @@ def test_diary_entry_from_db_row() -> None:
 
     assert entry.id == entry_id
     assert entry.diary_date == date(2026, 5, 24)
+    assert entry.diary_version == 3
     assert entry.source_session_ids == (session_id,)
     assert entry.source_candidate_ids == (candidate_id,)
     assert entry.mood == "sleepy"

@@ -13,9 +13,11 @@ PERSONA_UPDATE_LIMIT ?= 10
 PERSONA_UPDATE_INTERVAL_SEC ?= 60
 THINKER_CANDIDATE_INTERVAL_SEC ?= 60
 THINKER_ARRIVAL_INTERVAL_SEC ?= 180
+JOURNALIST_INTERVAL_SEC ?= 3600
+JOURNALIST_DATE ?=
 
 .PHONY: deps server server-reload server-debug session-summarizer session-summarizer-once
-.PHONY: persona-updater persona-updater-once thinker thinker-once
+.PHONY: persona-updater persona-updater-once thinker thinker-once journalist journalist-once
 .PHONY: db-up db-stop db-down db-dump test-unit bench-stt lint check
 
 deps:
@@ -54,6 +56,17 @@ thinker-once:
 		--once \
 		--candidate-interval-sec $(THINKER_CANDIDATE_INTERVAL_SEC) \
 		--arrival-interval-sec $(THINKER_ARRIVAL_INTERVAL_SEC)
+
+journalist:
+	PYTHONUNBUFFERED=1 mise exec -- uv run python background-process/run_journalist.py \
+		--watch \
+		--interval-sec $(JOURNALIST_INTERVAL_SEC) \
+		$(if $(JOURNALIST_DATE),--date $(JOURNALIST_DATE),)
+
+journalist-once:
+	PYTHONUNBUFFERED=1 mise exec -- uv run python background-process/run_journalist.py \
+		--once \
+		$(if $(JOURNALIST_DATE),--date $(JOURNALIST_DATE),)
 
 db-up:
 	$(COMPOSE) up -d postgres
