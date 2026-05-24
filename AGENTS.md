@@ -190,6 +190,29 @@ reference/
 **3 年前の Unity 実装で `isRecording` `isCommunicating` `isAITalking` が
 分散して苦しんだ過去があります。同じ轍を踏まないこと。**
 
+### 5. 会話セッション境界を DB に明示する
+
+`conversation_logs` は会話原本の role 行であり、会話のまとまりそのものではない。
+M2 Phase 8.5 以降は、会話のまとまりを `conversation_sessions` で表す。
+
+- `attention_mode` が `ambient -> engaged` になった時、または最初の `should_participate=True` 発話で active session を作る
+- `engaged` / `cooldown` 中の user / tomoko turn は同じ `conversation_session_id` で `conversation_logs` に保存する
+- `cooldown -> ambient` または `withdrawn` で session を閉じる
+- session の開始・終了判断は `TomoroSession` に集約し、クライアントや worker に移さない
+- ambient / observer 発話は `ambient_logs` に残し、会話 session へ混ぜない
+
+### 6. セッション要約は原本ではなく索引として扱う
+
+`conversation_sessions.summary_text` と `summary_embedding` は、会話検索と文脈復元のための派生データである。
+会話の原本は常に `conversation_logs` とする。
+
+- `conversation_sessions` に session metadata / summary / summary embedding をまとめる
+- 要約 embedding 用に別テーブルを増やさない。複数 embedding モデルや履歴管理が必要になるまで一本化を維持する
+- 要約と embedding 生成はオンライン会話経路で実行しない
+- `TomoroSession` は session を閉じて `summary_status='pending'` にするだけにする
+- 別プロセス（`session_summarizer` または `journalist` の前段）が pending session を拾い、要約と embedding を保存する
+- 要約が間違っても原本を上書きしない。再生成可能なキャッシュ/索引として扱う
+
 ## コード規約
 
 ### Python
@@ -442,6 +465,9 @@ git commit -m "feat(vad): Silero VAD ラッパーを追加
 300ms だと日常会話の「えーっと」で誤検出したため。
 実測値は docs/latency.md に記録済み。"
 ```
+
+<重要> llm がコミットする場合は、コミット者を作業したllmであることがわかるようにコミット者を"Codex"などのエージェント名にすること。
+
 
 ### 禁止していること
 

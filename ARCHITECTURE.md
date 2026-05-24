@@ -39,6 +39,7 @@
               │ PostgreSQL（唯一の真実）       │
               │  presence        誰が今どこに  │
               │  edge_status     エッジ状態    │
+              │  conversation_sessions         │
               │  conversation_logs            │
               │  ambient_logs                 │
               │  utterance_candidates         │
@@ -55,8 +56,9 @@
 │ 中央バックグラウンドノード │  │ クラウド（オフロード） │
 │  thinker               │  │  Anthropic API 等     │
 │  journalist            │  │  プライバシー非依存の  │
-│  persona_update        │  │  タスクのみ           │
-│  embedder              │  └──────────────────────┘
+│  session_summarizer     │  │  タスクのみ           │
+│  persona_update        │  └──────────────────────┘
+│  embedder              │
 └────────────────────────┘
 ```
 
@@ -108,6 +110,7 @@
 責務:
   thinker（候補生成、常駐）
   journalist（日記、定期）
+  session_summarizer（会話セッション要約と embedding、追いかけ処理）
   persona_update（会話後）
   embedder（embedding生成）
   arrival事前計算（3分ごと）
@@ -193,6 +196,7 @@ class InferenceRouter:
             "conversation",   # リアルタイム必須
             "candidate_gen",  # バックグラウンドでいい
             "diary",          # 深夜でいい
+            "session_summary", # 会話終了後に別プロセスでいい
             "embedding",      # バックグラウンドでいい
         ],
         priority: Literal["latency", "privacy", "cost"]
@@ -1589,3 +1593,113 @@ embedding は `intfloat/multilingual-e5-small` をローカル実行する。
 `TomoroSession` は短い発話では `ThinkFastMode`、記憶 cue がある発話や長めの相談文では
 `ThinkDeepMode` を選ぶ。
 この選択もサーバー側に閉じ、クライアントへ判断ロジックは移さない。
+
+---
+
+## 2026-05-24 追記: 会話セッションと要約索引
+
+Phase 7/8 の実装では、`conversation_logs` の role 行と turn 単位 embedding によって
+短期記憶と長期記憶を作った。
+この設計は原本保存としては正しいが、「どこからどこまでが一つの会話か」を DB 上で表せない。
+そのため M2 の追加 Phase では、会話単位を `conversation_sessions` として明示する。
+
+### 原本と索引の分担
+
+```text
+conversation_sessions
+  id / started_at / ended_at / start_reason / end_reason
+  summary_text / summary_status / summary_embedding vector(384)
+        │
+        ├── conversation_logs
+        │     conversation_session_id / role / transcript / emotion / status
+        │
+        └── session summary search
+              現在発話 -> summary_embedding 検索 -> 関連 session -> session 内 turn を読む
+```
+
+`conversation_logs` は会話原本であり、要約で上書きしない。
+`conversation_sessions.summary_text` と `summary_embedding` は検索・文脈復元のための派生データである。
+要約が間違っていた場合は再生成できるが、原本の `conversation_logs` は保持する。
+
+### なぜ summary embedding を別テーブルにしないか
+
+turn 単位 embedding は既に `conversation_embeddings` に分離している。
+一方、session 要約 embedding は session そのものの代表表現なので、まずは
+`conversation_sessions.summary_embedding` として同じ行に持たせる。
+
+別テーブルに分けるのは、次の必要が出た時でよい。
+
+- 複数 embedding モデルを同じ session に対して保持する
+- 要約種類を複数持つ（感情要約、タスク要約、日記候補など）
+- embedding の履歴や A/B 比較を保存する
+- 運用上、pgvector index やテーブル肥大化を分離する必要がある
+
+現時点では、管理しやすさとデバッグしやすさを優先し、`conversation_sessions` 一本にまとめる。
+
+### セッション開始と終了
+
+session の authoritative state は `TomoroSession` が持つ。
+クライアントや background worker は会話参加を判断しない。
+
+```text
+ambient
+  wake word / should_participate=True
+    -> conversation_sessions を作成
+    -> attention_mode = engaged
+
+engaged / cooldown
+  user / tomoko turn
+    -> 同じ conversation_session_id で conversation_logs に保存
+
+cooldown
+  無発話 timeout
+    -> ended_at を保存
+    -> summary_status = pending
+    -> attention_mode = ambient
+
+withdrawn
+  明示的に引く
+    -> ended_at を保存
+    -> summary_status = pending
+```
+
+ambient / observer 発話は `ambient_logs` に残すが、会話 session には入れない。
+hard interrupt で `status='interrupted'` として保存する Tomoko turn は、その発話中の session に紐づける。
+
+### 要約と embedding はオンライン経路から外す
+
+会話終了時に `TomoroSession` が LLM 要約や embedding 生成を実行すると、
+次の会話開始や `/ws` 受信ループに不要な計算負荷が乗る。
+そのため、`TomoroSession` は session を閉じて `summary_status='pending'` にするだけにする。
+
+別プロセスの `session_summarizer` が pending session を追いかける。
+
+```text
+session_summarizer loop
+  -> summary_status='pending' の ended session を取得
+  -> session 内の conversation_logs を読む
+  -> InferenceRouter.select("session_summary", "privacy") で要約
+  -> EmbeddingBackend で summary_text を embedding
+  -> conversation_sessions に summary_text / summary_embedding を保存
+  -> summary_status='completed'
+```
+
+失敗時は `summary_status='error'` と `summary_error` を残し、再実行できるようにする。
+要約と embedding はローカル実行を基本にし、会話内容をクラウドへ出さない。
+
+### 記憶検索の使い方
+
+短期文脈:
+
+1. active `conversation_session_id` の completed turn を優先して読む
+2. 足りない場合だけ、最近の completed turn で補う
+3. 現在の user transcript は重複除外する
+
+長期文脈:
+
+1. 現在発話で `conversation_sessions.summary_embedding` を検索する
+2. 関連 session の summary を候補として `ThinkingInput.long_term_memory` に渡す
+3. 必要なら、その session 内の `conversation_logs` や turn 単位 `conversation_embeddings` で細部を読む
+
+これにより、プログラムは log を毎回走査して会話単位を推定せず、
+「会話単位の索引カード」から関連する原本へ辿れる。
