@@ -69,6 +69,19 @@ class InferenceRouter:
                 fallback_name=self.config.inference.session_summary_fallback,
             )
             return fallback or backend
+        if role == "candidate_gen":
+            backend_name = (
+                self.config.inference.candidate_gen_backend
+                or self.config.inference.session_summary_backend
+                or self.config.inference.conversation_backend
+            )
+            backend = self._get_backend(backend_name, role, preference)
+            fallback = await self._fallback_if_needed(
+                backend_name,
+                preference,
+                fallback_name=self.config.inference.candidate_gen_fallback,
+            )
+            return fallback or backend
         raise ValueError(f"Unknown role: {role}")
 
     def _get_backend(

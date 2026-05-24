@@ -86,6 +86,17 @@ class ThinkerSourceContext:
 
 
 @dataclass(frozen=True)
+class ThinkerEvaluationContext:
+    observed_at: datetime
+    device_id: str | None = None
+    attention_mode: str | None = None
+    recent_summary: str | None = None
+    session_summaries: tuple[str, ...] = field(default_factory=tuple)
+    lexicon_terms: tuple[str, ...] = field(default_factory=tuple)
+    persona_notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
 class CandidateSeed:
     seed_text: str
     source: str
@@ -110,6 +121,22 @@ class CandidateSeed:
                 "context_tags",
                 (dedupe_tag, *self.context_tags),
             )
+
+
+@dataclass(frozen=True)
+class EvaluatedUtterance:
+    should_keep: bool
+    generated_text: str | None
+    priority: float
+    urgent: bool
+    reason: str
+    context_tags: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        if self.should_keep and not self.generated_text:
+            raise ValueError("generated_text is required when should_keep is true")
+        if self.priority < 0.0 or self.priority > 1.0:
+            raise ValueError("priority must be between 0.0 and 1.0")
 
 
 @dataclass(frozen=True)
@@ -230,6 +257,14 @@ class CandidateStore(Protocol):
         created_at: datetime | None = None,
     ) -> UtteranceCandidate | None: ...
 
+    async def insert_evaluated_utterance_once(
+        self,
+        seed: CandidateSeed,
+        evaluated: EvaluatedUtterance | None,
+        *,
+        created_at: datetime | None = None,
+    ) -> UtteranceCandidate | None: ...
+
     async def fetch_active_utterance_candidates(
         self,
         *,
@@ -341,6 +376,40 @@ class InMemoryCandidateStore:
             urgent=seed.urgent,
             maturity=0,
             context_tags=seed.context_tags,
+            created_at=created_at,
+        )
+
+    async def insert_evaluated_utterance_once(
+        self,
+        seed: CandidateSeed,
+        evaluated: EvaluatedUtterance | None,
+        *,
+        created_at: datetime | None = None,
+    ) -> UtteranceCandidate | None:
+        if evaluated is None or not evaluated.should_keep:
+            return None
+
+        now = created_at or datetime.now(UTC)
+        dedupe_tag = dedupe_key_to_tag(seed.dedupe_key)
+        if any(
+            candidate.spoken_at is None
+            and candidate.dismissed_at is None
+            and candidate.expires_at > now
+            and candidate.maturity >= 1
+            and dedupe_tag in candidate.context_tags
+            for candidate in self.utterance_candidates
+        ):
+            return None
+
+        return await self.insert_utterance_candidate(
+            seed=seed.seed_text,
+            source=seed.source,
+            expires_at=seed.expires_at,
+            priority=evaluated.priority,
+            urgent=evaluated.urgent,
+            maturity=1,
+            generated_text=evaluated.generated_text,
+            context_tags=evaluated.context_tags,
             created_at=created_at,
         )
 
@@ -622,6 +691,48 @@ class PostgresCandidateStore:
         if row is None:
             raise RuntimeError("seed candidate insert returned no row")
         return UtteranceCandidate.from_db_row(row)
+
+    async def insert_evaluated_utterance_once(
+        self,
+        seed: CandidateSeed,
+        evaluated: EvaluatedUtterance | None,
+        *,
+        created_at: datetime | None = None,
+    ) -> UtteranceCandidate | None:
+        if evaluated is None or not evaluated.should_keep:
+            return None
+
+        now = created_at or datetime.now(UTC)
+        dedupe_tag = dedupe_key_to_tag(seed.dedupe_key)
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT 1
+                    FROM utterance_candidates
+                    WHERE spoken_at IS NULL
+                      AND dismissed_at IS NULL
+                      AND expires_at > %s
+                      AND maturity >= 1
+                      AND %s = ANY(context_tags)
+                    LIMIT 1
+                    """,
+                    (now, dedupe_tag),
+                )
+                if await cur.fetchone() is not None:
+                    return None
+
+        return await self.insert_utterance_candidate(
+            seed=seed.seed_text,
+            source=seed.source,
+            expires_at=seed.expires_at,
+            priority=evaluated.priority,
+            urgent=evaluated.urgent,
+            maturity=1,
+            generated_text=evaluated.generated_text,
+            context_tags=evaluated.context_tags,
+            created_at=created_at,
+        )
 
     async def fetch_active_utterance_candidates(
         self,

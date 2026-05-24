@@ -4,6 +4,45 @@
 
 ---
 
+## 2026-05-24 セッション48
+
+### やること（開始時に書く）
+- M3 Phase 9.2: LLM evaluator を実装する
+- `ThinkerEvaluationContext` / `EvaluatedUtterance` と `UtteranceEvaluator` 抽象を追加する
+- `LLMUtteranceEvaluator` を追加し、privacy task / JSON schema / failure fallback を unit test で固定する
+- `pytest -m unit` で確認する
+
+### やったこと
+- `ThinkerEvaluationContext` / `EvaluatedUtterance` を追加した
+- `UtteranceEvaluator` 抽象と `LLMUtteranceEvaluator` を追加した
+  - `InferenceRouter.select("candidate_gen", "privacy")` を使う
+  - JSON schema は `should_keep` / `generated_text` / `priority` / `urgent` / `reason`
+  - malformed JSON や backend failure は `None` として破棄する
+- `InferenceRouter` と config に `candidate_gen` backend / fallback を追加した
+- `CandidateStore.insert_evaluated_utterance_once()` を追加した
+  - `should_keep=false` と evaluator failure は保存しない
+  - `should_keep=true` は `maturity=1` candidate として保存する
+- `tests/unit/test_phase92_llm_evaluator.py` を追加した
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` を更新した
+
+### 詰まったこと・解決したこと
+- 既存の Phase 9.1 seed 保存と text-ready 保存を同じ dedupe key で扱うと、maturity 0 の seed が maturity 1 保存を塞ぐ可能性がある
+  → Phase 9.2 の `insert_evaluated_utterance_once()` では maturity 1 以上の active candidate だけを dedupe 対象にした
+- LLM evaluator に会話原文や DB row を渡すと境界が重くなる
+  → `ThinkerEvaluationContext` の要約・用語・人格 subset だけを渡す DTO 境界にした
+
+### 次のセッションでやること
+- Phase 9.3 に進む場合は arrival precompute を実装する
+- Phase 9.4 の thinker process loop で source → evaluator → store を常駐処理として接続する
+
+### 検証
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase92_llm_evaluator.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_router.py tests/unit/test_phase90_candidates.py tests/unit/test_phase91_deterministic_sources.py tests/unit/test_phase92_llm_evaluator.py`
+- `mise exec -- uv run ruff check server/shared/candidate.py server/shared/config.py server/shared/inference/router.py server/thinker tests/unit/test_phase92_llm_evaluator.py`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run ruff check .`
+- `git diff --check`
+
 ## 2026-05-24 セッション47
 
 ### やること（開始時に書く）

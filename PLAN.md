@@ -1019,30 +1019,30 @@ Phase 9.1 は LLM / DB なしで seed 生成と候補選択の規則を固定す
 **目標**: seed 候補を「話す価値があるか」「どの文面にするか」へ進める。
 この Phase では音声事前生成はしない。`maturity=0 -> 1` までを扱う。
 
-- [ ] `server/thinker/evaluator/base.py` を追加する
+- [x] `server/thinker/evaluator/base.py` を追加する
   - `UtteranceEvaluator` 抽象
   - `async def evaluate(seed: CandidateSeed, context: ThinkerEvaluationContext) -> EvaluatedUtterance | None`
-- [ ] `server/shared/candidate.py` に `ThinkerEvaluationContext` / `EvaluatedUtterance` を追加する
+- [x] `server/shared/candidate.py` に `ThinkerEvaluationContext` / `EvaluatedUtterance` を追加する
   - `should_keep`
   - `generated_text`
   - `priority`
   - `urgent`
   - `reason`
   - `context_tags`
-- [ ] `server/thinker/evaluator/llm.py` を追加する
+- [x] `server/thinker/evaluator/llm.py` を追加する
   - `InferenceRouter.select("candidate_gen", "privacy")` を使う
   - 会話原文ではなく、ContextSnapshotBuilder 由来の要約・用語・人格 subset など必要最小限だけを渡す
   - JSON response を期待し、parse failure は候補破棄または `should_keep=False` として扱う
-- [ ] evaluator prompt の出力 schema を `PLAN.md` または docstring に固定する
+- [x] evaluator prompt の出力 schema を `PLAN.md` または docstring に固定する
   - `should_keep: bool`
   - `generated_text: str | null`
   - `priority: float`
   - `urgent: bool`
   - `reason: str`
-- [ ] LLM evaluator の失敗時挙動を固定する
+- [x] LLM evaluator の失敗時挙動を固定する
   - backend selection 失敗、timeout、JSON parse failure は online 会話を止めない
   - 失敗した seed は DB に保存しないか、`source_error` を log に残して捨てる
-- [ ] unit test を追加する
+- [x] unit test を追加する
   - fake backend の JSON から `EvaluatedUtterance` を作れる
   - `should_keep=false` は保存されない
   - malformed JSON は例外を外へ漏らさず破棄される
@@ -1052,6 +1052,29 @@ Phase 9.1 は LLM / DB なしで seed 生成と候補選択の規則を固定す
 - seed candidate を text-ready candidate に昇格できる
 - LLM 失敗が background worker 内で閉じる
 - `pytest -m unit` が通る
+
+### 2026-05-24 実装結果
+
+Phase 9.2 は、seed を LLM で評価して `maturity=1` の text-ready candidate として保存できる最小境界を実装した。
+online `/ws` 経路と `TomoroSession` には接続していない。
+
+- `ThinkerEvaluationContext` / `EvaluatedUtterance` を追加した
+  - ContextSnapshotBuilder 由来の要約・用語・人格 subset を渡すための DTO
+  - 生の会話原文や DB row / JSONB dict を evaluator へ持ち込まない
+- `UtteranceEvaluator` 抽象と `LLMUtteranceEvaluator` を追加した
+  - `InferenceRouter.select("candidate_gen", "privacy")` を使う
+  - prompt docstring 相当として JSON output schema を固定した
+  - malformed JSON / backend selection failure / runtime failure は `None` として捨てる
+- `InferenceRouter` に `candidate_gen` role を追加し、default config では `lmstudio_gemma4_e2b` + local fallback を使う
+- `CandidateStore.insert_evaluated_utterance_once()` を追加した
+  - `should_keep=false` / evaluator failure は保存しない
+  - `should_keep=true` は `maturity=1`、`generated_text` ありで保存する
+  - dedupe は Phase 9.1 と同じ `context_tags` の `dedupe:<key>` を使う
+- `tests/unit/test_phase92_llm_evaluator.py` を追加した
+
+検証:
+- `mise exec -- uv run ruff check server/shared/candidate.py server/shared/config.py server/shared/inference/router.py server/thinker tests/unit/test_phase92_llm_evaluator.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_router.py tests/unit/test_phase90_candidates.py tests/unit/test_phase91_deterministic_sources.py tests/unit/test_phase92_llm_evaluator.py`
 
 ### Phase 9.3: arrival precompute
 

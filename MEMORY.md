@@ -1058,3 +1058,17 @@ active candidate に同じ dedupe tag が存在する場合、`insert_seed_candi
 この方針は Phase 9.1 の最小足場であり、dedupe の検索圧や DB 一意性が必要になった時だけ専用列 / index を検討する。
 
 候補選択の初段は `HighestPriority` とし、priority 降順、urgent 優先、expires_at 昇順、created_at 昇順で安定選択する。
+
+### 確定した判断: Phase 9.2 LLM evaluator
+Phase 9.2 の LLM evaluator は、background thinker 内で seed を text-ready candidate へ進めるための部品として実装する。
+online `/ws` 経路や `TomoroSession` からはまだ消費しない。
+
+`LLMUtteranceEvaluator` は `InferenceRouter.select("candidate_gen", "privacy")` を使い、
+会話原文ではなく `ThinkerEvaluationContext` の要約・用語・人格 subset だけを prompt に渡す。
+返答は `should_keep` / `generated_text` / `priority` / `urgent` / `reason` の JSON object に固定する。
+
+backend selection failure、runtime failure、malformed JSON、`should_keep=false` は候補プールへ保存しない。
+失敗は background worker 内で閉じ、online 会話を止めない。
+
+保存時は `CandidateStore.insert_evaluated_utterance_once()` で `maturity=1` とし、
+dedupe は Phase 9.1 と同じ `context_tags` の `dedupe:<dedupe_key>` を使う。
