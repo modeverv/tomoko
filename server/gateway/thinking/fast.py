@@ -30,8 +30,10 @@ class ThinkFastMode(ThinkingMode):
         return "あなたはトモコです。短く答えてください。"
 
     def _build_system_prompt(self, thinking_input: ThinkingInput) -> str:
-        del thinking_input
-        return self.system_prompt
+        context_prompt = _format_context_snapshot_prompt(thinking_input)
+        if not context_prompt:
+            return self.system_prompt
+        return f"{self.system_prompt}\n\n{context_prompt}"
 
     async def think(
         self, backend: InferenceBackend, thinking_input: ThinkingInput
@@ -122,3 +124,39 @@ def _parse_inline_emotion_header(text: str) -> tuple[str, str] | None:
     if emotion not in EMOTIONS:
         return None
     return emotion, remainder
+
+
+def _format_context_snapshot_prompt(thinking_input: ThinkingInput) -> str:
+    snapshot = thinking_input.context_snapshot
+    if snapshot is None:
+        return ""
+
+    sections: list[str] = []
+    if snapshot.lexicon_terms:
+        terms = "\n".join(
+            f"- {term.term}: {term.meaning}"
+            + (f" (tone={term.tone})" if term.tone else "")
+            for term in snapshot.lexicon_terms
+        )
+        sections.append(
+            "会話で使える用語メモです。必要な時だけ自然に使ってください。\n"
+            f"{terms}"
+        )
+    if snapshot.persona_slice is not None:
+        slice_ = snapshot.persona_slice
+        details: list[str] = []
+        if slice_.preferred_address:
+            details.append(f"- 呼び方: {slice_.preferred_address}")
+        if slice_.sentence_length:
+            details.append(f"- 文の長さ: {slice_.sentence_length}")
+        if slice_.honorific_level:
+            details.append(f"- 敬語レベル: {slice_.honorific_level}")
+        if slice_.signature_phrases:
+            details.append(f"- 印象的な言い回し: {', '.join(slice_.signature_phrases)}")
+        if details:
+            sections.append(
+                "現在の人格スナップショットからの話し方メモです。"
+                "基本人格を上書きせず、自然な範囲で反映してください。\n"
+                + "\n".join(details)
+            )
+    return "\n\n".join(sections)

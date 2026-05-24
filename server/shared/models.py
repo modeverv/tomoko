@@ -22,6 +22,7 @@ TranscriptFilterAction = Literal["accept", "suppress_partial", "drop"]
 ConversationLogStatus = Literal["completed", "interrupted", "cancelled", "error"]
 SummaryStatus = Literal["not_ready", "pending", "processing", "completed", "error"]
 PersonaVersionStatus = Literal["completed", "error"]
+ContextDepth = Literal["fast", "normal", "deep", "reflective"]
 
 
 @dataclass
@@ -528,6 +529,103 @@ class PersonaPromptSlice:
     signature_phrases: list[str]
 
 
+@dataclass(frozen=True)
+class ContextBuildPolicy:
+    depth: ContextDepth
+    max_build_ms: int
+    max_prompt_tokens: int
+    max_same_session_turns: int
+    max_recent_turns: int
+    max_session_summaries: int
+    max_memory_hits: int
+    max_lexicon_terms: int
+    allow_turn_memory_search: bool
+    allow_persona_slice: bool
+
+    @classmethod
+    def for_depth(cls, depth: ContextDepth) -> ContextBuildPolicy:
+        match depth:
+            case "fast":
+                return cls(
+                    depth=depth,
+                    max_build_ms=20,
+                    max_prompt_tokens=1200,
+                    max_same_session_turns=12,
+                    max_recent_turns=12,
+                    max_session_summaries=0,
+                    max_memory_hits=0,
+                    max_lexicon_terms=0,
+                    allow_turn_memory_search=False,
+                    allow_persona_slice=False,
+                )
+            case "normal":
+                return cls(
+                    depth=depth,
+                    max_build_ms=50,
+                    max_prompt_tokens=1800,
+                    max_same_session_turns=12,
+                    max_recent_turns=12,
+                    max_session_summaries=3,
+                    max_memory_hits=0,
+                    max_lexicon_terms=5,
+                    allow_turn_memory_search=False,
+                    allow_persona_slice=True,
+                )
+            case "deep":
+                return cls(
+                    depth=depth,
+                    max_build_ms=100,
+                    max_prompt_tokens=2600,
+                    max_same_session_turns=12,
+                    max_recent_turns=12,
+                    max_session_summaries=3,
+                    max_memory_hits=5,
+                    max_lexicon_terms=8,
+                    allow_turn_memory_search=True,
+                    allow_persona_slice=True,
+                )
+            case "reflective":
+                return cls(
+                    depth=depth,
+                    max_build_ms=500,
+                    max_prompt_tokens=6000,
+                    max_same_session_turns=24,
+                    max_recent_turns=24,
+                    max_session_summaries=8,
+                    max_memory_hits=12,
+                    max_lexicon_terms=20,
+                    allow_turn_memory_search=True,
+                    allow_persona_slice=True,
+                )
+
+
+@dataclass(frozen=True)
+class ContextBuildTrace:
+    budget_ms: int
+    elapsed_ms: float
+    timed_out: bool
+    depth: ContextDepth
+    included_counts: dict[str, int]
+    skipped_sources: list[str]
+    stage_timings_ms: dict[str, float]
+    cache_hits: dict[str, bool]
+    source_errors: dict[str, str]
+
+
+@dataclass(frozen=True)
+class TomokoContextSnapshot:
+    depth: ContextDepth
+    recent_turns: list[ConversationTurn]
+    session_summaries: list[SessionSummaryHit]
+    memory_hits: list[MemoryHit]
+    lexicon_terms: list[LexiconTerm]
+    persona_slice: PersonaPromptSlice | None
+    token_budget_hint: int
+    build_elapsed_ms: float
+    source_counts: dict[str, int]
+    trace: ContextBuildTrace
+
+
 @dataclass
 class ThinkingInput:
     text: str
@@ -536,6 +634,7 @@ class ThinkingInput:
     emotion: str
     device_id: str
     long_term_memory: list[MemoryHit] = field(default_factory=list)
+    context_snapshot: TomokoContextSnapshot | None = None
 
 
 @dataclass(slots=True)

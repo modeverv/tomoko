@@ -40,6 +40,7 @@ from server.shared.memory import (
     PostgresConversationSessionSummaryStore,
 )
 from server.shared.models import PlaybackTelemetry
+from server.shared.persona import PostgresPersonaSnapshotStore
 
 
 def _configure_app_logging() -> None:
@@ -169,6 +170,11 @@ def _create_default_session_summary_store() -> PostgresConversationSessionSummar
     return PostgresConversationSessionSummaryStore(config.database.dsn)
 
 
+def _create_default_persona_store() -> PostgresPersonaSnapshotStore:
+    config = _load_config()
+    return PostgresPersonaSnapshotStore(config.database.dsn)
+
+
 @app.websocket("/ws")
 async def websocket_session(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -237,6 +243,11 @@ async def websocket_session(websocket: WebSocket) -> None:
         "session_summary_store_factory",
         _create_default_session_summary_store,
     )
+    persona_store_factory = getattr(
+        app.state,
+        "persona_store_factory",
+        _create_default_persona_store,
+    )
     conversation_session_store_factory = getattr(
         app.state,
         "conversation_session_store_factory",
@@ -263,6 +274,7 @@ async def websocket_session(websocket: WebSocket) -> None:
         embedding_backend=embedding_backend_factory(),
         memory_store=memory_store_factory(),
         session_summary_store=session_summary_store_factory(),
+        persona_store=persona_store_factory(),
         speech_normalizer=(
             speech_normalizer_factory()
             if speech_normalizer_factory is not None

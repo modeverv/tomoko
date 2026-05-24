@@ -26,6 +26,43 @@
 
 ---
 
+## 人間
+short/normal/deepとかは応答速度を元に動的に切り替えても良いかも
+
+## 2026-05-24 セッション41
+
+### やること（開始時に書く）
+- M2 Phase 8.8: ContextSnapshotBuilder 初段を実装する
+- `TomokoContextSnapshot` / `ContextBuildPolicy` / `ContextBuildTrace` DTO と builder を追加する
+- 既存 recent turns / session summary / turn memory / persona subset を budget 内で集約し、`TomoroSession` の文脈取得を builder 経由へ寄せる
+- unit / perf test を追加し、timeout は degraded context として扱うことを保証する
+
+### やったこと
+- `server/shared/models.py` に `ContextDepth` / `ContextBuildPolicy` / `ContextBuildTrace` / `TomokoContextSnapshot` を追加した
+- `server/gateway/context.py` に `ContextSnapshotBuilder` を追加した
+  - same session recent turns / recent turns / session summaries / turn memory / lexicon / persona slice を source として扱う
+  - `max_build_ms` 超過時は pending source を skipped にして degraded snapshot を返す
+- `TomoroSession` の reply context 読み込みを builder 経由にした
+  - `ThinkingInput.context` / `long_term_memory` / `context_snapshot` を snapshot から作る
+- `ThinkFastMode` / `ThinkDeepMode` が `context_snapshot` の lexicon / persona slice を prompt に反映できるようにした
+- `server/edge/main.py` で `PostgresPersonaSnapshotStore` を `TomoroSession` に渡すようにした
+- `tests/unit/test_phase88_context_snapshot.py` と `tests/perf/test_context_snapshot_latency.py` を追加した
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` を更新した
+
+### 詰まったこと・解決したこと
+- timeout で pending task を cancel した時、未await coroutine warning が出た
+  → source awaitable を `_timed()` 内で遅延生成する factory 方式にして warning を消した
+- cache は初段で実体まで入れると authoritative state の境界が曖昧になる
+  → `ContextBuildTrace.cache_hits` の境界だけを用意し、実 cache は Phase 8.8.1 に送った
+
+### 次のセッションでやること
+- Phase 8.8.1 に進む場合は、process-local TTL cache の実装、normal/deep の実 DB perf、cache age / ttl trace を追加する
+
+### 検証
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m perf --tb=short tests/perf/test_context_snapshot_latency.py`
+
 ## 2026-05-24 セッション40
 
 ### やること（開始時に書く）

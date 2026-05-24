@@ -16,6 +16,7 @@ from server.edge.pipeline.stt import SpeechTranscriber, supports_streaming
 from server.edge.pipeline.stt_filter import TranscriptFilter
 from server.edge.pipeline.vad import VADProcessor
 from server.gateway.audio_turn import AudioTurnController
+from server.gateway.context import ContextSnapshotBuilder
 from server.gateway.reply import ReplyPipeline
 from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
 from server.gateway.thinking.base import ThinkingMode
@@ -31,6 +32,8 @@ from server.shared.models import (
     AudioChunkOut,
     BargeInContext,
     BargeInDecision,
+    ContextBuildPolicy,
+    ContextDepth,
     ConversationLogStatus,
     ConversationTurn,
     MemoryHit,
@@ -40,16 +43,15 @@ from server.shared.models import (
     SessionSummaryHit,
     SpeechSegment,
     ThinkingInput,
+    TomokoContextSnapshot,
     Transcript,
     TTSInput,
 )
+from server.shared.persona import PersonaSnapshotStore
 
 SessionState = Literal["idle", "listening", "processing"]
 
 logger = logging.getLogger(__name__)
-RECENT_CONTEXT_TURN_LIMIT = 12
-LONG_TERM_MEMORY_LIMIT = 5
-SESSION_SUMMARY_MEMORY_LIMIT = 3
 
 
 class TomoroSession:
@@ -71,6 +73,8 @@ class TomoroSession:
         embedding_backend: EmbeddingBackend | None = None,
         memory_store: ConversationMemoryStore | None = None,
         session_summary_store: ConversationSessionSummaryStore | None = None,
+        persona_store: PersonaSnapshotStore | None = None,
+        context_snapshot_builder: ContextSnapshotBuilder | None = None,
         speech_normalizer: ReplySpeechNormalizer | None = None,
         barge_in_detector: BargeInDetector | None = None,
         transcript_filter: TranscriptFilter | None = None,
@@ -93,6 +97,8 @@ class TomoroSession:
         self.embedding_backend = embedding_backend
         self.memory_store = memory_store
         self.session_summary_store = session_summary_store
+        self.persona_store = persona_store
+        self.context_snapshot_builder = context_snapshot_builder
         self.speech_normalizer = speech_normalizer
         self.barge_in_detector = barge_in_detector
         self.transcript_filter = transcript_filter
@@ -319,51 +325,30 @@ class TomoroSession:
             self._elapsed_since_speech_end_ms(),
         )
         thinking_mode = self.thinking_mode
-        long_term_memory = []
-        if (
-            self.deep_thinking_mode is not None
-            and self.memory_store is not None
-            and self.embedding_backend is not None
-            and should_use_deep_memory(transcript.text)
-        ):
-            query_embedding = await self.embedding_backend.embed_query(transcript.text)
-            if self.session_summary_store is not None:
-                summary_hits = (
-                    await self.session_summary_store.search_similar_summaries(
-                        embedding=query_embedding,
-                        limit=SESSION_SUMMARY_MEMORY_LIMIT,
-                    )
-                )
-                long_term_memory.extend(
-                    _session_summary_hit_to_memory(hit) for hit in summary_hits
-                )
-            long_term_memory.extend(
-                await self.memory_store.search_similar(
-                    embedding=query_embedding,
-                    limit=LONG_TERM_MEMORY_LIMIT,
-                )
+        depth = "deep" if should_use_deep_memory(transcript.text) else "fast"
+        context_snapshot = await self._build_context_snapshot(transcript, depth=depth)
+        long_term_memory = [
+            _session_summary_hit_to_memory(hit)
+            for hit in context_snapshot.session_summaries
+        ]
+        long_term_memory.extend(context_snapshot.memory_hits)
+        if self.deep_thinking_mode is not None and depth == "deep" and long_term_memory:
+            thinking_mode = self.deep_thinking_mode
+            logger.info(
+                "TomoroSession deep memory selected hits=%s text=%r",
+                len(long_term_memory),
+                transcript.text,
             )
-            long_term_memory = [
-                memory
-                for memory in long_term_memory
-                if not (memory.speaker == "user" and memory.text == transcript.text)
-            ]
-            if long_term_memory:
-                thinking_mode = self.deep_thinking_mode
-                logger.info(
-                    "TomoroSession deep memory selected hits=%s text=%r",
-                    len(long_term_memory),
-                    transcript.text,
-                )
 
         assert thinking_mode is not None
         thinking_input = ThinkingInput(
             text=transcript.text,
             speaker=transcript.speaker,
-            context=await self._load_recent_context(transcript),
+            context=context_snapshot.recent_turns,
             emotion="neutral",
             device_id=transcript.device_id,
             long_term_memory=long_term_memory,
+            context_snapshot=context_snapshot,
         )
         reply = ReplyPipeline(initial_emotion=thinking_input.emotion)
         self._begin_audio_turn()
@@ -683,44 +668,30 @@ class TomoroSession:
         self._latency_first_audio_chunk_at = None
 
     async def _load_recent_context(self, transcript: Transcript) -> list[ConversationTurn]:
-        if self.conversation_log_writer is None:
-            return []
+        snapshot = await self._build_context_snapshot(transcript, depth="fast")
+        return snapshot.recent_turns
 
-        read_recent_turns = getattr(
-            self.conversation_log_writer,
-            "read_recent_turns",
-            None,
+    async def _build_context_snapshot(
+        self,
+        transcript: Transcript,
+        *,
+        depth: ContextDepth,
+    ) -> TomokoContextSnapshot:
+        policy = ContextBuildPolicy.for_depth(depth)
+        builder = self.context_snapshot_builder or ContextSnapshotBuilder(
+            conversation_log_reader=self.conversation_log_writer,
+            embedding_backend=self.embedding_backend,
+            memory_store=self.memory_store,
+            session_summary_store=self.session_summary_store,
+            persona_store=self.persona_store,
         )
-        if read_recent_turns is None:
-            return []
-
-        current_session_id = self.active_conversation_session_id
-        session_turns: list[ConversationTurn] = []
-        if current_session_id is not None:
-            read_session_turns = getattr(
-                self.conversation_log_writer,
-                "read_recent_turns_for_session",
-                None,
-            )
-            if read_session_turns is not None:
-                session_turns = await read_session_turns(
-                    conversation_session_id=current_session_id,
-                    limit=RECENT_CONTEXT_TURN_LIMIT + 1,
-                )
-                session_turns = _drop_current_user_turn(session_turns, transcript)
-
-        if len(session_turns) >= RECENT_CONTEXT_TURN_LIMIT:
-            return session_turns[-RECENT_CONTEXT_TURN_LIMIT:]
-
-        recent_turns = await read_recent_turns(limit=RECENT_CONTEXT_TURN_LIMIT + 1)
-        recent_turns = _drop_current_user_turn(recent_turns, transcript)
-        supplement_limit = RECENT_CONTEXT_TURN_LIMIT - len(session_turns)
-        supplement = [
-            turn
-            for turn in recent_turns
-            if not _same_context_turn_exists(turn, session_turns)
-        ][-supplement_limit:]
-        return (supplement + session_turns)[-RECENT_CONTEXT_TURN_LIMIT:]
+        return await builder.build(
+            text=transcript.text,
+            speaker=transcript.speaker,
+            device_id=transcript.device_id,
+            active_session_id=self.active_conversation_session_id,
+            policy=policy,
+        )
 
     async def _ensure_conversation_session(
         self,
@@ -891,27 +862,6 @@ def _elapsed_ms(started_at: float | None) -> float:
     if started_at is None:
         return 0.0
     return (time.perf_counter() - started_at) * 1000
-
-
-def _drop_current_user_turn(
-    turns: list[ConversationTurn],
-    transcript: Transcript,
-) -> list[ConversationTurn]:
-    if turns and turns[-1].speaker == "user" and turns[-1].text == transcript.text:
-        return turns[:-1]
-    return turns
-
-
-def _same_context_turn_exists(
-    turn: ConversationTurn,
-    others: list[ConversationTurn],
-) -> bool:
-    return any(
-        other.speaker == turn.speaker
-        and other.text == turn.text
-        and other.timestamp == turn.timestamp
-        for other in others
-    )
 
 
 def _session_summary_hit_to_memory(hit: SessionSummaryHit) -> MemoryHit:

@@ -8,15 +8,16 @@ from server.shared.models import MemoryHit, ThinkingInput
 
 class ThinkDeepMode(ThinkFastMode):
     def _build_system_prompt(self, thinking_input: ThinkingInput) -> str:
+        base_prompt = super()._build_system_prompt(thinking_input)
         if not thinking_input.long_term_memory:
-            return self.system_prompt
+            return base_prompt
 
         memories = "\n".join(
             _format_memory(memory)
             for memory in thinking_input.long_term_memory
         )
         return (
-            f"{self.system_prompt}\n\n"
+            f"{base_prompt}\n\n"
             "長期記憶として関連しそうな過去会話を渡します。"
             "必要な時だけ自然に思い出し、断定しすぎず、短く返答してください。\n"
             f"{memories}"
