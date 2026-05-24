@@ -21,6 +21,43 @@
 
 ---
 
+## 2026-05-24 セッション33
+
+### やること（開始時に書く）
+- Markdown 編集禁止ルールの一時解除を受け、`README.md` を現状のセットアップ手順に合わせて更新する
+- `mise` 前提と `make deps` の導線を明記する
+
+### やったこと
+- `README.md` の必要なものに `mise` と Docker / Docker Compose を明記した
+- Python / uv は `mise.toml` と `make deps` で揃える方針を書いた
+- 現行 default の LM Studio / MLX Whisper / Kokoro MLX / embedding 構成を追記した
+- 初回モデルダウンロードと warm-up に時間がかかること、LM Studio を使う場合の準備を追記した
+- セットアップ手順を `make deps` / `make db-up` / `make server` に整理した
+
+### 詰まったこと・解決したこと
+- README の古い手順は Ollama / irodori 前提が残っていた
+  → 現在の `config/central_realtime.toml` に合わせて、LM Studio + MLX/Kokoro 構成へ更新した
+
+### 次のセッションでやること
+- 追加対応なし
+
+## 2026-05-24 セッション32
+
+### やること（開始時に書く）
+- `Makefile` に依存関係を解決する入口を追加する
+- 既存の `mise exec -- uv ...` 運用に合わせる
+
+### やったこと
+- `Makefile` に `deps` target を追加した
+- `deps` は `mise exec -- uv sync` を実行し、既存の `mise` / `uv` 運用に揃えた
+- `README.md` のセットアップ手順を `uv sync` から `make deps` に更新した
+
+### 詰まったこと・解決したこと
+- 特になし
+
+### 次のセッションでやること
+- 追加対応なし
+
 ## 2026-05-24 セッション31
 
 ### やること（開始時に書く）

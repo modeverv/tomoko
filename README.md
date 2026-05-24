@@ -67,23 +67,39 @@ PostgreSQL（全ノードが共有する唯一の真実）
 
 ### 必要なもの
 
-- Python 3.11+
-- PostgreSQL 16+（pgvector + PGroonga）
-- Ollama または mlx-lm（Apple Silicon 推奨）
-- irodori-tts（別途起動）
+- mise
+- Docker / Docker Compose（PostgreSQL 用）
+- Apple Silicon Mac 推奨（MLX 系 STT / TTS / fallback LLM を使うため）
+- LM Studio（現行 default の会話 LLM 用）
+
+`mise.toml` で Python 3.11 と uv を管理しているため、Python / uv は `mise` 経由で揃える。
+PostgreSQL は `make db-up` で Docker 上に起動する。
+
+現行の default 設定は次の構成：
+
+- 会話 LLM: LM Studio OpenAI 互換 API（`gemma-4-e2b-it-mlx`）
+- 会話 LLM fallback: MLX VLM（`mlx-community/gemma-4-e2b-it-4bit`）
+- STT: MLX Whisper small
+- TTS: Kokoro MLX
+- embedding: multilingual-e5-small
+
+初回起動時は Whisper / Kokoro / Gemma / embedding モデルのダウンロードや warm-up に時間がかかる。
+LM Studio を使わずに動かす場合は `config/central_realtime.toml` の
+`conversation_backend` を `local_gemma4_e2b_mlx` などに変更する。
 
 ### 手順
 
 ```bash
-uv sync
+make deps
 make db-up
-ollama pull qwen2.5:7b
-# Apple Silicon の場合は MLX が 2〜3 倍速い
-# pip install mlx-lm
 make server
 ```
 
 ブラウザで `http://localhost:8000` を開く。
+
+LM Studio を使う場合は、`config/central_realtime.toml` の
+`[backends.lmstudio_gemma4_e2b]` に書かれた URL で LM Studio の OpenAI 互換 API を起動し、
+`gemma-4-e2b-it-mlx` をロードしておく。
 
 開発中にコード変更を自動反映したい場合は `make server-reload` を使う。
 サーバーログは `make server` / `make server-reload` を実行しているターミナルに出る。

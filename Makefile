@@ -5,7 +5,10 @@ TOMOKO_LOG_LEVEL ?= INFO
 TOMOKO_LOG_FILE ?= logs/server.log
 TOMOKO_DEBUG_LOG_FILE ?= logs/server-debug.log
 
-.PHONY: server server-reload server-debug db-up test-unit bench-stt lint check
+.PHONY: deps server server-reload server-debug db-up test-unit bench-stt lint check
+
+deps:
+	mise exec -- uv sync
 
 server:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TOMOKO_LOG_FILE) mise exec -- uv run uvicorn server.edge.main:app --host $(HOST) --port $(PORT) --log-level $(UVICORN_LOG_LEVEL)
