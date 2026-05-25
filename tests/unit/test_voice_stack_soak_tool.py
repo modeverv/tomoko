@@ -5,6 +5,7 @@ import pytest
 from _tools.soak_stt_backends import RunningStats
 from _tools.soak_voice_stack_scenarios import (
     ScenarioStats,
+    StackLoadConfig,
     VoiceStackScenario,
     build_default_scenarios,
     summary_payload,
@@ -24,6 +25,25 @@ def test_build_default_scenarios_compares_only_stt_lane() -> None:
     assert [scenario.name for scenario in scenarios] == ["mlx_stt_stack", "coreml_stt_stack"]
     assert scenarios[0].load_key == scenarios[1].load_key
     assert scenarios[0].stt_backend != scenarios[1].stt_backend
+
+
+@pytest.mark.unit
+def test_stack_load_config_label_includes_stress_repeats() -> None:
+    config = StackLoadConfig(
+        tts_backend="supertonic_coreml_f1",
+        conversation_backend="local_lfm25_12b_jp_mlx",
+        start_delay_ms=20,
+        tts_text="hello",
+        conversation_text="hello",
+        tts_repeats=2,
+        conversation_repeats=6,
+        tts_workers=1,
+        conversation_workers=2,
+    )
+
+    assert config.label == (
+        "tts:supertonic_coreml_f1*2w1+conversation:local_lfm25_12b_jp_mlx*6w2"
+    )
 
 
 @pytest.mark.unit

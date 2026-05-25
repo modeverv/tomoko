@@ -156,6 +156,15 @@ default は次の2シナリオを交互に測る。
 - `local_whisper_mlx_small` + `supertonic_coreml_f1` + `local_lfm25_12b_jp_mlx`
 - `local_whisperkit_serve_small` + `supertonic_coreml_f1` + `local_lfm25_12b_jp_mlx`
 
+default の横負荷は、各 STT 測定ごとに Supertonic TTS 2 回、LFM 会話推論 6 回を連続実行する。
+さらに詰める場合は repeats / workers を増やす。
+
+```bash
+mise exec -- uv run python _tools/soak_voice_stack_scenarios.py \
+  --load-conversation-repeats 12 \
+  --load-tts-repeats 4
+```
+
 ## 開発状況
 
 実装はマイルストーンに沿って段階的に進める。詳細は `PLAN.md` を参照。

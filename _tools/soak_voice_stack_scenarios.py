@@ -15,11 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from _tools.bench_stt_backends import (  # noqa: E402
-    DEFAULT_LOAD_CONVERSATION_TEXT,
-    DEFAULT_LOAD_TTS_TEXT,
     DEFAULT_TEXT,
     ConcurrentLoadConfig,
-    ConcurrentLoadRunner,
     _make_sample_audio,
     _make_segment,
     _measure_once,
@@ -29,11 +26,23 @@ from _tools.bench_stt_backends import (  # noqa: E402
 from _tools.soak_stt_backends import RunningStats, percentile  # noqa: E402
 from server.edge.pipeline.stt import create_stt_transcriber  # noqa: E402
 from server.shared.config import BackendSpec, NodeConfig  # noqa: E402
+from server.shared.inference.router import InferenceRouter  # noqa: E402
+from server.shared.inference.tts import create_tts_backend  # noqa: E402
+from server.shared.models import TTSInput  # noqa: E402
 
 DEFAULT_MLX_STT_BACKEND = "local_whisper_mlx_small"
 DEFAULT_COREML_STT_BACKEND = "local_whisperkit_serve_small"
 DEFAULT_COREML_TTS_BACKEND = "supertonic_coreml_f1"
 DEFAULT_MLX_CONVERSATION_BACKEND = "local_lfm25_12b_jp_mlx"
+DEFAULT_STRESS_TTS_TEXT = (
+    "うん、わかった。少し待ってね。今日は処理負荷を見るために、"
+    "いつもより少し長めに、自然な長さの返事を続けて読み上げます。"
+)
+DEFAULT_STRESS_CONVERSATION_TEXT = (
+    "ベンチマーク用です。ローカル推論の負荷を測るため、"
+    "今日の作業状況、次に見るべき観点、判断の保留点について、"
+    "日本語で八文程度の自然な返事を書いてください。"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +55,76 @@ class VoiceStackScenario:
     @property
     def load_key(self) -> tuple[str, str]:
         return (self.tts_backend, self.conversation_backend)
+
+
+@dataclass(frozen=True, slots=True)
+class StackLoadConfig:
+    tts_backend: str
+    conversation_backend: str
+    start_delay_ms: int
+    tts_text: str
+    conversation_text: str
+    tts_repeats: int
+    conversation_repeats: int
+    tts_workers: int
+    conversation_workers: int
+
+    @property
+    def label(self) -> str:
+        return (
+            f"tts:{self.tts_backend}*{self.tts_repeats}w{self.tts_workers}"
+            f"+conversation:{self.conversation_backend}"
+            f"*{self.conversation_repeats}w{self.conversation_workers}"
+        )
+
+
+class StackLoadRunner:
+    def __init__(self, config: NodeConfig, load_config: StackLoadConfig) -> None:
+        self.load_config = load_config
+        self._tts_backend = create_tts_backend(config.backends[load_config.tts_backend])
+        self._conversation_backend = InferenceRouter(config).backends[
+            load_config.conversation_backend
+        ]
+
+    async def warm_up(self) -> None:
+        await asyncio.gather(self._run_tts_once(), self._run_conversation_once())
+
+    async def run_once(self) -> float:
+        tasks: list[asyncio.Task[None]] = []
+        for _ in range(self.load_config.tts_workers):
+            tasks.append(asyncio.create_task(self._run_tts_loop()))
+        for _ in range(self.load_config.conversation_workers):
+            tasks.append(asyncio.create_task(self._run_conversation_loop()))
+
+        start = time.perf_counter()
+        try:
+            await asyncio.gather(*tasks)
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+        return (time.perf_counter() - start) * 1000
+
+    async def _run_tts_loop(self) -> None:
+        for _ in range(self.load_config.tts_repeats):
+            await self._run_tts_once()
+
+    async def _run_tts_once(self) -> None:
+        async for _chunk in self._tts_backend.synthesize(
+            TTSInput(text=self.load_config.tts_text, style="neutral")
+        ):
+            pass
+
+    async def _run_conversation_loop(self) -> None:
+        for _ in range(self.load_config.conversation_repeats):
+            await self._run_conversation_once()
+
+    async def _run_conversation_once(self) -> None:
+        async for _delta in self._conversation_backend.chat_stream(
+            "あなたは日本語で自然に答えるアシスタントです。短すぎる返答にしないでください。",
+            [{"role": "user", "content": self.load_config.conversation_text}],
+        ):
+            pass
 
 
 @dataclass(slots=True)
@@ -111,8 +190,32 @@ async def main() -> None:
     )
     parser.add_argument("--conversation-backend", default=DEFAULT_MLX_CONVERSATION_BACKEND)
     parser.add_argument("--load-start-delay-ms", type=int, default=20)
-    parser.add_argument("--load-tts-text", default=DEFAULT_LOAD_TTS_TEXT)
-    parser.add_argument("--load-conversation-text", default=DEFAULT_LOAD_CONVERSATION_TEXT)
+    parser.add_argument("--load-tts-text", default=DEFAULT_STRESS_TTS_TEXT)
+    parser.add_argument("--load-conversation-text", default=DEFAULT_STRESS_CONVERSATION_TEXT)
+    parser.add_argument(
+        "--load-tts-repeats",
+        type=int,
+        default=2,
+        help="Sequential TTS generations per measured STT call.",
+    )
+    parser.add_argument(
+        "--load-conversation-repeats",
+        type=int,
+        default=6,
+        help="Sequential conversation generations per measured STT call.",
+    )
+    parser.add_argument(
+        "--load-tts-workers",
+        type=int,
+        default=1,
+        help="Parallel TTS load workers. Increase carefully; backend safety varies.",
+    )
+    parser.add_argument(
+        "--load-conversation-workers",
+        type=int,
+        default=1,
+        help="Parallel conversation load workers. Increase carefully; backend safety varies.",
+    )
     parser.add_argument("--status-interval-sec", type=float, default=5.0)
     parser.add_argument("--sleep-ms", type=int, default=0)
     parser.add_argument("--recent-window", type=int, default=200)
@@ -136,6 +239,14 @@ async def soak_from_args(args: argparse.Namespace) -> list[ScenarioStats]:
         raise ValueError("--recent-window must be >= 1")
     if args.max_cycles < 0:
         raise ValueError("--max-cycles must be >= 0")
+    if args.load_tts_repeats < 1:
+        raise ValueError("--load-tts-repeats must be >= 1")
+    if args.load_conversation_repeats < 1:
+        raise ValueError("--load-conversation-repeats must be >= 1")
+    if args.load_tts_workers < 1:
+        raise ValueError("--load-tts-workers must be >= 1")
+    if args.load_conversation_workers < 1:
+        raise ValueError("--load-conversation-workers must be >= 1")
 
     config_path = Path(args.config)
     config = NodeConfig.load(config_path)
@@ -191,7 +302,15 @@ async def soak_from_args(args: argparse.Namespace) -> list[ScenarioStats]:
                     "audio_path": str(audio_path),
                     "sample_text": args.text,
                     "scenarios": [asdict(scenario) for scenario in scenarios],
-                    "load_start_delay_ms": args.load_start_delay_ms,
+                    "load": {
+                        "start_delay_ms": args.load_start_delay_ms,
+                        "tts_text": args.load_tts_text,
+                        "conversation_text": args.load_conversation_text,
+                        "tts_repeats": args.load_tts_repeats,
+                        "conversation_repeats": args.load_conversation_repeats,
+                        "tts_workers": args.load_tts_workers,
+                        "conversation_workers": args.load_conversation_workers,
+                    },
                 },
             )
             while not stop_event.is_set():
@@ -327,20 +446,31 @@ async def _create_load_runners(
     config: NodeConfig,
     scenarios: list[VoiceStackScenario],
     args: argparse.Namespace,
-) -> dict[tuple[str, str], ConcurrentLoadRunner]:
-    runners: dict[tuple[str, str], ConcurrentLoadRunner] = {}
+) -> dict[tuple[str, str], StackLoadRunner]:
+    runners: dict[tuple[str, str], StackLoadRunner] = {}
     for scenario in scenarios:
         if scenario.load_key in runners:
             continue
-        load_config = ConcurrentLoadConfig(
+        validation_config = ConcurrentLoadConfig(
             tts_backend=scenario.tts_backend,
             conversation_backend=scenario.conversation_backend,
             start_delay_ms=args.load_start_delay_ms,
             tts_text=args.load_tts_text,
             conversation_text=args.load_conversation_text,
         )
-        _validate_load_config(config, load_config)
-        runners[scenario.load_key] = ConcurrentLoadRunner(config, load_config)
+        _validate_load_config(config, validation_config)
+        load_config = StackLoadConfig(
+            tts_backend=scenario.tts_backend,
+            conversation_backend=scenario.conversation_backend,
+            start_delay_ms=args.load_start_delay_ms,
+            tts_text=args.load_tts_text,
+            conversation_text=args.load_conversation_text,
+            tts_repeats=args.load_tts_repeats,
+            conversation_repeats=args.load_conversation_repeats,
+            tts_workers=args.load_tts_workers,
+            conversation_workers=args.load_conversation_workers,
+        )
+        runners[scenario.load_key] = StackLoadRunner(config, load_config)
     return runners
 
 
