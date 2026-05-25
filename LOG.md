@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-05-25 セッション12
+
+### やること（開始時に書く）
+- Supertonic-3 CoreML TTS を単発 smoke し、日本語入力の生成可否、first/total latency、出力 WAV を確認する
+- Tomoko 本体の TTS backend にはまだ組み込まず、`_tools` の候補評価に閉じる
+- 結果を `_docs/latency.md` / `MEMORY.md` / `LOG.md` に残す
+
+### やったこと
+- HF `FluidInference/supertonic-3-coreml` の `infer.py` と `.mlpackage` 一式を取得した
+- `_tools/bench_supertonic_coreml_tts.py` を追加し、CoreML model を通常ディレクトリへ実ファイルコピーしてから smoke できるようにした
+- 日本語 `ja` / voice style `M1` / `CPU_AND_NE` で 5 runs 実測した
+- 生成 WAV と summary JSON を `logs/supertonic-coreml-smoke/` に保存した
+- `tests/unit/test_supertonic_coreml_smoke_tool.py` を追加し、集計 helper を unit test した
+
+### 詰まったこと・解決したこと
+- HF cache の `.mlpackage` が symlink になっており、`coremltools` prediction 時に CoreML compiler が `weight.bin` を見失った
+  → `shutil.copytree(..., symlinks=False)` で実ファイルとして `logs/supertonic-coreml-smoke/model` に展開してから実行する CLI にした
+- smoke 結果は model load 5533.7ms、warm synth avg 102.4ms、4.35秒音声で RTFx 38.5-43.9x
+
+### 次のセッションでやること
+- 出力 WAV を人間が聞いて、日本語品質と Tomoko らしい声として使えるかを確認する
+- 音質が許容なら `TTSBackend` として組み込み、sentence flush 時の first audio latency を測る
+
 ## 2026-05-25 セッション11
 
 ### やること（開始時に書く）

@@ -1411,3 +1411,14 @@ CoreML STT の採用判断は単体 latency ではなく、実会話に近い TT
 `kokoro_mlx` + LFM MLX 同時 p95 165.7ms だった。
 WhisperKit serve CoreML は同条件で p95 222.0ms / 216.9ms / 216.0ms と安定していた。
 この測定では、CoreML は固定 200ms レーンとして設計しやすい一方、速度面の default はまだ MLX STT が優勢。
+
+### 気づき: Supertonic-3 CoreML TTS smoke
+Supertonic-3 CoreML (`FluidInference/supertonic-3-coreml`) は日本語 `ja` で smoke 成功した。
+`こんにちは、トモコです。今日は少しだけ話してみます。` から約4.35秒の音声を生成し、
+warm 合成5回は平均102.4ms、min 98.9ms、max 112.8ms だった。
+モデルロードは約5.5秒なので startup warm-up 前提なら、TTS 候補としてかなり有望。
+
+注意点として、Hugging Face cache 内の `.mlpackage` は symlink になっており、
+`coremltools` の prediction 時に CoreML compiler が `weight.bin` を見失って落ちた。
+実ファイルとして通常ディレクトリへコピーすると動くため、`_tools/bench_supertonic_coreml_tts.py` は
+`shutil.copytree(..., symlinks=False)` で `logs/supertonic-coreml-smoke/model` に展開してから実行する。
