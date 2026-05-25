@@ -59,6 +59,23 @@ M1 Phase 0 の項目に「irodori-tts をローカルで起動確認」がある
 
 ※ 実装中の重要な発見をここに積む。
 
+### MLX Whisper large turbo q4 の実会話改善
+`local_whisper_mlx_large_turbo_q4` へ切り替えた実ブラウザ確認では、STT 品質が劇的に改善し、
+会話として成り立ち始めている体感があった。
+
+一方で「ココココ」のような hallucination っぽい出力が出る時、GPU が完全にフルに使われる様子が見えた。
+無音・ノイズ・短い断片に対して large 系 decoder が粘っている可能性があるため、今後は transcript filter だけでなく
+STT 入力前の無音/低信頼 segment 抑制、`no_speech_threshold` / `hallucination_silence_threshold` 相当の設定、
+または短すぎる segment の large STT 投入回避を検討する。
+
+### STT ノイズ評価 artifact は work/ に隔離する
+実環境ノイズや読み上げ評価の録音は、公開 repo の source of truth ではなく実験 artifact として扱う。
+ルート直下の `work/` を git 管理外にし、`work/audio-recordings/` に `/ws` 経由で録音した WAV と JSON metadata を保存する。
+
+録音 debug は REST endpoint を増やさず、既存 `/ws` の `debug_recording_start` / `debug_recording_stop` event で制御する。
+録音中の audio chunk は通常の会話 STT/VAD へ流さず、debug recorder にだけ保存する。
+読み上げ評価では、保存した同じ audio を configured STT にかけ、expected text / transcript / STT elapsed を metadata に残す。
+
 ### AudioWorkletNode の処理維持
 M1 Phase 1 のブラウザ実装では、`MediaStreamSource -> AudioWorkletNode` だけで止めると
 ブラウザによっては音声グラフが pull されず `process()` が継続しない可能性がある。
@@ -1786,3 +1803,87 @@ observation 全体を `error` にしない。
 LM Studio 500 など LLM 側の一時失敗が起きた場合は、`method="llm"` / `predicted_kind="none"` /
 `confidence=0.0` / `raw_reason_json.degraded=true` の signal を保存し、observation は `completed` にする。
 これにより deterministic な stop / withdraw 候補や embedding signal が、補助 LLM の失敗に巻き込まれない。
+
+### 確定した判断: 低信号 segment は spectral filter より STT 前 reject を優先する
+実録音 `work/audio-recordings/20260525T122454Z-read_aloud.wav` は 5秒音声だが、
+`rms_db=-47.4` / active frame ratio 20.4% と低信号で、MLX Whisper large-v3-turbo-q4 は raw でも
+frame gate 後でも `ご視聴ありがとうございました` と誤認識した。
+spectral gate 後は `反反反...` の反復幻聴になり、今回の素材では改善しなかった。
+
+CPU コストは frame gate が約 0.014ms/audio sec、spectral gate が約 2.06ms/audio sec と十分軽い。
+ただし noise profile `20260525T122451Z-noise.wav` は `rms_db=-120.0` / `peak_db=-120.0` のほぼデジタル無音で、
+spectral filter の評価素材としては弱い。
+
+このケースでは「波形を加工して Whisper に渡す」より、`SpeechSegment` の duration / rms_db /
+active frame ratio / peak_db を見て STT 投入前に低品質 segment を reject する方を先に実装する。
+spectral filter は、空調・ファン音など実ノイズが入った startup noise profile を録り直してから再評価する。
+
+### 確定した判断: STT signal gate は central と edge の両方で Whisper の直前に置く
+DAW の gate と同じく、低信号 segment を落とす処理は CPU 的にはほぼ無視できる。
+GPU / MLX Whisper を無駄に叩く方が高コストで、低信号入力は `ご視聴ありがとうございました` や反復文字列の
+hallucination を誘発しやすい。
+
+そのため `server/edge/pipeline/stt_gate.py` の `SttSignalGate` を、`TomoroSession._handle_finished_speech()` と
+`EdgeRemoteAudioSession.process_audio_chunk()` の transcriber 呼び出し直前に置く。
+reject 時は transcript を生成せず、VAD と streaming transcriber を reset して idle に戻す。
+partial STT も、明らかに弱い chunk では `process_stream_chunk()` を呼ばない。
+
+初期閾値は、実録音 artifact で見えた `rms_db=-47.4` / active frame ratio 20.4% を落とすため、
+`rms_db < -45` かつ `active_frame_ratio < 0.25` を sparse low signal として reject する。
+短すぎ判定は unit test と短い実発話を潰しすぎないよう 80ms にする。
+この閾値は `logs/server-debug.log` の `stt_gate_action` / `stt_gate_reason` / `rms_db` / `peak_db` /
+`active_frame_ratio` を見ながら実ブラウザ録音で調整する。
+
+### 確定した判断: STT 前処理は ON/OFF 可能な audio frontend filter chain として育てる
+STT 前処理は、単一の gate 関数ではなく `SttAudioFrontend` の filter chain として扱う。
+`enabled_filters=()` なら完全に素通りし、`("signal_gate",)` なら低信号 reject、
+`("short_segment_merge", "signal_gate")` なら短い segment を pending にして次 segment と merge、
+`("spectral_subtraction", ...)` なら noise profile がある場合のみ spectral subtraction を適用する。
+
+startup noise profile は `NoiseProfile` として capture できるようにし、profile がない場合の spectral subtraction は素通りする。
+これにより「比較対象がある、かつ FILTER-ON なら通す。なければ通さない」を runtime 構造で表せる。
+
+STT 後段の `TranscriptFilter` は hallucination phrase / repetition loop の semantic filter として残し、
+audio frontend とは別レイヤにする。
+今後の比較では raw / signal_gate / short_segment_merge / spectral_subtraction の組み合わせを切り替え、
+録音 artifact と `bench_stt_backends.py` で transcript と latency を見る。
+
+### 確定した判断: speech bandpass は runtime 常時ON、2kHz low-pass は常用しない
+DAW 的な直感通り、100Hz high-pass / high-frequency roll-off は STT 前処理として十分安い。
+`speech_bandpass()` は 100Hz high-pass と 7.2kHz low-pass を行う。
+central / edge runtime の `SttAudioFrontend` は `("speech_bandpass", "signal_gate")` を常時ONにする。
+
+一方、2kHz low-pass は Whisper の入力としては強すぎる。
+実録音 `20260525T125851Z-read_aloud.wav` では、通常 bandpass 後の Whisper は
+`うんそうだよ ともこ 短い声をすてずに 続きの` だったが、
+100Hz-2kHz bandpass では `うんそうだよともこ短い声をすけずに続きの` となり、
+`捨てずに` の子音が崩れた。
+
+5秒音声に対する `short_segment_merge` / `speech_bandpass` / `spectral_subtraction` / `signal_gate` の
+frontend 処理は約 9.2ms、約 1.84ms/audio sec だった。
+noise profile capture は約 5.1ms で一回だけの処理。
+
+### 確定した判断: RNNoise は実験用 filter として残し、常時ONにはしない
+現環境では Python RNNoise binding は未導入だが、`ffmpeg` の `arnndn` filter が利用可能だった。
+arnndn model は `work/rnnoise-models/std.rnnn` に保存し、`SttAudioFrontend` では `rnnoise` filter として
+明示的にONにした時だけ使う。model file がない場合は素通りする。
+
+5秒の良い録音では RNNoise 処理が約65.1ms、約13.0ms/audio sec で、
+Whisper 結果は `うんそうだよ ともこ 短い声をすてずに 続きの` だった。
+5秒の低信号録音では約60.1ms、約12.0ms/audio sec で、
+Whisper 結果は `おやすみなさい` になった。
+
+つまり RNNoise は現行の `speech_bandpass` / `signal_gate` より一桁重く、
+低信号 hallucination を完全には防がない。
+Tomoko の常時ON処理は `speech_bandpass` / `signal_gate` を優先し、
+RNNoise は実ノイズが強い録音素材を取った時の比較用に残す。
+
+### 確定した判断: RNNoise はOFF、会話LLMは Gemma 4 E2B MLX、TTS は Kokoro MLX
+RNNoise は効果に対して常時ONのコストが厳しいため、実ランタイムの `SttAudioFrontend` では引き続きOFFにする。
+`rnnoise` filter と bench tool は比較実験用に残すが、default filter chain は `speech_bandpass` / `signal_gate` を使う。
+
+central realtime の会話 backend は `local_gemma4_e2b_mlx` を主系にする。
+前主系だった `local_lfm25_12b_jp_mlx` は fallback として残し、Gemma 側の失敗時に戻れるようにする。
+
+TTS は central / edge ともに `kokoro_mlx` を使う。
+Kokoro MLX は 24kHz default だが、config 上も `sample_rate = 24000` を明示し、factory が設定値を読むようにする。

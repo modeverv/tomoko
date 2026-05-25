@@ -9,6 +9,7 @@ __pycache__/
 logs/
 artifacts/
 models/
+work/
 informations/work/
 informations/archived/
 informations/failed/

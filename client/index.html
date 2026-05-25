@@ -47,6 +47,22 @@
           <button id="stop" type="button" disabled>Stop</button>
         </div>
 
+        <div class="debug-controls" aria-label="Recording tools">
+          <button id="record-noise" type="button" disabled>Noise 1s</button>
+          <button id="record-read" type="button" disabled>Read 5s</button>
+          <button id="next-read-prompt" type="button">Next</button>
+        </div>
+
+        <div class="read-prompt" aria-label="Read prompt">
+          <span>Read</span>
+          <p id="read-prompt-text"></p>
+        </div>
+
+        <div class="debug-result" aria-label="Recording result">
+          <span>Debug</span>
+          <p id="debug-result-text">--</p>
+        </div>
+
         <div class="reply-container" aria-label="Reply text">
           <p id="reply-text"></p>
         </div>

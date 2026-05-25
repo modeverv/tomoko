@@ -10,17 +10,17 @@ chunk_ms = 32
 vad_silence_ms = 800
 
 [inference]
-conversation_backend = "local_lfm25_12b_jp_mlx"
-conversation_fallback = "local_gemma4_e2b_mlx"
+conversation_backend = "local_gemma4_e2b_mlx"
+conversation_fallback = "local_lfm25_12b_jp_mlx"
 session_summary_backend = "lmstudio_gemma4_e2b"
 session_summary_fallback = "local_gemma4_e2b_mlx"
 candidate_gen_backend = "lmstudio_gemma4_e2b"
 candidate_gen_fallback = "local_gemma4_e2b_mlx"
 diary_backend = "lmstudio_gemma4_e2b"
 diary_fallback = "local_gemma4_e2b_mlx"
-stt_backend = "local_whisperkit_serve_large"
+stt_backend = "local_whisper_mlx_large_turbo_q4"
 vad_backend = "silero_vad"
-tts_backend = "supertonic_coreml_f1"
+tts_backend = "kokoro_mlx"
 embedding_backend = "local_bge_m3"
 speech_normalizer_enabled = false
 
@@ -64,6 +64,14 @@ privacy_allowed = true
 [backends.local_whisper_mlx_small]
 type = "mlx_whisper"
 model = "mlx-community/whisper-small-mlx"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
+
+[backends.local_whisper_mlx_large_turbo_q4]
+type = "mlx_whisper"
+model = "mlx-community/whisper-large-v3-turbo-q4"
 privacy_allowed = true
 streaming = true
 stream_interval_ms = 1000
@@ -129,6 +137,7 @@ privacy_allowed = true
 type = "kokoro_mlx"
 model = "mlx-community/Kokoro-82M-bf16"
 voice = "jf_alpha"
+sample_rate = 24000
 max_latency_ms = 200
 privacy_allowed = true
 

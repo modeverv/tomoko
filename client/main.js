@@ -5,9 +5,14 @@ const latencyEl = document.querySelector("#latency");
 const bytesEl = document.querySelector("#bytes");
 const startButton = document.querySelector("#start");
 const stopButton = document.querySelector("#stop");
+const recordNoiseButton = document.querySelector("#record-noise");
+const recordReadButton = document.querySelector("#record-read");
+const nextReadPromptButton = document.querySelector("#next-read-prompt");
 const replyTextEl = document.querySelector("#reply-text");
 const emotionEl = document.querySelector("#emotion");
 const tomokoImageEl = document.querySelector("#tomoko-image");
+const readPromptTextEl = document.querySelector("#read-prompt-text");
+const debugResultTextEl = document.querySelector("#debug-result-text");
 
 let audioContext = null;
 let micStream = null;
@@ -20,6 +25,16 @@ let nextPlaybackTime = 0;
 let currentAudioTurnId = null;
 let playbackSources = [];
 let nextPlaybackChunkId = 1;
+let recordingTimer = null;
+let activeDebugRecording = null;
+let readPromptIndex = 0;
+
+const READ_PROMPTS = [
+  "正直ログを見ながら喋る感じ、ウィスパーがまともに拾えている感じが全くないのですが。",
+  "トモコ、今日の予定を確認して、あとで少しだけ話しかけて。",
+  "画面に文字が表示されてから、音声が出るまでが少し長く感じます。",
+  "小さいノイズでココココと出るなら、先にゲートした方が良さそうです。",
+];
 
 function setStatus(value) {
   statusEl.textContent = value;
@@ -44,6 +59,28 @@ function sendPlaybackEvent(type, entry) {
 
 function handleJsonEvent(data) {
   const event = JSON.parse(data);
+  if (event.type === "debug_recording_started") {
+    activeDebugRecording = event.recording_id;
+    debugResultTextEl.textContent = `${event.kind}: recording`;
+    updateDebugButtons();
+    return;
+  }
+  if (event.type === "debug_recording_saved") {
+    activeDebugRecording = null;
+    clearRecordingTimer();
+    const transcript = event.transcript ? ` / ${event.transcript}` : "";
+    const elapsed = event.stt_elapsed_ms ? ` / ${event.stt_elapsed_ms}ms` : "";
+    debugResultTextEl.textContent = `${event.kind}: ${event.rms_db}dB${elapsed}${transcript}`;
+    updateDebugButtons();
+    return;
+  }
+  if (event.type === "debug_recording_error") {
+    activeDebugRecording = null;
+    clearRecordingTimer();
+    debugResultTextEl.textContent = event.error;
+    updateDebugButtons();
+    return;
+  }
   if (event.type === "audio_start") {
     if (currentAudioTurnId !== event.turn_id) {
       stopPlayback(null);
@@ -88,6 +125,56 @@ function handleJsonEvent(data) {
   if (event.type === "reply_text") {
     replyTextEl.textContent += event.delta;
   }
+}
+
+function selectedReadPrompt() {
+  return READ_PROMPTS[readPromptIndex % READ_PROMPTS.length];
+}
+
+function renderReadPrompt() {
+  readPromptTextEl.textContent = selectedReadPrompt();
+}
+
+function clearRecordingTimer() {
+  if (recordingTimer !== null) {
+    clearTimeout(recordingTimer);
+    recordingTimer = null;
+  }
+}
+
+function updateDebugButtons() {
+  const connected = websocket?.readyState === WebSocket.OPEN;
+  const recording = activeDebugRecording !== null;
+  recordNoiseButton.disabled = !connected || recording;
+  recordReadButton.disabled = !connected || recording;
+}
+
+function sendJsonEvent(payload) {
+  if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+  websocket.send(JSON.stringify(payload));
+  return true;
+}
+
+function startDebugRecording(kind, durationMs, expectedText = null) {
+  if (
+    !sendJsonEvent({
+      type: "debug_recording_start",
+      kind,
+      duration_ms: durationMs,
+      expected_text: expectedText,
+    })
+  ) {
+    return;
+  }
+  activeDebugRecording = "pending";
+  debugResultTextEl.textContent = `${kind}: recording`;
+  updateDebugButtons();
+  clearRecordingTimer();
+  recordingTimer = setTimeout(() => {
+    sendJsonEvent({ type: "debug_recording_stop" });
+  }, durationMs + 120);
 }
 
 function stopPlayback(turnId) {
@@ -178,6 +265,7 @@ async function startSession() {
   websocket.addEventListener("open", () => {
     setStatus("connected");
     stopButton.disabled = false;
+    updateDebugButtons();
   });
   websocket.addEventListener("message", (event) => {
     if (typeof event.data === "string") {
@@ -193,6 +281,9 @@ async function startSession() {
     setStatus("stopped");
     stopButton.disabled = true;
     startButton.disabled = false;
+    activeDebugRecording = null;
+    clearRecordingTimer();
+    updateDebugButtons();
   });
 
   sourceNode = audioContext.createMediaStreamSource(micStream);
@@ -231,7 +322,10 @@ async function stopSession() {
   currentAudioTurnId = null;
   playbackSources = [];
   nextPlaybackChunkId = 1;
+  activeDebugRecording = null;
+  clearRecordingTimer();
   stopButton.disabled = true;
+  updateDebugButtons();
 }
 
 startButton.addEventListener("click", () => {
@@ -248,3 +342,19 @@ stopButton.addEventListener("click", () => {
     setStatus("error");
   });
 });
+
+recordNoiseButton.addEventListener("click", () => {
+  startDebugRecording("noise", 1000);
+});
+
+recordReadButton.addEventListener("click", () => {
+  startDebugRecording("read_aloud", 5000, selectedReadPrompt());
+});
+
+nextReadPromptButton.addEventListener("click", () => {
+  readPromptIndex += 1;
+  renderReadPrompt();
+});
+
+renderReadPrompt();
+updateDebugButtons();

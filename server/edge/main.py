@@ -14,6 +14,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from server.edge.debug_recording import DebugAudioRecorder
 from server.edge.participation.wake_word import WakeWordJudge
 from server.edge.pipeline.stt import (
     SpeechTranscriber,
@@ -21,6 +22,7 @@ from server.edge.pipeline.stt import (
     warm_up_transcriber,
 )
 from server.edge.pipeline.stt_filter import TranscriptFilter
+from server.edge.pipeline.stt_gate import SttAudioFrontend
 from server.edge.pipeline.vad import create_vad_processor
 from server.edge.remote import EdgeRemoteAudioSession, EdgeReplyPlayer
 from server.gateway.candidate_commands import CandidateCommandRunner
@@ -108,6 +110,7 @@ logger = logging.getLogger(__name__)
 ROOT_DIR = Path(__file__).resolve().parents[2]
 CLIENT_DIR = ROOT_DIR / "client"
 ASSETS_DIR = ROOT_DIR / "assets"
+WORK_DIR = ROOT_DIR / "work"
 CONFIG_PATH = Path(
     os.environ.get("TOMOKO_CONFIG", ROOT_DIR / "config" / "central_realtime.toml")
 )
@@ -133,6 +136,13 @@ async def index() -> FileResponse:
 def _create_default_vad_processor():
     config = _load_config()
     return create_vad_processor(silence_ms=config.audio.vad_silence_ms)
+
+
+def _create_default_stt_audio_frontend(sample_rate: int = 16000) -> SttAudioFrontend:
+    return SttAudioFrontend(
+        sample_rate=sample_rate,
+        enabled_filters=("speech_bandpass", "signal_gate"),
+    )
 
 
 def _create_default_router() -> InferenceRouter:
@@ -214,6 +224,7 @@ async def websocket_session(websocket: WebSocket) -> None:
 
 async def _central_browser_session(websocket: WebSocket) -> None:
     await websocket.accept()
+    config = _load_config()
     chunk_count = 0
     connection_id = f"browser:{uuid4()}"
 
@@ -355,11 +366,22 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         ),
         barge_in_detector=barge_in_detector_factory(),
         transcript_filter=TranscriptFilter(),
+        stt_audio_frontend=_create_default_stt_audio_frontend(vad_processor.sample_rate),
         candidate_feedback_store=candidate_feedback_store,
         stop_intent_store=stop_intent_store,
         stop_ack_audio_provider=stop_ack_audio_provider_factory(),
         connected_output_state=output_state,
     )
+    debug_recorder_factory = getattr(
+        app.state,
+        "debug_recorder_factory",
+        lambda: DebugAudioRecorder(
+            root=WORK_DIR,
+            transcriber=transcriber_factory(),
+            sample_rate=config.audio.sample_rate,
+        ),
+    )
+    debug_recorder = debug_recorder_factory()
     candidate_runner = CandidateCommandRunner(
         session=session,
         store=candidate_store_factory(),
@@ -392,10 +414,21 @@ async def _central_browser_session(websocket: WebSocket) -> None:
             if message.get("bytes") is not None:
                 chunk = message["bytes"]
                 chunk_count += 1
+                if debug_recorder.is_recording:
+                    should_stop = debug_recorder.add_chunk(chunk)
+                    if should_stop:
+                        result = await debug_recorder.stop()
+                        await websocket.send_json(result.to_event())
+                    continue
                 await session.process_audio_chunk(chunk)
                 continue
             if message.get("text") is not None:
-                await _handle_client_text_event(session, message["text"])
+                await _handle_client_text_event(
+                    session,
+                    message["text"],
+                    debug_recorder=debug_recorder,
+                    send_event=websocket.send_json,
+                )
                 continue
             if message.get("type") == "websocket.disconnect":
                 raise WebSocketDisconnect()
@@ -508,11 +541,14 @@ async def _edge_browser_session(websocket: WebSocket, config: NodeConfig) -> Non
 
         edge_session = EdgeRemoteAudioSession(
             device_id=device_id,
-            vad_processor=_create_default_vad_processor(),
+            vad_processor=(edge_vad_processor := _create_default_vad_processor()),
             transcriber=_create_default_transcriber(),
             transcript_filter=TranscriptFilter(),
             send_browser_event=send_browser_event,
             send_gateway_event=send_gateway_event,
+            stt_audio_frontend=_create_default_stt_audio_frontend(
+                edge_vad_processor.sample_rate
+            ),
         )
         reply_player = EdgeReplyPlayer(
             tts_backend=_create_default_tts_backend(),
@@ -779,13 +815,45 @@ async def _initiative_idle_loop(
         await candidate_runner.run_result(result)
 
 
-async def _handle_client_text_event(session: TomoroSession, text: str) -> None:
+async def _handle_client_text_event(
+    session: TomoroSession,
+    text: str,
+    *,
+    debug_recorder: DebugAudioRecorder | None = None,
+    send_event=None,
+) -> None:
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
         logger.warning("ignored non-json websocket text event")
         return
     event_type = payload.get("type")
+    if event_type == "debug_recording_start":
+        if debug_recorder is None or send_event is None:
+            logger.warning("ignored debug recording start without recorder")
+            return
+        try:
+            event = debug_recorder.start(
+                kind=str(payload.get("kind") or "noise"),
+                duration_ms=_optional_int(payload.get("duration_ms")),
+                expected_text=_optional_str(payload.get("expected_text")),
+            )
+        except ValueError as e:
+            await send_event({"type": "debug_recording_error", "error": str(e)})
+            return
+        await send_event(event)
+        return
+    if event_type == "debug_recording_stop":
+        if debug_recorder is None or send_event is None:
+            logger.warning("ignored debug recording stop without recorder")
+            return
+        try:
+            result = await debug_recorder.stop()
+        except ValueError as e:
+            await send_event({"type": "debug_recording_error", "error": str(e)})
+            return
+        await send_event(result.to_event())
+        return
     if event_type not in {"playback_started", "playback_ended"}:
         logger.warning("ignored unknown websocket text event type=%s", event_type)
         return
@@ -818,3 +886,10 @@ def _optional_int(value: object) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text if text else None

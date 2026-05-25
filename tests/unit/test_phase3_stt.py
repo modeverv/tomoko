@@ -89,6 +89,11 @@ class InMemoryAmbientLogWriter:
         self.rows.append((transcript, tomoko_participated))
 
 
+def _speech_chunk() -> bytes:
+    t = np.arange(512, dtype=np.float32) / 16000
+    return (np.sin(2 * np.pi * 440 * t) * 0.1).astype(np.float32).tobytes()
+
+
 @pytest.mark.unit
 async def test_session_transcribes_and_logs_all_finished_speech() -> None:
     events: list[dict[str, str]] = []
@@ -103,7 +108,7 @@ async def test_session_transcribes_and_logs_all_finished_speech() -> None:
     )
 
     for _ in range(14):
-        await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+        await session.process_audio_chunk(_speech_chunk())
 
     assert len(transcriber.segments) == 1
     assert len(ambient_logs.rows) == 1
@@ -126,7 +131,7 @@ async def test_session_emits_participation_event_for_wake_word() -> None:
     )
 
     for _ in range(14):
-        await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+        await session.process_audio_chunk(_speech_chunk())
 
     assert ambient_logs.rows[0][1] is True
     assert {"type": "participation", "mode": "called"} in events
@@ -172,6 +177,29 @@ async def test_session_drops_filtered_final_transcript_before_participation() ->
 
     assert ambient_logs.rows == []
     assert {"type": "participation", "mode": "invited"} not in events
+    assert events[-1] == {"type": "state", "state": "idle"}
+
+
+@pytest.mark.unit
+async def test_session_rejects_low_signal_segment_before_stt() -> None:
+    events: list[dict[str, str]] = []
+    transcriber = ConstantTranscriber("ご視聴ありがとうございました")
+    ambient_logs = InMemoryAmbientLogWriter()
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.9] + [0.1] * 13), silence_ms=400),
+        send_event=events.append,
+        transcriber=transcriber,
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=ambient_logs,
+    )
+
+    for _ in range(14):
+        await session.process_audio_chunk(
+            (np.ones(512, dtype=np.float32) * 0.001).tobytes()
+        )
+
+    assert transcriber.segments == []
+    assert ambient_logs.rows == []
     assert events[-1] == {"type": "state", "state": "idle"}
 
 

@@ -14,6 +14,7 @@ import numpy as np
 from server.edge.participation.base import ParticipationJudge
 from server.edge.pipeline.stt import SpeechTranscriber, supports_streaming
 from server.edge.pipeline.stt_filter import TranscriptFilter
+from server.edge.pipeline.stt_gate import SttAudioFrontend, SttSignalGate
 from server.edge.pipeline.vad import VADProcessor
 from server.gateway.audio_turn import AudioTurnController
 from server.gateway.context import ContextSnapshotBuilder
@@ -100,6 +101,8 @@ class TomoroSession:
         speech_normalizer: ReplySpeechNormalizer | None = None,
         barge_in_detector: BargeInDetector | None = None,
         transcript_filter: TranscriptFilter | None = None,
+        stt_audio_frontend: SttAudioFrontend | None = None,
+        stt_signal_gate: SttSignalGate | None = None,
         candidate_feedback_store: CandidateFeedbackStore | None = None,
         stop_intent_store: StopIntentStore | None = None,
         stop_ack_audio_provider: StopAckAudioProvider | None = None,
@@ -128,6 +131,10 @@ class TomoroSession:
         self.speech_normalizer = speech_normalizer
         self.barge_in_detector = barge_in_detector
         self.transcript_filter = transcript_filter
+        self.stt_audio_frontend = stt_audio_frontend or SttAudioFrontend(
+            sample_rate=getattr(vad_processor, "sample_rate", 16000),
+            signal_gate=stt_signal_gate,
+        )
         self.candidate_feedback_store = candidate_feedback_store
         self.stop_intent_store = stop_intent_store
         self.stop_ack_audio_provider = stop_ack_audio_provider or StopAckAudioProvider()
@@ -730,14 +737,30 @@ class TomoroSession:
 
         self._reset_latency_probe()
         self._latency_speech_end_at = time.perf_counter()
+        frontend_decision = self.stt_audio_frontend.process_segment(segment)
         logger.info(
-            "TomoroSession latency speech_end segment_ms=%.1f attention_mode=%s state=%s",
+            "TomoroSession latency speech_end segment_ms=%.1f attention_mode=%s state=%s "
+            "stt_frontend_action=%s stt_frontend_reason=%s filters=%s "
+            "rms_db=%.1f peak_db=%.1f active_frame_ratio=%.3f",
             (segment.ended_at - segment.started_at).total_seconds() * 1000,
             self.attention_mode,
             self.state,
+            frontend_decision.action,
+            frontend_decision.reason,
+            ",".join(frontend_decision.enabled_filters) or "none",
+            frontend_decision.metrics.rms_db,
+            frontend_decision.metrics.peak_db,
+            frontend_decision.metrics.active_frame_ratio,
         )
+        if not frontend_decision.accepted:
+            self.vad_processor.reset()
+            self._reset_transcriber_stream()
+            await self._transition("idle")
+            return
+        assert frontend_decision.segment is not None
+
         stt_started_at = time.perf_counter()
-        transcript = await self.transcriber.transcribe(segment)
+        transcript = await self.transcriber.transcribe(frontend_decision.segment)
         stt_elapsed_ms = (time.perf_counter() - stt_started_at) * 1000
         logger.info(
             "TomoroSession transcript text=%r speaker=%s audio_level_db=%s "
@@ -869,6 +892,8 @@ class TomoroSession:
 
     async def _maybe_emit_partial_transcript(self, chunk: np.ndarray) -> None:
         if not supports_streaming(self.transcriber):
+            return
+        if not self.stt_audio_frontend.should_process_partial_chunk(chunk):
             return
         assert self.transcriber is not None
         partial = await self.transcriber.process_stream_chunk(  # type: ignore[attr-defined]

@@ -22,7 +22,7 @@ diary_backend = "lmstudio_gemma4_e2b"
 diary_fallback = "local_gemma4_e2b_mlx"
 stt_backend = "local_whisper_mlx_small"
 vad_backend = "silero_vad"
-tts_backend = "supertonic_coreml_f1"
+tts_backend = "kokoro_mlx"
 embedding_backend = "local_bge_m3"
 speech_normalizer_enabled = false
 
@@ -115,6 +115,7 @@ privacy_allowed = true
 type = "kokoro_mlx"
 model = "mlx-community/Kokoro-82M-bf16"
 voice = "jf_alpha"
+sample_rate = 24000
 max_latency_ms = 200
 privacy_allowed = true
 

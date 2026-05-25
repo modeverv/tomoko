@@ -18,8 +18,8 @@ def test_build_default_scenarios_compares_only_stt_lane() -> None:
     scenarios = build_default_scenarios(
         mlx_stt_backend="local_whisper_mlx_small",
         coreml_stt_backend="local_whisperkit_serve_small",
-        tts_backend="supertonic_coreml_f1",
-        conversation_backend="local_lfm25_12b_jp_mlx",
+        tts_backend="kokoro_mlx",
+        conversation_backend="local_gemma4_e2b_mlx",
     )
 
     assert [scenario.name for scenario in scenarios] == ["mlx_stt_stack", "coreml_stt_stack"]
@@ -30,8 +30,8 @@ def test_build_default_scenarios_compares_only_stt_lane() -> None:
 @pytest.mark.unit
 def test_stack_load_config_label_includes_stress_repeats() -> None:
     config = StackLoadConfig(
-        tts_backend="supertonic_coreml_f1",
-        conversation_backend="local_lfm25_12b_jp_mlx",
+        tts_backend="kokoro_mlx",
+        conversation_backend="local_gemma4_e2b_mlx",
         start_delay_ms=20,
         tts_text="hello",
         conversation_text="hello",
@@ -42,7 +42,7 @@ def test_stack_load_config_label_includes_stress_repeats() -> None:
     )
 
     assert config.label == (
-        "tts:supertonic_coreml_f1*2w1+conversation:local_lfm25_12b_jp_mlx*6w2"
+        "tts:kokoro_mlx*2w1+conversation:local_gemma4_e2b_mlx*6w2"
     )
 
 
@@ -51,8 +51,8 @@ def test_scenario_stats_tracks_stt_and_load_windows() -> None:
     scenario = VoiceStackScenario(
         name="mlx_stt_stack",
         stt_backend="local_whisper_mlx_small",
-        tts_backend="supertonic_coreml_f1",
-        conversation_backend="local_lfm25_12b_jp_mlx",
+        tts_backend="kokoro_mlx",
+        conversation_backend="local_gemma4_e2b_mlx",
     )
     stats = ScenarioStats(
         scenario=scenario,

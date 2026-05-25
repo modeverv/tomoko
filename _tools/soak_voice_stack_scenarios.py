@@ -32,8 +32,8 @@ from server.shared.models import TTSInput  # noqa: E402
 
 DEFAULT_MLX_STT_BACKEND = "local_whisper_mlx_small"
 DEFAULT_COREML_STT_BACKEND = "local_whisperkit_serve_small"
-DEFAULT_COREML_TTS_BACKEND = "supertonic_coreml_f1"
-DEFAULT_MLX_CONVERSATION_BACKEND = "local_lfm25_12b_jp_mlx"
+DEFAULT_COREML_TTS_BACKEND = "kokoro_mlx"
+DEFAULT_MLX_CONVERSATION_BACKEND = "local_gemma4_e2b_mlx"
 DEFAULT_STRESS_TTS_TEXT = (
     "うん、わかった。少し待ってね。今日は処理負荷を見るために、"
     "いつもより少し長めに、自然な長さの返事を続けて読み上げます。"
@@ -170,7 +170,7 @@ class ScenarioStats:
 async def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Compare MLX STT and CoreML STT while CoreML TTS and MLX LLM load run."
+            "Compare MLX STT and CoreML STT while Kokoro TTS and MLX LLM load run."
         ),
     )
     parser.add_argument("--config", default="config/central_realtime.toml")
@@ -186,7 +186,7 @@ async def main() -> None:
     parser.add_argument(
         "--tts-backend",
         default=DEFAULT_COREML_TTS_BACKEND,
-        help="CoreML TTS load backend. Default is Supertonic CoreML F1.",
+        help="TTS load backend. Default is Kokoro MLX.",
     )
     parser.add_argument("--conversation-backend", default=DEFAULT_MLX_CONVERSATION_BACKEND)
     parser.add_argument("--load-start-delay-ms", type=int, default=20)

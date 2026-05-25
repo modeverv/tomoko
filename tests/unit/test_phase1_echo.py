@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from fastapi import WebSocketDisconnect
 
+from server.edge.debug_recording import DebugAudioRecorder
 from server.edge.main import app, websocket_session
 from server.edge.pipeline.vad import VADProcessor
 
@@ -36,6 +37,8 @@ def set_test_vad(processor: VADProcessor) -> None:
     app.state.ambient_log_writer_factory = lambda: None
     app.state.conversation_log_writer_factory = lambda: None
     app.state.tts_backend_factory = lambda: None
+    if hasattr(app.state, "debug_recorder_factory"):
+        del app.state.debug_recorder_factory
 
 
 @pytest.mark.unit
@@ -91,11 +94,46 @@ async def test_ws_accepts_playback_telemetry_text_events() -> None:
     assert websocket.sent_bytes == []
 
 
+@pytest.mark.unit
+async def test_ws_debug_recording_saves_audio_without_session_processing(
+    tmp_path,
+) -> None:
+    processor = VADProcessor(vad=ConstantVAD(0.9))
+    set_test_vad(processor)
+    app.state.debug_recorder_factory = lambda: DebugAudioRecorder(
+        root=tmp_path,
+        transcriber=None,
+    )
+    chunk = np.ones(512, dtype=np.float32).tobytes()
+    websocket = FakeWebSocket(
+        [
+            json.dumps(
+                {
+                    "type": "debug_recording_start",
+                    "kind": "noise",
+                    "duration_ms": 32,
+                }
+            ),
+            chunk,
+        ]
+    )
+
+    await websocket_session(websocket)  # type: ignore[arg-type]
+
+    assert websocket.sent_json[0]["type"] == "debug_recording_started"
+    assert websocket.sent_json[1]["type"] == "debug_recording_saved"
+    assert websocket.sent_json[1]["kind"] == "noise"
+    assert websocket.sent_json[1]["sample_count"] == 512
+    assert processor.state == "idle"
+    assert list((tmp_path / "audio-recordings").glob("*.wav"))
+    assert list((tmp_path / "audio-recordings").glob("*.json"))
+
+
 class FakeWebSocket:
     def __init__(self, messages: list[bytes | str]) -> None:
         self.messages = messages
         self.accepted = False
-        self.sent_json: list[dict[str, str]] = []
+        self.sent_json: list[dict[str, object]] = []
         self.sent_bytes: list[bytes] = []
 
     async def accept(self) -> None:
@@ -109,7 +147,7 @@ class FakeWebSocket:
             return {"type": "websocket.receive", "bytes": message}
         return {"type": "websocket.receive", "text": message}
 
-    async def send_json(self, event: dict[str, str]) -> None:
+    async def send_json(self, event: dict[str, object]) -> None:
         self.sent_json.append(event)
 
     async def send_bytes(self, chunk: bytes) -> None:

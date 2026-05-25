@@ -104,7 +104,14 @@ p {
   gap: 12px;
 }
 
-.controls button {
+.debug-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.controls button,
+.debug-controls button {
   min-height: 44px;
   border: 1px solid #1f4d55;
   border-radius: 8px;
@@ -113,11 +120,36 @@ p {
   cursor: pointer;
 }
 
-.controls button:disabled {
+.controls button:disabled,
+.debug-controls button:disabled {
   border-color: #c7cbd0;
   background: #d9dde1;
   color: #777f88;
   cursor: not-allowed;
+}
+
+.read-prompt,
+.debug-result,
+.reply-container {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid #e3ded6;
+  border-radius: 8px;
+  background: #fbf7ef;
+}
+
+.read-prompt span,
+.debug-result span {
+  color: #67717b;
+  font-size: 13px;
+}
+
+.read-prompt p,
+.debug-result p,
+.reply-container p {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -137,6 +169,13 @@ p {
   }
 
   .meters div {
+    border-color: #353b42;
+    background: #1d2126;
+  }
+
+  .read-prompt,
+  .debug-result,
+  .reply-container {
     border-color: #353b42;
     background: #1d2126;
   }

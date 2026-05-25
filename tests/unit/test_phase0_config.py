@@ -12,21 +12,21 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.unit
-def test_central_realtime_config_uses_lfm_mlx_for_main_conversation() -> None:
+def test_central_realtime_config_uses_gemma_mlx_for_main_conversation() -> None:
     config = NodeConfig.load(ROOT / "config" / "central_realtime.toml")
 
     assert config.node.role == "central_realtime"
-    assert config.inference.conversation_backend == "local_lfm25_12b_jp_mlx"
-    assert config.inference.conversation_fallback == "local_gemma4_e2b_mlx"
+    assert config.inference.conversation_backend == "local_gemma4_e2b_mlx"
+    assert config.inference.conversation_fallback == "local_lfm25_12b_jp_mlx"
     assert config.audio.vad_silence_ms == 800
-    assert config.inference.stt_backend == "local_whisperkit_serve_large"
-    assert config.inference.tts_backend == "supertonic_coreml_f1"
+    assert config.inference.stt_backend == "local_whisper_mlx_large_turbo_q4"
+    assert config.inference.tts_backend == "kokoro_mlx"
     assert config.inference.embedding_backend == "local_bge_m3"
     assert config.inference.speech_normalizer_enabled is False
 
-    backend = config.backends["local_lfm25_12b_jp_mlx"]
-    assert backend.type == "mlx_lm"
-    assert backend.model == "lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit"
+    backend = config.backends["local_gemma4_e2b_mlx"]
+    assert backend.type == "gemma_mlx"
+    assert backend.model == "mlx-community/gemma-4-e2b-it-4bit"
     assert backend.privacy_allowed is True
 
     lm_studio_backend = config.backends["lmstudio_gemma4_e2b"]
@@ -35,15 +35,15 @@ def test_central_realtime_config_uses_lfm_mlx_for_main_conversation() -> None:
     assert lm_studio_backend.model == "gemma-4-e2b-it-mlx"
     assert lm_studio_backend.privacy_allowed is True
 
-    fallback_backend = config.backends["local_gemma4_e2b_mlx"]
-    assert fallback_backend.type == "gemma_mlx"
-    assert fallback_backend.model == "mlx-community/gemma-4-e2b-it-4bit"
+    fallback_backend = config.backends["local_lfm25_12b_jp_mlx"]
+    assert fallback_backend.type == "mlx_lm"
+    assert fallback_backend.model == "lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit"
     assert fallback_backend.privacy_allowed is True
 
-    stt_backend = config.backends["local_whisperkit_serve_large"]
-    assert stt_backend.type == "whisperkit_serve"
-    assert stt_backend.url == "http://127.0.0.1:50061"
-    assert stt_backend.model == "large-v3-v20240930_626MB"
+    stt_backend = config.backends["local_whisper_mlx_large_turbo_q4"]
+    assert stt_backend.type == "mlx_whisper"
+    assert stt_backend.model == "mlx-community/whisper-large-v3-turbo-q4"
+    assert stt_backend.streaming is True
 
     embedding_backend = config.backends["local_bge_m3"]
     assert embedding_backend.type == "bge_m3"
@@ -51,11 +51,10 @@ def test_central_realtime_config_uses_lfm_mlx_for_main_conversation() -> None:
     assert embedding_backend.dimensions == 1024
     assert embedding_backend.privacy_allowed is True
 
-    tts_backend = config.backends["supertonic_coreml_f1"]
-    assert tts_backend.type == "supertonic_coreml"
-    assert tts_backend.model == "FluidInference/supertonic-3-coreml"
-    assert tts_backend.model_path == "models/supertonic-3-coreml"
-    assert tts_backend.voice == "F1"
+    tts_backend = config.backends["kokoro_mlx"]
+    assert tts_backend.type == "kokoro_mlx"
+    assert tts_backend.model == "mlx-community/Kokoro-82M-bf16"
+    assert tts_backend.voice == "jf_alpha"
     assert tts_backend.sample_rate == 24000
 
     irodori_backend = config.backends["irodori_mlx"]

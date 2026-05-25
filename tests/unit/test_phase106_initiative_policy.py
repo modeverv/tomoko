@@ -122,7 +122,7 @@ def _candidate(
     source: str = "time_based",
     context_tags: tuple[str, ...] = (),
 ) -> UtteranceCandidate:
-    now = datetime(2026, 5, 25, 12, 0, tzinfo=UTC)
+    now = datetime.now(UTC)
     return UtteranceCandidate(
         id=uuid4(),
         seed="少し休憩しない？",

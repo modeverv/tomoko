@@ -10,6 +10,7 @@ import numpy as np
 
 from server.edge.pipeline.stt import SpeechTranscriber, supports_streaming
 from server.edge.pipeline.stt_filter import TranscriptFilter
+from server.edge.pipeline.stt_gate import SttAudioFrontend, SttSignalGate
 from server.edge.pipeline.vad import VADProcessor
 from server.gateway.audio_turn import AudioTurnController
 from server.gateway.reply.audio import ReplyAudioPlanner
@@ -29,11 +30,17 @@ class EdgeRemoteAudioSession:
         transcript_filter: TranscriptFilter,
         send_browser_event: Callable[[dict[str, Any]], Any],
         send_gateway_event: Callable[[dict[str, Any]], Any],
+        stt_audio_frontend: SttAudioFrontend | None = None,
+        stt_signal_gate: SttSignalGate | None = None,
     ) -> None:
         self.device_id = device_id
         self.vad_processor = vad_processor
         self.transcriber = transcriber
         self.transcript_filter = transcript_filter
+        self.stt_audio_frontend = stt_audio_frontend or SttAudioFrontend(
+            sample_rate=vad_processor.sample_rate,
+            signal_gate=stt_signal_gate,
+        )
         self.send_browser_event = send_browser_event
         self.send_gateway_event = send_gateway_event
 
@@ -49,7 +56,26 @@ class EdgeRemoteAudioSession:
         if result.segment is None:
             return
 
-        transcript = await self.transcriber.transcribe(result.segment)
+        frontend_decision = self.stt_audio_frontend.process_segment(result.segment)
+        logger.info(
+            "EdgeRemoteAudioSession stt frontend action=%s reason=%s device_id=%s "
+            "filters=%s rms_db=%.1f peak_db=%.1f active_frame_ratio=%.3f",
+            frontend_decision.action,
+            frontend_decision.reason,
+            self.device_id,
+            ",".join(frontend_decision.enabled_filters) or "none",
+            frontend_decision.metrics.rms_db,
+            frontend_decision.metrics.peak_db,
+            frontend_decision.metrics.active_frame_ratio,
+        )
+        if not frontend_decision.accepted:
+            self.vad_processor.reset()
+            self._reset_transcriber_stream()
+            await self._send_browser_event({"type": "state", "state": "idle"})
+            return
+        assert frontend_decision.segment is not None
+
+        transcript = await self.transcriber.transcribe(frontend_decision.segment)
         logger.info(
             "EdgeRemoteAudioSession transcript text=%r device_id=%s audio_level_db=%s",
             transcript.text,
@@ -73,6 +99,8 @@ class EdgeRemoteAudioSession:
 
     async def _maybe_emit_partial_transcript(self, chunk: np.ndarray) -> None:
         if not supports_streaming(self.transcriber):
+            return
+        if not self.stt_audio_frontend.should_process_partial_chunk(chunk):
             return
         partial = await self.transcriber.process_stream_chunk(  # type: ignore[attr-defined]
             chunk,

@@ -71,7 +71,7 @@ async def test_router_reads_config():
     router = InferenceRouter(config, monitor=MockMonitor())
     backend = await router.select("conversation", "latency")
     assert backend is not None
-    assert backend.name == "local_lfm25_12b_jp_mlx"
+    assert backend.name == "local_gemma4_e2b_mlx"
 
 
 @pytest.mark.unit

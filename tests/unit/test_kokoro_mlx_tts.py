@@ -156,6 +156,7 @@ def test_tts_factory_creates_kokoro_mlx_backend(monkeypatch) -> None:
             type="kokoro_mlx",
             model="mlx-community/Kokoro-82M-bf16",
             voice="jf_alpha",
+            sample_rate=24000,
         )
     )
 

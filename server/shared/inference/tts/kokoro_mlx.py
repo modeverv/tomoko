@@ -72,6 +72,7 @@ class KokoroMLXBackend(TTSBackend):
         return cls(
             model=spec.model,
             voice=spec.voice or "jf_alpha",
+            sample_rate=spec.sample_rate or 24000,
         )
 
     async def synthesize(self, tts_input: TTSInput):
