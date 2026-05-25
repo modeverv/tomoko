@@ -9,6 +9,7 @@ __pycache__/
 logs/
 artifacts/
 models/
+_tools/asset-factory_for_work/
 task.md
 task.acceptance.md
 summary.md
