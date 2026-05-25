@@ -17,6 +17,11 @@ from server.edge.pipeline.stt_filter import TranscriptFilter
 from server.edge.pipeline.vad import VADProcessor
 from server.gateway.audio_turn import AudioTurnController
 from server.gateway.context import ContextSnapshotBuilder
+from server.gateway.initiative_feedback import (
+    CandidateFeedbackStore,
+    classify_feedback,
+    feedback_scope_from_candidate,
+)
 from server.gateway.reply import ReplyPipeline
 from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
 from server.gateway.thinking.base import ThinkingMode
@@ -33,6 +38,8 @@ from server.shared.models import (
     AudioChunkOut,
     BargeInContext,
     BargeInDecision,
+    CandidateFeedbackScope,
+    CandidateSpeakDecision,
     ConnectedOutputState,
     ContextBuildPolicy,
     ContextDepth,
@@ -86,6 +93,7 @@ class TomoroSession:
         speech_normalizer: ReplySpeechNormalizer | None = None,
         barge_in_detector: BargeInDetector | None = None,
         transcript_filter: TranscriptFilter | None = None,
+        candidate_feedback_store: CandidateFeedbackStore | None = None,
         connected_output_state: ConnectedOutputState | None = None,
         engaged_timeout_ms: int = 8000,
         cooldown_timeout_ms: int = 8000,
@@ -111,6 +119,7 @@ class TomoroSession:
         self.speech_normalizer = speech_normalizer
         self.barge_in_detector = barge_in_detector
         self.transcript_filter = transcript_filter
+        self.candidate_feedback_store = candidate_feedback_store
         self.state: SessionState = "idle"
         self.attention_mode: AttentionMode = "ambient"
         self.latest_segment: SpeechSegment | None = None
@@ -141,6 +150,7 @@ class TomoroSession:
         self._active_arrival_request_id: str | None = None
         self._last_start_reason: StartReason | None = None
         self._connected_output_state = connected_output_state or ConnectedOutputState.empty()
+        self._active_initiative_feedback_scope: CandidateFeedbackScope | None = None
 
     @property
     def _playback_echo_grace_ms(self) -> int:
@@ -316,19 +326,21 @@ class TomoroSession:
                     "request_id": event.payload.get("request_id"),
                 },
             )
-        self._active_initiative_request_id = None
         candidate = event.payload.get("candidate")
         if candidate is None:
+            self._active_initiative_request_id = None
             return self._transition_result(
                 "initiative_skipped",
                 payload={"reason": "candidate_not_found"},
             )
         if not isinstance(candidate, UtteranceCandidate):
+            self._active_initiative_request_id = None
             return self._transition_result(
                 "initiative_skipped",
                 payload={"reason": "invalid_candidate_payload"},
             )
         if not self._can_start_candidate_reply():
+            self._active_initiative_request_id = None
             return self._transition_result(
                 "initiative_skipped",
                 payload={
@@ -337,6 +349,7 @@ class TomoroSession:
                 },
             )
         if candidate.maturity < 1 or candidate.generated_text is None:
+            self._active_initiative_request_id = None
             return self._transition_result(
                 "initiative_skipped",
                 payload={
@@ -354,7 +367,38 @@ class TomoroSession:
                     )
                 ],
             )
+        policy_decision = event.payload.get("policy_decision")
+        if isinstance(policy_decision, CandidateSpeakDecision):
+            if policy_decision.decision == "wait":
+                self._active_initiative_request_id = None
+                return self._transition_result(
+                    "initiative_skipped",
+                    payload={
+                        "reason": "policy_wait",
+                        "candidate_id": candidate.id,
+                        "policy": policy_decision.to_json(),
+                    },
+                )
+            if policy_decision.decision == "needs_llm_judge":
+                return self._transition_result(
+                    "initiative_llm_judge_requested",
+                    payload={
+                        "candidate_id": candidate.id,
+                        "policy": policy_decision.to_json(),
+                    },
+                    commands=[
+                        SessionCommand(
+                            type="judge_initiative_candidate",
+                            payload={
+                                "candidate": candidate,
+                                "request_id": event.payload.get("request_id"),
+                                "policy_decision": policy_decision,
+                            },
+                        )
+                    ],
+                )
 
+        self._active_initiative_request_id = None
         self._set_start_reason("initiative")
         return self._transition_result(
             "initiative_reply_requested",
@@ -366,6 +410,7 @@ class TomoroSession:
                         "candidate_id": candidate.id,
                         "text": candidate.generated_text,
                         "generated_audio": candidate.generated_audio,
+                        "feedback_scope": feedback_scope_from_candidate(candidate),
                         "reason": "initiative",
                         "start_reason": "initiative",
                         "started_by": "initiative",
@@ -691,6 +736,7 @@ class TomoroSession:
 
         if decision is not None and decision.mode == "withdraw":
             await self._transition_attention("withdrawn")
+        await self._maybe_record_initiative_feedback(transcript)
 
         if decision is not None and decision.should_participate:
             start_reason = _start_reason_from_participation_mode(decision.mode)
@@ -915,12 +961,14 @@ class TomoroSession:
         device_id: str,
         reason: str,
         audio_data: bytes | None = None,
+        feedback_scope: CandidateFeedbackScope | None = None,
     ) -> None:
         """Speak a text-ready initiative/arrival candidate through the normal output path."""
         if not text.strip():
             return
 
         await self._cancel_reply_generation(status="cancelled")
+        self._active_initiative_feedback_scope = feedback_scope
         self._reset_latency_probe()
         self._latency_reply_start_at = time.perf_counter()
         # Initiative/arrival speech opens attention, but the conversation session
@@ -949,6 +997,30 @@ class TomoroSession:
         finally:
             await self._end_audio_turn()
             self._note_attention_activity()
+
+    async def _maybe_record_initiative_feedback(
+        self,
+        transcript: Transcript,
+    ) -> None:
+        if (
+            self.candidate_feedback_store is None
+            or self._active_initiative_feedback_scope is None
+        ):
+            return
+        signal = classify_feedback(transcript, self._active_initiative_feedback_scope)
+        if signal is None:
+            return
+        await self.candidate_feedback_store.record(signal)
+        logger.info(
+            "TomoroSession initiative feedback kind=%s score=%.2f source=%s "
+            "topic=%s emotional_need=%s",
+            signal.kind,
+            signal.score,
+            signal.scope.source,
+            signal.scope.topic,
+            signal.scope.emotional_need,
+        )
+        self._active_initiative_feedback_scope = None
 
     async def _transition(self, state: str) -> None:
         if state not in {"idle", "listening", "processing"}:

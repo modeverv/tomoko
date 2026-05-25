@@ -3,10 +3,30 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+from server.gateway.initiative_feedback import (
+    CandidateFeedbackStore,
+    apply_feedback_to_metadata,
+    feedback_scope_from_metadata,
+)
+from server.gateway.initiative_policy import (
+    CandidateSpeakPolicy,
+    DesireLoadAverages,
+    InitiativeLLMJudge,
+    SpeakabilityLoadAverages,
+    metadata_from_utterance_candidate,
+    safe_wait_decision,
+)
 from server.session import TomoroSession
 from server.shared.candidate import CandidateStore
-from server.shared.models import SessionCommand, SessionEvent, TransitionResult
-from server.thinker.selection.highest import HighestPriority
+from server.shared.models import (
+    CandidateSpeakDecision,
+    PersonalityDynamics,
+    SessionCommand,
+    SessionEvent,
+    SpeakabilityState,
+    TomokoDesireState,
+    TransitionResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +43,27 @@ class CandidateCommandRunner:
         store: CandidateStore,
         device_id: str | None,
         now_factory=datetime_now_utc,
+        speak_policy: CandidateSpeakPolicy | None = None,
+        desire_load: DesireLoadAverages | None = None,
+        speakability_load: SpeakabilityLoadAverages | None = None,
+        personality: PersonalityDynamics | None = None,
+        feedback_store: CandidateFeedbackStore | None = None,
+        llm_judge: InitiativeLLMJudge | None = None,
     ) -> None:
         self.session = session
         self.store = store
         self.device_id = device_id
         self.now_factory = now_factory
-        self.selector = HighestPriority()
+        self.speak_policy = speak_policy or CandidateSpeakPolicy()
+        self.desire_load = desire_load or DesireLoadAverages(
+            now_factory=now_factory,
+        )
+        self.speakability_load = speakability_load or SpeakabilityLoadAverages(
+            now_factory=now_factory,
+        )
+        self.personality = personality or PersonalityDynamics()
+        self.feedback_store = feedback_store
+        self.llm_judge = llm_judge
 
     async def run_result(self, result: TransitionResult) -> None:
         for command in result.commands:
@@ -60,13 +95,21 @@ class CandidateCommandRunner:
                 now=now,
                 limit=20,
             )
-            selected = self._select_initiative_candidate(candidates)
+            selected, decision = await self._select_initiative_candidate(
+                candidates,
+                now=now,
+            )
             logger.info(
                 "initiative candidate fetched selected=%s active_count=%s "
-                "dismissed_expired_count=%s",
+                "dismissed_expired_count=%s policy_decision=%s score=%s "
+                "reason=%s signals=%s",
                 getattr(selected, "id", None),
                 len(candidates),
                 dismissed_count,
+                getattr(decision, "decision", None),
+                getattr(decision, "score", None),
+                getattr(decision, "reason", None),
+                getattr(decision, "signals", None),
             )
             return await self.session.post_event(
                 SessionEvent(
@@ -74,6 +117,7 @@ class CandidateCommandRunner:
                     payload={
                         "candidate": selected,
                         "request_id": command.payload.get("request_id"),
+                        "policy_decision": decision,
                     },
                     occurred_at=now,
                 )
@@ -130,8 +174,80 @@ class CandidateCommandRunner:
                 device_id=self._command_device_id(command),
                 reason=str(command.payload.get("reason") or "initiative"),
                 audio_data=command.payload.get("generated_audio"),
+                feedback_scope=command.payload.get("feedback_scope"),
             )
             return None
+
+        if command.type == "judge_initiative_candidate":
+            candidate = command.payload.get("candidate")
+            if self.llm_judge is not None and candidate is not None:
+                policy_decision = command.payload.get("policy_decision")
+                desire = command.payload.get("desire")
+                speakability = command.payload.get("speakability")
+                if isinstance(policy_decision, CandidateSpeakDecision):
+                    if desire is None and isinstance(
+                        policy_decision.signals.get("desire"),
+                        dict,
+                    ):
+                        desire = TomokoDesireState.from_json(
+                            policy_decision.signals["desire"]
+                        )
+                    if speakability is None and isinstance(
+                        policy_decision.signals.get("speakability"),
+                        dict,
+                    ):
+                        speakability = SpeakabilityState.from_json(
+                            policy_decision.signals["speakability"]
+                        )
+                if (
+                    isinstance(policy_decision, CandidateSpeakDecision)
+                    and isinstance(desire, TomokoDesireState)
+                    and isinstance(speakability, SpeakabilityState)
+                    and getattr(candidate, "generated_text", None) is not None
+                ):
+                    try:
+                        judged = await self.llm_judge.judge(
+                            candidate_text=str(candidate.generated_text),
+                            candidate_reason=str(getattr(candidate, "seed", "")),
+                            policy_decision=policy_decision,
+                            desire=desire,
+                            speakability=speakability,
+                        )
+                    except Exception as exc:
+                        logger.info(
+                            "initiative LLM judge failed candidate=%s reason=%s",
+                            getattr(candidate, "id", None),
+                            type(exc).__name__,
+                        )
+                        judged = safe_wait_decision("llm_judge_failed")
+                    return await self.session.post_event(
+                        SessionEvent(
+                            type="initiative_candidate_loaded",
+                            payload={
+                                "candidate": candidate,
+                                "request_id": command.payload.get("request_id"),
+                                "policy_decision": judged,
+                            },
+                            occurred_at=now,
+                        )
+                    )
+            logger.info(
+                "initiative LLM judge fallback wait candidate=%s reason=not_configured",
+                getattr(candidate, "id", None),
+            )
+            return await self.session.post_event(
+                SessionEvent(
+                    type="initiative_candidate_loaded",
+                    payload={
+                        "candidate": candidate,
+                        "request_id": command.payload.get("request_id"),
+                        "policy_decision": safe_wait_decision(
+                            "llm_judge_not_configured"
+                        ),
+                    },
+                    occurred_at=now,
+                )
+            )
 
         return None
 
@@ -139,12 +255,107 @@ class CandidateCommandRunner:
         device_id = command.payload.get("device_id") or self.device_id
         return str(device_id or "default")
 
-    def _select_initiative_candidate(self, candidates):
-        pregenerated = [
-            candidate
-            for candidate in candidates
-            if candidate.maturity >= 2 and candidate.generated_audio is not None
+    async def _select_initiative_candidate(
+        self,
+        candidates,
+        *,
+        now: datetime,
+    ) -> tuple[object | None, CandidateSpeakDecision | None]:
+        if not candidates:
+            self.desire_load.apply(candidate_signal=0.0, personality=self.personality)
+            self.speakability_load.apply(presence_signal=self._presence_signal())
+            return None, None
+
+        desire = self.desire_load.apply(
+            candidate_signal=1.0,
+            urgent_signal=1.0 if any(candidate.urgent for candidate in candidates) else 0.0,
+            unspoken_signal=1.0
+            if any(candidate.source in {"diary", "resume_unspoken"} for candidate in candidates)
+            else 0.0,
+            curiosity_signal=1.0
+            if any(
+                candidate.source in {"observation", "time_based"}
+                or "question" in candidate.context_tags
+                for candidate in candidates
+            )
+            else 0.0,
+            attachment_signal=self._presence_signal(),
+            playful_signal=1.0
+            if any("playful" in candidate.context_tags for candidate in candidates)
+            else 0.0,
+            personality=self.personality,
+        )
+        base_speakability = self.speakability_load.apply(
+            presence_signal=self._presence_signal(),
+            activity_signal=self._presence_signal(),
+        )
+        runtime = self.session.get_now_state()
+        decisions = []
+        for candidate in candidates:
+            metadata = metadata_from_utterance_candidate(candidate)
+            feedback_summary = None
+            if self.feedback_store is not None:
+                feedback_summary = await self.feedback_store.summarize(
+                    feedback_scope_from_metadata(metadata),
+                    now=now,
+                )
+                metadata = apply_feedback_to_metadata(metadata, feedback_summary)
+            speakability = base_speakability
+            if feedback_summary is not None:
+                speakability = SpeakabilityLoadAverages(
+                    now_factory=self.now_factory,
+                    initial_state=base_speakability,
+                ).apply(
+                    presence_signal=self._presence_signal(),
+                    activity_signal=self._presence_signal(),
+                    rejection_signal=feedback_summary.rejection_score,
+                    acceptance_signal=feedback_summary.acceptance_score,
+                    focus_signal=feedback_summary.intrusion_penalty,
+                )
+            decision = self.speak_policy.evaluate(
+                runtime=runtime,
+                desire=desire,
+                speakability=speakability,
+                personality=self.personality,
+                candidate=metadata,
+                now=now,
+            )
+            decisions.append((candidate, decision, metadata, desire, speakability))
+        speakable = [
+            item
+            for item in decisions
+            if item[1].decision in {"speak", "needs_llm_judge"}
         ]
-        if pregenerated:
-            return self.selector.select(pregenerated)
-        return self.selector.select(candidates)
+        if not speakable:
+            selected = max(decisions, key=lambda item: item[1].score)
+        else:
+            selected = max(
+                speakable,
+                key=lambda item: (
+                    item[1].decision == "speak",
+                    item[1].score,
+                    item[0].maturity >= 2 and item[0].generated_audio is not None,
+                    item[0].priority,
+                ),
+            )
+        candidate, decision, metadata, selected_desire, selected_speakability = selected
+        decision = CandidateSpeakDecision(
+            decision=decision.decision,
+            score=decision.score,
+            threshold=decision.threshold,
+            reason=decision.reason,
+            signals={
+                **decision.signals,
+                "desire": selected_desire.to_json(),
+                "speakability": selected_speakability.to_json(),
+                "metadata": metadata.to_json(),
+            },
+        )
+        return candidate, decision
+
+    def _presence_signal(self) -> float:
+        return (
+            1.0
+            if self.session.get_now_state().output_state.audio_target_available
+            else 0.0
+        )

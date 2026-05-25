@@ -27,6 +27,8 @@ from server.gateway.candidate_commands import CandidateCommandRunner
 from server.gateway.connections import ClientConnectionRegistry
 from server.gateway.dedup import DuplicateSpeechFilter, PostgresRecentTranscriptReader
 from server.gateway.edge_adapter import GatewayEdgeProtocolHandler
+from server.gateway.initiative_feedback import PostgresCandidateFeedbackStore
+from server.gateway.initiative_policy import InitiativeLLMJudge
 from server.gateway.presence import PresenceManager
 from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
 from server.gateway.resolver import DirectSpeakerResolver
@@ -286,12 +288,19 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         "candidate_store_factory",
         _create_default_candidate_store,
     )
+    candidate_feedback_store_factory = getattr(
+        app.state,
+        "candidate_feedback_store_factory",
+        _create_default_candidate_feedback_store,
+    )
     barge_in_detector_factory = getattr(
         app.state,
         "barge_in_detector_factory",
         BargeInDetector,
     )
     vad_processor = vad_processor_factory()
+    candidate_feedback_store = candidate_feedback_store_factory()
+    router = router_factory()
     output_state = _connection_registry.register(
         connection_id=connection_id,
         device_id=vad_processor.device_id,
@@ -308,7 +317,7 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         ambient_log_writer=ambient_log_writer_factory(),
         conversation_log_writer=conversation_log_writer_factory(),
         conversation_session_store=conversation_session_store_factory(),
-        router=router_factory(),
+        router=router,
         thinking_mode=thinking_mode_factory(),
         deep_thinking_mode=deep_thinking_mode_factory(),
         tts_backend=tts_backend_factory(),
@@ -327,12 +336,15 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         ),
         barge_in_detector=barge_in_detector_factory(),
         transcript_filter=TranscriptFilter(),
+        candidate_feedback_store=candidate_feedback_store,
         connected_output_state=output_state,
     )
     candidate_runner = CandidateCommandRunner(
         session=session,
         store=candidate_store_factory(),
         device_id=session.vad_processor.device_id,
+        feedback_store=candidate_feedback_store,
+        llm_judge=InitiativeLLMJudge(router),
     )
     await candidate_runner.run_result(
         await session.post_event(
@@ -395,6 +407,8 @@ async def edge_gateway_session(websocket: WebSocket) -> None:
         session=session,
         store=_create_default_candidate_store(),
         device_id=device_id,
+        feedback_store=_create_default_candidate_feedback_store(),
+        llm_judge=InitiativeLLMJudge(_create_default_router()),
     )
     logger.info("edge gateway websocket connected")
     try:
@@ -554,6 +568,7 @@ def _create_gateway_text_session(
         speech_normalizer=None,
         barge_in_detector=BargeInDetector(),
         transcript_filter=TranscriptFilter(),
+        candidate_feedback_store=_create_default_candidate_feedback_store(),
         connected_output_state=connected_output_state,
     )
 
@@ -704,6 +719,11 @@ def _create_default_conversation_session_store() -> PostgresConversationSessionS
 def _create_default_candidate_store() -> PostgresCandidateStore:
     config = _load_config()
     return PostgresCandidateStore(config.database.dsn)
+
+
+def _create_default_candidate_feedback_store() -> PostgresCandidateFeedbackStore:
+    config = _load_config()
+    return PostgresCandidateFeedbackStore(config.database.dsn)
 
 
 async def _initiative_idle_loop(

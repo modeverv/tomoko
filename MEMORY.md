@@ -1566,3 +1566,27 @@ LLM judge result も直接 state を変更せず、`SessionEvent` として `Tom
 このため、接続がない時に `/ws` 側の idle loop が動かない現状はそのまま残る。
 ただし Session runtime 自体は、接続がない output state では自発発話を始めない契約になった。
 central に 1 つの長寿命 Session を置き、複数 client / edge を registry 経由でぶら下げる変更は別 Phase とする。
+
+### 確定した判断: Phase 10.6 policy は candidate runner 側で組み立てる
+`TomoroSession` に desire / speakability 用の DB read や LLM judge 実行を持たせる案は否定する。
+Phase 10.6 では、`CandidateCommandRunner` が active candidate fetch 後に
+`TomokoDesireState` / `SpeakabilityState` / `PersonalityDynamics` / candidate metadata の snapshot を組み立て、
+`CandidateSpeakPolicy` の結果だけを `TomoroSession` に `SessionEvent` として戻す。
+
+`TomoroSession` は引き続き final gate と stale request check の所有者であり、
+`wait` / `needs_llm_judge` / `speak` の decision を現在 state と照合して消費する。
+LLM judge は境界 score の時だけ command として外へ出し、未設定・失敗・malformed result は安全側に `wait` へ倒す。
+
+### 確定した判断: initiative feedback は source / topic / emotional_need scope で残す
+Phase 10.6 の feedback は、自発発話全体を一律に上げ下げしない。
+`initiative_feedback_signals` に `source` / `topic` / `emotional_need` / `feedback_kind` / `score` を保存し、
+候補取得時に `CandidateCommandRunner` が同じ scope の recent feedback を summary して
+`CandidateSpeakPolicy` へ渡す。
+
+`TomoroSession` は feedback の分類と保存の入口だけを持つが、集計や DB read は持たない。
+自発発話後の「静かにして」「それ今じゃない」は rejection/defer として scoped penalty にし、
+「うん、なに？」「言って」系は scoped boost として扱う。
+
+境界 score の LLM judge は `InitiativeLLMJudge` が runner 側で実行し、JSON result を
+`initiative_candidate_loaded` event として戻す。これによりオンライン LLM 失敗は state machine を壊さず、
+malformed / failure は `wait` に倒れる。

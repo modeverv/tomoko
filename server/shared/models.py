@@ -33,6 +33,8 @@ ContextDepth = Literal["fast", "normal", "deep", "reflective"]
 VadState = Literal["idle", "listening", "processing"]
 PlaybackState = Literal["idle", "speaking", "client_playing", "echo_grace"]
 ConnectionRole = Literal["browser", "edge", "monitor"]
+CandidateSpeakDecisionKind = Literal["speak", "wait", "needs_llm_judge"]
+LLMJudgeDecisionKind = Literal["speak_now", "wait", "defer"]
 
 
 @dataclass
@@ -142,6 +144,332 @@ class TomoroRuntimeState:
     last_start_reason: StartReason | None = None
     output_state: ConnectedOutputState = field(default_factory=ConnectedOutputState.empty)
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(frozen=True)
+class TomokoDesireState:
+    desire_1m: float = 0.0
+    desire_5m: float = 0.0
+    desire_30m: float = 0.0
+    unspoken_pressure: float = 0.0
+    curiosity_pressure: float = 0.0
+    attachment_pressure: float = 0.0
+    playful_pressure: float = 0.0
+    schema_version: int = 1
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> TomokoDesireState:
+        schema_version = int(payload.get("schema_version", 1))
+        if schema_version != 1:
+            raise ValueError(
+                f"Unsupported TomokoDesireState schema_version: {schema_version}"
+            )
+        return cls(
+            schema_version=schema_version,
+            desire_1m=_float_or_zero(payload.get("desire_1m")),
+            desire_5m=_float_or_zero(payload.get("desire_5m")),
+            desire_30m=_float_or_zero(payload.get("desire_30m")),
+            unspoken_pressure=_float_or_zero(payload.get("unspoken_pressure")),
+            curiosity_pressure=_float_or_zero(payload.get("curiosity_pressure")),
+            attachment_pressure=_float_or_zero(payload.get("attachment_pressure")),
+            playful_pressure=_float_or_zero(payload.get("playful_pressure")),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "desire_1m": self.desire_1m,
+            "desire_5m": self.desire_5m,
+            "desire_30m": self.desire_30m,
+            "unspoken_pressure": self.unspoken_pressure,
+            "curiosity_pressure": self.curiosity_pressure,
+            "attachment_pressure": self.attachment_pressure,
+            "playful_pressure": self.playful_pressure,
+        }
+
+
+@dataclass(frozen=True)
+class SpeakabilityState:
+    presence_1m: float = 0.0
+    presence_5m: float = 0.0
+    activity_1m: float = 0.0
+    activity_5m: float = 0.0
+    conversation_heat_1m: float = 0.0
+    conversation_heat_5m: float = 0.0
+    focus_likelihood_5m: float = 0.0
+    recent_rejection_score: float = 0.0
+    recent_acceptance_score: float = 0.0
+    intrusion_penalty: float = 0.0
+    schema_version: int = 1
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> SpeakabilityState:
+        schema_version = int(payload.get("schema_version", 1))
+        if schema_version != 1:
+            raise ValueError(
+                f"Unsupported SpeakabilityState schema_version: {schema_version}"
+            )
+        return cls(
+            schema_version=schema_version,
+            presence_1m=_float_or_zero(payload.get("presence_1m")),
+            presence_5m=_float_or_zero(payload.get("presence_5m")),
+            activity_1m=_float_or_zero(payload.get("activity_1m")),
+            activity_5m=_float_or_zero(payload.get("activity_5m")),
+            conversation_heat_1m=_float_or_zero(payload.get("conversation_heat_1m")),
+            conversation_heat_5m=_float_or_zero(payload.get("conversation_heat_5m")),
+            focus_likelihood_5m=_float_or_zero(payload.get("focus_likelihood_5m")),
+            recent_rejection_score=_float_or_zero(
+                payload.get("recent_rejection_score")
+            ),
+            recent_acceptance_score=_float_or_zero(
+                payload.get("recent_acceptance_score")
+            ),
+            intrusion_penalty=_float_or_zero(payload.get("intrusion_penalty")),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "presence_1m": self.presence_1m,
+            "presence_5m": self.presence_5m,
+            "activity_1m": self.activity_1m,
+            "activity_5m": self.activity_5m,
+            "conversation_heat_1m": self.conversation_heat_1m,
+            "conversation_heat_5m": self.conversation_heat_5m,
+            "focus_likelihood_5m": self.focus_likelihood_5m,
+            "recent_rejection_score": self.recent_rejection_score,
+            "recent_acceptance_score": self.recent_acceptance_score,
+            "intrusion_penalty": self.intrusion_penalty,
+        }
+
+
+@dataclass(frozen=True)
+class PersonalityDynamics:
+    talkativeness: float = 0.5
+    restraint: float = 0.5
+    curiosity: float = 0.5
+    attachment: float = 0.5
+    sensitivity: float = 0.5
+    playfulness: float = 0.5
+    mood_talkativeness_1h: float = 0.0
+    mood_restraint_1h: float = 0.0
+    mood_curiosity_1h: float = 0.0
+    schema_version: int = 1
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> PersonalityDynamics:
+        schema_version = int(payload.get("schema_version", 1))
+        if schema_version != 1:
+            raise ValueError(
+                f"Unsupported PersonalityDynamics schema_version: {schema_version}"
+            )
+        return cls(
+            schema_version=schema_version,
+            talkativeness=float(payload.get("talkativeness", 0.5)),
+            restraint=float(payload.get("restraint", 0.5)),
+            curiosity=float(payload.get("curiosity", 0.5)),
+            attachment=float(payload.get("attachment", 0.5)),
+            sensitivity=float(payload.get("sensitivity", 0.5)),
+            playfulness=float(payload.get("playfulness", 0.5)),
+            mood_talkativeness_1h=_float_or_zero(
+                payload.get("mood_talkativeness_1h")
+            ),
+            mood_restraint_1h=_float_or_zero(payload.get("mood_restraint_1h")),
+            mood_curiosity_1h=_float_or_zero(payload.get("mood_curiosity_1h")),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "talkativeness": self.talkativeness,
+            "restraint": self.restraint,
+            "curiosity": self.curiosity,
+            "attachment": self.attachment,
+            "sensitivity": self.sensitivity,
+            "playfulness": self.playfulness,
+            "mood_talkativeness_1h": self.mood_talkativeness_1h,
+            "mood_restraint_1h": self.mood_restraint_1h,
+            "mood_curiosity_1h": self.mood_curiosity_1h,
+        }
+
+
+@dataclass(frozen=True)
+class CandidateSpeakMetadata:
+    candidate_id: UUID | None = None
+    source: str = ""
+    priority: float = 0.0
+    urgency: float = 0.0
+    intrusion_risk: float = 0.0
+    emotional_need: float = 0.0
+    feedback_penalty: float = 0.0
+    feedback_boost: float = 0.0
+    maturity: int = 0
+    text_ready: bool = False
+    audio_ready: bool = False
+    expires_at: datetime | None = None
+    context_tags: tuple[str, ...] = field(default_factory=tuple)
+    reason: str | None = None
+    schema_version: int = 1
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> CandidateSpeakMetadata:
+        schema_version = int(payload.get("schema_version", 1))
+        if schema_version != 1:
+            raise ValueError(
+                f"Unsupported CandidateSpeakMetadata schema_version: {schema_version}"
+            )
+        return cls(
+            schema_version=schema_version,
+            candidate_id=_optional_uuid(payload.get("candidate_id")),
+            source=str(payload.get("source", "")),
+            priority=_float_or_zero(payload.get("priority")),
+            urgency=_float_or_zero(payload.get("urgency")),
+            intrusion_risk=_float_or_zero(payload.get("intrusion_risk")),
+            emotional_need=_float_or_zero(payload.get("emotional_need")),
+            feedback_penalty=_float_or_zero(payload.get("feedback_penalty")),
+            feedback_boost=_float_or_zero(payload.get("feedback_boost")),
+            maturity=int(payload.get("maturity", 0)),
+            text_ready=bool(payload.get("text_ready", False)),
+            audio_ready=bool(payload.get("audio_ready", False)),
+            expires_at=_optional_datetime_value(payload.get("expires_at")),
+            context_tags=tuple(str(tag) for tag in payload.get("context_tags", ())),
+            reason=_optional_str(payload.get("reason")),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema_version": self.schema_version,
+            "source": self.source,
+            "priority": self.priority,
+            "urgency": self.urgency,
+            "intrusion_risk": self.intrusion_risk,
+            "emotional_need": self.emotional_need,
+            "feedback_penalty": self.feedback_penalty,
+            "feedback_boost": self.feedback_boost,
+            "maturity": self.maturity,
+            "text_ready": self.text_ready,
+            "audio_ready": self.audio_ready,
+            "context_tags": list(self.context_tags),
+        }
+        if self.candidate_id is not None:
+            payload["candidate_id"] = str(self.candidate_id)
+        if self.expires_at is not None:
+            payload["expires_at"] = self.expires_at.isoformat()
+        if self.reason is not None:
+            payload["reason"] = self.reason
+        return payload
+
+
+@dataclass(frozen=True)
+class CandidateFeedbackScope:
+    source: str
+    topic: str | None = None
+    emotional_need: str | None = None
+    candidate_id: UUID | None = None
+    schema_version: int = 1
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> CandidateFeedbackScope:
+        schema_version = int(payload.get("schema_version", 1))
+        if schema_version != 1:
+            raise ValueError(
+                f"Unsupported CandidateFeedbackScope schema_version: {schema_version}"
+            )
+        return cls(
+            schema_version=schema_version,
+            source=str(payload.get("source", "")),
+            topic=_optional_str(payload.get("topic")),
+            emotional_need=_optional_str(payload.get("emotional_need")),
+            candidate_id=_optional_uuid(payload.get("candidate_id")),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema_version": self.schema_version,
+            "source": self.source,
+        }
+        if self.topic is not None:
+            payload["topic"] = self.topic
+        if self.emotional_need is not None:
+            payload["emotional_need"] = self.emotional_need
+        if self.candidate_id is not None:
+            payload["candidate_id"] = str(self.candidate_id)
+        return payload
+
+
+@dataclass(frozen=True)
+class CandidateFeedbackSummary:
+    rejection_score: float = 0.0
+    acceptance_score: float = 0.0
+    intrusion_penalty: float = 0.0
+    feedback_penalty: float = 0.0
+    feedback_boost: float = 0.0
+    schema_version: int = 1
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> CandidateFeedbackSummary:
+        schema_version = int(payload.get("schema_version", 1))
+        if schema_version != 1:
+            raise ValueError(
+                f"Unsupported CandidateFeedbackSummary schema_version: {schema_version}"
+            )
+        return cls(
+            schema_version=schema_version,
+            rejection_score=_float_or_zero(payload.get("rejection_score")),
+            acceptance_score=_float_or_zero(payload.get("acceptance_score")),
+            intrusion_penalty=_float_or_zero(payload.get("intrusion_penalty")),
+            feedback_penalty=_float_or_zero(payload.get("feedback_penalty")),
+            feedback_boost=_float_or_zero(payload.get("feedback_boost")),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "rejection_score": self.rejection_score,
+            "acceptance_score": self.acceptance_score,
+            "intrusion_penalty": self.intrusion_penalty,
+            "feedback_penalty": self.feedback_penalty,
+            "feedback_boost": self.feedback_boost,
+        }
+
+
+@dataclass(frozen=True)
+class CandidateSpeakDecision:
+    decision: CandidateSpeakDecisionKind
+    score: float
+    threshold: float
+    reason: str
+    signals: dict[str, Any] = field(default_factory=dict)
+    schema_version: int = 1
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> CandidateSpeakDecision:
+        schema_version = int(payload.get("schema_version", 1))
+        if schema_version != 1:
+            raise ValueError(
+                f"Unsupported CandidateSpeakDecision schema_version: {schema_version}"
+            )
+        decision = str(payload.get("decision", "wait"))
+        if decision not in {"speak", "wait", "needs_llm_judge"}:
+            decision = "wait"
+        return cls(
+            schema_version=schema_version,
+            decision=decision,  # type: ignore[arg-type]
+            score=_float_or_zero(payload.get("score")),
+            threshold=_float_or_zero(payload.get("threshold")),
+            reason=str(payload.get("reason", "")),
+            signals=dict(payload.get("signals", {})),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "decision": self.decision,
+            "score": self.score,
+            "threshold": self.threshold,
+            "reason": self.reason,
+            "signals": dict(self.signals),
+        }
 
 
 @dataclass(frozen=True)
@@ -774,3 +1102,17 @@ def _optional_uuid(value: object) -> UUID | None:
     if isinstance(value, UUID):
         return value
     return UUID(str(value))
+
+
+def _optional_datetime_value(value: object) -> datetime | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(str(value))
+
+
+def _float_or_zero(value: object) -> float:
+    if value in (None, ""):
+        return 0.0
+    return float(value)

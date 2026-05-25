@@ -4,6 +4,70 @@
 
 ---
 
+## 2026-05-25 セッション21
+
+### やること（開始時に書く）
+- Phase 10.6 配下の残りとして、ユーザーフィードバックを source / topic / emotional_need 別に保持して policy に反映する
+- `judge_initiative_candidate` command に実 LLM judge runner を接続し、境界ケースだけ JSON judge を使えるようにする
+- `TomoroSession` は引き続き final gate のみを担当し、DB read / LLM 実行は runner 側に閉じる
+
+### やったこと
+- `initiative_feedback_signals` DDL と `PostgresCandidateFeedbackStore` / `InMemoryCandidateFeedbackStore` を追加した
+- `CandidateFeedbackScope` / `CandidateFeedbackSummary` DTO を追加し、source / topic / emotional_need bucket ごとに feedback を集計できるようにした
+- `TomoroSession.start_precomputed_reply()` に `feedback_scope` を渡せるようにし、自発発話後の「それ今じゃない」「静かにして」「うん、なに？」系 transcript を feedback signal として保存するようにした
+- `CandidateCommandRunner` が active candidate ごとに feedback summary を読み、metadata の `feedback_penalty` / `feedback_boost` と speakability に反映してから `CandidateSpeakPolicy` を実行するようにした
+- `InitiativeLLMJudge` を追加し、`judge_initiative_candidate` command が設定済み judge を通して JSON result を `SessionEvent` として戻せるようにした
+- `server/edge/main.py` で central / edge gateway の candidate runner に feedback store と LLM judge を接続した
+- ローカル PostgreSQL に `docker/postgres/init/011_initiative_feedback.sql` を適用した
+
+### 詰まったこと・解決したこと
+- feedback を source だけで効かせると同じ source の別 topic まで強く抑制される
+  → source は弱め、topic は強め、emotional_need bucket は中程度に重み付けして summary 化した
+- 境界ケースの LLM judge に渡す desire / speakability snapshot は command payload へ直接持たせず、policy decision の signals から復元できるようにした
+
+### 検証
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase106_initiative_feedback_db.py tests/integration/test_phase90_candidates_db.py`
+- `mise exec -- uv run pytest -m perf --tb=short`
+- `git diff --check`
+
+### 次のセッションでやること
+- Chrome 実セッションで自発発話後に「それ今じゃない」などを返し、次回 candidate score / decision log が下がることをログで確認する
+
+## 2026-05-25 セッション20
+
+### やること（開始時に書く）
+- Phase 10.6 TomokoDesire / Speakability model を、DTO・load average 更新器・Personality 補正・CandidateSpeakPolicy・runtime 接続の順で実装する
+- 自発発話を highest priority candidate 直行ではなく、desire / speakability / candidate metadata の決定的 policy で説明できる形にする
+- `TomoroSession` には重い DB / LLM 判断を持たせず、既存の final gate と stale result policy を維持する
+
+### やったこと
+- `TomokoDesireState` / `SpeakabilityState` / `PersonalityDynamics` / `CandidateSpeakMetadata` / `CandidateSpeakDecision` DTO を追加した
+- `DesireLoadAverages` / `SpeakabilityLoadAverages` / `CandidateSpeakPolicy` を追加し、desire / speakability / personality / candidate metadata から `speak` / `wait` / `needs_llm_judge` を決定できるようにした
+- `CandidateCommandRunner` が active candidate fetch 後に policy snapshot を組み立て、decision log を残して `TomoroSession` へ返すようにした
+- `TomoroSession` で `policy_wait` と `initiative_llm_judge_requested` を扱い、judge 待ちの request id を stale result check に残すようにした
+- LLM judge 用 JSON schema prompt builder / parser を追加し、未設定・malformed result は安全側に `wait` へ倒すようにした
+- `PLAN.md` の Phase 10.6 チェックボックスと実装結果、`MEMORY.md` の確定判断を追記した
+
+### 詰まったこと・解決したこと
+- 最初の実装では `needs_llm_judge` に入る前に initiative request id を消していた
+  → judge result が戻るまで request id を保持し、final `wait` / `speak` で clear するようにした
+- `policy_wait` では candidate を dismiss しない
+  → desire / speakability が変われば次回以降に話せる余地を残すため
+
+### 検証
+- `mise exec -- uv run ruff check server/gateway/initiative_policy.py server/gateway/candidate_commands.py server/session.py server/shared/models.py tests/unit/test_phase106_initiative_policy.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase106_initiative_policy.py tests/unit/test_phase10_session_contract.py`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m perf --tb=short`
+- `git diff --check`
+
+### 次のセッションでやること
+- 実会話ログから rejection / acceptance feedback を source / topic / emotional_need に結びつける永続化を追加する
+- 必要になった時だけ、`judge_initiative_candidate` command に実 LLM judge runner を接続する
+
 ## 2026-05-25 セッション19
 
 ### やること（開始時に書く）
