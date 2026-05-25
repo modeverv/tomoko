@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-05-25 セッション25
+
+### やること（開始時に書く）
+- Phase 10.8 全体として、`AudioTurnController` を公開 API だけで進む純粋な制御対象に寄せる
+- `TomoroSession` の audio turn pass-through helper と private helper 依存テストを削り、reply / precomputed reply の出力順序を public behavior で固定する
+- `pytest -m unit tests/unit/test_audio_turn_controller.py tests/unit/test_session_concurrency.py tests/unit/test_streaming_tts_pipeline.py` と全 unit で完了確認する
+
+### やったこと
+- `TomoroSession` の audio turn pass-through helper を削除し、reply generation / precomputed reply / hard interrupt が `AudioTurnController` の public API を直接使うようにした
+- `tests/unit/test_session_concurrency.py` を private helper 直呼びから public behavior 検証へ補正した
+- `PLAN.md` の Phase 10.8 チェックボックスを完了へ更新し、`ARCHITECTURE.md` / `MEMORY.md` に責務境界を追記した
+
+### 詰まったこと・解決したこと
+- precomputed reply は先に attention event を出すため、テストでは `reply_text` 以降の audio output 順序を検証する形にした
+- Phase 10.8 のチェックボックス更新時に Phase 10.9 の同名検証項目へ一時的に巻き込みが出たため、未着手状態へ戻した
+
+### 検証
+- `mise exec -- uv run pytest -m unit tests/unit/test_audio_turn_controller.py tests/unit/test_session_concurrency.py tests/unit/test_streaming_tts_pipeline.py`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `git diff --check`
+
+### 次のセッションでやること
+- Phase 10.9 を実装する場合は、stop-intent queue の DDL / store / fixed WAV command 境界をテスト先行で固定する
+
 ## 2026-05-25 セッション24
 
 ### やること（開始時に書く）

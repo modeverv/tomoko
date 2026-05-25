@@ -1604,3 +1604,18 @@ Phase 10.7 では、Phase 10.6 で `CandidateSpeakPolicy` が `TomoroRuntimeStat
 gate reason は emission payload と log に残し、policy が `speak` でも Session が止めた理由を
 `attention_not_ambient` / `vad_not_idle` / `playback_not_idle` / `audio_target_unavailable` / `stale_result`
 として説明できるようにした。
+
+### 確定した判断: AudioTurnController は public API で進む制御対象に限定する
+Phase 6.6.4 で互換のために残した `TomoroSession` の audio turn thin delegate は否定する。
+
+`TomoroSession` は、いつ話し始めるか、いつ止めるか、barge-in / interrupt をどう扱うか、
+WebSocket event / audio をどの順序で送るかを持つ。
+`AudioTurnController` は、`turn_id`、`audio_start` / `audio_end` / `audio_control stop` の idempotent reservation、
+audio chunk sequence、playback telemetry 由来の playback state / echo grace、recent Tomoko text / speaking elapsed の
+read-only snapshot だけを持つ。
+
+`AudioTurnController` は WebSocket send、DB write、TTS 実行、reply 生成、会話参加判断、
+candidate 発話判断を行わない。
+`TomoroSession` は `AudioTurnController` の private method や内部 field を読まず、
+`reserve_start_event()` / `reserve_audio_chunk()` / `reserve_end_event()` / `reserve_stop_event()` と
+public property だけを使う。

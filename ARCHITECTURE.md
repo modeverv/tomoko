@@ -1699,6 +1699,20 @@ TomoroSession
 `ReplyPipeline` は `ThinkingEvent` から WebSocket 表示 command と TTS flush command を作る。
 audio / emotion / image の個別ルールは `server/gateway/reply/` 配下の小さな helper に閉じ込める。
 
+### 2026-05-25 追記: AudioTurnController は純粋な制御対象
+
+Phase 6.6.4 で互換のために残した `TomoroSession` の audio turn thin delegate は否定する。
+`TomoroSession` は、いつ話し始めるか、いつ止めるか、barge-in / interrupt をどう扱うか、
+WebSocket event / audio をどの順序で送るかを決める。
+
+`AudioTurnController` は、`turn_id` 発行、`audio_start` / `audio_end` / `audio_control stop` の
+idempotent reservation、audio chunk sequence 採番、playback telemetry 由来の playback state /
+echo grace、`recent_tomoko_text` / speaking elapsed の read-only snapshot だけを持つ。
+
+`AudioTurnController` は WebSocket send、DB write、TTS 実行、reply 生成、会話参加判断、
+candidate 発話判断を行わない。`TomoroSession` は `AudioTurnController` の内部 field や private method を
+直接読まず、必要な情報は public API / public property から取得する。
+
 ### 2026-05-23 追記: reply display 境界
 
 上の `audio/emotion/image` 分割は、`audio/display` 分割へ改める。

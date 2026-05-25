@@ -724,7 +724,7 @@ class TomoroSession:
             )
             if barge_in_decision.action == "restart_turn":
                 await self._cancel_reply_generation(status="interrupted")
-                await self._stop_active_audio_turn()
+                await self._send_reserved_audio_stop()
             if barge_in_decision.action == "continue_speaking":
                 if self.ambient_log_writer is not None:
                     await self.ambient_log_writer.write(
@@ -889,7 +889,7 @@ class TomoroSession:
             context_snapshot=context_snapshot,
         )
         reply = ReplyPipeline(initial_emotion=thinking_input.emotion)
-        self._begin_audio_turn()
+        self.audio_turns.begin_turn()
         tts_queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
         tts_worker = asyncio.create_task(self._run_tts_queue(tts_queue))
         self._tts_queue = tts_queue
@@ -932,7 +932,7 @@ class TomoroSession:
                                 device_id=transcript.device_id,
                                 status="completed",
                             )
-                        await self._end_audio_turn()
+                        await self._send_reserved_audio_end()
                         await self._send_event({"type": "reply_done"})
                         self._note_attention_activity()
         except asyncio.CancelledError:
@@ -1002,13 +1002,13 @@ class TomoroSession:
         # starts only when a human replies through the normal participation path.
         await self._transition_attention("engaged")
         await self._send_event({"type": "reply_text", "delta": text})
-        self._begin_audio_turn()
+        self.audio_turns.begin_turn()
         try:
             if audio_data is None:
                 await self._flush_tts_text(text, style="neutral")
             else:
-                await self._ensure_audio_turn_started()
-                outgoing = await self._reserve_audio_chunk(
+                await self._send_reserved_audio_start()
+                outgoing = await self.audio_turns.reserve_audio_chunk(
                     text=text,
                     chunk=AudioChunkOut(data=audio_data, sequence=0, is_last=True),
                 )
@@ -1019,10 +1019,10 @@ class TomoroSession:
                 device_id=device_id,
                 status="completed",
             )
-            await self._end_audio_turn()
+            await self._send_reserved_audio_end()
             await self._send_event({"type": "reply_done"})
         finally:
-            await self._end_audio_turn()
+            await self._send_reserved_audio_end()
             self._note_attention_activity()
 
     async def _maybe_record_initiative_feedback(
@@ -1189,18 +1189,18 @@ class TomoroSession:
                     tts_input.text,
                     len(chunk.data),
                 )
-            await self._ensure_audio_turn_started()
-            outgoing = await self._reserve_audio_chunk(
+            await self._send_reserved_audio_start()
+            outgoing = await self.audio_turns.reserve_audio_chunk(
                 text=tts_input.text,
                 chunk=chunk,
             )
             await self._send_audio_chunk(outgoing)
 
     def _classify_barge_in(self, transcript: Transcript):
-        in_active_playback = self._is_client_playback_active()
-        in_playback_echo_grace = self._is_playback_echo_grace_active()
+        in_active_playback = self.audio_turns.is_client_playback_active()
+        in_playback_echo_grace = self.audio_turns.is_playback_echo_grace_active()
         if self.barge_in_detector is None or not (
-            self._is_tomoko_speaking()
+            self.audio_turns.is_tomoko_speaking()
             or in_active_playback
             or in_playback_echo_grace
             or self._is_reply_generation_active()
@@ -1227,56 +1227,29 @@ class TomoroSession:
             )
         return decision
 
-    def _is_tomoko_speaking(self) -> bool:
-        return self.audio_turns.is_tomoko_speaking()
-
-    def _is_playback_echo_grace_active(self) -> bool:
-        return self.audio_turns.is_playback_echo_grace_active()
-
-    def _is_client_playback_active(self) -> bool:
-        return self.audio_turns.is_client_playback_active()
-
     def _is_reply_generation_active(self) -> bool:
         return bool(
             (self._reply_task is not None and not self._reply_task.done())
             or (self._tts_worker_task is not None and not self._tts_worker_task.done())
         )
 
-    async def _reserve_audio_chunk(self, *, text: str, chunk: AudioChunkOut) -> AudioChunkOut:
-        return await self.audio_turns.reserve_audio_chunk(text=text, chunk=chunk)
-
-    def _mark_tomoko_speaking(self, *, text: str, audio_data: bytes) -> None:
-        self.audio_turns._mark_tomoko_speaking(text=text, audio_data=audio_data)
-
-    def _begin_audio_turn(self) -> None:
-        self.audio_turns.begin_turn()
-
-    async def _ensure_audio_turn_started(self) -> None:
-        event = await self._reserve_audio_start_event()
+    async def _send_reserved_audio_start(self) -> None:
+        event = await self.audio_turns.reserve_start_event()
         if event is None:
             return
         await self._send_event(event)
 
-    async def _end_audio_turn(self) -> None:
-        event = await self._reserve_audio_end_event()
+    async def _send_reserved_audio_end(self) -> None:
+        event = await self.audio_turns.reserve_end_event()
         if event is None:
             return
         await self._send_event(event)
 
-    async def _stop_active_audio_turn(self) -> None:
-        event = await self._reserve_audio_stop_event()
+    async def _send_reserved_audio_stop(self) -> None:
+        event = await self.audio_turns.reserve_stop_event()
         if event is None:
             return
         await self._send_event(event)
-
-    async def _reserve_audio_start_event(self) -> dict[str, str] | None:
-        return await self.audio_turns.reserve_start_event()
-
-    async def _reserve_audio_end_event(self) -> dict[str, str] | None:
-        return await self.audio_turns.reserve_end_event()
-
-    async def _reserve_audio_stop_event(self) -> dict[str, str] | None:
-        return await self.audio_turns.reserve_stop_event()
 
     def _reset_latency_probe(self) -> None:
         self._latency_speech_end_at = None
