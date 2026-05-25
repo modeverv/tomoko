@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-05-25 セッション23
+
+### やること（開始時に書く）
+- markdown 編集制限の一時解除を受け、online parallel stop-intent classifier と固定 WAV stop acknowledgement の Phase を PLAN.md に追記する
+- LLM 推論は最大1同時のキュー、データソースは PostgreSQL、会話停止は `TomoroSession` 経由で行う方針を明文化する
+
+### やったこと
+- `PLAN.md` に Phase 10.9「online parallel stop-intent queue と固定 WAV 停止応答」を追記した
+- 既存ルール即停止を維持しつつ、embedding / LLM classifier を PostgreSQL queue 経由の online background worker として扱う方針を明文化した
+- LLM 推論は最大1同時、classifier result は stale check 付き `SessionEvent` として `TomoroSession` に戻す方針にした
+- 高信頼 stop が間に合った場合は、TTS / reply が進んでいても固定 WAV「はい、止めます」で会話停止を完了する方針にした
+
+### 詰まったこと・解決したこと
+- queue を新しい外部基盤にせず、PostgreSQL の observation / signal table と `FOR UPDATE SKIP LOCKED` で軽量に始める方針にした
+- 固定 WAV は通常会話ログではなく control response として扱い、回り込みは既存 playback echo protection に乗せる方針にした
+
+### 検証
+- `git diff --check -- PLAN.md LOG.md`
+
+### 次のセッションでやること
+- Phase 10.9 実装時は DDL / store / worker concurrency test から始め、`TomoroSession` へは stale-safe な advisory event と fixed WAV command を最後に接続する
+
 ## 2026-05-25 セッション22
 
 ### やること（開始時に書く）
