@@ -1422,3 +1422,8 @@ warm 合成5回は平均102.4ms、min 98.9ms、max 112.8ms だった。
 `coremltools` の prediction 時に CoreML compiler が `weight.bin` を見失って落ちた。
 実ファイルとして通常ディレクトリへコピーすると動くため、`_tools/bench_supertonic_coreml_tts.py` は
 `shutil.copytree(..., symlinks=False)` で `logs/supertonic-coreml-smoke/model` に展開してから実行する。
+
+FluidInference の CoreML repo には `M1` しか voice style が無かった。
+女性声の評価用に `Reza2kn/supertonic-3-coreml` の `F1`-`F5` style JSON を使うと、既存 CoreML package と互換で動いた。
+日本語 smoke では F1 112.6ms、F2 111.3ms、F3 148.9ms、F4 108.1ms、F5 113.9ms。
+音質評価用 WAV は `logs/supertonic-coreml-smoke/female/F*/ja-F*-run1.wav` に保存した。

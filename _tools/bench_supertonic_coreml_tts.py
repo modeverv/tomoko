@@ -12,9 +12,10 @@ from types import ModuleType
 
 import numpy as np
 import soundfile as sf
-from huggingface_hub import snapshot_download
+from huggingface_hub import hf_hub_download, snapshot_download
 
 REPO_ID = "FluidInference/supertonic-3-coreml"
+VOICE_STYLE_REPO_ID = "Reza2kn/supertonic-3-coreml"
 DEFAULT_TEXT = "こんにちは、トモコです。今日は少しだけ話してみます。"
 
 
@@ -69,6 +70,7 @@ def main() -> None:
     load_ms = (time.perf_counter() - load_start) * 1000
 
     voice_style_path = model_dir / "voice_styles" / f"{args.voice_style}.json"
+    ensure_voice_style(args.voice_style, voice_style_path)
     runs: list[SupertonicRun] = []
     for index in range(args.runs):
         start = time.perf_counter()
@@ -131,6 +133,16 @@ def prepare_model_dir(model_dir: Path) -> Path:
     model_dir.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(snapshot, model_dir, symlinks=False, dirs_exist_ok=True)
     return model_dir
+
+
+def ensure_voice_style(voice_style: str, path: Path) -> None:
+    if path.exists():
+        return
+    source = Path(
+        hf_hub_download(VOICE_STYLE_REPO_ID, f"voice_styles/{voice_style}.json")
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, path)
 
 
 def load_infer_module(path: Path) -> ModuleType:

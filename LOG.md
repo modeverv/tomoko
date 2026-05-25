@@ -4,6 +4,26 @@
 
 ---
 
+## 2026-05-25 セッション13
+
+### やること（開始時に書く）
+- Supertonic-3 CoreML の女性 voice style で日本語 smoke を実行し、音質評価用 WAV を出力する
+- `F1`-`F5` の候補を同じ日本語文で生成し、latency と保存先を記録する
+- smoke tool から女性 voice style を再現可能に使えるようにする
+
+### やったこと
+- `FluidInference/supertonic-3-coreml` には `voice_styles/M1.json` しか無かったため、`F1`-`F5` を含む `Reza2kn/supertonic-3-coreml` から女性 voice style JSON を取得した
+- 既存 FluidInference CoreML model と `F1`-`F5` style JSON の互換性を確認し、全 voice で日本語 WAV を出力した
+- `_tools/bench_supertonic_coreml_tts.py` に、missing voice style を `Reza2kn/supertonic-3-coreml` から補完する処理を追加した
+- `tests/unit/test_supertonic_coreml_smoke_tool.py` に既存 voice style を再ダウンロードしない確認を追加した
+
+### 詰まったこと・解決したこと
+- 男性 `M1` は音質評価に不適切
+  → `F1`-`F5` の女性 voice style を使い、`logs/supertonic-coreml-smoke/female/<voice>/ja-<voice>-run1.wav` を評価用サンプルにした
+
+### 次のセッションでやること
+- 人間が `F1`-`F5` の音質を聞き、許容 voice があれば `TTSBackend` 組み込み候補に進める
+
 ## 2026-05-25 セッション12
 
 ### やること（開始時に書く）
