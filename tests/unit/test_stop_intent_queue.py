@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -41,8 +42,22 @@ class SlowJSONBackend(InferenceBackend):
         yield '{"predicted_kind":"soft_stop","confidence":0.93,"reason":"wait"}'
 
 
+class FailingJSONBackend(InferenceBackend):
+    name = "failing_json"
+    privacy_allowed = True
+
+    async def chat_stream(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, str]],
+    ) -> AsyncGenerator[str, None]:
+        del system_prompt, messages
+        raise RuntimeError("lm studio 500")
+        yield ""
+
+
 class FakeRouter:
-    def __init__(self, backend: SlowJSONBackend) -> None:
+    def __init__(self, backend: Any) -> None:
         self.backend = backend
 
     async def select(self, role: str, preference: str):
@@ -114,6 +129,41 @@ async def test_worker_records_signals_and_emits_advisory_event() -> None:
     assert any(
         event.type == "stop_intent_classified"
         and event.payload["observation_id"] == str(observation.id)
+        for event in events
+    )
+
+
+@pytest.mark.unit
+async def test_worker_completes_observation_when_optional_llm_classifier_fails() -> None:
+    store = InMemoryStopIntentStore()
+    observation = _observation("一旦止めます ストップをします")
+    await store.insert_observation(observation)
+    events: list[SessionEvent] = []
+
+    async def callback(event: SessionEvent) -> None:
+        events.append(event)
+
+    worker = StopIntentClassifierWorker(
+        store=store,
+        llm_classifier=LLMStopIntentClassifier(FakeRouter(FailingJSONBackend())),  # type: ignore[arg-type]
+        result_callback=callback,
+    )
+
+    assert await worker.process_once() is True
+
+    assert store.observations[observation.id].status == "completed"
+    assert store.observations[observation.id].error is None
+    signals_by_method = {signal.method: signal for signal in store.signals}
+    assert set(signals_by_method) == {"rule", "embedding", "llm"}
+    assert signals_by_method["rule"].predicted_kind == "soft_stop"
+    assert signals_by_method["llm"].predicted_kind == "none"
+    assert signals_by_method["llm"].confidence == 0.0
+    assert signals_by_method["llm"].raw_reason_json["degraded"] is True
+    assert "lm studio 500" in signals_by_method["llm"].raw_reason_json["error"]
+    assert any(
+        event.type == "stop_intent_classified"
+        and event.payload["method"] == "rule"
+        and event.payload["predicted_kind"] == "soft_stop"
         for event in events
     )
 

@@ -1778,3 +1778,11 @@ Tomoko の動作・遅延・モデルについての発話には開発中のTomo
 `system_prompt` / `messages` / `device_id` / `speaker` を含める。
 これにより `logs/server-debug.log` 上で transcript filter / participation / context build / LLM prompt / reply_text を
 同じ時系列で追えるようにする。
+
+### 確定した判断: stop-intent LLM classifier は optional degraded signal として扱う
+stop-intent worker では、rule / embedding の shadow signal を先に保存し、LLM classifier の失敗だけで
+observation 全体を `error` にしない。
+
+LM Studio 500 など LLM 側の一時失敗が起きた場合は、`method="llm"` / `predicted_kind="none"` /
+`confidence=0.0` / `raw_reason_json.degraded=true` の signal を保存し、observation は `completed` にする。
+これにより deterministic な stop / withdraw 候補や embedding signal が、補助 LLM の失敗に巻き込まれない。

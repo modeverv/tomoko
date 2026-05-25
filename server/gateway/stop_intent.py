@@ -402,16 +402,18 @@ class StopIntentClassifierWorker:
             return False
         started_at = time.perf_counter()
         try:
-            signals = [
+            signals: list[StopIntentSignal] = []
+            for signal in [
                 await self.rule_classifier.classify(observation),
                 await self.embedding_classifier.classify(observation),
-            ]
+            ]:
+                await self._record_and_emit_signal(observation, signal)
+                signals.append(signal)
             if self.llm_classifier is not None:
                 async with self._llm_semaphore:
-                    signals.append(await self.llm_classifier.classify(observation))
-            for signal in signals:
-                await self.store.record_signal(signal)
-                await self._emit_advisory_result(observation, signal)
+                    llm_signal = await self._classify_llm_optional(observation)
+                await self._record_and_emit_signal(observation, llm_signal)
+                signals.append(llm_signal)
             await self.store.mark_completed(observation.id)
             elapsed_ms = (time.perf_counter() - started_at) * 1000
             self._record_latency(elapsed_ms)
@@ -438,6 +440,43 @@ class StopIntentClassifierWorker:
                 self._error_count,
             )
             return True
+
+    async def _record_and_emit_signal(
+        self,
+        observation: StopIntentObservation,
+        signal: StopIntentSignal,
+    ) -> None:
+        await self.store.record_signal(signal)
+        await self._emit_advisory_result(observation, signal)
+
+    async def _classify_llm_optional(
+        self,
+        observation: StopIntentObservation,
+    ) -> StopIntentSignal:
+        assert self.llm_classifier is not None
+        started_at = time.perf_counter()
+        try:
+            return await self.llm_classifier.classify(observation)
+        except Exception as exc:
+            self._error_count += 1
+            logger.warning(
+                "stop-intent llm classifier degraded id=%s error=%s error_count=%s",
+                observation.id,
+                exc,
+                self._error_count,
+            )
+            return StopIntentSignal(
+                observation_id=observation.id,
+                method="llm",
+                predicted_kind="none",
+                confidence=0.0,
+                latency_ms=(time.perf_counter() - started_at) * 1000,
+                model=self.llm_classifier.model_name,
+                raw_reason_json={
+                    "degraded": True,
+                    "error": str(exc)[:300],
+                },
+            )
 
     async def _emit_advisory_result(
         self,

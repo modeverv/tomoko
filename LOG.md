@@ -38,6 +38,31 @@
 
 ---
 
+## 2026-05-25 セッション40
+
+### やること（開始時に書く）
+- stop-intent worker で rule / embedding signal を先に保存し、LLM classifier 失敗だけで observation 全体を error にしない
+- LM Studio 500 などの LLM 側一時失敗を degraded optional として扱う unit test を追加する
+
+### やったこと
+- `StopIntentClassifierWorker` が rule / embedding signal を保存・emit してから optional LLM classifier を実行するようにした
+- LLM classifier が例外を出した場合、`method="llm"` / `predicted_kind="none"` / `confidence=0.0` の degraded signal を保存し、observation は `completed` にするようにした
+- LLM 失敗時にも rule / embedding / degraded LLM signal が残る unit test を追加した
+
+### 詰まったこと・解決したこと
+- LM Studio 500 は stop-intent の補助 LLM だけの失敗だったため、deterministic な rule signal を巻き込まない処理順へ変更した
+
+### 検証
+- `mise exec -- uv run pytest -m unit tests/unit/test_stop_intent_queue.py`
+  - 5 passed
+- `mise exec -- uv run ruff check server/gateway/stop_intent.py tests/unit/test_stop_intent_queue.py`
+  - pass
+- `mise exec -- uv run pytest -m unit`
+  - 300 passed, 17 deselected
+
+### 次のセッションでやること
+- 実 `make server-debug` で LM Studio 500 が再発した時、`stop_intent_observations.status=completed` と degraded LLM signal が残ることを DB で確認する
+
 ## 2026-05-25 セッション35
 
 ### やること（開始時に書く）
