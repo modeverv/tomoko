@@ -1406,3 +1406,8 @@ WhisperKit serve は平均215.9msでほぼ横ばいだった。
 
 一方で短い LFM MLX conversation load では MLX Whisper は平均112.8msで、CoreML 側との差はまだ大きかった。
 CoreML STT の採用判断は単体 latency ではなく、実会話に近い TTS/LLM 同時負荷時の tail latency で見る。
+
+30 runs の tail latency 実測では、MLX Whisper は idle p95 106.3ms、`kokoro_mlx` TTS 同時 p95 165.2ms、
+`kokoro_mlx` + LFM MLX 同時 p95 165.7ms だった。
+WhisperKit serve CoreML は同条件で p95 222.0ms / 216.9ms / 216.0ms と安定していた。
+この測定では、CoreML は固定 200ms レーンとして設計しやすい一方、速度面の default はまだ MLX STT が優勢。

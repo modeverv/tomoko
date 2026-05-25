@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-05-25 セッション11
+
+### やること（開始時に書く）
+- MLX Whisper と WhisperKit serve CoreML の STT latency を 30 runs で実測する
+- idle / `kokoro_mlx` TTS 同時 / `kokoro_mlx` + LFM MLX 同時の p50 / p95 / max を比較する
+- 平均ではなく tail latency を見て、CoreML STT を固定 200ms 枠として扱えるか確認する
+
+### やったこと
+- `_tools/bench_stt_backends.py` を `--runs 30` で3条件実行した
+- idle 結果を `logs/stt-mlx-coreml-runs30-idle.json` に保存した
+- `kokoro_mlx` TTS 同時負荷結果を `logs/stt-mlx-coreml-runs30-tts.json` に保存した
+- `kokoro_mlx` + LFM MLX 同時負荷結果を `logs/stt-mlx-coreml-runs30-tts-llm.json` に保存した
+- JSON の raw runs から avg / p50 / p95 / max を集計した
+
+### 詰まったこと・解決したこと
+- 前回3 runs では `kokoro_mlx` 同時負荷時に MLX Whisper max 300.5ms が出たが、30 runs では p95 165.2ms / max 167.8ms で再現しなかった
+- WhisperKit serve CoreML は全条件で p95 216-222ms 程度に収まり、固定 200ms レーンとしては安定している
+- ただし今回の30 runsでは、同時負荷時でも MLX Whisper の p95 が CoreML より速く、default を CoreML に変える理由はまだ弱い
+
+### 次のセッションでやること
+- さらに判断する場合は、より長い TTS 文、実録音 WAV、barge-in 中の STT など、実会話に近い負荷で再測定する
+
 ## 2026-05-25 セッション10
 
 ### やること（開始時に書く）
