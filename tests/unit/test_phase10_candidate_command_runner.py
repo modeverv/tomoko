@@ -9,7 +9,7 @@ from server.edge.pipeline.vad import VADProcessor
 from server.gateway.candidate_commands import CandidateCommandRunner
 from server.session import TomoroSession
 from server.shared.candidate import ArrivalContextSnapshot, InMemoryCandidateStore
-from server.shared.models import SessionEvent
+from server.shared.models import ConnectedOutputState, SessionEvent
 
 
 class QuietVAD:
@@ -40,6 +40,7 @@ def _session(
         send_event=events.append,
         send_audio=audio_chunks.append if audio_chunks is not None else None,
         conversation_session_store=conversation_session_store,
+        connected_output_state=ConnectedOutputState.single_client(device_id="desk"),
     )
 
 

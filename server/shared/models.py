@@ -32,6 +32,7 @@ PersonaVersionStatus = Literal["completed", "error"]
 ContextDepth = Literal["fast", "normal", "deep", "reflective"]
 VadState = Literal["idle", "listening", "processing"]
 PlaybackState = Literal["idle", "speaking", "client_playing", "echo_grace"]
+ConnectionRole = Literal["browser", "edge", "monitor"]
 
 
 @dataclass
@@ -86,6 +87,50 @@ class PlaybackTelemetry:
 
 
 @dataclass(frozen=True)
+class ClientConnection:
+    connection_id: str
+    device_id: str
+    role: ConnectionRole
+    can_receive_audio: bool
+    can_receive_display: bool
+    connected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    last_seen_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(frozen=True)
+class ConnectedOutputState:
+    active_device_id: str | None = None
+    audio_target_available: bool = False
+    display_target_available: bool = False
+    connected_device_count: int = 0
+    connected_connection_count: int = 0
+    playback_state_by_device: dict[str, PlaybackState] = field(default_factory=dict)
+    last_presence_at: datetime | None = None
+
+    @classmethod
+    def empty(cls) -> ConnectedOutputState:
+        return cls()
+
+    @classmethod
+    def single_client(
+        cls,
+        *,
+        device_id: str,
+        can_receive_audio: bool = True,
+        can_receive_display: bool = True,
+        last_presence_at: datetime | None = None,
+    ) -> ConnectedOutputState:
+        return cls(
+            active_device_id=device_id,
+            audio_target_available=can_receive_audio,
+            display_target_available=can_receive_display,
+            connected_device_count=1,
+            connected_connection_count=1,
+            last_presence_at=last_presence_at or datetime.now(UTC),
+        )
+
+
+@dataclass(frozen=True)
 class TomoroRuntimeState:
     attention_mode: AttentionMode
     vad_state: VadState
@@ -95,6 +140,7 @@ class TomoroRuntimeState:
     speaking_turn_id: str | None
     context_build_id: UUID | None
     last_start_reason: StartReason | None = None
+    output_state: ConnectedOutputState = field(default_factory=ConnectedOutputState.empty)
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 

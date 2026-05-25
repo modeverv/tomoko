@@ -8,7 +8,7 @@ import pytest
 from server.edge.pipeline.vad import VADProcessor
 from server.session import TomoroSession
 from server.shared.candidate import ArrivalCandidate, ArrivalContextSnapshot, UtteranceCandidate
-from server.shared.models import SessionEvent
+from server.shared.models import ConnectedOutputState, SessionEvent
 
 
 class QuietVAD:
@@ -21,6 +21,7 @@ def _session() -> TomoroSession:
     return TomoroSession(
         vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
         send_event=lambda event: None,
+        connected_output_state=ConnectedOutputState.single_client(device_id="desk"),
     )
 
 
@@ -84,6 +85,20 @@ async def test_idle_timer_fetches_initiative_candidate_only_when_speakable() -> 
 
     assert blocked.commands == []
     assert blocked.emissions[0].payload["reason"] == "not_speakable"
+
+
+@pytest.mark.unit
+async def test_idle_timer_does_not_fetch_without_connected_audio_target() -> None:
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
+        send_event=lambda event: None,
+    )
+
+    result = await session.post_event(SessionEvent(type="idle_timer_elapsed"))
+
+    assert result.commands == []
+    assert result.emissions[0].payload["reason"] == "not_speakable"
+    assert result.emissions[0].payload["audio_target_available"] is False
 
 
 @pytest.mark.unit

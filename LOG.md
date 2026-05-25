@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-05-25 セッション19
+
+### やること（開始時に書く）
+- 複数クライアント同時対応を見据え、`TomoroSession` が WebSocket 実体ではなく接続状況の抽象 state を持てるようにする
+- 接続がない時に initiative / arrival の online 発話が始まらない hard gate を追加する
+- `ARCHITECTURE.md` / `PLAN.md` / `MEMORY.md` に接続状態と output target の方針を追記する
+
+### やったこと
+- `ClientConnection` / `ConnectedOutputState` DTO と `ClientConnectionRegistry` を追加した
+- `TomoroRuntimeState.output_state` と `connected_output_state_changed` event を追加し、Session が接続 snapshot を観測できるようにした
+- initiative / arrival の candidate fetch gate に `audio_target_available` を追加した
+- `/ws` / `/edge/ws` で接続時の output state を Session に渡すようにした
+- `ARCHITECTURE.md` / `PLAN.md` / `MEMORY.md` に接続状態と output target の方針を追記した
+
+### 詰まったこと・解決したこと
+- `TomoroSession` に WebSocket object や送信先一覧を持たせる案は否定し、adapter / gateway 側の registry が facts だけを集約する形にした
+- 現時点では WebSocket 接続ごとに Session を作る構造を維持し、long-lived central Session 化は別 Phase に残した
+
+### 検証
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+
+### 次のセッションでやること
+- long-lived central Session へ進む場合は、registry snapshot を既存 Session へ継続的に流す drain loop と output routing policy を別 Phase として切る
+
 ## 2026-05-25 セッション18
 
 ### やること（開始時に書く）

@@ -274,6 +274,40 @@ desire level を渡して構造化判断を返させる。
 adapter / command runner が `SessionEvent` として戻し、
 `TomoroSession` が現在 state と照合して stale / not_speakable を決定的に捨てる。
 
+### 接続状態と output target
+
+複数ブラウザ / 複数 edge / monitor UI を扱う場合でも、`TomoroSession` は WebSocket object を所有しない。
+接続管理は gateway / adapter 側の `ClientConnectionRegistry` が担当し、
+`TomoroSession` には `ConnectedOutputState` という抽象 snapshot だけを渡す。
+
+```
+ClientConnectionRegistry:
+  connection_id
+  device_id
+  role: browser / edge / monitor
+  can_receive_audio
+  can_receive_display
+  connected_at
+  last_seen_at
+  playback_state_by_device
+
+ConnectedOutputState:
+  active_device_id
+  audio_target_available
+  display_target_available
+  connected_device_count
+  connected_connection_count
+  last_presence_at
+```
+
+`TomoroSession` が知ってよいのは「音声を出せる target があるか」「表示 target があるか」
+「今どの device が active か」までである。
+WebSocket の送信先リスト、再接続処理、connection id の lifecycle は adapter に閉じ込める。
+
+この state は自発発話の hard gate に使う。
+`audio_target_available=False` の時は、candidate が存在しても initiative / arrival の発話を開始しない。
+候補は background 側で作り続けてよいが、出力先がない状態で online runtime が話し始めてはいけない。
+
 ---
 
 ## 設定ベースの責務切り替え

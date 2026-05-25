@@ -33,6 +33,7 @@ from server.shared.models import (
     AudioChunkOut,
     BargeInContext,
     BargeInDecision,
+    ConnectedOutputState,
     ContextBuildPolicy,
     ContextDepth,
     ConversationLogStatus,
@@ -85,6 +86,7 @@ class TomoroSession:
         speech_normalizer: ReplySpeechNormalizer | None = None,
         barge_in_detector: BargeInDetector | None = None,
         transcript_filter: TranscriptFilter | None = None,
+        connected_output_state: ConnectedOutputState | None = None,
         engaged_timeout_ms: int = 8000,
         cooldown_timeout_ms: int = 8000,
         playback_echo_grace_ms: int = 1200,
@@ -138,6 +140,7 @@ class TomoroSession:
         self._active_initiative_request_id: str | None = None
         self._active_arrival_request_id: str | None = None
         self._last_start_reason: StartReason | None = None
+        self._connected_output_state = connected_output_state or ConnectedOutputState.empty()
 
     @property
     def _playback_echo_grace_ms(self) -> int:
@@ -168,6 +171,7 @@ class TomoroSession:
             speaking_turn_id=self.audio_turns.speaking_turn_id,
             context_build_id=self._context_build_id,
             last_start_reason=self._last_start_reason,
+            output_state=self._connected_output_state,
         )
 
     async def post_event(self, event: SessionEvent) -> TransitionResult:
@@ -217,6 +221,8 @@ class TomoroSession:
                     )
                 ],
             )
+        if event.type == "connected_output_state_changed":
+            return self._reduce_connected_output_state_changed(event)
         if event.type == "transcript_finalized":
             return self._reduce_transcript_finalized(event)
         if event.type == "idle_timer_elapsed":
@@ -244,6 +250,9 @@ class TomoroSession:
                     "attention_mode": self.attention_mode,
                     "vad_state": self.state,
                     "playback_state": self.audio_turns.playback_state,
+                    "audio_target_available": (
+                        self._connected_output_state.audio_target_available
+                    ),
                 },
             )
         return self._transition_result(
@@ -271,6 +280,9 @@ class TomoroSession:
                     "attention_mode": self.attention_mode,
                     "vad_state": self.state,
                     "playback_state": self.audio_turns.playback_state,
+                    "audio_target_available": (
+                        self._connected_output_state.audio_target_available
+                    ),
                 },
             )
         return self._transition_result(
@@ -460,6 +472,29 @@ class TomoroSession:
             self.attention_mode == "ambient"
             and self.state == "idle"
             and self.audio_turns.playback_state == "idle"
+            and self._connected_output_state.audio_target_available
+        )
+
+    def _reduce_connected_output_state_changed(
+        self,
+        event: SessionEvent,
+    ) -> TransitionResult:
+        output_state = event.payload.get("output_state")
+        if not isinstance(output_state, ConnectedOutputState):
+            return self._transition_result(
+                "connected_output_state_ignored",
+                payload={"reason": "invalid_output_state"},
+            )
+        self._connected_output_state = output_state
+        return self._transition_result(
+            "connected_output_state_changed",
+            payload={
+                "active_device_id": output_state.active_device_id,
+                "audio_target_available": output_state.audio_target_available,
+                "display_target_available": output_state.display_target_available,
+                "connected_device_count": output_state.connected_device_count,
+                "connected_connection_count": output_state.connected_connection_count,
+            },
         )
 
     def _new_candidate_request_id(self, kind: Literal["initiative", "arrival"]) -> str:

@@ -15,7 +15,7 @@ from server.shared.candidate import (
     ArrivalContextSnapshot,
     UtteranceCandidate,
 )
-from server.shared.models import SessionEvent, Transcript, TransitionResult
+from server.shared.models import ConnectedOutputState, SessionEvent, Transcript, TransitionResult
 
 
 class QuietVAD:
@@ -28,6 +28,7 @@ def _session() -> TomoroSession:
     return TomoroSession(
         vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
         send_event=lambda event: None,
+        connected_output_state=ConnectedOutputState.single_client(device_id="desk"),
     )
 
 
@@ -36,6 +37,7 @@ def _session_with_participation() -> TomoroSession:
         vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
         send_event=lambda event: None,
         participation_judge=WakeWordJudge(),
+        connected_output_state=ConnectedOutputState.single_client(device_id="desk"),
     )
 
 
@@ -127,6 +129,26 @@ async def test_candidate_fetch_command_carries_request_id_for_stale_results() ->
     assert first.commands[0].payload["request_id"] != second.commands[0].payload[
         "request_id"
     ]
+
+
+@pytest.mark.unit
+async def test_connected_output_state_updates_runtime_snapshot() -> None:
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
+        send_event=lambda event: None,
+    )
+    output_state = ConnectedOutputState.single_client(device_id="kitchen")
+
+    result = await session.post_event(
+        SessionEvent(
+            type="connected_output_state_changed",
+            payload={"output_state": output_state},
+        )
+    )
+
+    assert result.state.output_state == output_state
+    assert session.get_now_state().output_state.active_device_id == "kitchen"
+    assert result.emissions[0].payload["audio_target_available"] is True
 
 
 @pytest.mark.unit

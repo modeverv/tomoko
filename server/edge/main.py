@@ -8,6 +8,7 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -23,6 +24,7 @@ from server.edge.pipeline.stt_filter import TranscriptFilter
 from server.edge.pipeline.vad import create_vad_processor
 from server.edge.remote import EdgeRemoteAudioSession, EdgeReplyPlayer
 from server.gateway.candidate_commands import CandidateCommandRunner
+from server.gateway.connections import ClientConnectionRegistry
 from server.gateway.dedup import DuplicateSpeechFilter, PostgresRecentTranscriptReader
 from server.gateway.edge_adapter import GatewayEdgeProtocolHandler
 from server.gateway.presence import PresenceManager
@@ -52,7 +54,7 @@ from server.shared.memory import (
     PostgresConversationMemoryStore,
     PostgresConversationSessionSummaryStore,
 )
-from server.shared.models import PlaybackTelemetry, SessionEvent
+from server.shared.models import ConnectedOutputState, PlaybackTelemetry, SessionEvent
 from server.shared.persona import PostgresPersonaSnapshotStore
 from server.shared.presence import PostgresPresenceStore
 
@@ -111,6 +113,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Tomoko Edge", lifespan=lifespan)
 app.mount("/client", StaticFiles(directory=CLIENT_DIR), name="client")
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+_connection_registry = ClientConnectionRegistry()
 
 
 @app.get("/")
@@ -203,6 +206,7 @@ async def websocket_session(websocket: WebSocket) -> None:
 async def _central_browser_session(websocket: WebSocket) -> None:
     await websocket.accept()
     chunk_count = 0
+    connection_id = f"browser:{uuid4()}"
 
     async def send_event(event: dict[str, str]) -> None:
         await websocket.send_json(event)
@@ -287,8 +291,16 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         "barge_in_detector_factory",
         BargeInDetector,
     )
+    vad_processor = vad_processor_factory()
+    output_state = _connection_registry.register(
+        connection_id=connection_id,
+        device_id=vad_processor.device_id,
+        role="browser",
+        can_receive_audio=True,
+        can_receive_display=True,
+    )
     session = TomoroSession(
-        vad_processor=vad_processor_factory(),
+        vad_processor=vad_processor,
         send_event=send_event,
         send_audio=send_audio,
         transcriber=transcriber_factory(),
@@ -315,6 +327,7 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         ),
         barge_in_detector=barge_in_detector_factory(),
         transcript_filter=TranscriptFilter(),
+        connected_output_state=output_state,
     )
     candidate_runner = CandidateCommandRunner(
         session=session,
@@ -350,6 +363,7 @@ async def _central_browser_session(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         logger.info("phase4 websocket disconnected after %s chunks", chunk_count)
     finally:
+        _connection_registry.unregister(connection_id)
         initiative_task.cancel()
         with suppress(asyncio.CancelledError):
             await initiative_task
@@ -359,6 +373,7 @@ async def _central_browser_session(websocket: WebSocket) -> None:
 async def edge_gateway_session(websocket: WebSocket) -> None:
     await websocket.accept()
     device_id = "unknown"
+    connection_id = f"edge:{uuid4()}"
 
     async def send_event(event: dict[str, str]) -> None:
         await websocket.send_json(event)
@@ -394,6 +409,19 @@ async def edge_gateway_session(websocket: WebSocket) -> None:
                 if isinstance(event, EdgeHelloEvent):
                     device_id = event.device_id
                     candidate_runner.device_id = device_id
+                    output_state = _connection_registry.register(
+                        connection_id=connection_id,
+                        device_id=device_id,
+                        role="edge",
+                        can_receive_audio=True,
+                        can_receive_display=True,
+                    )
+                    await session.post_event(
+                        SessionEvent(
+                            type="connected_output_state_changed",
+                            payload={"output_state": output_state},
+                        )
+                    )
                     await candidate_runner.run_result(
                         await session.post_event(
                             SessionEvent(
@@ -408,6 +436,8 @@ async def edge_gateway_session(websocket: WebSocket) -> None:
                 raise WebSocketDisconnect()
     except WebSocketDisconnect:
         logger.info("edge gateway websocket disconnected device_id=%s", device_id)
+    finally:
+        _connection_registry.unregister(connection_id)
 
 
 async def _edge_browser_session(websocket: WebSocket, config: NodeConfig) -> None:
@@ -500,7 +530,10 @@ async def _forward_edge_playback_event(
     )
 
 
-def _create_gateway_text_session(send_event) -> TomoroSession:
+def _create_gateway_text_session(
+    send_event,
+    connected_output_state: ConnectedOutputState | None = None,
+) -> TomoroSession:
     return TomoroSession(
         vad_processor=_create_default_vad_processor(),
         send_event=send_event,
@@ -521,6 +554,7 @@ def _create_gateway_text_session(send_event) -> TomoroSession:
         speech_normalizer=None,
         barge_in_detector=BargeInDetector(),
         transcript_filter=TranscriptFilter(),
+        connected_output_state=connected_output_state,
     )
 
 

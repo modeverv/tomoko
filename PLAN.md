@@ -1622,6 +1622,69 @@ Phase 10.5 は、外部 EventBus や event sourcing へ広げず、`TomoroSessio
 
 ---
 
+## Phase 10.5.1: 接続状態と output target snapshot
+
+上の Phase 10.5 は `TomoroSession` 内部の event queue / stale result / start reason を固めた。
+複数クライアント同時対応では、次に「今音声を出せる接続があるか」を state として扱う必要がある。
+
+ただし `TomoroSession` が WebSocket object や接続一覧そのものを持つことは否定する。
+接続管理は adapter / gateway 側に置き、Session には抽象化された output state だけを渡す。
+
+- [x] `ClientConnection` DTO を追加する
+  - `connection_id`
+  - `device_id`
+  - `role`: `browser` / `edge` / `monitor`
+  - `can_receive_audio`
+  - `can_receive_display`
+  - `connected_at`
+  - `last_seen_at`
+- [x] `ConnectedOutputState` DTO を追加する
+  - `active_device_id`
+  - `audio_target_available`
+  - `display_target_available`
+  - `connected_device_count`
+  - `connected_connection_count`
+  - `playback_state_by_device`
+  - `last_presence_at`
+- [x] `ClientConnectionRegistry` を追加する
+  - WebSocket object は保持しない
+  - 接続 facts だけから `ConnectedOutputState` を返す
+  - 複数 device / 複数 connection を集約する
+- [x] `TomoroRuntimeState` に `output_state` を追加する
+- [x] `TomoroSession` に `connected_output_state_changed` event を追加する
+  - adapter から snapshot を渡す
+  - state snapshot と emission で観測できるようにする
+- [x] initiative / arrival の hard gate に `audio_target_available` を追加する
+  - 接続がない場合、candidate があっても online 発話を開始しない
+- [x] `/ws` / `/edge/ws` の接続時に output state を Session へ渡す
+  - 中央 browser は `browser` role
+  - remote edge は hello 後に `edge` role として登録する
+
+**テスト観点**:
+- 接続がない `TomoroSession` は `idle_timer_elapsed` で candidate fetch command を返さない
+- 接続 snapshot が入ると `TomoroRuntimeState.output_state` に反映される
+- registry は WebSocket object なしで connected count / active device / audio availability を返す
+- audio を受けられない monitor だけの接続では `audio_target_available=False` になる
+
+**完了条件**:
+- 複数クライアント対応のための接続 state 境界ができている
+- WebSocket object は `TomoroSession` に入っていない
+- output target がない時に自発発話が始まらない
+- `pytest -m unit` が通る
+
+### 2026-05-25 実装結果
+
+Phase 10.5.1 は、長寿命 central runtime へ進む前の最小足場として実装した。
+
+- `server/shared/models.py` に `ClientConnection` / `ConnectedOutputState` を追加した
+- `server/gateway/connections.py` に `ClientConnectionRegistry` を追加した
+- `TomoroRuntimeState.output_state` と `TomoroSession.connected_output_state_changed` event を追加した
+- `_can_start_candidate_reply()` は `audio_target_available` が true の時だけ通るようにした
+- `/ws` では接続ごとに browser output state を Session へ渡す
+- `/edge/ws` では `hello` 後に edge output state を Session へ反映する
+
+---
+
 ## Phase 10.6: TomokoDesire / Speakability model
 
 上の Phase 10 / 10.5 は、候補消費の入口と runtime priority policy を固定する足場として維持する。

@@ -1544,3 +1544,25 @@ score が中間帯の時だけ、candidate text / reason / recent feedback / pre
 
 LLM judge result も直接 state を変更せず、`SessionEvent` として `TomoroSession` に戻す。
 到着時点で人間発話や attention change と競合していれば stale / not_speakable として捨てる。
+
+### 確定した判断: TomoroSession は接続状況を抽象 state として持つ
+複数クライアント同時対応では、`TomoroSession` が「今どこへ音声を出せるか」を知る必要がある。
+ただし WebSocket object や接続一覧そのものを `TomoroSession` に持たせるのは否定する。
+
+接続管理は adapter / gateway 側の `ClientConnectionRegistry` が担当し、
+`TomoroSession` は `ConnectedOutputState` snapshot だけを持つ。
+
+- `ClientConnection`: connection id / device id / role / audio-display capability / last seen
+- `ConnectedOutputState`: active device / audio target availability / display target availability / connected counts / playback state by device
+
+`audio_target_available=False` の時は、initiative / arrival の candidate があっても online 発話を開始しない。
+これは desire や candidate priority とは別の hard gate として扱う。
+候補生成は background thinker が続けてよいが、出力先がない状態で runtime が話し始めてはいけない。
+
+### 確定した判断: 現時点では long-lived central session へは進めない
+接続状態 DTO と registry は、将来の long-lived central `TomoroSession` に向けた足場である。
+今回の実装では既存の「WebSocket 接続ごとに Session を作る」構造を維持する。
+
+このため、接続がない時に `/ws` 側の idle loop が動かない現状はそのまま残る。
+ただし Session runtime 自体は、接続がない output state では自発発話を始めない契約になった。
+central に 1 つの長寿命 Session を置き、複数 client / edge を registry 経由でぶら下げる変更は別 Phase とする。
