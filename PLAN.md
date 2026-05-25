@@ -1909,6 +1909,139 @@ Phase 10.6 は、オンライン経路へ重い推論を増やさず、candidate
 - `tests/integration/test_phase106_initiative_feedback_db.py` を追加し、PostgreSQL への feedback round-trip を固定した
 - ローカル PostgreSQL に `011_initiative_feedback.sql` を適用済み
 
+## Phase 10.7: candidate runtime gate の所有者を TomoroSession に集約する
+
+上の Phase 10.6 で `CandidateSpeakPolicy` が `TomoroRuntimeState` を受け取り runtime hard gate も見る形にした判断は補正する。
+desire / speakability / personality は「話したい強さ」と「邪魔になりにくさ」の soft score を作る層であり、
+runtime の最終 gate ではない。
+
+Phase 10.7 では、candidate 発話の authoritative gate を `TomoroSession` に集約する。
+`CandidateSpeakPolicy` / `CandidateCommandRunner` / `server/edge/main.py` などの外側は、
+候補取得、policy snapshot 作成、command 実行、event 変換に徹し、
+`attention_mode` / VAD state / playback state / output availability / stale request による発話可否判断を持たない。
+
+### Phase 10.7.0: gate 所有ルールを固定する
+
+- [ ] `TomoroSession._can_start_candidate_reply()` を candidate 発話の唯一の runtime hard gate として扱う
+- [ ] `TomoroSession` の gate reason を trace / emission payload に残せるようにする
+  - `attention_not_ambient`
+  - `vad_not_idle`
+  - `playback_not_idle`
+  - `audio_target_unavailable`
+  - `stale_result`
+- [ ] stale result check は `TomoroSession` に残す
+- [ ] `CandidateSpeakPolicy` は runtime hard gate reason を返さない
+- [ ] runner / main 側にある発話可否 gate は、正しさのための判断としては削除する
+  - 将来 DB fetch 削減の早期 return を入れる場合も、authoritative gate ではないことをコメントと test 名で明示する
+
+### Phase 10.7.1: CandidateSpeakPolicy を soft decision に寄せる
+
+- [ ] `CandidateSpeakPolicy.evaluate()` から `TomoroRuntimeState` 依存を外す
+- [ ] policy の入力を以下に限定する
+  - `TomokoDesireState`
+  - `SpeakabilityState`
+  - `PersonalityDynamics`
+  - `CandidateSpeakMetadata`
+  - `now`
+- [ ] policy が扱う candidate 自体の条件は metadata に閉じる
+  - text readiness
+  - expiry
+  - feedback penalty / boost
+  - urgency / intrusion risk / emotional need
+- [ ] policy が `speak` を返しても、実際に発話するかは必ず `TomoroSession` が再判定する
+- [ ] `needs_llm_judge` の結果も `SessionEvent` として戻し、`TomoroSession` の stale / final gate を通す
+
+### Phase 10.7.2: runner / adapter を event converter に戻す
+
+- [ ] `CandidateCommandRunner` は active candidate fetch と policy decision 作成だけを担当する
+- [ ] `CandidateCommandRunner` は runtime hard gate を直接判断しない
+- [ ] `server/edge/main.py` / gateway adapter は command 実行と event post だけを担当する
+- [ ] 発話できない理由は runner ではなく `TomoroSession` の emission / log に出る
+
+### Phase 10.7.3: regression tests
+
+- [ ] policy 単体 test から runtime hard gate 期待を削除する
+- [ ] `TomoroSession` unit test で final gate を固定する
+  - policy が `speak` でも attention が ambient でなければ話さない
+  - policy が `speak` でも VAD が idle でなければ話さない
+  - policy が `speak` でも playback が idle でなければ話さない
+  - policy が `speak` でも audio target がなければ話さない
+  - policy / LLM judge result が遅れて戻ったら stale として捨てる
+- [ ] runner test は「policy decision を event payload に載せる」ことだけを検証する
+- [ ] `pytest -m unit tests/unit/test_phase106_initiative_policy.py tests/unit/test_phase10_session_contract.py tests/unit/test_phase105_session_runtime.py` が通る
+- [ ] `pytest -m unit` が通る
+
+**完了条件**:
+- runtime hard gate の正は `TomoroSession` にだけある
+- policy は soft decision と LLM judge band の判定に閉じている
+- runner / adapter は state を読んで発話可否を決めない
+- log を読めば「policy は話したがったが Session final gate で止めた」ことが説明できる
+
+## Phase 10.8: AudioTurnController を純粋な制御対象に寄せる
+
+上の Phase 6.6.4 で「既存 private helper は既存テスト互換のため delegate として残した」判断は、
+現在の `TomoroSession` / `AudioTurnController` 境界では補正する。
+薄い delegate が増えると、情報フローが `Session -> AudioTurnController -> Session` と細かく折り返し、
+LLM 実装者には「Session が audio turn の内側も所有している」ように見える。
+
+Phase 10.8 では、`TomoroSession` を状態と振る舞いの司令塔に残し、
+`AudioTurnController` は audio turn の機械的整合性を保つ制御対象に寄せる。
+
+### Phase 10.8.0: 責務境界を固定する
+
+- [ ] `TomoroSession` の責務を以下に限定して明文化する
+  - いつ話し始めるか
+  - いつ止めるか
+  - barge-in / interrupt をどう扱うか
+  - WebSocket event / audio をどの順序で送るか
+- [ ] `AudioTurnController` の責務を以下に限定する
+  - `turn_id` 発行
+  - `audio_start` / `audio_end` / `audio_control stop` の idempotent reservation
+  - audio chunk sequence 採番
+  - playback telemetry から playback state / echo grace を更新
+  - `recent_tomoko_text` / speaking elapsed の read-only snapshot 提供
+- [ ] `AudioTurnController` は WebSocket send / DB write / TTS 実行 / reply 生成を行わない
+- [ ] `AudioTurnController` は会話参加判断や candidate 発話判断を行わない
+
+### Phase 10.8.1: pass-through helper を削る
+
+- [ ] `TomoroSession` の薄い delegate helper を削る
+  - `_is_tomoko_speaking`
+  - `_is_playback_echo_grace_active`
+  - `_is_client_playback_active`
+  - `_reserve_audio_chunk`
+  - `_reserve_audio_start_event`
+  - `_reserve_audio_end_event`
+  - `_reserve_audio_stop_event`
+- [ ] 呼び出し側は `self.audio_turns.<public_api>()` を直接呼ぶ
+- [ ] `TomoroSession._mark_tomoko_speaking()` を削除する
+- [ ] `AudioTurnController._mark_tomoko_speaking()` を private のままにし、外部から直接呼べない設計にする
+- [ ] 既存 test が private helper を叩いている場合は、`AudioTurnController` の public API test へ移す
+
+### Phase 10.8.2: audio output の情報フローを一本化する
+
+- [ ] reply generation 経路と precomputed reply 経路で同じ audio turn API を使う
+- [ ] audio start は `AudioTurnController.reserve_start_event()` が返した event を `TomoroSession` が送る
+- [ ] audio chunk は `AudioTurnController.reserve_audio_chunk()` が sequence と speaking state を更新し、`TomoroSession` が送る
+- [ ] audio end / stop は `AudioTurnController.reserve_end_event()` / `reserve_stop_event()` が返した event を `TomoroSession` が送る
+- [ ] `TomoroSession` は audio turn の内部 field を読まない
+  - 必要な情報は public property / snapshot で読む
+
+### Phase 10.8.3: test 境界を補正する
+
+- [ ] `tests/unit/test_audio_turn_controller.py` で audio turn の idempotency / sequence / playback telemetry を固定する
+- [ ] `tests/unit/test_session_concurrency.py` が `TomoroSession` private helper ではなく public behavior を検証するように補正する
+- [ ] reply generation と precomputed reply の両方で `audio_start -> audio chunk -> audio_end` の順序を検証する
+- [ ] hard interrupt で `audio_control stop` が一度だけ送られることを検証する
+- [ ] `pytest -m unit tests/unit/test_audio_turn_controller.py tests/unit/test_session_concurrency.py tests/unit/test_streaming_tts_pipeline.py` が通る
+- [ ] `pytest -m unit` が通る
+
+**完了条件**:
+- `TomoroSession` は audio turn の意味判断と I/O 順序を持ち、audio turn 内部の機械的 state は持たない
+- `AudioTurnController` は純粋な制御対象として、公開 API だけで turn state を進める
+- `Session -> AudioTurnController -> Session -> send_event/send_audio` の流れは残るが、折り返しは public API と event/chunk result に限定される
+- private method 直呼びや薄い delegate による責務のにじみがない
+
 ---
 
 ## Phase 11: 事前生成（pre-generation）

@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-05-25 セッション22
+
+### やること（開始時に書く）
+- markdown 編集禁止ルールの一時解除を受け、情報の流れが崩れている `TomoroSession` / `AudioTurnController` 境界の整理 Phase を PLAN.md に追記する
+- candidate 発話 gate の所有者を `TomoroSession` に寄せ、`CandidateSpeakPolicy` / runner / main 側の runtime hard gate を削る Phase を PLAN.md に追記する
+
+### やったこと
+- `PLAN.md` に Phase 10.7「candidate runtime gate の所有者を TomoroSession に集約する」を追記した
+- `PLAN.md` に Phase 10.8「AudioTurnController を純粋な制御対象に寄せる」を追記した
+- Phase 10.6 の runtime hard gate 方針と Phase 6.6.4 の thin delegate 温存方針を、追記で明示的に補正した
+
+### 詰まったこと・解決したこと
+- candidate policy は soft decision に寄せ、runtime hard gate の正は `TomoroSession` にだけ置く方針に整理した
+- audio turn は `TomoroSession` の意味判断から命令される制御対象とし、private helper 直呼びや薄い delegate を削る方針に整理した
+
+### 検証
+- `git diff --check -- PLAN.md LOG.md`
+
+### 次のセッションでやること
+- Phase 10.7 を実装する場合は、policy test から runtime hard gate 期待を削除し、`TomoroSession` final gate の unit test を先に固定する
+- Phase 10.8 を実装する場合は、`tests/unit/test_session_concurrency.py` を private helper 依存から public behavior 検証へ移す
+
 ## 2026-05-25 セッション21
 
 ### やること（開始時に書く）
