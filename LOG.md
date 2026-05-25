@@ -4,6 +4,90 @@
 
 ---
 
+## 2026-05-25 セッション35
+
+### やること（開始時に書く）
+- 外部観測 interpretation に `tomoko_private_reaction` と `candidate_seed_text` を追加する
+- thinker / journalist が一般要約ではなく Tomoko の内心反応と発話候補の種を使えるようにする
+- 既存 DB に DDL を反映し、実データを再 interpretation する
+
+### やったこと
+- `world_observation_interpretations` に `tomoko_private_reaction` / `candidate_seed_text` を追加した
+- `WorldObservationInterpretation` / store / `world_observation_trace` / DB integration test を新フィールドに対応させた
+- interpreter の structured output schema と prompt に、内心メモと自発発話候補の種を必須フィールドとして追加した
+- thinker の world observation source は `candidate_seed_text` を優先し、なければ `tomoko_private_reaction` / `interpretation_text` に fallback するようにした
+- journalist input は `tomoko_private_reaction` と `candidate_seed_text` を diary material に含めるようにした
+- 再実行前後の SELECT を `logs/world-observation-observe/2026-05-25-before-private-reaction-rerun-fixed.json` と `logs/world-observation-observe/2026-05-25-after-private-reaction-rerun-fixed.json` に保存した
+
+### 詰まったこと・解決したこと
+- 既存 DB へ `CREATE OR REPLACE VIEW world_observation_trace` を適用した時、view の既存列 `reason_json` の位置に `tomoko_private_reaction` を挿入する形になり PostgreSQL が拒否した
+  → `DROP VIEW IF EXISTS world_observation_trace` してから view を作り直す DDL にした
+- view 更新失敗後に interpretation delete が走ったため、一時的に DB 上の interpretation は 0 件になった
+  → DDL 修正後に再度 `make information-interpret-once` を実行し、10 件生成し直した
+
+### 検証
+- `docker exec -i tomoko-postgres psql -U tomoko -d tomoko -v ON_ERROR_STOP=1 < docker/postgres/init/013_world_observations.sql`
+- `make information-interpret-once`
+  - `world_observation_interpret interpreted=10 error_count=0`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+  - `296 passed, 17 deselected`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase180_world_observations_db.py tests/integration/test_phase87_persona_snapshots_db.py`
+  - `2 passed`
+- `git diff --check`
+
+### 観測
+- 実DBの `world_observation_trace` で `tomoko_private_reaction` と `candidate_seed_text` が埋まることを確認した
+- 例: `MLXの統合の話、少しだけ気になったよ。` のような短い発話種が生成された
+
+### 次のセッションでやること
+- 反応がまだ硬い場合は、`tomoko_private_reaction` の文体制約をさらに会話寄りにし、`candidate_seed_text` を候補生成の scoring に組み込む
+
+## 2026-05-25 セッション34
+
+### やること（開始時に書く）
+- 外部観測 interpretation が一般要約に寄りすぎている問題を補正する
+- `reason_json` に `persona_basis` / `user_basis` / `speakability_basis` / `avoid_overclaim` を必須化する
+- `speakability_hint` を `short_now` / `later` / `diary` / `avoid` の enum にする
+- interpreter prompt に `base_persona.md` 本文を渡す
+- 初期 persona snapshot seed を DB に入れ、外部観測を再 interpretation して反応を見る
+
+### やったこと
+- `WorldObservationInterpretation.from_json()` で `speakability_hint` enum と `reason_json` 必須キーを検証するようにした
+- LM Studio structured output schema でも `speakability_hint` enum と `reason_json` 必須キーを強制した
+- 外部観測 interpreter prompt に `base_persona.md` 本文を追加し、口調コピーではなく関心・距離感の判断材料として使うよう明記した
+- `_tools/seed_initial_persona_snapshot.py` と `make persona-seed-initial` を追加した
+- initial seed として warmth / curiosity / restraint / local inference / MLX / voice interaction / life texture を persona snapshot に入れた
+- 再実行前後の外部観測 interpretation を `logs/world-observation-observe/2026-05-25-before-rerun.json` と `logs/world-observation-observe/2026-05-25-after-rerun.json` に保存した
+
+### 詰まったこと・解決したこと
+- 最初の seed tool は `_tools` 配下から実行した時に `server` import path が通らなかった
+  → 既存 `_tools` と同じく repo root を `sys.path` に追加した
+- `COPY TO STDOUT` で保存した JSON が `\n` escaped の1行になった
+  → 観測用ファイルとして読みやすいよう pretty JSON へ整形し直した
+
+### 検証
+- `make persona-seed-initial`
+  - `persona_seed inserted state_id=d4fcf6a7-8937-4f13-94c6-67b0d07445e3 lexicon_id=aae8f139-4158-42c4-8e53-0c066429ffcf`
+- `docker exec tomoko-postgres psql ... DELETE FROM world_observation_interpretations`
+- `make information-interpret-once`
+  - `world_observation_interpret interpreted=10 error_count=0`
+- `docker exec tomoko-postgres psql ... SELECT count(*) ... FROM world_observation_interpretations`
+  - `interpretations = 10`, `with_state = 10`, `with_lexicon = 10`
+- `mise exec -- uv run pytest -m unit`
+  - `296 passed, 17 deselected`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase180_world_observations_db.py tests/integration/test_phase87_persona_snapshots_db.py`
+  - `2 passed`
+- `mise exec -- uv run ruff check .`
+
+### 観測
+- `reason_json` は4キーが入り、persona / user / speakability / overclaim の根拠が分離された
+- `interpretation_text` は「少しだけ気になる」「後で会話の種として置く」など、以前より Tomoko の距離感が出た
+- ただしまだ全体としては控えめで、強い個性というより「静かに受け取る」方向に寄っている
+
+### 次のセッションでやること
+- もっと面白くするなら、`tomoko_private_reaction` や `candidate_seed_text` のような発話候補寄りの別フィールドを追加する
+
 ## 2026-05-25 セッション33
 
 ### やること（開始時に書く）

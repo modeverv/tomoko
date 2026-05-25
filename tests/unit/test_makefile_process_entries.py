@@ -41,6 +41,7 @@ def test_background_process_targets_pass_the_central_config_explicitly() -> None
     for target in [
         "session-summarizer",
         "session-summarizer-once",
+        "persona-seed-initial",
         "persona-updater",
         "persona-updater-once",
         "thinker",
@@ -66,6 +67,7 @@ def test_makefile_has_grouped_background_maintenance_entries() -> None:
         "edge-kitchen",
         "session-summarizer",
         "session-summarizer-once",
+        "persona-seed-initial",
         "persona-updater",
         "persona-updater-once",
         "thinker",

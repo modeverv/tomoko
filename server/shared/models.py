@@ -618,6 +618,8 @@ class WorldObservationInterpretation:
     memory_value: float
     speakability_hint: str
     interpretation_text: str
+    tomoko_private_reaction: str = ""
+    candidate_seed_text: str = ""
     reason_json: dict[str, Any] = field(default_factory=dict)
     persona_state_version_id: UUID | None = None
     persona_lexicon_version_id: UUID | None = None
@@ -635,6 +637,24 @@ class WorldObservationInterpretation:
         tone = str(payload.get("emotional_tone", "neutral"))
         if tone not in {"neutral", "hopeful", "concerned", "curious", "playful", "sad"}:
             tone = "neutral"
+        speakability_hint = str(payload.get("speakability_hint", "avoid")).strip()
+        if speakability_hint not in {"short_now", "later", "diary", "avoid"}:
+            raise ValueError("speakability_hint must be short_now, later, diary, or avoid")
+        reason_json = dict(payload.get("reason_json") or {})
+        required_reason_keys = {
+            "persona_basis",
+            "user_basis",
+            "speakability_basis",
+            "avoid_overclaim",
+        }
+        missing_reason_keys = [
+            key for key in sorted(required_reason_keys) if not str(reason_json.get(key, "")).strip()
+        ]
+        if missing_reason_keys:
+            raise ValueError(
+                "reason_json is missing required keys: "
+                + ", ".join(missing_reason_keys)
+            )
         return cls(
             schema_version=int(payload.get("schema_version", 1)),
             item_id=item_id,
@@ -656,9 +676,13 @@ class WorldObservationInterpretation:
                 minimum=0.0,
                 maximum=1.0,
             ),
-            speakability_hint=str(payload.get("speakability_hint", "unknown")).strip(),
+            speakability_hint=speakability_hint,
             interpretation_text=str(payload.get("interpretation_text", "")).strip(),
-            reason_json=dict(payload.get("reason_json") or {}),
+            tomoko_private_reaction=str(
+                payload.get("tomoko_private_reaction", "")
+            ).strip(),
+            candidate_seed_text=str(payload.get("candidate_seed_text", "")).strip(),
+            reason_json=reason_json,
         )
 
     def to_json(self) -> dict[str, Any]:
@@ -671,6 +695,8 @@ class WorldObservationInterpretation:
             "memory_value": self.memory_value,
             "speakability_hint": self.speakability_hint,
             "interpretation_text": self.interpretation_text,
+            "tomoko_private_reaction": self.tomoko_private_reaction,
+            "candidate_seed_text": self.candidate_seed_text,
             "reason_json": dict(self.reason_json),
         }
         if self.persona_state_version_id is not None:
@@ -701,6 +727,8 @@ class WorldObservationInterpretationRecord:
     memory_value: float
     speakability_hint: str
     interpretation_text: str
+    tomoko_private_reaction: str
+    candidate_seed_text: str
     reason_json: dict[str, Any]
     created_at: datetime
 

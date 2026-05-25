@@ -44,9 +44,16 @@ async def test_world_observation_source_keeps_trace_tags() -> None:
         tomoko_interest=0.8,
         emotional_tone="curious",
         memory_value=0.6,
-        speakability_hint="短くなら話題にできる",
+        speakability_hint="short_now",
         interpretation_text="ローカル推論の話は少し気になる。",
-        reason_json={},
+        tomoko_private_reaction="手元で動く話は、少し身を乗り出したくなる。",
+        candidate_seed_text="ローカル推論の話、少しだけ気になるかも。",
+        reason_json={
+            "persona_basis": "ローカル推論への関心",
+            "user_basis": "開発作業に近い",
+            "speakability_basis": "短く話題にできる",
+            "avoid_overclaim": "unit fixture",
+        },
         created_at=now,
     )
     source = WorldObservationSource(
@@ -57,6 +64,7 @@ async def test_world_observation_source_keeps_trace_tags() -> None:
 
     assert len(seeds) == 1
     assert seeds[0].source == f"world_observation:{interpretation.id}"
+    assert "少しだけ気になる" in seeds[0].seed_text
     assert f"world_observation_document:{interpretation.document_id}" in seeds[0].context_tags
     assert (
         seeds[0].metadata_json["world_observation"]["document_id"]

@@ -22,6 +22,12 @@ class FakeBackend:
         assert "ローカル推論" in system_prompt
         assert "一人のユーザー" in system_prompt
         assert "ニュース解説者ではありません" in system_prompt
+        assert "base_persona.md" in system_prompt
+        assert "性格の芯" in system_prompt
+        assert "persona_basis" in system_prompt
+        assert "short_now" in system_prompt
+        assert "tomoko_private_reaction" in system_prompt
+        assert "candidate_seed_text" in system_prompt
         assert "serialized_persona_snapshots" in system_prompt
         assert '"persona_state"' in system_prompt
         assert '"persona_lexicon"' in system_prompt
@@ -29,9 +35,16 @@ class FakeBackend:
         yield (
             '{"relevance_to_user":0.7,"tomoko_interest":0.8,'
             '"emotional_tone":"curious","memory_value":0.6,'
-            '"speakability_hint":"短くなら話題にできる",'
-            '"interpretation_text":"ローカル推論の話は少し気になる。",'
-            '"reason_json":{"reason":"Tomokoの設計に近い"}}'
+            '"speakability_hint":"short_now",'
+            '"interpretation_text":"私は、端末の中で小さく賢く動ける話として少し身を乗り出したくなる。",'
+            '"tomoko_private_reaction":"こういう小さく手元で動く話、私はかなり好きだな。",'
+            '"candidate_seed_text":"ローカル推論の小型モデルの話、少しだけ気になるかも。",'
+            '"reason_json":{'
+            '"persona_basis":"ローカル推論と声での自然なやりとりに近い",'
+            '"user_basis":"ユーザーのTomoko開発に直接関係する",'
+            '"speakability_basis":"短くなら今の話題の種にできる",'
+            '"avoid_overclaim":"sample由来なので断定しない"'
+            "}}"
         )
 
 
@@ -73,3 +86,7 @@ async def test_interpreter_saves_item_interpretation() -> None:
     assert result.interpreted_count == 1
     assert store.interpretations[0].tomoko_interest == 0.8
     assert store.interpretations[0].topic == "ai"
+    assert store.interpretations[0].speakability_hint == "short_now"
+    assert "小さく手元" in store.interpretations[0].tomoko_private_reaction
+    assert "少しだけ気になる" in store.interpretations[0].candidate_seed_text
+    assert store.interpretations[0].reason_json["persona_basis"]

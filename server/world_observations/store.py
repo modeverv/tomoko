@@ -186,6 +186,8 @@ class InMemoryWorldObservationStore:
             memory_value=interpretation.memory_value,
             speakability_hint=interpretation.speakability_hint,
             interpretation_text=interpretation.interpretation_text,
+            tomoko_private_reaction=interpretation.tomoko_private_reaction,
+            candidate_seed_text=interpretation.candidate_seed_text,
             reason_json=interpretation.reason_json,
             created_at=datetime.now(UTC),
         )
@@ -447,9 +449,11 @@ class PostgresWorldObservationStore:
                         memory_value,
                         speakability_hint,
                         interpretation_text,
+                        tomoko_private_reaction,
+                        candidate_seed_text,
                         reason_json
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (item_id) DO UPDATE SET
                         persona_state_version_id = EXCLUDED.persona_state_version_id,
                         persona_lexicon_version_id = EXCLUDED.persona_lexicon_version_id,
@@ -459,6 +463,8 @@ class PostgresWorldObservationStore:
                         memory_value = EXCLUDED.memory_value,
                         speakability_hint = EXCLUDED.speakability_hint,
                         interpretation_text = EXCLUDED.interpretation_text,
+                        tomoko_private_reaction = EXCLUDED.tomoko_private_reaction,
+                        candidate_seed_text = EXCLUDED.candidate_seed_text,
                         reason_json = EXCLUDED.reason_json
                     RETURNING id
                     """,
@@ -472,6 +478,8 @@ class PostgresWorldObservationStore:
                         interpretation.memory_value,
                         interpretation.speakability_hint,
                         interpretation.interpretation_text,
+                        interpretation.tomoko_private_reaction,
+                        interpretation.candidate_seed_text,
                         Jsonb(interpretation.reason_json),
                     ),
                 )
@@ -608,8 +616,10 @@ def _interpretation_from_trace_row(
         memory_value=float(row[18]),
         speakability_hint=str(row[19]),
         interpretation_text=str(row[20]),
-        reason_json=dict(row[21] or {}),
-        created_at=_as_datetime(row[22]),
+        tomoko_private_reaction=str(row[21]),
+        candidate_seed_text=str(row[22]),
+        reason_json=dict(row[23] or {}),
+        created_at=_as_datetime(row[24]),
     )
 
 

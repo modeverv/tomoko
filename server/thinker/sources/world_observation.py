@@ -33,7 +33,11 @@ class WorldObservationSource:
             score = max(interpretation.tomoko_interest, interpretation.relevance_to_user)
             seeds.append(
                 CandidateSeed(
-                    seed_text=_seed_text(interpretation.interpretation_text),
+                    seed_text=_seed_text(
+                        interpretation.candidate_seed_text
+                        or interpretation.tomoko_private_reaction
+                        or interpretation.interpretation_text
+                    ),
                     source=f"{_SOURCE_PREFIX}:{interpretation.id}",
                     priority=min(1.0, max(self.priority, score)),
                     urgent=interpretation.freshness in {"breaking", "fresh"}
@@ -55,6 +59,11 @@ class WorldObservationSource:
                             "interpretation_id": str(interpretation.id),
                             "topic": interpretation.topic,
                             "freshness": interpretation.freshness,
+                            "speakability_hint": interpretation.speakability_hint,
+                            "tomoko_private_reaction": (
+                                interpretation.tomoko_private_reaction
+                            ),
+                            "candidate_seed_text": interpretation.candidate_seed_text,
                             "reason": interpretation.reason_json,
                         },
                     },

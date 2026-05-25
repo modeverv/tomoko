@@ -56,6 +56,8 @@ class WorldObservationMaterial:
     title: str
     summary: str
     interpretation_text: str
+    tomoko_private_reaction: str
+    candidate_seed_text: str
     reason: str
     freshness: str
     confidence: float
@@ -373,6 +375,8 @@ class PostgresJournalistSourceReader:
                         title,
                         summary,
                         interpretation_text,
+                        tomoko_private_reaction,
+                        candidate_seed_text,
                         reason_json,
                         freshness,
                         confidence
@@ -396,9 +400,11 @@ class PostgresJournalistSourceReader:
                 title=str(row[3]),
                 summary=str(row[4]),
                 interpretation_text=str(row[5]),
-                reason=str(dict(row[6] or {}).get("reason", "")),
-                freshness=str(row[7]),
-                confidence=float(row[8]),
+                tomoko_private_reaction=str(row[6]),
+                candidate_seed_text=str(row[7]),
+                reason=str(dict(row[8] or {}).get("persona_basis", "")),
+                freshness=str(row[9]),
+                confidence=float(row[10]),
             )
             for row in rows
         )

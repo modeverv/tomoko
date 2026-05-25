@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS world_observation_interpretations (
     memory_value DOUBLE PRECISION NOT NULL,
     speakability_hint TEXT NOT NULL,
     interpretation_text TEXT NOT NULL,
+    tomoko_private_reaction TEXT NOT NULL DEFAULT '',
+    candidate_seed_text TEXT NOT NULL DEFAULT '',
     reason_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT world_observation_interpretations_tone_check
@@ -82,6 +84,12 @@ CREATE TABLE IF NOT EXISTS world_observation_interpretations (
         CHECK (memory_value >= 0.0 AND memory_value <= 1.0)
 );
 
+ALTER TABLE world_observation_interpretations
+    ADD COLUMN IF NOT EXISTS tomoko_private_reaction TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE world_observation_interpretations
+    ADD COLUMN IF NOT EXISTS candidate_seed_text TEXT NOT NULL DEFAULT '';
+
 CREATE INDEX IF NOT EXISTS world_observation_interpretations_interest_idx
     ON world_observation_interpretations (
         tomoko_interest DESC,
@@ -99,6 +107,8 @@ ALTER TABLE diary_entries
 
 ALTER TABLE conversation_logs
     ADD COLUMN IF NOT EXISTS source_candidate_id UUID NULL;
+
+DROP VIEW IF EXISTS world_observation_trace;
 
 CREATE OR REPLACE VIEW world_observation_trace AS
 SELECT
@@ -123,6 +133,8 @@ SELECT
     p.memory_value,
     p.speakability_hint,
     p.interpretation_text,
+    p.tomoko_private_reaction,
+    p.candidate_seed_text,
     p.reason_json,
     p.created_at AS interpretation_created_at,
     c.id AS utterance_candidate_id,

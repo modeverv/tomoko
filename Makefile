@@ -32,7 +32,7 @@ JOURNALIST_DATE ?=
 
 .PHONY: deps download-models download-optional-models server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
 .PHONY: session-summarizer session-summarizer-once
-.PHONY: persona-updater persona-updater-once thinker thinker-once journalist journalist-once
+.PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once
 .PHONY: information-ingest-once information-ingest-dry-run information-interpret-once information-interpret
 .PHONY: background-once background-watch background-dry-run
 .PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack lint check
@@ -79,6 +79,9 @@ persona-updater:
 
 persona-updater-once:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(PERSONA_UPDATE_LOG_FILE) mise exec -- uv run python background-process/update_persona_snapshots.py --config $(CENTRAL_CONFIG) --limit $(PERSONA_UPDATE_LIMIT)
+
+persona-seed-initial:
+	mise exec -- uv run python _tools/seed_initial_persona_snapshot.py --config $(CENTRAL_CONFIG) --replace
 
 thinker:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(THINKER_LOG_FILE) mise exec -- uv run python background-process/run_thinker.py \
@@ -136,18 +139,19 @@ information-interpret:
 		--limit $(WORLD_OBSERVATION_INTERPRET_LIMIT) \
 		--interval-sec $(WORLD_OBSERVATION_INTERPRET_INTERVAL_SEC)
 
-background-once: session-summarizer-once persona-updater-once information-ingest-once information-interpret-once thinker-once journalist-once
+background-once: persona-seed-initial session-summarizer-once persona-updater-once information-ingest-once information-interpret-once thinker-once journalist-once
 
 background-watch:
 	@echo "Run long-lived processes in separate terminals:"
 	@echo "  make session-summarizer"
+	@echo "  make persona-seed-initial"
 	@echo "  make persona-updater"
 	@echo "  make thinker"
 	@echo "  make journalist"
 	@echo "  make information-interpret"
 
 background-dry-run:
-	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once persona-updater persona-updater-once information-ingest-dry-run information-ingest-once information-interpret-once information-interpret thinker thinker-once journalist journalist-once
+	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once persona-seed-initial persona-updater persona-updater-once information-ingest-dry-run information-ingest-once information-interpret-once information-interpret thinker thinker-once journalist journalist-once
 
 db-up:
 	$(COMPOSE) up -d postgres

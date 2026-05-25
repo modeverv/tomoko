@@ -209,9 +209,14 @@ def _format_turn_for_prompt(turn) -> str:
 
 def _format_world_observation_for_prompt(item) -> str:
     reason = f" reason={item.reason}" if item.reason else ""
+    reaction = (
+        f" reaction={item.tomoko_private_reaction}"
+        if item.tomoko_private_reaction
+        else ""
+    )
     return (
         f"- [{item.topic}/{item.freshness}/confidence={item.confidence:.2f}] "
-        f"{item.title}: {item.interpretation_text}{reason}"
+        f"{item.title}: {item.interpretation_text}{reaction}{reason}"
     )
 
 
