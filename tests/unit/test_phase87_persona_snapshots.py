@@ -6,12 +6,17 @@ import pytest
 
 from server.background.persona_updater import PersonaSnapshotUpdater
 from server.shared.models import (
+    LexiconTerm,
     PersonaDiffEntry,
     PersonaLexiconSnapshot,
     PersonaStateSnapshot,
     PersonaVersionDiff,
 )
 from server.shared.persona import NullPersonaSnapshotStore
+from server.shared.persona_prompt import (
+    format_persona_prompt_slice_for_prompt,
+    format_persona_snapshots_for_prompt,
+)
 
 
 @pytest.mark.unit
@@ -161,6 +166,37 @@ def test_persona_prompt_uses_subset_not_full_snapshot() -> None:
     assert len(terms) == 1
     assert persona_slice.signature_phrases == ["うん"]
     assert not hasattr(persona_slice, "open_threads")
+
+
+@pytest.mark.unit
+def test_persona_snapshot_prompt_serializes_empty_fallback() -> None:
+    prompt = format_persona_snapshots_for_prompt(state=None, lexicon=None)
+
+    assert "base persona を上書きしません" in prompt
+    assert "serialized_persona_snapshots" in prompt
+    assert '"persona_state"' in prompt
+    assert '"traits": {}' in prompt
+    assert '"persona_lexicon"' in prompt
+    assert '"user_terms": []' in prompt
+
+
+@pytest.mark.unit
+def test_persona_prompt_slice_serializes_empty_and_terms() -> None:
+    prompt = format_persona_prompt_slice_for_prompt(
+        persona_slice=None,
+        lexicon_terms=[
+            LexiconTerm(
+                term="ローカル推論",
+                meaning="Tomoko の重要な関心領域",
+                salience=0.8,
+            )
+        ],
+    )
+
+    assert "serialized_persona_prompt_slice" in prompt
+    assert '"persona_state_slice"' in prompt
+    assert '"signature_phrases": []' in prompt
+    assert '"term": "ローカル推論"' in prompt
 
 
 @pytest.mark.unit

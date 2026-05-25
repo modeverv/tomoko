@@ -4,6 +4,103 @@
 
 ---
 
+## 2026-05-25 セッション33
+
+### やること（開始時に書く）
+- Phase 18 の外部観測 interpreter に、Tomoko が何者かを短く示す system prompt grounding を追加する
+- `tomoko_interest` / `relevance_to_user` / `speakability_hint` が一般的なアシスタント像ではなく Tomoko の関心で解釈されることを unit test で固定する
+- `base_persona.md` を短い core persona として厚くし、persona snapshot の扱いルールと serialized JSON を LLM prompt に常に流す
+- persona snapshot が 0 件でも、空状態を表す JSON fallback を prompt に入れる
+- 既存の外部観測レコードを削除し、実 Markdown を再 ingest / interpret する
+
+### やったこと
+- `WorldObservationInterpreter` の system prompt に `Tomoko profile` を追加した
+- Tomoko を「一人のユーザーと暮らすローカル推論ベースの日本語音声対話システム」として短く定義した
+- ユーザーとの関係、関心領域、ニュース解説者ではないこと、話題候補としての出し方を prompt に明記した
+- interpreter unit test で grounding が system prompt に含まれることを固定した
+- `prompts/base_persona.md` に、Tomoko のあたたかさ、好奇心、遊び心、遠慮深さ、ユーザーとの関係性を短く追記した
+- `server/shared/persona_prompt.py` を追加し、persona snapshot の扱いルールと empty fallback JSON を一箇所にまとめた
+- 会話 prompt は persona slice / lexicon terms を serialized JSON として常に渡すようにした
+- 外部観測 interpreter は最新 persona snapshot 全体、または空 fallback JSON を system prompt に渡すようにした
+
+### 詰まったこと・解決したこと
+- structured output は JSON 形状を固定できるが、Tomoko が何者かという意味の grounding は別途必要だった
+  → normalizer ではなく、Tomoko の関心を採点する interpreter にだけ短い profile を入れる形にした
+- DB に persona snapshot が 0 件の時、prompt から persona 情報セクション自体が消えると LLM が一般アシスタント像で補完しやすい
+  → 空の snapshot JSON を明示し、「まだ学習済みデータがない」という状態を渡す形にした
+
+### 検証
+- `mise exec -- uv run pytest -m unit tests/unit/test_world_observation_interpreter.py tests/unit/test_lm_studio_backend.py tests/unit/test_world_observation_normalizer.py`
+- `mise exec -- uv run ruff check server/world_observations/interpreter.py tests/unit/test_world_observation_interpreter.py server/shared/inference/backends/lm_studio.py server/world_observations/normalizer.py tests/unit/test_lm_studio_backend.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_world_observation_interpreter.py tests/unit/test_phase87_persona_snapshots.py tests/unit/test_phase88_context_snapshot.py tests/unit/test_phase4_thinking.py`
+- `mise exec -- uv run ruff check prompts/base_persona.md server/shared/persona_prompt.py server/gateway/thinking/fast.py server/world_observations/interpreter.py tests/unit/test_world_observation_interpreter.py tests/unit/test_phase87_persona_snapshots.py`
+- `docker exec tomoko-postgres psql ... DELETE FROM world_observation_documents WHERE raw_file_path = 'informations/work/2026-05-25-world-observation.md'`
+- `make information-ingest-once`
+  - `world_observation_ingest processed=1 archived=1 failed=0 skipped=0`
+- `make information-interpret-once`
+  - `world_observation_interpret interpreted=10 error_count=0`
+- `docker exec tomoko-postgres psql ... SELECT status, count(*) FROM world_observation_documents GROUP BY status`
+  - `completed = 1`
+- `docker exec tomoko-postgres psql ... SELECT count(*) ... FROM world_observation_interpretations`
+  - `interpretations = 10`, `with_state = 0`, `with_lexicon = 0`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+  - `296 passed, 17 deselected`
+
+### 次のセッションでやること
+- 必要なら `make information-interpret-once` の実データ出力を見て、`tomoko_interest` / `relevance_to_user` の偏りを確認する
+
+## 2026-05-25 セッション32
+
+### やること（開始時に書く）
+- セッション31の Perplexity / Computer Use 実行結果を踏まえ、`informations/prompts/daily_world_observation.md` を更新する
+- Markdown artifact と frontmatter delimiter が安定するように prompt を明確化する
+
+### やったこと
+- `daily_world_observation.md` に成果物名、Markdown document 出力、code fence 禁止を明記した
+- frontmatter delimiter は `---` 固定とし、`***` や水平線で代用しないよう明記した
+- 本文構造を topic heading / 事実 / 推測・含意 / source_hint に寄せた
+- Perplexity の copy button ではなく `Markdown形式でダウンロード` を使う前提を prompt 内にも追記した
+
+### 詰まったこと・解決したこと
+- セッション31では copy button 由来の Markdown が画面表示向けに整形されることがあった
+  → prompt 側でも download 用 Markdown として成立する形を優先するようにした
+
+### 検証
+- `git diff -- informations/prompts/daily_world_observation.md LOG.md` で変更範囲を確認した
+
+### 次のセッションでやること
+- 次回の Perplexity 実行で artifact title / frontmatter / source_hint が安定するか確認する
+
+## 2026-05-25 セッション31
+
+### やること（開始時に書く）
+- `informations/prompts/daily_world_observation.md` を使って Computer Use 経由で Perplexity に外部観測レポートを依頼する
+- 得られた Markdown を `informations/work/2026-05-25-world-observation.md` に保存する
+- 保存後に `make information-ingest-dry-run` を実行し、受け入れ可否と問題点を確認する
+
+### やったこと
+- Computer Use で Perplexity に外部観測レポートを依頼し、Markdown 形式で成果物をダウンロードした
+- ダウンロードした `world_observation_2026-05-25.md` を `informations/work/2026-05-25-world-observation.md` に保存した
+- 保存した Markdown に対して validator と ingest dry-run を実行した
+
+### 詰まったこと・解決したこと
+- Computer Use の `type_text` は長い日本語 prompt の入力が崩れた
+  → Chrome の入力欄へ clipboard 経由で prompt を入れて送信した
+- Perplexity の copy button で取れる Markdown は画面表示向けに整形されることがあった
+  → download menu の `Markdown形式でダウンロード` を使い、frontmatter delimiter が正しいファイルを保存した
+
+### 検証
+- `mise exec -- uv run python _tools/validate_world_observation_md.py --strict informations/work/2026-05-25-world-observation.md`
+  - valid: true
+  - issues: []
+- `make information-ingest-dry-run`
+  - `world_observation_ingest processed=1 archived=0 failed=0 skipped=1`
+  - `would_ingest informations/work/2026-05-25-world-observation.md`
+
+### 次のセッションでやること
+- 必要なら `make information-ingest-once` で実取り込みし、`make information-interpret-once` で Tomoko 用の解釈生成へ進める
+
 ## 2026-05-25 セッション30
 
 ### やること（開始時に書く）

@@ -80,14 +80,51 @@ class LMStudioBackend(InferenceBackend):
     async def chat_stream(
         self, system_prompt: str, messages: list[dict[str, str]]
     ) -> AsyncGenerator[str, None]:
+        async for content in self._chat_stream(
+            system_prompt,
+            messages,
+            response_format=None,
+            max_tokens=self.max_tokens,
+        ):
+            yield content
+
+    async def chat_stream_structured(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, str]],
+        *,
+        json_schema: dict[str, Any],
+        max_tokens: int | None = None,
+    ) -> AsyncGenerator[str, None]:
+        async for content in self._chat_stream(
+            system_prompt,
+            messages,
+            response_format={
+                "type": "json_schema",
+                "json_schema": json_schema,
+            },
+            max_tokens=max_tokens or self.max_tokens,
+        ):
+            yield content
+
+    async def _chat_stream(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, str]],
+        *,
+        response_format: dict[str, Any] | None,
+        max_tokens: int,
+    ) -> AsyncGenerator[str, None]:
         formatted_messages = [{"role": "system", "content": system_prompt}] + messages
         payload = {
             "model": self.model,
             "messages": formatted_messages,
             "stream": True,
-            "max_tokens": self.max_tokens,
+            "max_tokens": max_tokens,
             "temperature": 0.0,
         }
+        if response_format is not None:
+            payload["response_format"] = response_format
 
         async with self._create_client() as client:
             async with client.stream(

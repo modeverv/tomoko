@@ -107,3 +107,45 @@ async def test_lm_studio_backend_streams_openai_compatible_sse() -> None:
             },
         }
     ]
+
+
+@pytest.mark.unit
+async def test_lm_studio_backend_can_request_structured_output() -> None:
+    fake_client = FakeClient(
+        [
+            'data: {"choices":[{"delta":{"content":"{\\"items\\":[]}"}}]}',
+            "data: [DONE]",
+        ]
+    )
+    backend = LMStudioBackend(
+        name="lmstudio_gemma4_e2b",
+        url="http://192.168.11.66:1234",
+        model="gemma-4-e2b-it-mlx",
+        client_factory=lambda: fake_client,
+    )
+    schema = {
+        "name": "unit_schema",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {"items": {"type": "array"}},
+            "required": ["items"],
+        },
+    }
+
+    chunks = [
+        chunk
+        async for chunk in backend.chat_stream_structured(
+            "JSONで返して。",
+            [{"role": "user", "content": "空で。"}],
+            json_schema=schema,
+            max_tokens=512,
+        )
+    ]
+
+    assert chunks == ['{"items":[]}']
+    assert fake_client.requests[0]["json"]["response_format"] == {
+        "type": "json_schema",
+        "json_schema": schema,
+    }
+    assert fake_client.requests[0]["json"]["max_tokens"] == 512

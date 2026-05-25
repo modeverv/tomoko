@@ -23,6 +23,51 @@ class NormalizerBackend(Protocol):
     ): ...
 
 
+NORMALIZER_JSON_SCHEMA: dict[str, Any] = {
+    "name": "world_observation_normalized_batch",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "topic": {"type": "string"},
+                        "title": {"type": "string"},
+                        "summary": {"type": "string"},
+                        "source_hint": {"type": "string"},
+                        "freshness": {
+                            "type": "string",
+                            "enum": ["breaking", "fresh", "recent", "stale", "unknown"],
+                        },
+                        "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                        "raw_excerpt": {"type": "string"},
+                        "item_json": {"type": "object", "additionalProperties": True},
+                        "parse_notes": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": [
+                        "topic",
+                        "title",
+                        "summary",
+                        "source_hint",
+                        "freshness",
+                        "confidence",
+                        "raw_excerpt",
+                        "item_json",
+                        "parse_notes",
+                    ],
+                },
+            }
+        },
+        "required": ["items"],
+    },
+}
+
+
 NORMALIZER_SYSTEM_PROMPT = """\
 あなたは Tomoko の外部観測 Markdown を構造化する background normalizer です。
 raw Markdown は不安定な外部観測原稿であり、Tomoko が信じる事実ではありません。
@@ -114,10 +159,18 @@ class WorldObservationNormalizer:
 
     async def _run_backend(self, document: WorldObservationRawDocument) -> str:
         chunks: list[str] = []
-        async for chunk in self.backend.chat_stream(
-            NORMALIZER_SYSTEM_PROMPT,
-            [{"role": "user", "content": _format_document_for_prompt(document)}],
-        ):
+        messages = [{"role": "user", "content": _format_document_for_prompt(document)}]
+        structured_stream = getattr(self.backend, "chat_stream_structured", None)
+        if structured_stream is None:
+            stream = self.backend.chat_stream(NORMALIZER_SYSTEM_PROMPT, messages)
+        else:
+            stream = structured_stream(
+                NORMALIZER_SYSTEM_PROMPT,
+                messages,
+                json_schema=NORMALIZER_JSON_SCHEMA,
+                max_tokens=4096,
+            )
+        async for chunk in stream:
             chunks.append(chunk)
         return "".join(chunks)
 
