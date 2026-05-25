@@ -4,6 +4,42 @@
 
 ---
 
+## 2026-05-25 セッション30
+
+### やること（開始時に書く）
+- Phase 18 全体として、外部観測 Markdown と Tomoko 解釈パイプラインを実装する
+- 18.0 から 18.8 まで、raw artifact directory、schema validator、DB store、normalizer、ingest job、interpreter、thinker / journalist 接続、operator recipe、trace hardening をテスト可能な単位で進める
+- `/ws` / `TomoroSession` の hot path へ外部情報取得や LLM normalize を入れず、background / local job に閉じる
+
+### やったこと
+- `informations/` directory contract、`.gitignore`、README、Perplexity prompt、Codex operator recipe、sample artifact を追加した
+- raw Markdown frontmatter validator、validator CLI、normalizer、ingest job、interpreter worker、trace inspect CLI を追加した
+- `world_observation_documents` / `world_observation_items` / `world_observation_interpretations` / `world_observation_trace` を追加した
+- `PostgresWorldObservationStore` / `InMemoryWorldObservationStore` を実装し、checksum idempotent import と archive / failed file movement を接続した
+- `utterance_candidates.metadata_json` を追加し、world observation candidate の document / item / interpretation trace を保存できるようにした
+- thinker に `WorldObservationSource`、journalist input に world observation interpretation 素材を接続した
+- `PLAN.md` の Phase 18 checkbox と実装結果、`MEMORY.md`、`_docs/latency.md` を追記した
+
+### 詰まったこと・解決したこと
+- Phase 18.6 の trace は当初 `context_tags` だけで足りるように見えた
+  → PLAN の `utterance_candidates.metadata_json` 契約を満たすため、候補テーブルに JSONB metadata を追加した
+- `normalizer` の schema validation は pydantic を増やさず、既存 DTO 方針に合わせて dataclass + 手動 validation にした
+- Perplexity / Computer Use の実 UI 操作は不安定な外周手順なので、operator recipe として文書化し、test 対象から外した
+
+### 検証
+- `mise exec -- uv run python _tools/validate_world_observation_md.py --strict informations/samples/sample-world-observation.md`
+- `make information-ingest-dry-run`
+- `git check-ignore informations/work/example.md informations/archived/example.md informations/failed/example.md`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m integration`
+- `mise exec -- uv run pytest -m perf --tb=short`
+- `git diff --check`
+
+### 次のセッションでやること
+- 実 Perplexity 出力を `informations/work` に置き、`make information-ingest-dry-run` → `make information-ingest-once` → `make information-interpret-once` → `make thinker-once` の実データ smoke を行う
+- 必要なら `world_observation_trace` で candidate / diary / conversation への接続を実データで確認する
+
 ## 2026-05-25 セッション29
 
 ### やること（開始時に書く）

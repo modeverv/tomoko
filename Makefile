@@ -12,6 +12,12 @@ SESSION_SUMMARY_LOG_FILE ?= logs/session-summarizer.log
 PERSONA_UPDATE_LOG_FILE ?= logs/persona-updater.log
 THINKER_LOG_FILE ?= logs/thinker.log
 JOURNALIST_LOG_FILE ?= logs/journalist.log
+WORLD_OBSERVATION_LOG_FILE ?= logs/world-observations.log
+WORLD_OBSERVATION_WORK ?= informations/work
+WORLD_OBSERVATION_ARCHIVED ?= informations/archived
+WORLD_OBSERVATION_FAILED ?= informations/failed
+WORLD_OBSERVATION_INTERPRET_LIMIT ?= 10
+WORLD_OBSERVATION_INTERPRET_INTERVAL_SEC ?= 300
 COMPOSE ?= docker compose --project-directory . -f docker/docker-compose.yml
 DB_DUMP_DIR ?= logs/db-dumps
 DB_DUMP_FILE ?= $(DB_DUMP_DIR)/tomoko-$(shell date +%Y%m%d-%H%M%S).sql
@@ -27,6 +33,7 @@ JOURNALIST_DATE ?=
 .PHONY: deps download-models download-optional-models server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
 .PHONY: session-summarizer session-summarizer-once
 .PHONY: persona-updater persona-updater-once thinker thinker-once journalist journalist-once
+.PHONY: information-ingest-once information-ingest-dry-run information-interpret-once information-interpret
 .PHONY: background-once background-watch background-dry-run
 .PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack lint check
 
@@ -100,7 +107,36 @@ journalist-once:
 		--once \
 		$(if $(JOURNALIST_DATE),--date $(JOURNALIST_DATE),)
 
-background-once: session-summarizer-once persona-updater-once thinker-once journalist-once
+information-ingest-once:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(WORLD_OBSERVATION_LOG_FILE) mise exec -- uv run python background-process/ingest_world_observations.py \
+		--config $(CENTRAL_CONFIG) \
+		--once \
+		--path $(WORLD_OBSERVATION_WORK) \
+		--archive-root $(WORLD_OBSERVATION_ARCHIVED) \
+		--failed-root $(WORLD_OBSERVATION_FAILED)
+
+information-ingest-dry-run:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(WORLD_OBSERVATION_LOG_FILE) mise exec -- uv run python background-process/ingest_world_observations.py \
+		--config $(CENTRAL_CONFIG) \
+		--dry-run \
+		--path $(WORLD_OBSERVATION_WORK) \
+		--archive-root $(WORLD_OBSERVATION_ARCHIVED) \
+		--failed-root $(WORLD_OBSERVATION_FAILED)
+
+information-interpret-once:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(WORLD_OBSERVATION_LOG_FILE) mise exec -- uv run python background-process/interpret_world_observations.py \
+		--config $(CENTRAL_CONFIG) \
+		--once \
+		--limit $(WORLD_OBSERVATION_INTERPRET_LIMIT)
+
+information-interpret:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(WORLD_OBSERVATION_LOG_FILE) mise exec -- uv run python background-process/interpret_world_observations.py \
+		--config $(CENTRAL_CONFIG) \
+		--watch \
+		--limit $(WORLD_OBSERVATION_INTERPRET_LIMIT) \
+		--interval-sec $(WORLD_OBSERVATION_INTERPRET_INTERVAL_SEC)
+
+background-once: session-summarizer-once persona-updater-once information-ingest-once information-interpret-once thinker-once journalist-once
 
 background-watch:
 	@echo "Run long-lived processes in separate terminals:"
@@ -108,9 +144,10 @@ background-watch:
 	@echo "  make persona-updater"
 	@echo "  make thinker"
 	@echo "  make journalist"
+	@echo "  make information-interpret"
 
 background-dry-run:
-	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once persona-updater persona-updater-once thinker thinker-once journalist journalist-once
+	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once persona-updater persona-updater-once information-ingest-dry-run information-ingest-once information-interpret-once information-interpret thinker thinker-once journalist journalist-once
 
 db-up:
 	$(COMPOSE) up -d postgres

@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS utterance_candidates (
     maturity INTEGER NOT NULL DEFAULT 0,
     source TEXT NOT NULL,
     context_tags TEXT[] NOT NULL DEFAULT '{}',
+    metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     CONSTRAINT utterance_candidates_maturity_check
         CHECK (maturity IN (0, 1, 2)),
     CONSTRAINT utterance_candidates_maturity2_payload_check
@@ -34,6 +35,13 @@ CREATE INDEX IF NOT EXISTS utterance_candidates_source_idx
 CREATE INDEX IF NOT EXISTS utterance_candidates_context_tags_gin_idx
     ON utterance_candidates
     USING gin (context_tags);
+
+ALTER TABLE utterance_candidates
+    ADD COLUMN IF NOT EXISTS metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE INDEX IF NOT EXISTS utterance_candidates_metadata_json_gin_idx
+    ON utterance_candidates
+    USING gin (metadata_json);
 
 CREATE TABLE IF NOT EXISTS arrival_candidates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

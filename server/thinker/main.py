@@ -25,6 +25,7 @@ from server.thinker.pregenerator import PregenerationResult, UtterancePregenerat
 from server.thinker.sources.base import InformationSource
 from server.thinker.sources.diary import DiarySource
 from server.thinker.sources.time_based import TimeBasedSource
+from server.thinker.sources.world_observation import WorldObservationSource
 
 logger = logging.getLogger(__name__)
 
@@ -295,14 +296,20 @@ async def run_watch(thinker: ThinkerProcess) -> None:
 def build_default_thinker(config: NodeConfig) -> ThinkerProcess:
     from server.shared.candidate import PostgresCandidateStore
     from server.shared.diary import PostgresDiaryStore
+    from server.world_observations.store import PostgresWorldObservationStore
 
     store = PostgresCandidateStore(config.database.dsn)
     diary_store = PostgresDiaryStore(config.database.dsn)
+    world_observation_store = PostgresWorldObservationStore(config.database.dsn)
     router = InferenceRouter(config=config)
     tts_backend = create_tts_backend(config.backends[config.inference.tts_backend])
     return ThinkerProcess(
         store=store,
-        sources=[TimeBasedSource(), DiarySource(diary_store=diary_store)],
+        sources=[
+            TimeBasedSource(),
+            DiarySource(diary_store=diary_store),
+            WorldObservationSource(store=world_observation_store),
+        ],
         evaluator=LLMUtteranceEvaluator(router=router),
         pregenerator=UtterancePregenerator(store=store, tts_backend=tts_backend),
         arrival_precomputer=ArrivalPrecomputer(store=store, router=router),

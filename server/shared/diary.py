@@ -16,6 +16,9 @@ class DiaryEntry:
     diary_version: int = 1
     source_session_ids: tuple[UUID, ...] = field(default_factory=tuple)
     source_candidate_ids: tuple[UUID, ...] = field(default_factory=tuple)
+    source_world_observation_interpretation_ids: tuple[UUID, ...] = field(
+        default_factory=tuple
+    )
     mood: str | None = None
     schema_version: int = 1
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -37,6 +40,7 @@ class DiaryEntry:
             diary_version,
             source_session_ids,
             source_candidate_ids,
+            source_world_observation_interpretation_ids,
             mood,
             schema_version,
             created_at,
@@ -49,6 +53,10 @@ class DiaryEntry:
             source_session_ids=tuple(_as_uuid(item) for item in source_session_ids or ()),
             source_candidate_ids=tuple(
                 _as_uuid(item) for item in source_candidate_ids or ()
+            ),
+            source_world_observation_interpretation_ids=tuple(
+                _as_uuid(item)
+                for item in source_world_observation_interpretation_ids or ()
             ),
             mood=_optional_str(mood),
             schema_version=int(schema_version),
@@ -64,6 +72,7 @@ class DiaryStore(Protocol):
         body_text: str,
         source_session_ids: tuple[UUID, ...] = (),
         source_candidate_ids: tuple[UUID, ...] = (),
+        source_world_observation_interpretation_ids: tuple[UUID, ...] = (),
         mood: str | None = None,
         created_at: datetime | None = None,
     ) -> DiaryEntry: ...
@@ -82,6 +91,7 @@ class InMemoryDiaryStore:
         body_text: str,
         source_session_ids: tuple[UUID, ...] = (),
         source_candidate_ids: tuple[UUID, ...] = (),
+        source_world_observation_interpretation_ids: tuple[UUID, ...] = (),
         mood: str | None = None,
         created_at: datetime | None = None,
     ) -> DiaryEntry:
@@ -93,6 +103,9 @@ class InMemoryDiaryStore:
             + sum(1 for entry in self.entries if entry.diary_date == diary_date),
             source_session_ids=source_session_ids,
             source_candidate_ids=source_candidate_ids,
+            source_world_observation_interpretation_ids=(
+                source_world_observation_interpretation_ids
+            ),
             mood=mood,
             created_at=created_at or datetime.now(UTC),
         )
@@ -118,6 +131,7 @@ class PostgresDiaryStore:
         body_text: str,
         source_session_ids: tuple[UUID, ...] = (),
         source_candidate_ids: tuple[UUID, ...] = (),
+        source_world_observation_interpretation_ids: tuple[UUID, ...] = (),
         mood: str | None = None,
         created_at: datetime | None = None,
     ) -> DiaryEntry:
@@ -136,10 +150,19 @@ class PostgresDiaryStore:
                         diary_version,
                         source_session_ids,
                         source_candidate_ids,
+                        source_world_observation_interpretation_ids,
                         mood,
                         created_at
                     )
-                    SELECT %s, %s, next_version.value, %s, %s, %s, COALESCE(%s, now())
+                    SELECT
+                        %s,
+                        %s,
+                        next_version.value,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        COALESCE(%s, now())
                     FROM next_version
                     RETURNING
                         id,
@@ -148,6 +171,7 @@ class PostgresDiaryStore:
                         diary_version,
                         source_session_ids,
                         source_candidate_ids,
+                        source_world_observation_interpretation_ids,
                         mood,
                         schema_version,
                         created_at
@@ -158,6 +182,7 @@ class PostgresDiaryStore:
                         body_text,
                         list(source_session_ids),
                         list(source_candidate_ids),
+                        list(source_world_observation_interpretation_ids),
                         mood,
                         created_at,
                     ),
@@ -179,6 +204,7 @@ class PostgresDiaryStore:
                         diary_version,
                         source_session_ids,
                         source_candidate_ids,
+                        source_world_observation_interpretation_ids,
                         mood,
                         schema_version,
                         created_at

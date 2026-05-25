@@ -62,6 +62,7 @@ def test_diary_entry_from_db_row() -> None:
     entry_id = uuid4()
     session_id = uuid4()
     candidate_id = uuid4()
+    world_observation_id = uuid4()
     created_at = datetime(2026, 5, 24, 23, 0, tzinfo=UTC)
 
     entry = DiaryEntry.from_db_row(
@@ -72,6 +73,7 @@ def test_diary_entry_from_db_row() -> None:
             3,
             [session_id],
             [candidate_id],
+            [world_observation_id],
             "sleepy",
             1,
             created_at + timedelta(seconds=1),
@@ -83,4 +85,5 @@ def test_diary_entry_from_db_row() -> None:
     assert entry.diary_version == 3
     assert entry.source_session_ids == (session_id,)
     assert entry.source_candidate_ids == (candidate_id,)
+    assert entry.source_world_observation_interpretation_ids == (world_observation_id,)
     assert entry.mood == "sleepy"

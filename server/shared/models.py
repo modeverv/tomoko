@@ -35,6 +35,21 @@ PlaybackState = Literal["idle", "speaking", "client_playing", "echo_grace"]
 ConnectionRole = Literal["browser", "edge", "monitor"]
 CandidateSpeakDecisionKind = Literal["speak", "wait", "needs_llm_judge"]
 LLMJudgeDecisionKind = Literal["speak_now", "wait", "defer"]
+WorldObservationDocumentStatus = Literal[
+    "pending",
+    "normalizing",
+    "completed",
+    "failed",
+]
+WorldObservationFreshness = Literal["breaking", "fresh", "recent", "stale", "unknown"]
+WorldObservationEmotionalTone = Literal[
+    "neutral",
+    "hopeful",
+    "concerned",
+    "curious",
+    "playful",
+    "sad",
+]
 
 
 @dataclass
@@ -431,6 +446,263 @@ class CandidateFeedbackSummary:
             "feedback_penalty": self.feedback_penalty,
             "feedback_boost": self.feedback_boost,
         }
+
+
+@dataclass(frozen=True)
+class WorldObservationParseIssue:
+    field: str
+    message: str
+    severity: Literal["warning", "error"] = "error"
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "field": self.field,
+            "message": self.message,
+            "severity": self.severity,
+        }
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> WorldObservationParseIssue:
+        severity = str(payload.get("severity", "error"))
+        if severity not in {"warning", "error"}:
+            severity = "error"
+        return cls(
+            field=str(payload.get("field", "")),
+            message=str(payload.get("message", "")),
+            severity=severity,  # type: ignore[arg-type]
+        )
+
+
+@dataclass(frozen=True)
+class WorldObservationRawMetadata:
+    schema_version: int
+    kind: str
+    generated_by: str
+    observed_at: datetime
+    language: str
+    topics: tuple[str, ...]
+    source_policy: str
+    collection_prompt_version: str
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "kind": self.kind,
+            "generated_by": self.generated_by,
+            "observed_at": self.observed_at.isoformat(),
+            "language": self.language,
+            "topics": list(self.topics),
+            "source_policy": self.source_policy,
+            "collection_prompt_version": self.collection_prompt_version,
+        }
+
+
+@dataclass(frozen=True)
+class WorldObservationRawDocument:
+    path: str
+    metadata: WorldObservationRawMetadata | None
+    body: str
+    raw_frontmatter: dict[str, Any]
+    issues: tuple[WorldObservationParseIssue, ...] = field(default_factory=tuple)
+
+    @property
+    def is_valid(self) -> bool:
+        return self.metadata is not None and not any(
+            issue.severity == "error" for issue in self.issues
+        )
+
+
+@dataclass(frozen=True)
+class WorldObservationNormalizeTrace:
+    model: str
+    elapsed_ms: float
+    attempts: int
+    issues: tuple[WorldObservationParseIssue, ...] = field(default_factory=tuple)
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "model": self.model,
+            "elapsed_ms": self.elapsed_ms,
+            "attempts": self.attempts,
+            "issues": [issue.to_json() for issue in self.issues],
+        }
+
+
+@dataclass(frozen=True)
+class WorldObservationNormalizedItem:
+    topic: str
+    title: str
+    summary: str
+    source_hint: str
+    freshness: WorldObservationFreshness
+    confidence: float
+    raw_excerpt: str
+    item_json: dict[str, Any] = field(default_factory=dict)
+    parse_notes: tuple[str, ...] = field(default_factory=tuple)
+    schema_version: int = 1
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> WorldObservationNormalizedItem:
+        freshness = str(payload.get("freshness", "unknown"))
+        if freshness not in {"breaking", "fresh", "recent", "stale", "unknown"}:
+            freshness = "unknown"
+        return cls(
+            schema_version=int(payload.get("schema_version", 1)),
+            topic=str(payload.get("topic", "")).strip(),
+            title=str(payload.get("title", "")).strip(),
+            summary=str(payload.get("summary", "")).strip(),
+            source_hint=str(payload.get("source_hint", "")).strip(),
+            freshness=freshness,  # type: ignore[arg-type]
+            confidence=_clamp_float(payload.get("confidence"), minimum=0.0, maximum=1.0),
+            raw_excerpt=str(payload.get("raw_excerpt", "")).strip(),
+            item_json=dict(payload.get("item_json") or {}),
+            parse_notes=tuple(str(item) for item in payload.get("parse_notes", ())),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "topic": self.topic,
+            "title": self.title,
+            "summary": self.summary,
+            "source_hint": self.source_hint,
+            "freshness": self.freshness,
+            "confidence": self.confidence,
+            "raw_excerpt": self.raw_excerpt,
+            "item_json": dict(self.item_json),
+            "parse_notes": list(self.parse_notes),
+        }
+
+
+@dataclass(frozen=True)
+class WorldObservationNormalizedBatch:
+    items: tuple[WorldObservationNormalizedItem, ...]
+    trace: WorldObservationNormalizeTrace
+    schema_version: int = 1
+
+
+@dataclass(frozen=True)
+class WorldObservationDocumentRecord:
+    id: UUID
+    raw_file_path: str
+    sha256_checksum: str
+    generated_by: str
+    observed_at: datetime
+    imported_at: datetime
+    status: WorldObservationDocumentStatus
+    metadata_json: dict[str, Any]
+    parse_issues_json: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class WorldObservationItemRecord:
+    id: UUID
+    document_id: UUID
+    topic: str
+    title: str
+    summary: str
+    source_hint: str
+    freshness: WorldObservationFreshness
+    confidence: float
+    item_json: dict[str, Any]
+    raw_excerpt: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class WorldObservationInterpretation:
+    item_id: UUID
+    relevance_to_user: float
+    tomoko_interest: float
+    emotional_tone: WorldObservationEmotionalTone
+    memory_value: float
+    speakability_hint: str
+    interpretation_text: str
+    reason_json: dict[str, Any] = field(default_factory=dict)
+    persona_state_version_id: UUID | None = None
+    persona_lexicon_version_id: UUID | None = None
+    schema_version: int = 1
+
+    @classmethod
+    def from_json(
+        cls,
+        payload: dict[str, Any],
+        *,
+        item_id: UUID,
+        persona_state_version_id: UUID | None = None,
+        persona_lexicon_version_id: UUID | None = None,
+    ) -> WorldObservationInterpretation:
+        tone = str(payload.get("emotional_tone", "neutral"))
+        if tone not in {"neutral", "hopeful", "concerned", "curious", "playful", "sad"}:
+            tone = "neutral"
+        return cls(
+            schema_version=int(payload.get("schema_version", 1)),
+            item_id=item_id,
+            persona_state_version_id=persona_state_version_id,
+            persona_lexicon_version_id=persona_lexicon_version_id,
+            relevance_to_user=_clamp_float(
+                payload.get("relevance_to_user"),
+                minimum=0.0,
+                maximum=1.0,
+            ),
+            tomoko_interest=_clamp_float(
+                payload.get("tomoko_interest"),
+                minimum=0.0,
+                maximum=1.0,
+            ),
+            emotional_tone=tone,  # type: ignore[arg-type]
+            memory_value=_clamp_float(
+                payload.get("memory_value"),
+                minimum=0.0,
+                maximum=1.0,
+            ),
+            speakability_hint=str(payload.get("speakability_hint", "unknown")).strip(),
+            interpretation_text=str(payload.get("interpretation_text", "")).strip(),
+            reason_json=dict(payload.get("reason_json") or {}),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema_version": self.schema_version,
+            "item_id": str(self.item_id),
+            "relevance_to_user": self.relevance_to_user,
+            "tomoko_interest": self.tomoko_interest,
+            "emotional_tone": self.emotional_tone,
+            "memory_value": self.memory_value,
+            "speakability_hint": self.speakability_hint,
+            "interpretation_text": self.interpretation_text,
+            "reason_json": dict(self.reason_json),
+        }
+        if self.persona_state_version_id is not None:
+            payload["persona_state_version_id"] = str(self.persona_state_version_id)
+        if self.persona_lexicon_version_id is not None:
+            payload["persona_lexicon_version_id"] = str(
+                self.persona_lexicon_version_id
+            )
+        return payload
+
+
+@dataclass(frozen=True)
+class WorldObservationInterpretationRecord:
+    id: UUID
+    item_id: UUID
+    document_id: UUID
+    topic: str
+    title: str
+    summary: str
+    source_hint: str
+    freshness: WorldObservationFreshness
+    confidence: float
+    persona_state_version_id: UUID | None
+    persona_lexicon_version_id: UUID | None
+    relevance_to_user: float
+    tomoko_interest: float
+    emotional_tone: WorldObservationEmotionalTone
+    memory_value: float
+    speakability_hint: str
+    interpretation_text: str
+    reason_json: dict[str, Any]
+    created_at: datetime
 
 
 @dataclass(frozen=True)
@@ -1116,3 +1388,11 @@ def _float_or_zero(value: object) -> float:
     if value in (None, ""):
         return 0.0
     return float(value)
+
+
+def _clamp_float(value: object, *, minimum: float, maximum: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = minimum
+    return min(maximum, max(minimum, number))

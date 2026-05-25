@@ -3448,22 +3448,22 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
 
 **目標**: 外部情報収集の raw artifact を、人間にも機械にも追える filesystem layout に隔離する。
 
-- [ ] `informations/` directory を追加する
+- [x] `informations/` directory を追加する
   - `informations/work/`: 未取り込み、または取り込み待ちの raw Markdown
   - `informations/archived/`: 正常取り込み済み raw Markdown
   - `informations/failed/`: parse / validation / normalize 失敗 raw Markdown
   - `informations/prompts/`: Perplexity / Codex Computer Use に渡す収集 prompt
   - `informations/samples/`: public repo に置けるダミー artifact
-- [ ] `.gitignore` に実データ directory を追加する
+- [x] `.gitignore` に実データ directory を追加する
   - `informations/work/`
   - `informations/archived/`
   - `informations/failed/`
-- [ ] `informations/README.md` を追加し、raw Markdown は source of truth ではなく external observation artifact であることを書く
-- [ ] `informations/prompts/daily_world_observation.md` を追加する
+- [x] `informations/README.md` を追加し、raw Markdown は source of truth ではなく external observation artifact であることを書く
+- [x] `informations/prompts/daily_world_observation.md` を追加する
   - Perplexity に 1 万字程度の日本語 Markdown を出させる
   - news / economy / technology / culture / local life / AI / local inference などの topic を含める
   - machine-readable を目指すが、揺れる前提でよいと明記する
-- [ ] `informations/samples/` に架空内容の sample Markdown を置く
+- [x] `informations/samples/` に架空内容の sample Markdown を置く
 
 **完了条件**:
 - real observation artifact が git に入らない
@@ -3475,7 +3475,7 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
 
 **目標**: Perplexity / Codex Computer Use の不安定な出力を、Tomoko に入れる前に raw artifact として検査する。
 
-- [ ] raw Markdown の frontmatter contract を定義する
+- [x] raw Markdown の frontmatter contract を定義する
   - `schema_version`
   - `kind = "world_observation_batch"`
   - `generated_by`
@@ -3484,19 +3484,19 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
   - `topics`
   - `source_policy`
   - `collection_prompt_version`
-- [ ] `server/shared/models.py` に DTO を追加する
+- [x] `server/shared/models.py` に DTO を追加する
   - `WorldObservationRawDocument`
   - `WorldObservationRawMetadata`
   - `WorldObservationParseIssue`
-- [ ] `server/world_observations/raw_markdown.py` を追加する
+- [x] `server/world_observations/raw_markdown.py` を追加する
   - frontmatter を読む
   - body を raw text として保持する
   - missing / invalid metadata を issue として返す
   - 内容理解はしない
-- [ ] validator CLI を追加する
+- [x] validator CLI を追加する
   - `_tools/validate_world_observation_md.py`
   - `--strict` では invalid artifact を non-zero exit にする
-- [ ] unit test を追加する
+- [x] unit test を追加する
   - frontmatter が揺れても issue として返る
   - body は改変されない
   - invalid artifact は ingest されない
@@ -3510,8 +3510,8 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
 
 **目標**: 生 Markdown と Tomoko の解釈を混ぜず、DB 上で再生成可能な派生情報として管理する。
 
-- [ ] `docker/postgres/init/013_world_observations.sql` を追加する
-- [ ] `world_observation_documents` テーブルを追加する
+- [x] `docker/postgres/init/013_world_observations.sql` を追加する
+- [x] `world_observation_documents` テーブルを追加する
   - raw file path
   - sha256 checksum
   - generated_by
@@ -3520,7 +3520,7 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
   - status: `pending` / `normalizing` / `completed` / `failed`
   - metadata_json
   - parse_issues_json
-- [ ] `world_observation_items` テーブルを追加する
+- [x] `world_observation_items` テーブルを追加する
   - document id
   - topic
   - title
@@ -3530,7 +3530,7 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
   - confidence
   - item_json
   - raw_excerpt
-- [ ] `world_observation_interpretations` テーブルを追加する
+- [x] `world_observation_interpretations` テーブルを追加する
   - item id
   - persona_state_version_id nullable
   - persona_lexicon_version_id nullable
@@ -3542,8 +3542,8 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
   - interpretation_text
   - reason_json
   - created_at
-- [ ] `PostgresWorldObservationStore` / `InMemoryWorldObservationStore` を追加する
-- [ ] checksum による idempotent import を実装する
+- [x] `PostgresWorldObservationStore` / `InMemoryWorldObservationStore` を追加する
+- [x] checksum による idempotent import を実装する
 
 **完了条件**:
 - 同じ Markdown を二度 ingest しても document / item が重複しない
@@ -3554,19 +3554,19 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
 
 **目標**: raw Markdown を信頼せず、LLM normalize + schema validation で `world_observation_items` に変換する。
 
-- [ ] `server/world_observations/normalizer.py` を追加する
+- [x] `server/world_observations/normalizer.py` を追加する
   - raw Markdown body を入力にする
   - structured JSON を出力させる
   - item ごとに confidence / source_hint / freshness / parse_notes を持たせる
-- [ ] normalizer output DTO を追加する
+- [x] normalizer output DTO を追加する
   - `WorldObservationNormalizedBatch`
   - `WorldObservationNormalizedItem`
   - `WorldObservationNormalizeTrace`
-- [ ] JSON schema / pydantic validation を追加する
-- [ ] malformed JSON / timeout / low confidence を failed ではなく traceable error として扱う
-- [ ] normalize retry は最大 1 回までにする
-- [ ] low confidence item は DB に保存しても thinker / journalist の source にはしない
-- [ ] unit test を追加する
+- [x] JSON schema / pydantic validation を追加する
+- [x] malformed JSON / timeout / low confidence を failed ではなく traceable error として扱う
+- [x] normalize retry は最大 1 回までにする
+- [x] low confidence item は DB に保存しても thinker / journalist の source にはしない
+- [x] unit test を追加する
   - malformed output は rejected になる
   - required field missing は issue になる
   - low confidence item は candidate source に出ない
@@ -3580,15 +3580,15 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
 
 **目標**: Codex が `informations/work` の Markdown を取り込み、成功なら archived、失敗なら failed へ移せる local job を作る。
 
-- [ ] `background-process/ingest_world_observations.py` を追加する
+- [x] `background-process/ingest_world_observations.py` を追加する
   - `--once`
   - `--dry-run`
   - `--path informations/work`
   - `--archive-root informations/archived`
   - `--failed-root informations/failed`
-- [ ] `make information-ingest-once` を追加する
-- [ ] `make information-ingest-dry-run` を追加する
-- [ ] ingest の流れを固定する
+- [x] `make information-ingest-once` を追加する
+- [x] `make information-ingest-dry-run` を追加する
+- [x] ingest の流れを固定する
   - work file discovery
   - raw Markdown validation
   - checksum idempotency check
@@ -3596,10 +3596,10 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
   - DB transaction で document / item 保存
   - 成功時 archive へ移動
   - 失敗時 failed へ移動し、理由 sidecar を保存
-- [ ] file movement は DB commit 後に行う
-- [ ] archive path は `YYYY-MM-DD/<original-file-name>` にする
-- [ ] failed sidecar は `<file>.error.json` とする
-- [ ] unit / integration test を追加する
+- [x] file movement は DB commit 後に行う
+- [x] archive path は `YYYY-MM-DD/<original-file-name>` にする
+- [x] failed sidecar は `<file>.error.json` とする
+- [x] unit / integration test を追加する
 
 **完了条件**:
 - `make information-ingest-dry-run` で DB / file を変更せず plan が見える
@@ -3611,24 +3611,24 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
 
 **目標**: 同じ外部ニュースでも、Tomoko の人格・好み・ユーザーとの関係性に基づく「見え方」として解釈を保存する。
 
-- [ ] `server/world_observations/interpreter.py` を追加する
+- [x] `server/world_observations/interpreter.py` を追加する
   - normalized item
   - latest `persona_state_versions`
   - latest `persona_lexicon_versions`
   - recent user interest summary
   - recent initiative feedback summary
   を入力にする
-- [ ] `WorldObservationInterpretation` DTO を追加する
-- [ ] interpretation prompt を追加する
+- [x] `WorldObservationInterpretation` DTO を追加する
+- [x] interpretation prompt を追加する
   - 事実断定ではなく「Tomoko がどう受け取ったか」を書く
   - user relevance と Tomoko interest を分ける
   - 話題に出すべきかではなく、話題候補にできるかを判断する
-- [ ] worker を追加する
+- [x] worker を追加する
   - `background-process/interpret_world_observations.py`
   - `make information-interpret-once`
   - `make information-interpret`
-- [ ] interpretation は versioned snapshot id を保存する
-- [ ] interpretation failure は raw item を壊さず error として残す
+- [x] interpretation は versioned snapshot id を保存する
+- [x] interpretation failure は raw item を壊さず error として残す
 
 **完了条件**:
 - 同じ raw item から「一般要約」と「Tomoko の解釈」が別レコードとして追える
@@ -3639,22 +3639,22 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
 
 **目標**: 外部観測の解釈を、自発発話候補と日記素材に変換する。ただし raw Markdown を直接 conversation prompt に入れない。
 
-- [ ] `server/thinker/sources/world_observation.py` を追加する
+- [x] `server/thinker/sources/world_observation.py` を追加する
   - high confidence interpretation だけを読む
   - `tomoko_interest` / `relevance_to_user` / `freshness` / feedback penalty で seed candidate を作る
   - source は `world_observation:<interpretation_id>` にする
-- [ ] `JournalistInputBuilder` に world observation source を追加する
+- [x] `JournalistInputBuilder` に world observation source を追加する
   - raw full Markdown ではなく short excerpt / interpretation / reason だけを渡す
-- [ ] `utterance_candidates.metadata_json` に world observation trace を入れる
+- [x] `utterance_candidates.metadata_json` に world observation trace を入れる
   - document id
   - item id
   - interpretation id
   - topic
   - freshness
   - reason
-- [ ] `CandidateSpeakPolicy` の `curiosity` / `intrusion_risk` と接続する
-- [ ] 「古いニュースを今さら話す」事故を避けるため、freshness と expires_at を必ず入れる
-- [ ] unit test を追加する
+- [x] `CandidateSpeakPolicy` の `curiosity` / `intrusion_risk` と接続する
+- [x] 「古いニュースを今さら話す」事故を避けるため、freshness と expires_at を必ず入れる
+- [x] unit test を追加する
   - low confidence interpretation は candidate にならない
   - expired observation は candidate にならない
   - candidate metadata から元 document まで辿れる
@@ -3669,20 +3669,20 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
 
 **目標**: 外部情報取得の不安定さを Tomoko 本体から切り離し、半自動の operator workflow として扱う。
 
-- [ ] `informations/prompts/daily_world_observation.md` に Perplexity 用 prompt を書く
-- [ ] `informations/prompts/codex_collection_operator.md` を追加する
+- [x] `informations/prompts/daily_world_observation.md` に Perplexity 用 prompt を書く
+- [x] `informations/prompts/codex_collection_operator.md` を追加する
   - Codex Computer Use で Perplexity を開く
   - prompt を貼る
   - 1 万字程度の Markdown を得る
   - `informations/work/YYYY-MM-DD-world-observation.md` に保存する
   - `make information-ingest-dry-run`
   - 問題なければ `make information-ingest-once`
-- [ ] 取得 prompt には「完全な schema compliance は不要。後段 validator が落とす」と明記する
-- [ ] operator workflow は test 対象にしない
+- [x] 取得 prompt には「完全な schema compliance は不要。後段 validator が落とす」と明記する
+- [x] operator workflow は test 対象にしない
   - Browser / Computer Use / Perplexity UI は壊れる前提
   - 壊れたら prompt / 手順を直す
-- [ ] secrets / account / private page の内容を artifact に混ぜない注意を書く
-- [ ] public repo に real collected Markdown を置かないことを明記する
+- [x] secrets / account / private page の内容を artifact に混ぜない注意を書く
+- [x] public repo に real collected Markdown を置かないことを明記する
 
 **完了条件**:
 - 人間または Codex が手動に近い形で external observation Markdown を作れる
@@ -3693,7 +3693,7 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
 
 **目標**: 「なぜ Tomoko がその外部情報を覚え、話題にしたか」を後から追えるようにする。
 
-- [ ] `world_observation_trace` view を追加する
+- [x] `world_observation_trace` view を追加する
   - document
   - item
   - interpretation
@@ -3701,18 +3701,18 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
   - diary source
   - conversation log
   を辿れる
-- [ ] `_tools/inspect_world_observation_trace.py` を追加する
+- [x] `_tools/inspect_world_observation_trace.py` を追加する
   - document path / candidate id / conversation log id から trace を表示する
-- [ ] feedback と接続する
+- [x] feedback と接続する
   - 「それ今じゃない」
   - 「それ面白い」
   - 「その話あとで」
   を world observation topic / source に scoped feedback として残す
-- [ ] false / outdated / sensitive 情報の扱いを定義する
+- [x] false / outdated / sensitive 情報の扱いを定義する
   - low confidence は話さない
   - source_hint が弱いものは断定口調にしない
   - user private data と混ざった artifact は failed に隔離できる
-- [ ] perf test を追加する
+- [x] perf test を追加する
   - `ContextSnapshotBuilder` に world observation source を足す場合も online budget を破らない
   - reflective / background depth だけで重い search を行う
 
@@ -3721,6 +3721,38 @@ Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko 
 - feedback により次回以降の同 topic candidate が上がる / 下がる
 - online conversation latency に影響しない
 - `pytest -m unit` と該当 integration / perf test が通る
+
+### 2026-05-25 実装結果
+
+Phase 18 は、外部観測を Tomoko 本体から隔離した raw Markdown artifact として受け、
+validated interpretation だけを thinker / journalist へ流す形で実装した。
+
+- `informations/` directory contract、Perplexity 用 prompt、Codex operator recipe、sample artifact を追加した
+- `informations/work` / `archived` / `failed` は `.gitignore` に入れ、real artifact が git に入らないようにした
+- raw Markdown frontmatter validator と `_tools/validate_world_observation_md.py` を追加した
+- `world_observation_documents` / `world_observation_items` / `world_observation_interpretations` と `world_observation_trace` view を追加した
+- `PostgresWorldObservationStore` / `InMemoryWorldObservationStore` を追加し、checksum idempotent import を実装した
+- LLM normalizer / interpreter は background worker とし、malformed / low confidence / failure を traceable issue として扱うようにした
+- `background-process/ingest_world_observations.py` と `background-process/interpret_world_observations.py`、Makefile target を追加した
+- `WorldObservationSource` を thinker に接続し、candidate source は `world_observation:<interpretation_id>`、trace は `context_tags` と `utterance_candidates.metadata_json` に保存する
+- `JournalistInputBuilder` は raw Markdown ではなく interpretation / short summary / reason だけを日記 prompt に渡す
+- world observation の feedback は既存 scoped feedback と同じく `source` / `topic` tag 経由で効く
+- `ContextSnapshotBuilder` には world observation source を接続していないため、online 会話 path に外部観測 search は増えていない
+
+補足:
+- `normalizer` は pydantic 依存を増やさず、既存方針どおり dataclass DTO + 手動 schema validation にした
+- `CandidateSpeakPolicy` には world observation 専用 branch を増やさず、既存の priority / urgency / freshness / scoped feedback 経由で接続した
+- Perplexity / Computer Use の実 UI 操作は operator workflow として文書化し、test 対象にはしていない
+
+検証:
+- `mise exec -- uv run python _tools/validate_world_observation_md.py --strict informations/samples/sample-world-observation.md`
+- `make information-ingest-dry-run`
+- `git check-ignore informations/work/example.md informations/archived/example.md informations/failed/example.md`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m integration`
+- `mise exec -- uv run pytest -m perf --tb=short`
+- `git diff --check`
 
 ### Phase 18 全体の完了条件
 

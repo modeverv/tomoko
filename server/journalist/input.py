@@ -49,6 +49,19 @@ class DismissedCandidateMaterial:
 
 
 @dataclass(frozen=True)
+class WorldObservationMaterial:
+    interpretation_id: UUID
+    document_id: UUID
+    topic: str
+    title: str
+    summary: str
+    interpretation_text: str
+    reason: str
+    freshness: str
+    confidence: float
+
+
+@dataclass(frozen=True)
 class JournalistInputSnapshot:
     diary_date: date
     started_at: datetime
@@ -57,6 +70,9 @@ class JournalistInputSnapshot:
     conversation_turns: tuple[ConversationTurnMaterial, ...]
     ambient_digest: AmbientDigest
     dismissed_candidates: tuple[DismissedCandidateMaterial, ...]
+    world_observations: tuple[WorldObservationMaterial, ...] = field(
+        default_factory=tuple
+    )
 
     @property
     def source_session_ids(self) -> tuple[UUID, ...]:
@@ -75,6 +91,10 @@ class JournalistInputSnapshot:
     @property
     def source_candidate_ids(self) -> tuple[UUID, ...]:
         return tuple(candidate.id for candidate in self.dismissed_candidates)
+
+    @property
+    def source_world_observation_interpretation_ids(self) -> tuple[UUID, ...]:
+        return tuple(item.interpretation_id for item in self.world_observations)
 
 
 class JournalistSourceReader(Protocol):
@@ -110,6 +130,14 @@ class JournalistSourceReader(Protocol):
         limit: int,
     ) -> tuple[DismissedCandidateMaterial, ...]: ...
 
+    async def read_world_observations(
+        self,
+        *,
+        started_at: datetime,
+        ended_at: datetime,
+        limit: int,
+    ) -> tuple[WorldObservationMaterial, ...]: ...
+
 
 class JournalistInputBuilder:
     def __init__(
@@ -120,12 +148,14 @@ class JournalistInputBuilder:
         turn_limit: int = 80,
         ambient_excerpt_limit: int = 8,
         candidate_limit: int = 12,
+        world_observation_limit: int = 8,
     ) -> None:
         self.reader = reader
         self.session_limit = session_limit
         self.turn_limit = turn_limit
         self.ambient_excerpt_limit = ambient_excerpt_limit
         self.candidate_limit = candidate_limit
+        self.world_observation_limit = world_observation_limit
 
     async def build(self, diary_date: date) -> JournalistInputSnapshot:
         started_at, ended_at = _utc_day_bounds(diary_date)
@@ -149,6 +179,19 @@ class JournalistInputBuilder:
             ended_at=ended_at,
             limit=self.candidate_limit,
         )
+        read_world_observations = getattr(
+            self.reader,
+            "read_world_observations",
+            None,
+        )
+        if read_world_observations is None:
+            world_observations: tuple[WorldObservationMaterial, ...] = ()
+        else:
+            world_observations = await read_world_observations(
+                started_at=started_at,
+                ended_at=ended_at,
+                limit=self.world_observation_limit,
+            )
         return JournalistInputSnapshot(
             diary_date=diary_date,
             started_at=started_at,
@@ -157,6 +200,7 @@ class JournalistInputBuilder:
             conversation_turns=conversation_turns,
             ambient_digest=ambient_digest,
             dismissed_candidates=dismissed_candidates,
+            world_observations=world_observations,
         )
 
 
@@ -307,6 +351,54 @@ class PostgresJournalistSourceReader:
                 generated_text=row[2],
                 priority=float(row[3]),
                 dismissed_at=row[4],
+            )
+            for row in rows
+        )
+
+    async def read_world_observations(
+        self,
+        *,
+        started_at: datetime,
+        ended_at: datetime,
+        limit: int,
+    ) -> tuple[WorldObservationMaterial, ...]:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT
+                        interpretation_id,
+                        document_id,
+                        topic,
+                        title,
+                        summary,
+                        interpretation_text,
+                        reason_json,
+                        freshness,
+                        confidence
+                    FROM world_observation_trace
+                    WHERE interpretation_created_at >= %s
+                      AND interpretation_created_at < %s
+                      AND interpretation_id IS NOT NULL
+                    ORDER BY
+                      GREATEST(tomoko_interest, relevance_to_user) DESC,
+                      interpretation_created_at ASC
+                    LIMIT %s
+                    """,
+                    (started_at, ended_at, limit),
+                )
+                rows = await cur.fetchall()
+        return tuple(
+            WorldObservationMaterial(
+                interpretation_id=row[0],
+                document_id=row[1],
+                topic=str(row[2]),
+                title=str(row[3]),
+                summary=str(row[4]),
+                interpretation_text=str(row[5]),
+                reason=str(dict(row[6] or {}).get("reason", "")),
+                freshness=str(row[7]),
+                confidence=float(row[8]),
             )
             for row in rows
         )

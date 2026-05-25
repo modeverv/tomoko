@@ -13,6 +13,10 @@ CREATE TABLE IF NOT EXISTS diary_entries (
 ALTER TABLE diary_entries
     ADD COLUMN IF NOT EXISTS diary_version INTEGER NOT NULL DEFAULT 1;
 
+ALTER TABLE diary_entries
+    ADD COLUMN IF NOT EXISTS source_world_observation_interpretation_ids UUID[]
+    NOT NULL DEFAULT '{}';
+
 CREATE INDEX IF NOT EXISTS idx_diary_entries_diary_date_version
     ON diary_entries (diary_date, diary_version);
 

@@ -112,6 +112,7 @@ class CandidateSeed:
     dedupe_key: str
     urgent: bool = False
     context_tags: tuple[str, ...] = field(default_factory=tuple)
+    metadata_json: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.seed_text:
@@ -161,6 +162,7 @@ class UtteranceCandidate:
     maturity: CandidateMaturity
     source: str
     context_tags: tuple[str, ...] = field(default_factory=tuple)
+    metadata_json: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.maturity not in _VALID_MATURITIES:
@@ -188,6 +190,7 @@ class UtteranceCandidate:
             maturity,
             source,
             context_tags,
+            metadata_json,
         ) = row
         return cls(
             id=_as_uuid(candidate_id),
@@ -203,6 +206,7 @@ class UtteranceCandidate:
             maturity=_as_maturity(maturity),
             source=str(source),
             context_tags=tuple(str(tag) for tag in context_tags or ()),
+            metadata_json=dict(metadata_json or {}),
         )
 
 
@@ -300,6 +304,7 @@ class CandidateStore(Protocol):
         generated_text: str | None = None,
         generated_audio: bytes | None = None,
         context_tags: tuple[str, ...] = (),
+        metadata_json: dict[str, object] | None = None,
         created_at: datetime | None = None,
     ) -> UtteranceCandidate: ...
 
@@ -407,6 +412,7 @@ class InMemoryCandidateStore:
         generated_text: str | None = None,
         generated_audio: bytes | None = None,
         context_tags: tuple[str, ...] = (),
+        metadata_json: dict[str, object] | None = None,
         created_at: datetime | None = None,
     ) -> UtteranceCandidate:
         candidate = UtteranceCandidate(
@@ -423,6 +429,7 @@ class InMemoryCandidateStore:
             maturity=maturity,
             source=source,
             context_tags=tuple(context_tags),
+            metadata_json=dict(metadata_json or {}),
         )
         self.utterance_candidates.append(candidate)
         return candidate
@@ -452,6 +459,7 @@ class InMemoryCandidateStore:
             urgent=seed.urgent,
             maturity=0,
             context_tags=seed.context_tags,
+            metadata_json=seed.metadata_json,
             created_at=created_at,
         )
 
@@ -486,6 +494,7 @@ class InMemoryCandidateStore:
             maturity=1,
             generated_text=evaluated.generated_text,
             context_tags=evaluated.context_tags,
+            metadata_json=seed.metadata_json,
             created_at=created_at,
         )
 
@@ -641,6 +650,7 @@ class InMemoryCandidateStore:
                     maturity=maturity or candidate.maturity,
                     source=candidate.source,
                     context_tags=candidate.context_tags,
+                    metadata_json=candidate.metadata_json,
                 )
                 return
 
@@ -710,6 +720,7 @@ class PostgresCandidateStore:
         generated_text: str | None = None,
         generated_audio: bytes | None = None,
         context_tags: tuple[str, ...] = (),
+        metadata_json: dict[str, object] | None = None,
         created_at: datetime | None = None,
     ) -> UtteranceCandidate:
         _as_maturity(maturity)
@@ -727,9 +738,22 @@ class PostgresCandidateStore:
                         expires_at,
                         maturity,
                         source,
-                        context_tags
+                        context_tags,
+                        metadata_json
                     )
-                    VALUES (%s, %s, %s, %s, %s, COALESCE(%s, now()), %s, %s, %s, %s)
+                    VALUES (
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        COALESCE(%s, now()),
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s
+                    )
                     RETURNING
                         id,
                         seed,
@@ -743,7 +767,8 @@ class PostgresCandidateStore:
                         dismissed_at,
                         maturity,
                         source,
-                        context_tags
+                        context_tags,
+                        metadata_json
                     """,
                     (
                         seed,
@@ -756,6 +781,7 @@ class PostgresCandidateStore:
                         maturity,
                         source,
                         list(context_tags),
+                        Jsonb(metadata_json or {}),
                     ),
                 )
                 row = await cur.fetchone()
@@ -798,9 +824,10 @@ class PostgresCandidateStore:
                         expires_at,
                         maturity,
                         source,
-                        context_tags
+                        context_tags,
+                        metadata_json
                     )
-                    VALUES (%s, %s, %s, COALESCE(%s, now()), %s, 0, %s, %s)
+                    VALUES (%s, %s, %s, COALESCE(%s, now()), %s, 0, %s, %s, %s)
                     RETURNING
                         id,
                         seed,
@@ -814,7 +841,8 @@ class PostgresCandidateStore:
                         dismissed_at,
                         maturity,
                         source,
-                        context_tags
+                        context_tags,
+                        metadata_json
                     """,
                     (
                         seed.seed_text,
@@ -824,6 +852,7 @@ class PostgresCandidateStore:
                         seed.expires_at,
                         seed.source,
                         list(seed.context_tags),
+                        Jsonb(seed.metadata_json),
                     ),
                 )
                 row = await cur.fetchone()
@@ -870,6 +899,7 @@ class PostgresCandidateStore:
             maturity=1,
             generated_text=evaluated.generated_text,
             context_tags=evaluated.context_tags,
+            metadata_json=seed.metadata_json,
             created_at=created_at,
         )
 
@@ -896,7 +926,8 @@ class PostgresCandidateStore:
                         dismissed_at,
                         maturity,
                         source,
-                        context_tags
+                        context_tags,
+                        metadata_json
                     FROM utterance_candidates
                     WHERE spoken_at IS NULL
                       AND dismissed_at IS NULL

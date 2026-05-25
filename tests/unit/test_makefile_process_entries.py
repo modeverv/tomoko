@@ -29,6 +29,7 @@ def test_makefile_exposes_config_and_log_vars_for_separate_processes() -> None:
         "PERSONA_UPDATE_LOG_FILE ?= logs/persona-updater.log",
         "THINKER_LOG_FILE ?= logs/thinker.log",
         "JOURNALIST_LOG_FILE ?= logs/journalist.log",
+        "WORLD_OBSERVATION_LOG_FILE ?= logs/world-observations.log",
     ]
 
     for expected in expected_vars:
@@ -46,6 +47,10 @@ def test_background_process_targets_pass_the_central_config_explicitly() -> None
         "thinker-once",
         "journalist",
         "journalist-once",
+        "information-ingest-once",
+        "information-ingest-dry-run",
+        "information-interpret-once",
+        "information-interpret",
     ]:
         assert "--config $(CENTRAL_CONFIG)" in _target_body(target)
 
@@ -67,5 +72,9 @@ def test_makefile_has_grouped_background_maintenance_entries() -> None:
         "thinker-once",
         "journalist",
         "journalist-once",
+        "information-ingest-dry-run",
+        "information-ingest-once",
+        "information-interpret-once",
+        "information-interpret",
     ]:
         assert target in dry_run_body

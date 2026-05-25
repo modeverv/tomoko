@@ -1669,3 +1669,21 @@ Phase 10.9 初期実装時の `say -v Kyoko` 生成は否定する。
 `assets/audio/stop_ack.wav` にコピーしたものとする。
 発話文は `はい、止めますね。`、control response text は `はい、止めますね`。
 出力は RIFF/WAVE PCM 16-bit mono 44.1kHz、154,996 bytes、音声長 1756.8ms。
+
+### 確定した判断: Phase 18 外部観測は raw artifact と interpretation を分離する
+外部情報取得は Tomoko 本体の sensor ではなく、不安定な外周 operator workflow として扱う。
+Perplexity / Codex Computer Use で得た Markdown は `informations/work` に raw artifact として置き、
+validator / LLM normalizer / DB schema validation を通してから `world_observation_items` に変換する。
+
+raw Markdown は source of truth ではなく、Tomoko が信じる事実でもない。
+DB に保存する正規の派生情報は checksum 付き `world_observation_documents`、
+normalized item、Tomoko の persona / lexicon version を参照した interpretation に分ける。
+
+thinker / journalist は raw Markdown を直接 prompt に入れない。
+thinker は `world_observation:<interpretation_id>` candidate を作り、
+document / item / interpretation trace は `context_tags` と `utterance_candidates.metadata_json` に残す。
+journalist は interpretation の短い summary / reason だけを日記素材にする。
+
+online `/ws` / `TomoroSession` / `ContextSnapshotBuilder` には外部情報取得や normalize / interpretation を入れない。
+Phase 18 の external observation は background / local job のみで動き、
+既存の scoped feedback は `source` / `topic` tag 経由で world observation candidate にも効く。

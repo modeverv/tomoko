@@ -73,6 +73,9 @@ class DiaryWriter:
             body_text=body_text,
             source_session_ids=snapshot.source_session_ids,
             source_candidate_ids=snapshot.source_candidate_ids,
+            source_world_observation_interpretation_ids=(
+                snapshot.source_world_observation_interpretation_ids
+            ),
         )
         logger.info(
             "DiaryWriter saved diary_date=%s chars=%s sessions=%s candidates=%s",
@@ -185,6 +188,15 @@ def _format_snapshot_for_prompt(snapshot: JournalistInputSnapshot) -> str:
     else:
         lines.append("- なし。")
 
+    lines.extend(["", "外部観測から Tomoko が気にしたこと:"])
+    if snapshot.world_observations:
+        lines.extend(
+            _format_world_observation_for_prompt(item)
+            for item in snapshot.world_observations
+        )
+    else:
+        lines.append("- なし。")
+
     return "\n".join(lines)
 
 
@@ -193,6 +205,14 @@ def _format_turn_for_prompt(turn) -> str:
     status = "" if turn.status == "completed" else f" ({turn.status})"
     emotion = f" emotion={turn.emotion}" if turn.emotion else ""
     return f"- {speaker}{status}{emotion}: {turn.text}"
+
+
+def _format_world_observation_for_prompt(item) -> str:
+    reason = f" reason={item.reason}" if item.reason else ""
+    return (
+        f"- [{item.topic}/{item.freshness}/confidence={item.confidence:.2f}] "
+        f"{item.title}: {item.interpretation_text}{reason}"
+    )
 
 
 def _clean_diary_text(text: str) -> str:
