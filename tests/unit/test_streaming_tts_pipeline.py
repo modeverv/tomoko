@@ -54,6 +54,28 @@ class FakeBackend(InferenceBackend):
             yield chunk
 
 
+class BlockingBackend(InferenceBackend):
+    name = "blocking"
+    privacy_allowed = True
+
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+        self.cancelled = False
+
+    async def chat_stream(
+        self, system_prompt: str, messages: list[dict[str, str]]
+    ) -> AsyncGenerator[str, None]:
+        del system_prompt, messages
+        self.started.set()
+        try:
+            await self.release.wait()
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        yield "うん。"
+
+
 class FakeRouter:
     def __init__(self, backend: InferenceBackend) -> None:
         self.backend = backend
@@ -186,3 +208,31 @@ async def test_hard_barge_in_cancels_generating_tts_and_stops_playback() -> None
         event["type"] == "audio_control" and event["action"] == "stop"
         for event in events
     )
+
+
+@pytest.mark.unit
+async def test_new_listening_cancels_unstarted_reply_as_stale() -> None:
+    events: list[dict[str, str]] = []
+    backend = BlockingBackend()
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
+        send_event=events.append,
+        send_audio=lambda chunk: None,
+        transcriber=SequenceTranscriber(["トモコ、聞こえる？"]),
+        participation_judge=WakeWordJudge(),
+        router=FakeRouter(backend),  # type: ignore[arg-type]
+        thinking_mode=ThinkFastMode(),
+        tts_backend=BlockingStreamingTTS(),
+    )
+
+    await session._handle_finished_speech(_segment())
+    await asyncio.wait_for(backend.started.wait(), timeout=1)
+
+    assert session._is_reply_generation_active() is True
+    await session._transition("listening")
+    await session._wait_for_reply_task()
+
+    assert backend.cancelled is True
+    assert session._is_reply_generation_active() is False
+    assert not any(event["type"] == "reply_text" for event in events)
+    assert {"type": "reply_done"} not in events

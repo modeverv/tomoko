@@ -149,6 +149,7 @@ class TomoroSession:
         self._latency_first_reply_text_at: float | None = None
         self._latency_tts_start_at: float | None = None
         self._latency_first_audio_chunk_at: float | None = None
+        self._reply_output_started = False
         self._reply_cancel_status: ConversationLogStatus | None = None
         self.active_conversation_session_id: UUID | None = None
         self._context_build_id: UUID | None = None
@@ -967,6 +968,7 @@ class TomoroSession:
                 for command in reply.handle_event(event):
                     if command.action == "emotion":
                         assert command.image is not None
+                        self._reply_output_started = True
                         await self._send_event(
                             {
                                 "type": "emotion",
@@ -985,6 +987,7 @@ class TomoroSession:
                                 self._elapsed_since_speech_end_ms(),
                                 self._elapsed_since_reply_start_ms(),
                             )
+                        self._reply_output_started = True
                         logger.info("TomoroSession reply_text delta=%r", command.value)
                         await self._send_event({"type": "reply_text", "delta": command.value})
                     elif command.action == "tts_text":
@@ -1075,6 +1078,7 @@ class TomoroSession:
         # Initiative/arrival speech opens attention, but the conversation session
         # starts only when a human replies through the normal participation path.
         await self._transition_attention("engaged")
+        self._reply_output_started = True
         await self._send_event({"type": "reply_text", "delta": text})
         self.audio_turns.begin_turn()
         try:
@@ -1126,6 +1130,8 @@ class TomoroSession:
     async def _transition(self, state: str) -> None:
         if state not in {"idle", "listening", "processing"}:
             raise ValueError(f"unknown session state: {state}")
+        if state == "listening":
+            await self._cancel_unstarted_reply_for_resumed_user_speech()
         self.state = state  # type: ignore[assignment]
         logger.info("TomoroSession state changed to %s", state)
         await self._send_event({"type": "state", "state": state})
@@ -1172,6 +1178,7 @@ class TomoroSession:
     async def _send_audio_chunk(self, chunk: AudioChunkOut) -> None:
         if self.send_audio is None:
             return
+        self._reply_output_started = True
         async with self._send_lock:
             maybe_awaitable = self.send_audio(chunk.data)
             if inspect.isawaitable(maybe_awaitable):
@@ -1211,6 +1218,14 @@ class TomoroSession:
         for task in tasks:
             with suppress(asyncio.CancelledError):
                 await task
+
+    async def _cancel_unstarted_reply_for_resumed_user_speech(self) -> None:
+        if not self._is_reply_generation_active() or self._reply_output_started:
+            return
+        logger.info(
+            "TomoroSession stale reply cancelled reason=resumed_user_speech_before_output"
+        )
+        await self._cancel_reply_generation(status="cancelled")
 
     async def _run_internal_commands(self, commands: list[SessionCommand]) -> None:
         for command in commands:
@@ -1429,6 +1444,7 @@ class TomoroSession:
         self._latency_first_reply_text_at = None
         self._latency_tts_start_at = None
         self._latency_first_audio_chunk_at = None
+        self._reply_output_started = False
 
     async def _load_recent_context(self, transcript: Transcript) -> list[ConversationTurn]:
         snapshot = await self._build_context_snapshot(transcript, depth="fast")

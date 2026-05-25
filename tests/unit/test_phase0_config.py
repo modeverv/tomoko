@@ -18,6 +18,8 @@ def test_central_realtime_config_uses_lfm_mlx_for_main_conversation() -> None:
     assert config.node.role == "central_realtime"
     assert config.inference.conversation_backend == "local_lfm25_12b_jp_mlx"
     assert config.inference.conversation_fallback == "local_gemma4_e2b_mlx"
+    assert config.audio.vad_silence_ms == 800
+    assert config.inference.stt_backend == "local_whisperkit_serve_large"
     assert config.inference.tts_backend == "supertonic_coreml_f1"
     assert config.inference.embedding_backend == "local_bge_m3"
     assert config.inference.speech_normalizer_enabled is False
@@ -37,6 +39,11 @@ def test_central_realtime_config_uses_lfm_mlx_for_main_conversation() -> None:
     assert fallback_backend.type == "gemma_mlx"
     assert fallback_backend.model == "mlx-community/gemma-4-e2b-it-4bit"
     assert fallback_backend.privacy_allowed is True
+
+    stt_backend = config.backends["local_whisperkit_serve_large"]
+    assert stt_backend.type == "whisperkit_serve"
+    assert stt_backend.url == "http://127.0.0.1:50061"
+    assert stt_backend.model == "large-v3-v20240930_626MB"
 
     embedding_backend = config.backends["local_bge_m3"]
     assert embedding_backend.type == "bge_m3"

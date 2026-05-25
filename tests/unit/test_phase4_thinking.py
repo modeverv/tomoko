@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 from server.edge.participation.wake_word import WakeWordJudge
 from server.edge.pipeline.vad import VADProcessor
+from server.gateway.thinking import fast
 from server.gateway.thinking.fast import ThinkFastMode
 from server.session import TomoroSession
 from server.shared.inference.backends.base import InferenceBackend
@@ -20,6 +22,8 @@ from server.shared.models import (
     ThinkingInput,
     Transcript,
 )
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 class SequenceVAD:
@@ -133,6 +137,17 @@ class FakeRouter:
 
 
 @pytest.mark.unit
+def test_base_persona_contains_voice_conversation_rules() -> None:
+    prompt = (ROOT / "prompts" / "base_persona.md").read_text(encoding="utf-8")
+
+    assert "音声会話" in prompt
+    assert "聞き取れなかった" in prompt
+    assert "確認して" in prompt
+    assert "開発中のTomoko" in prompt
+    assert "EMOTION:<emotion>" in prompt
+
+
+@pytest.mark.unit
 async def test_think_fast_wraps_streamed_tokens_in_thinking_events(tmp_path) -> None:
     persona = tmp_path / "persona.md"
     persona.write_text("あなたはトモコです。", encoding="utf-8")
@@ -201,6 +216,53 @@ async def test_think_fast_includes_recent_conversation_context(tmp_path) -> None
         {"role": "assistant", "content": "いいね、少し寝かせるとおいしいよ。"},
         {"role": "user", "content": "さっき言ったカレーの続きだけど"},
     ]
+
+
+@pytest.mark.unit
+async def test_think_fast_logs_llm_prompt_payload(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    persona = tmp_path / "persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend(["うん"])
+    mode = ThinkFastMode(persona_path=persona)
+    log_calls: list[tuple[str, tuple[object, ...]]] = []
+
+    def fake_info(message: str, *args: object) -> None:
+        log_calls.append((message, args))
+
+    monkeypatch.setattr(fast.logger, "info", fake_info)
+
+    events = [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="トモコ、今のプロンプト見せて",
+                speaker=None,
+                context=[
+                    ConversationTurn(
+                        speaker="tomoko",
+                        text="うん、準備できてるよ。",
+                        timestamp=datetime(2026, 5, 25, 10, 0, tzinfo=UTC),
+                        emotion="happy",
+                    )
+                ],
+                emotion="neutral",
+                device_id="browser",
+            ),
+        )
+    ]
+
+    assert events[-1] == ThinkingEvent(type="done", value="")
+    message, args = log_calls[0]
+    assert message == "ThinkFastMode llm_prompt backend=%s payload=%s"
+    assert args[0] == "fake"
+    payload = str(args[1])
+    assert '"system_prompt": "あなたはトモコです。"' in payload
+    assert '"role": "assistant", "content": "うん、準備できてるよ。"' in payload
+    assert '"role": "user", "content": "トモコ、今のプロンプト見せて"' in payload
+    assert '"device_id": "browser"' in payload
 
 
 @pytest.mark.unit

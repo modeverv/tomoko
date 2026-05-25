@@ -45,6 +45,9 @@ function sendPlaybackEvent(type, entry) {
 function handleJsonEvent(data) {
   const event = JSON.parse(data);
   if (event.type === "audio_start") {
+    if (currentAudioTurnId !== event.turn_id) {
+      stopPlayback(null);
+    }
     currentAudioTurnId = event.turn_id;
     return;
   }

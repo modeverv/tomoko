@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -9,6 +11,7 @@ from server.shared.models import ThinkingEvent, ThinkingInput
 from server.shared.persona_prompt import format_persona_prompt_slice_for_prompt
 
 EMOTION_PREFIX = "EMOTION:"
+logger = logging.getLogger(__name__)
 EMOTIONS = {
     "neutral",
     "happy",
@@ -47,12 +50,23 @@ class ThinkFastMode(ThinkingMode):
             for turn in thinking_input.context
         ]
         messages.append({"role": "user", "content": thinking_input.text})
+        system_prompt = self._build_system_prompt(thinking_input)
+        logger.info(
+            "ThinkFastMode llm_prompt backend=%s payload=%s",
+            backend.name,
+            json.dumps(
+                {
+                    "system_prompt": system_prompt,
+                    "messages": messages,
+                    "device_id": thinking_input.device_id,
+                    "speaker": thinking_input.speaker,
+                },
+                ensure_ascii=False,
+            ),
+        )
         header_buffer = ""
         header_parsed = False
-        async for chunk in backend.chat_stream(
-            self._build_system_prompt(thinking_input),
-            messages,
-        ):
+        async for chunk in backend.chat_stream(system_prompt, messages):
             if not chunk:
                 continue
 

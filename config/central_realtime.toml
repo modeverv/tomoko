@@ -7,7 +7,7 @@ dsn = "postgresql://tomoko:tomoko@localhost:5432/tomoko"
 [audio]
 sample_rate = 16000
 chunk_ms = 32
-vad_silence_ms = 400
+vad_silence_ms = 800
 
 [inference]
 conversation_backend = "local_lfm25_12b_jp_mlx"
@@ -18,7 +18,7 @@ candidate_gen_backend = "lmstudio_gemma4_e2b"
 candidate_gen_fallback = "local_gemma4_e2b_mlx"
 diary_backend = "lmstudio_gemma4_e2b"
 diary_fallback = "local_gemma4_e2b_mlx"
-stt_backend = "local_whisper_mlx_small"
+stt_backend = "local_whisperkit_serve_large"
 vad_backend = "silero_vad"
 tts_backend = "supertonic_coreml_f1"
 embedding_backend = "local_bge_m3"
@@ -91,6 +91,16 @@ stream_min_audio_ms = 1000
 type = "whisperkit_serve"
 url = "http://127.0.0.1:50060"
 model = "small"
+command = "whisperkit-cli"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
+
+[backends.local_whisperkit_serve_large]
+type = "whisperkit_serve"
+url = "http://127.0.0.1:50061"
+model = "large-v3-v20240930_626MB"
 command = "whisperkit-cli"
 privacy_allowed = true
 streaming = true
