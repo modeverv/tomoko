@@ -1379,3 +1379,18 @@ Kokoro CoreML は `kokoro say` CLI / optional Python object を包む `KokoroCor
 Kokoro MLX は first 87.9ms / total 88.0ms、Kokoro CoreML は first 4816.4ms / total 4816.5ms。
 Kokoro 聞き比べ WAV は `logs/kokoro-mlx-coreml-bench/kokoro_mlx.wav` と
 `logs/kokoro-mlx-coreml-bench/kokoro_coreml.wav` に保存した。
+
+### 確定した判断: WhisperKit serve backend 初段
+上の「実用的な online 経路にするには WhisperKit `serve` などの常駐プロセス化が必要」という判断を受け、
+`WhisperKitServeSTT` を追加した。
+
+`whisperkit_serve` backend は `url` の `/health` を確認し、起動済みならそのまま
+`/v1/audio/transcriptions` に multipart `file` を送る。
+未起動なら backend instance が `whisperkit-cli serve --model <model> --language ja --prompt ともこ`
+を起動し、healthy になるまで待ってから同じ HTTP 経路で transcribe する。
+Tomoko の `/ws` endpoint や `TomoroSession` には触れず、STT backend 境界内に閉じる。
+
+実測では、同じ `say` 合成音声で MLX Whisper small が warm 後 103.8ms、
+WhisperKit serve small が auto-start warm 4791.6ms / 常駐後 214.3ms だった。
+CLI 毎回起動の 4755.6ms より大幅に改善したが、現時点では MLX Whisper の方が約2倍速い。
+default STT は `local_whisper_mlx_small` のまま維持する。

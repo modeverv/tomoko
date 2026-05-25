@@ -4,6 +4,40 @@
 
 ---
 
+## 2026-05-25 セッション8
+
+### やること（開始時に書く）
+- WhisperKit `serve` を常駐させて叩く CoreML STT backend を追加する
+- 既存の `mlx_whisper` / CLI 起動型 `whisper_coreml` と同じ STT 抽象に載せる
+- 同じ `say` 合成音声で MLX Whisper と WhisperKit serve の速度ベンチを行う
+- 変更は STT backend / config / bench / unit test に閉じ、TomoroSession には触れない
+
+### やったこと
+- `server/edge/pipeline/stt_whisperkit.py` に `WhisperKitServeSTT` を追加した
+- `/health` が通る既存 WhisperKit server は再利用し、未起動なら backend が `whisperkit-cli serve` を起動するようにした
+- `/v1/audio/transcriptions` に multipart `file` を送る形で transcription を実装した
+- `server/edge/pipeline/stt_coreml.py` へ CLI 起動型 CoreML backend を分離し、`stt.py` を factory / MLX / faster-whisper 中心に戻した
+- `config/central_realtime.toml` / `config/edge_kitchen.toml` に `local_whisperkit_serve_small` を追加した
+- `tests/perf/test_stt_latency.py` の比較対象に `local_whisperkit_serve_small` を追加した
+- `MEMORY.md` / `_docs/latency.md` に WhisperKit serve の判断と実測を追記した
+
+### 詰まったこと・解決したこと
+- WhisperKit server API は docs だけでなく実物確認した
+  → `/` が endpoint 一覧を返し、`/v1/audio/transcriptions` は OpenAI 互換風の multipart `file` で動いた
+- `stt.py` に CoreML 系を直接足すと 600 行超えになった
+  → `stt_coreml.py` と `stt_whisperkit.py` に分割し、`stt.py` は 300 行未満に戻した
+
+### 次のセッションでやること
+- WhisperKit serve を default STT にする場合は、Chrome 実セッションで partial transcription / follow-up 誤起動を確認する
+- 常駐 server を edge process の lifecycle で明示的に閉じる shutdown hook を追加するか検討する
+
+### 検証
+- WhisperKit serve API smoke: `GET /health` 200、`POST /v1/audio/transcriptions` で `ともこ 3たす3はいくつですか`
+- STT perf: MLX warm 1111.8ms / measured 103.8ms、WhisperKit serve auto-start warm 4791.6ms / measured 214.3ms
+- `mise exec -- uv run ruff check server/edge/pipeline/stt.py server/edge/pipeline/stt_coreml.py server/edge/pipeline/stt_whisperkit.py tests/unit/test_stt_backends.py tests/perf/test_stt_latency.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_stt_backends.py tests/unit/test_phase0_config.py`
+- `TOMOKO_STT_BENCH_BACKENDS=local_whisper_mlx_small,local_whisperkit_serve_small mise exec -- uv run pytest -m perf --tb=short tests/perf/test_stt_latency.py -s`
+
 ## 2026-05-25 セッション7
 
 ### やること（開始時に書く）

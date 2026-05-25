@@ -87,6 +87,16 @@ streaming = true
 stream_interval_ms = 1000
 stream_min_audio_ms = 1000
 
+[backends.local_whisperkit_serve_small]
+type = "whisperkit_serve"
+url = "http://127.0.0.1:50060"
+model = "small"
+command = "whisperkit-cli"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
+
 [backends.local_multilingual_e5_small]
 type = "multilingual_e5_small"
 model = "intfloat/multilingual-e5-small"
