@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-05-25 セッション10
+
+### やること（開始時に書く）
+- STT benchmark CLI を単体 latency だけでなく、MLX LLM / TTS と同時実行した時の latency を測れる形へ拡張する
+- CoreML STT が GPU/MLX workload と競合しにくいかを、同じサンプル音声と同じ測定手順で比較できるようにする
+- 変更は bench tool と unit test に閉じ、実運用 backend / TomoroSession の挙動は変えない
+
+### やったこと
+- `_tools/bench_stt_backends.py` に `--load-tts-backend` / `--load-conversation-backend` / `--load-start-delay-ms` を追加した
+- 各 STT 測定 run の直前に TTS / conversation workload task を起動し、その workload が走っている最中の STT latency を測るようにした
+- JSON 出力に concurrent workload 設定と、各 run の `load_label` / `load_elapsed_ms` を保存するようにした
+- helper unit test に concurrent load label と JSON 保存の確認を追加した
+- `kokoro_mlx` 同時負荷、LFM MLX conversation 同時負荷、TTS + LLM 同時負荷の3条件を実測した
+
+### 詰まったこと・解決したこと
+- 短い LFM 生成は warm 状態だと 50ms 前後で終わり、STT と重なる時間が短かった
+  → TTS 負荷も別条件として測り、MLX GPU/Metal 競合の影響が出るケースを分けて見られるようにした
+- `kokoro_mlx` 同時負荷では MLX Whisper が 103ms 台から平均203.5msへ伸び、WhisperKit serve は平均215.9msでほぼ横ばいだった
+  → CoreML STT は単体では遅いが、MLX TTS 同時実行時の余白としては評価する意味がある
+
+### 次のセッションでやること
+- Chrome 実セッションに近い録音 WAV と、実際の reply 長に近い TTS/LLM load text で tail latency を再測定する
+
 ## 2026-05-25 セッション9
 
 ### やること（開始時に書く）
