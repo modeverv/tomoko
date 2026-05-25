@@ -1427,3 +1427,34 @@ FluidInference の CoreML repo には `M1` しか voice style が無かった。
 女性声の評価用に `Reza2kn/supertonic-3-coreml` の `F1`-`F5` style JSON を使うと、既存 CoreML package と互換で動いた。
 日本語 smoke では F1 112.6ms、F2 111.3ms、F3 148.9ms、F4 108.1ms、F5 113.9ms。
 音質評価用 WAV は `logs/supertonic-coreml-smoke/female/F*/ja-F*-run1.wav` に保存した。
+
+### 確定した判断: embedding backend は BGE-M3 へ切り替える
+`intfloat/multilingual-e5-small` 384次元 backend は、ライセンス面では大きな問題はないが、
+会話ログ・セッション要約・日本語/英語混在の長期記憶検索の基盤としては、より評判が良く 1024次元の
+`BAAI/bge-m3` を採用する。
+
+BGE-M3 は Hugging Face 上で MIT license、1024次元、100以上の言語、dense / sparse / multi-vector を
+扱えるモデルとして公開されている。Tomoko では当面 sentence-transformers 経由の dense embedding だけを使う。
+
+embedding 空間が変わるため、旧 e5 embedding と BGE-M3 embedding は混ぜない。
+`docker/postgres/init/006_bge_m3_embeddings.sql` で `conversation_embeddings.embedding` と
+`conversation_sessions.summary_embedding` を `vector(1024)` に変更し、既存 e5 embedding は削除して再 backfill する。
+
+実測では、初回 HF download + first embed が 36990.5ms、cache 済み fresh process の first embed が 7838.9ms、
+同一 process warm query が 32.8ms。online 経路では startup warm-up 済み backend を使う前提にする。
+
+### 確定した判断: 任意ダウンロード系モデルの扱い
+Tomoko 本体コードは MIT のまま維持するが、モデル重みは repo に同梱しない。
+MIT / Apache-2.0 など permissive な default / evaluation model は `make download-models` で取得する。
+
+LFM2.5 (`lfm1.0`) や Supertonic-3 CoreML (OpenRAIL family) は custom / OpenRAIL 系として扱い、
+`make download-optional-models` で明示的に取得する。README には license と optional download の扱いを記録する。
+
+### 気づき: psycopg LGPL-3.0-only の扱い
+`psycopg[binary]` は LGPL-3.0-only dependency だが、Tomoko が通常の Python dependency として import して
+使う範囲では、Tomoko 本体コードを LGPL に変更する必要はない。
+
+注意すべきなのは、psycopg 自体を改変して再配布する場合、または wheel / binary をアプリ配布物に同梱する場合。
+その場合は LGPL / GPL ライセンス文を添付し、psycopg が使われていることを明示し、ユーザーが該当ライブラリを
+差し替えられる配布形態を保つ必要がある。現状の開発リポジトリでは PyPI 依存として取得するため、
+README の third-party note に留める。

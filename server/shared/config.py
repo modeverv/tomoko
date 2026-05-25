@@ -40,6 +40,7 @@ class BackendSpec:
     url: str | None = None
     voice: str | None = None
     sample_rate: int | None = None
+    dimensions: int | None = None
     max_latency_ms: int | None = None
     privacy_allowed: bool = True
     streaming: bool = False

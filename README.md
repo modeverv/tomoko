@@ -77,11 +77,11 @@ PostgreSQL は `make db-up` で Docker 上に起動する。
 
 現行の default 設定は次の構成：
 
-- 会話 LLM: LM Studio OpenAI 互換 API（`gemma-4-e2b-it-mlx`）
+- 会話 LLM: MLX LM（`lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit`）
 - 会話 LLM fallback: MLX VLM（`mlx-community/gemma-4-e2b-it-4bit`）
 - STT: MLX Whisper small
 - TTS: Kokoro MLX
-- embedding: multilingual-e5-small
+- embedding: BGE-M3
 
 初回起動時は Whisper / Kokoro / Gemma / embedding モデルのダウンロードや warm-up に時間がかかる。
 LM Studio を使わずに動かす場合は `config/central_realtime.toml` の
@@ -92,10 +92,23 @@ LM Studio を使わずに動かす場合は `config/central_realtime.toml` の
 ```bash
 make deps
 make db-up
+make download-models
 make server
 ```
 
 ブラウザで `http://localhost:8000` を開く。
+
+`make download-models` は MIT / Apache-2.0 などの permissive license のモデルだけを事前取得する。
+LFM や Supertonic のような custom / OpenRAIL 系モデルは、ライセンスを確認したうえで明示的に取得する。
+
+```bash
+make download-optional-models
+```
+
+現在の `conversation_backend` は LFM 4bit 版なので、LFM を使う場合は
+`make download-optional-models` を実行するか、初回起動時の自動取得を許容する。
+custom license を避けたい場合は、`config/central_realtime.toml` の
+`conversation_backend` を `local_gemma4_e2b_mlx` に変更する。
 
 LM Studio を使う場合は、`config/central_realtime.toml` の
 `[backends.lmstudio_gemma4_e2b]` に書かれた URL で LM Studio の OpenAI 互換 API を起動し、
@@ -138,6 +151,24 @@ make server-debug
 ## ライセンス
 
 MIT License — 著作権表示を残せば、商用利用を含め自由に使用・改変・再配布できます。
+
+### モデルと依存ライブラリ
+
+Tomoko 本体のコードは MIT License だが、利用するモデル重みと外部ライブラリはそれぞれ別のライセンスに従う。
+モデル重みは repository に同梱せず、Hugging Face cache へユーザー操作で取得する。
+
+- Whisper / WhisperKit / faster-whisper: MIT
+- Kokoro-82M: Apache-2.0
+- BGE-M3: MIT
+- Irodori-TTS v3: MIT
+- Qwen / Gemma 系の現在の設定対象: Apache-2.0
+- LFM2.5: `lfm1.0` custom model license
+- Supertonic-3 CoreML: OpenRAIL-family license
+- psycopg: LGPL-3.0-only dependency
+
+LGPL の psycopg は通常の Python dependency として import して使う範囲では Tomoko 本体の MIT License を
+LGPL に変えるものではない。ただし psycopg 自体を改変して再配布する場合や、配布物に wheel / binary を同梱する場合は、
+LGPL のライセンス文と該当 component の入手・差し替え可能性を保つ必要がある。
 
 Copyright (c) 2026 modeverv
 

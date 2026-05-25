@@ -33,18 +33,18 @@ class FakeRouter:
 
 
 class FakeEmbeddingBackend:
-    name = "fake_e5"
-    model = "intfloat/multilingual-e5-small"
-    dimensions = 384
+    name = "fake_bge_m3"
+    model = "BAAI/bge-m3"
+    dimensions = 1024
     privacy_allowed = True
 
     async def embed_query(self, text: str) -> list[float]:
         del text
-        return [1.0] + [0.0] * 383
+        return [1.0] + [0.0] * 1023
 
     async def embed_passage(self, text: str) -> list[float]:
         del text
-        return [1.0] + [0.0] * 383
+        return [1.0] + [0.0] * 1023
 
 
 @pytest.mark.integration
@@ -131,7 +131,7 @@ async def test_postgres_session_summarizer_completes_pending_session() -> None:
             "completed",
             "カレーの材料と買い物について話した。",
             "fake_summary_llm",
-            "intfloat/multilingual-e5-small",
+            "BAAI/bge-m3",
         )
     finally:
         if session_id is not None:

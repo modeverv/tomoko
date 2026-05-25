@@ -24,7 +24,7 @@ THINKER_ARRIVAL_INTERVAL_SEC ?= 180
 JOURNALIST_INTERVAL_SEC ?= 3600
 JOURNALIST_DATE ?=
 
-.PHONY: deps server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
+.PHONY: deps download-models download-optional-models server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
 .PHONY: session-summarizer session-summarizer-once
 .PHONY: persona-updater persona-updater-once thinker thinker-once journalist journalist-once
 .PHONY: background-once background-watch background-dry-run
@@ -32,6 +32,12 @@ JOURNALIST_DATE ?=
 
 deps:
 	mise exec -- uv sync
+
+download-models:
+	mise exec -- uv run python _tools/download_models.py
+
+download-optional-models:
+	mise exec -- uv run python _tools/download_models.py --include-optional
 
 server:
 	PYTHONUNBUFFERED=1 TOMOKO_CONFIG=$(CENTRAL_CONFIG) TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TOMOKO_LOG_FILE) mise exec -- uv run uvicorn server.edge.main:app --host $(HOST) --port $(PORT) --log-level $(UVICORN_LOG_LEVEL)

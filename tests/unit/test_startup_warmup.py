@@ -79,7 +79,7 @@ async def test_startup_warms_configured_transcriber_tts_and_speech_normalizer() 
             conversation_backend="local_qwen7b",
             tts_backend="say",
             stt_backend="local_whisper_mlx_small",
-            embedding_backend="local_multilingual_e5_small",
+            embedding_backend="local_bge_m3",
         ),
         backends={
             "local_whisper_mlx_small": BackendSpec(
@@ -88,10 +88,11 @@ async def test_startup_warms_configured_transcriber_tts_and_speech_normalizer() 
                 model="mlx-community/whisper-small-mlx",
             ),
             "say": BackendSpec(name="say", type="say", voice="Kyoko"),
-            "local_multilingual_e5_small": BackendSpec(
-                name="local_multilingual_e5_small",
-                type="multilingual_e5_small",
-                model="intfloat/multilingual-e5-small",
+            "local_bge_m3": BackendSpec(
+                name="local_bge_m3",
+                type="bge_m3",
+                model="BAAI/bge-m3",
+                dimensions=1024,
             ),
             "local_qwen7b": BackendSpec(
                 name="local_qwen7b",

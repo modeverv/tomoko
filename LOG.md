@@ -4,6 +4,41 @@
 
 ---
 
+## 2026-05-25 セッション14
+
+### やること（開始時に書く）
+- embedding backend を MIT / Apache 系で評判の良い候補へ切り替える
+- psycopg の LGPL-3.0-only が実運用で何を要求するか整理する
+- LFM / Supertonic など任意ダウンロード系モデルの扱い方を README / Makefile 方針として整理する
+
+### やったこと
+- embedding backend を `intfloat/multilingual-e5-small` から `BAAI/bge-m3` へ切り替えた
+- `BackendSpec.dimensions` と `BGEM3Backend` を追加し、1024次元 mismatch を起動時に検出できるようにした
+- `config/central_realtime.toml` / `config/edge_kitchen.toml` の embedding backend を `local_bge_m3` に変更した
+- `docker/postgres/init/006_bge_m3_embeddings.sql` を追加し、旧 e5 embedding を削除して pgvector columns を `vector(1024)` に移行するようにした
+- ローカル PostgreSQL に migration を適用し、20件の conversation turn を BGE-M3 で backfill した
+- `make download-models` と `make download-optional-models` を追加した
+- README にモデル/依存ライブラリのライセンス扱い、psycopg LGPL、LFM / Supertonic optional download 方針を追記した
+
+### 詰まったこと・解決したこと
+- BGE-M3 は 1024次元なので、既存の `vector(384)` schema には入らない
+  → 旧 embedding を削除し、DB column を `vector(1024)` に移行して再 backfill する migration にした
+- LFM / Supertonic は MIT / Apache ではない
+  → permissive model download と optional custom/OpenRAIL download を Makefile target で分けた
+
+### 次のセッションでやること
+- BGE-M3 採用後の memory search 品質を実会話ログで確認する
+- session summary embedding は次回 summarizer 実行時に BGE-M3 で再生成する
+
+### 検証
+- BGE-M3 smoke: initial download + first embed 36990.5ms、cached fresh process first embed 7838.9ms、same process warm embed 32.8ms
+- DB migration: `conversation_embeddings.embedding` / `conversation_sessions.summary_embedding` が `vector(1024)` になったことを確認
+- Backfill: `conversation_embeddings` に `BAAI/bge-m3` 20件、`vector_dims=1024`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m integration tests/integration/test_phase86_session_summary_db.py`
+- `git diff --check`
+
 ## 2026-05-25 セッション13
 
 ### やること（開始時に書く）
