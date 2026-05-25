@@ -1458,3 +1458,19 @@ LFM2.5 (`lfm1.0`) や Supertonic-3 CoreML (OpenRAIL family) は custom / OpenRAI
 その場合は LGPL / GPL ライセンス文を添付し、psycopg が使われていることを明示し、ユーザーが該当ライブラリを
 差し替えられる配布形態を保つ必要がある。現状の開発リポジトリでは PyPI 依存として取得するため、
 README の third-party note に留める。
+
+### 確定した判断: default TTS は Supertonic-3 CoreML F1 に切り替える
+人間の音質評価により、Supertonic-3 CoreML の女性 voice style では F1 が圧倒的に品質が良く、
+Kokoro MLX / Irodori MLX より Tomoko の声として採用しやすいと判断した。
+
+`SupertonicCoreMLBackend` を `TTSBackend` として追加し、`config/central_realtime.toml` /
+`config/edge_kitchen.toml` の default `tts_backend` は `supertonic_coreml_f1` にする。
+voice style は `F1`、language は `ja`、compute units は `CPU_AND_NE`、モデル展開先は
+`models/supertonic-3-coreml` とする。
+
+Supertonic は CoreML 内部生成の逐次 chunk streaming ではなく、Tomoko 側の sentence flush ごとに
+1つの WAV chunk を返す backend として扱う。実測では startup TTS warm-up 7963.4ms、warm 合成は
+4.35秒音声に対して 104.7ms。起動時 warm-up 前提なら会話レイテンシー面でも十分採用可能。
+
+ライセンスは OpenRAIL family なので、モデル重みは repo に同梱しない。
+`make download-optional-models` か初回起動時の明示的な取得で扱う。

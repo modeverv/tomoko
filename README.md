@@ -80,10 +80,10 @@ PostgreSQL は `make db-up` で Docker 上に起動する。
 - 会話 LLM: MLX LM（`lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit`）
 - 会話 LLM fallback: MLX VLM（`mlx-community/gemma-4-e2b-it-4bit`）
 - STT: MLX Whisper small
-- TTS: Kokoro MLX
+- TTS: Supertonic-3 CoreML F1
 - embedding: BGE-M3
 
-初回起動時は Whisper / Kokoro / Gemma / embedding モデルのダウンロードや warm-up に時間がかかる。
+初回起動時は Whisper / Supertonic / Gemma / embedding モデルのダウンロードや warm-up に時間がかかる。
 LM Studio を使わずに動かす場合は `config/central_realtime.toml` の
 `conversation_backend` を `local_gemma4_e2b_mlx` などに変更する。
 
@@ -105,10 +105,10 @@ LFM や Supertonic のような custom / OpenRAIL 系モデルは、ライセン
 make download-optional-models
 ```
 
-現在の `conversation_backend` は LFM 4bit 版なので、LFM を使う場合は
+現在の `conversation_backend` は LFM 4bit 版、`tts_backend` は Supertonic-3 CoreML F1 なので、
 `make download-optional-models` を実行するか、初回起動時の自動取得を許容する。
 custom license を避けたい場合は、`config/central_realtime.toml` の
-`conversation_backend` を `local_gemma4_e2b_mlx` に変更する。
+`conversation_backend` を `local_gemma4_e2b_mlx` に、`tts_backend` を `kokoro_mlx` に変更する。
 
 LM Studio を使う場合は、`config/central_realtime.toml` の
 `[backends.lmstudio_gemma4_e2b]` に書かれた URL で LM Studio の OpenAI 互換 API を起動し、

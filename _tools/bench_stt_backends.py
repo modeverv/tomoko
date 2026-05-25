@@ -353,6 +353,7 @@ def _validate_load_config(config: NodeConfig, load_config: ConcurrentLoadConfig)
             "irodori_mlx",
             "irodori_mlx_stream",
             "qwen3_mlx",
+            "supertonic_coreml",
         }
         if spec.type not in supported_tts:
             raise ValueError(f"backend is not a TTS backend: {load_config.tts_backend}")

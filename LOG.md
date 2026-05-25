@@ -4,6 +4,42 @@
 
 ---
 
+## 2026-05-25 セッション15
+
+### やること（開始時に書く）
+- Supertonic-3 CoreML F1 を正式な TTS backend として追加する
+- default TTS を Kokoro MLX から Supertonic CoreML F1 へ切り替える
+- startup warm-up と bench tool から同じ backend を使えるようにし、実測を `_docs/latency.md` に記録する
+
+### やったこと
+- `server/shared/inference/tts/supertonic_coreml.py` を追加し、Supertonic-3 CoreML を `TTSBackend` として使えるようにした
+- `FluidInference/supertonic-3-coreml` の `.mlpackage` は `models/supertonic-3-coreml` に実ファイルコピーして使うようにした
+- `Reza2kn/supertonic-3-coreml` の `F1` voice style を自動補完して使うようにした
+- `config/central_realtime.toml` / `config/edge_kitchen.toml` の default `tts_backend` を `supertonic_coreml_f1` に切り替えた
+- `_tools/bench_tts_backends.py` と STT concurrent load validator に `supertonic_coreml` を追加した
+- `coremltools` と `huggingface-hub` を直接依存に追加した
+- `models/` を `.gitignore` に追加し、CoreML model assets を repo に同梱しないようにした
+- README の default TTS と optional model download 説明を Supertonic 採用に合わせて更新した
+
+### 詰まったこと・解決したこと
+- Supertonic の model card / CoreML package は OpenRAIL family なので、MIT repo に model weights を同梱しない
+  → `models/` は gitignore し、`make download-optional-models` または初回起動時の取得に寄せた
+- Supertonic は内部的な逐次 audio streaming ではない
+  → Tomoko 側の sentence flush ごとに 1 WAV chunk を返す backend として採用した
+
+### 次のセッションでやること
+- Chrome 実セッションで Supertonic F1 の発話開始タイミング、回り込み、barge-in 停止を確認する
+- 音量や話速が気になる場合は `speed` / `total_step` を実測しながら調整する
+
+### 検証
+- `mise exec -- uv run python _tools/bench_tts_backends.py --targets supertonic_coreml_f1 --text 'こんにちは、トモコです。今日は少しだけ話してみます。' --output-dir logs/tts-supertonic-coreml-backend`
+  - warm-up 9210.3ms、first/total 104.7ms、1 chunk、audio 4345.2ms
+- FastAPI startup warm-up smoke
+  - STT 1552.4ms、Supertonic TTS 7963.4ms、LFM conversation 1088.2ms、BGE-M3 embedding 6607.1ms
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `git diff --check`
+
 ## 2026-05-25 セッション14
 
 ### やること（開始時に書く）

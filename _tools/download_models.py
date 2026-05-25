@@ -17,7 +17,7 @@ class ModelDownload:
 PERMISSIVE_MODELS = [
     ModelDownload("BAAI/bge-m3", "MIT", "embedding backend"),
     ModelDownload("mlx-community/whisper-small-mlx", "MIT", "default STT"),
-    ModelDownload("mlx-community/Kokoro-82M-bf16", "Apache-2.0", "default TTS"),
+    ModelDownload("mlx-community/Kokoro-82M-bf16", "Apache-2.0", "permissive TTS fallback"),
     ModelDownload("mlx-community/gemma-4-e2b-it-4bit", "Apache-2.0", "fallback conversation"),
     ModelDownload("mlx-community/Irodori-TTS-500M-v3-8bit", "MIT", "TTS evaluation"),
     ModelDownload("mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit", "Apache-2.0", "TTS evaluation"),
@@ -33,13 +33,13 @@ OPTIONAL_MODELS = [
     ModelDownload(
         "FluidInference/supertonic-3-coreml",
         "openrail++",
-        "Supertonic CoreML TTS smoke model; OpenRAIL-family license",
+        "default Supertonic CoreML TTS model; OpenRAIL-family license",
         optional=True,
     ),
     ModelDownload(
         "Reza2kn/supertonic-3-coreml",
         "OpenRAIL",
-        "Supertonic female voice styles used for smoke samples",
+        "Supertonic F1 female voice style used by the default TTS backend",
         optional=True,
     ),
 ]

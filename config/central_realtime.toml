@@ -20,7 +20,7 @@ diary_backend = "lmstudio_gemma4_e2b"
 diary_fallback = "local_gemma4_e2b_mlx"
 stt_backend = "local_whisper_mlx_small"
 vad_backend = "silero_vad"
-tts_backend = "kokoro_mlx"
+tts_backend = "supertonic_coreml_f1"
 embedding_backend = "local_bge_m3"
 speech_normalizer_enabled = false
 
@@ -130,6 +130,19 @@ sample_rate = 24000
 max_latency_ms = 200
 privacy_allowed = true
 streaming = true
+
+[backends.supertonic_coreml_f1]
+type = "supertonic_coreml"
+model = "FluidInference/supertonic-3-coreml"
+model_path = "models/supertonic-3-coreml"
+voice = "F1"
+language = "ja"
+sample_rate = 24000
+total_step = 8
+speed = 1.05
+compute_units = "CPU_AND_NE"
+max_latency_ms = 200
+privacy_allowed = true
 
 [backends.irodori_mlx]
 type = "irodori_mlx"

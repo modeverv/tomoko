@@ -54,6 +54,21 @@ TARGETS = [
         ),
     ),
     BenchTarget(
+        name="supertonic_coreml_f1",
+        spec=BackendSpec(
+            name="supertonic_coreml_f1",
+            type="supertonic_coreml",
+            model="FluidInference/supertonic-3-coreml",
+            model_path="models/supertonic-3-coreml",
+            voice="F1",
+            sample_rate=24000,
+            language="ja",
+            total_step=8,
+            speed=1.05,
+            compute_units="CPU_AND_NE",
+        ),
+    ),
+    BenchTarget(
         name="irodori_mlx_stream",
         spec=BackendSpec(
             name="irodori_mlx_stream",
@@ -126,7 +141,12 @@ async def bench_target(
     output_dir: Path,
 ) -> dict[str, float | int | str]:
     spec = target.spec
-    if voice and target.spec.type in {"qwen3_mlx", "kokoro_mlx", "kokoro_coreml"}:
+    if voice and target.spec.type in {
+        "qwen3_mlx",
+        "kokoro_mlx",
+        "kokoro_coreml",
+        "supertonic_coreml",
+    }:
         spec = BackendSpec(
             name=target.spec.name,
             type=target.spec.type,
@@ -138,6 +158,10 @@ async def bench_target(
             max_latency_ms=target.spec.max_latency_ms,
             privacy_allowed=target.spec.privacy_allowed,
             streaming=target.spec.streaming,
+            language=target.spec.language,
+            total_step=target.spec.total_step,
+            speed=target.spec.speed,
+            compute_units=target.spec.compute_units,
         )
     backend = create_tts_backend(spec)
 

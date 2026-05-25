@@ -18,7 +18,7 @@ def test_central_realtime_config_uses_lfm_mlx_for_main_conversation() -> None:
     assert config.node.role == "central_realtime"
     assert config.inference.conversation_backend == "local_lfm25_12b_jp_mlx"
     assert config.inference.conversation_fallback == "local_gemma4_e2b_mlx"
-    assert config.inference.tts_backend == "kokoro_mlx"
+    assert config.inference.tts_backend == "supertonic_coreml_f1"
     assert config.inference.embedding_backend == "local_bge_m3"
     assert config.inference.speech_normalizer_enabled is False
 
@@ -44,10 +44,12 @@ def test_central_realtime_config_uses_lfm_mlx_for_main_conversation() -> None:
     assert embedding_backend.dimensions == 1024
     assert embedding_backend.privacy_allowed is True
 
-    tts_backend = config.backends["kokoro_mlx"]
-    assert tts_backend.type == "kokoro_mlx"
-    assert tts_backend.model == "mlx-community/Kokoro-82M-bf16"
-    assert tts_backend.voice == "jf_alpha"
+    tts_backend = config.backends["supertonic_coreml_f1"]
+    assert tts_backend.type == "supertonic_coreml"
+    assert tts_backend.model == "FluidInference/supertonic-3-coreml"
+    assert tts_backend.model_path == "models/supertonic-3-coreml"
+    assert tts_backend.voice == "F1"
+    assert tts_backend.sample_rate == 24000
 
     irodori_backend = config.backends["irodori_mlx"]
     assert irodori_backend.type == "irodori_mlx"

@@ -41,6 +41,10 @@ class BackendSpec:
     voice: str | None = None
     sample_rate: int | None = None
     dimensions: int | None = None
+    language: str | None = None
+    total_step: int | None = None
+    speed: float | None = None
+    compute_units: str | None = None
     max_latency_ms: int | None = None
     privacy_allowed: bool = True
     streaming: bool = False

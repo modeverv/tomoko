@@ -8,6 +8,7 @@ __pycache__/
 .fyws
 logs/
 artifacts/
+models/
 task.md
 task.acceptance.md
 summary.md

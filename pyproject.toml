@@ -5,9 +5,11 @@ description = "Local voice conversation system with memory and personality."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
 dependencies = [
+    "coremltools>=9.0",
     "fastapi>=0.115.0",
     "faster-whisper>=1.1.0",
     "httpx>=0.28.0",
+    "huggingface-hub>=1.16.1",
     "kokoro-mlx>=0.1.1",
     "misaki[ja]>=0.9.4",
     "mlx-audio",
