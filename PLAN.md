@@ -3421,3 +3421,314 @@ Gemma 4 E2B で読み上げ用日本語へ正規化する。
   - `トモコ、today の meeting は 3pm からだよ。`
   - `トモコ、今日の会議は午後三時からですよ。`
 - `ruff check .` と `pytest -m unit` が通過した
+
+---
+
+## 2026-05-25 追記: Phase 18 外部観測 Markdown と Tomoko 解釈パイプライン
+
+上の「将来の拡張アイデア」にある `NewsSource（RSS から話題を取る）` は、そのまま実装すると
+外部 API / browser automation / parsing / 記憶化 / 自発発話 candidate が一体化しすぎる。
+この方針は否定する。
+
+Phase 18 では、外部情報の取得を Tomoko 本体の機能ではなく unreliable sensor として扱う。
+Perplexity や Codex Computer Use は最外周の収集手段であり、Tomoko の記憶へ直接書き込まない。
+生の外部情報は Markdown file として filesystem に残し、Tomoko がどう解釈したかだけを PostgreSQL に保存する。
+
+設計原則:
+- `/ws` / `TomoroSession` の hot path では外部情報取得、Markdown parse、LLM normalize を行わない
+- Perplexity / Codex Computer Use / Markdown 出力は不安定であることを通常系として扱う
+- ルールベースでニュース内容を理解しない。ルールは file layout、frontmatter、schema validation、archive / failed 移動に限定する
+- raw Markdown は Tomoko が信じる事実ではなく、外部観測の原稿である
+- DB に保存するのは raw document の checksum / metadata と、LLM が schema validation を通して作った解釈である
+- Tomoko の persona / lexicon / user relation は「何を重要視するか」「どう覚えるか」に効かせる
+- thinker / journalist は validated interpretation だけを読む。raw Markdown を直接 prompt に入れない
+- public repo では `informations/work` / `archived` / `failed` の実データを git 管理しない。sample だけを置く
+
+### Phase 18.0: informations directory contract
+
+**目標**: 外部情報収集の raw artifact を、人間にも機械にも追える filesystem layout に隔離する。
+
+- [ ] `informations/` directory を追加する
+  - `informations/work/`: 未取り込み、または取り込み待ちの raw Markdown
+  - `informations/archived/`: 正常取り込み済み raw Markdown
+  - `informations/failed/`: parse / validation / normalize 失敗 raw Markdown
+  - `informations/prompts/`: Perplexity / Codex Computer Use に渡す収集 prompt
+  - `informations/samples/`: public repo に置けるダミー artifact
+- [ ] `.gitignore` に実データ directory を追加する
+  - `informations/work/`
+  - `informations/archived/`
+  - `informations/failed/`
+- [ ] `informations/README.md` を追加し、raw Markdown は source of truth ではなく external observation artifact であることを書く
+- [ ] `informations/prompts/daily_world_observation.md` を追加する
+  - Perplexity に 1 万字程度の日本語 Markdown を出させる
+  - news / economy / technology / culture / local life / AI / local inference などの topic を含める
+  - machine-readable を目指すが、揺れる前提でよいと明記する
+- [ ] `informations/samples/` に架空内容の sample Markdown を置く
+
+**完了条件**:
+- real observation artifact が git に入らない
+- sample artifact だけで validator / ingest test を書ける
+- `git check-ignore` で work / archived / failed が ignore される
+- `pytest -m unit` が通る
+
+### Phase 18.1: raw Markdown artifact schema / validator
+
+**目標**: Perplexity / Codex Computer Use の不安定な出力を、Tomoko に入れる前に raw artifact として検査する。
+
+- [ ] raw Markdown の frontmatter contract を定義する
+  - `schema_version`
+  - `kind = "world_observation_batch"`
+  - `generated_by`
+  - `observed_at`
+  - `language`
+  - `topics`
+  - `source_policy`
+  - `collection_prompt_version`
+- [ ] `server/shared/models.py` に DTO を追加する
+  - `WorldObservationRawDocument`
+  - `WorldObservationRawMetadata`
+  - `WorldObservationParseIssue`
+- [ ] `server/world_observations/raw_markdown.py` を追加する
+  - frontmatter を読む
+  - body を raw text として保持する
+  - missing / invalid metadata を issue として返す
+  - 内容理解はしない
+- [ ] validator CLI を追加する
+  - `_tools/validate_world_observation_md.py`
+  - `--strict` では invalid artifact を non-zero exit にする
+- [ ] unit test を追加する
+  - frontmatter が揺れても issue として返る
+  - body は改変されない
+  - invalid artifact は ingest されない
+
+**完了条件**:
+- Perplexity が多少崩れた Markdown を出しても、Tomoko 本体を壊さず failed に送れる
+- raw text と parse issue が trace できる
+- `pytest -m unit tests/unit/test_world_observation_raw_markdown.py` が通る
+
+### Phase 18.2: world observation DB schema / store
+
+**目標**: 生 Markdown と Tomoko の解釈を混ぜず、DB 上で再生成可能な派生情報として管理する。
+
+- [ ] `docker/postgres/init/013_world_observations.sql` を追加する
+- [ ] `world_observation_documents` テーブルを追加する
+  - raw file path
+  - sha256 checksum
+  - generated_by
+  - observed_at
+  - imported_at
+  - status: `pending` / `normalizing` / `completed` / `failed`
+  - metadata_json
+  - parse_issues_json
+- [ ] `world_observation_items` テーブルを追加する
+  - document id
+  - topic
+  - title
+  - summary
+  - source_hint
+  - freshness
+  - confidence
+  - item_json
+  - raw_excerpt
+- [ ] `world_observation_interpretations` テーブルを追加する
+  - item id
+  - persona_state_version_id nullable
+  - persona_lexicon_version_id nullable
+  - relevance_to_user
+  - tomoko_interest
+  - emotional_tone
+  - memory_value
+  - speakability_hint
+  - interpretation_text
+  - reason_json
+  - created_at
+- [ ] `PostgresWorldObservationStore` / `InMemoryWorldObservationStore` を追加する
+- [ ] checksum による idempotent import を実装する
+
+**完了条件**:
+- 同じ Markdown を二度 ingest しても document / item が重複しない
+- raw document と interpretation を SQL で追跡できる
+- `pytest -m integration tests/integration/test_phase180_world_observations_db.py` が通る
+
+### Phase 18.3: noisy Markdown normalizer
+
+**目標**: raw Markdown を信頼せず、LLM normalize + schema validation で `world_observation_items` に変換する。
+
+- [ ] `server/world_observations/normalizer.py` を追加する
+  - raw Markdown body を入力にする
+  - structured JSON を出力させる
+  - item ごとに confidence / source_hint / freshness / parse_notes を持たせる
+- [ ] normalizer output DTO を追加する
+  - `WorldObservationNormalizedBatch`
+  - `WorldObservationNormalizedItem`
+  - `WorldObservationNormalizeTrace`
+- [ ] JSON schema / pydantic validation を追加する
+- [ ] malformed JSON / timeout / low confidence を failed ではなく traceable error として扱う
+- [ ] normalize retry は最大 1 回までにする
+- [ ] low confidence item は DB に保存しても thinker / journalist の source にはしない
+- [ ] unit test を追加する
+  - malformed output は rejected になる
+  - required field missing は issue になる
+  - low confidence item は candidate source に出ない
+
+**完了条件**:
+- 内容理解を rule parser に寄せていない
+- LLM normalize の失敗が raw artifact と trace に残る
+- `pytest -m unit tests/unit/test_world_observation_normalizer.py` が通る
+
+### Phase 18.4: ingest Makefile job
+
+**目標**: Codex が `informations/work` の Markdown を取り込み、成功なら archived、失敗なら failed へ移せる local job を作る。
+
+- [ ] `background-process/ingest_world_observations.py` を追加する
+  - `--once`
+  - `--dry-run`
+  - `--path informations/work`
+  - `--archive-root informations/archived`
+  - `--failed-root informations/failed`
+- [ ] `make information-ingest-once` を追加する
+- [ ] `make information-ingest-dry-run` を追加する
+- [ ] ingest の流れを固定する
+  - work file discovery
+  - raw Markdown validation
+  - checksum idempotency check
+  - normalizer 実行
+  - DB transaction で document / item 保存
+  - 成功時 archive へ移動
+  - 失敗時 failed へ移動し、理由 sidecar を保存
+- [ ] file movement は DB commit 後に行う
+- [ ] archive path は `YYYY-MM-DD/<original-file-name>` にする
+- [ ] failed sidecar は `<file>.error.json` とする
+- [ ] unit / integration test を追加する
+
+**完了条件**:
+- `make information-ingest-dry-run` で DB / file を変更せず plan が見える
+- `make information-ingest-once` で sample artifact が archived へ移動する
+- validation 失敗 artifact は failed へ移動し、理由が残る
+- `pytest -m unit` と該当 integration test が通る
+
+### Phase 18.5: Tomoko persona interpretation worker
+
+**目標**: 同じ外部ニュースでも、Tomoko の人格・好み・ユーザーとの関係性に基づく「見え方」として解釈を保存する。
+
+- [ ] `server/world_observations/interpreter.py` を追加する
+  - normalized item
+  - latest `persona_state_versions`
+  - latest `persona_lexicon_versions`
+  - recent user interest summary
+  - recent initiative feedback summary
+  を入力にする
+- [ ] `WorldObservationInterpretation` DTO を追加する
+- [ ] interpretation prompt を追加する
+  - 事実断定ではなく「Tomoko がどう受け取ったか」を書く
+  - user relevance と Tomoko interest を分ける
+  - 話題に出すべきかではなく、話題候補にできるかを判断する
+- [ ] worker を追加する
+  - `background-process/interpret_world_observations.py`
+  - `make information-interpret-once`
+  - `make information-interpret`
+- [ ] interpretation は versioned snapshot id を保存する
+- [ ] interpretation failure は raw item を壊さず error として残す
+
+**完了条件**:
+- 同じ raw item から「一般要約」と「Tomoko の解釈」が別レコードとして追える
+- persona / lexicon version が解釈 trace に残る
+- online `/ws` 経路から interpreter が呼ばれていないことを test で保証する
+
+### Phase 18.6: thinker / journalist source 接続
+
+**目標**: 外部観測の解釈を、自発発話候補と日記素材に変換する。ただし raw Markdown を直接 conversation prompt に入れない。
+
+- [ ] `server/thinker/sources/world_observation.py` を追加する
+  - high confidence interpretation だけを読む
+  - `tomoko_interest` / `relevance_to_user` / `freshness` / feedback penalty で seed candidate を作る
+  - source は `world_observation:<interpretation_id>` にする
+- [ ] `JournalistInputBuilder` に world observation source を追加する
+  - raw full Markdown ではなく short excerpt / interpretation / reason だけを渡す
+- [ ] `utterance_candidates.metadata_json` に world observation trace を入れる
+  - document id
+  - item id
+  - interpretation id
+  - topic
+  - freshness
+  - reason
+- [ ] `CandidateSpeakPolicy` の `curiosity` / `intrusion_risk` と接続する
+- [ ] 「古いニュースを今さら話す」事故を避けるため、freshness と expires_at を必ず入れる
+- [ ] unit test を追加する
+  - low confidence interpretation は candidate にならない
+  - expired observation は candidate にならない
+  - candidate metadata から元 document まで辿れる
+
+**完了条件**:
+- external observation 由来 candidate が thinker に積まれる
+- journalist diary に「Tomoko が今日外界から何を見たか」が入る
+- raw Markdown を prompt に直入れしていない
+- `pytest -m unit tests/unit/test_phase18_world_observation_source.py` が通る
+
+### Phase 18.7: Perplexity / Codex Computer Use collection recipe
+
+**目標**: 外部情報取得の不安定さを Tomoko 本体から切り離し、半自動の operator workflow として扱う。
+
+- [ ] `informations/prompts/daily_world_observation.md` に Perplexity 用 prompt を書く
+- [ ] `informations/prompts/codex_collection_operator.md` を追加する
+  - Codex Computer Use で Perplexity を開く
+  - prompt を貼る
+  - 1 万字程度の Markdown を得る
+  - `informations/work/YYYY-MM-DD-world-observation.md` に保存する
+  - `make information-ingest-dry-run`
+  - 問題なければ `make information-ingest-once`
+- [ ] 取得 prompt には「完全な schema compliance は不要。後段 validator が落とす」と明記する
+- [ ] operator workflow は test 対象にしない
+  - Browser / Computer Use / Perplexity UI は壊れる前提
+  - 壊れたら prompt / 手順を直す
+- [ ] secrets / account / private page の内容を artifact に混ぜない注意を書く
+- [ ] public repo に real collected Markdown を置かないことを明記する
+
+**完了条件**:
+- 人間または Codex が手動に近い形で external observation Markdown を作れる
+- 取得に失敗しても DB / TomoroSession / `/ws` に影響しない
+- ingest dry-run で機械的に受け入れ可否を確認できる
+
+### Phase 18.8: trace / analysis / safety hardening
+
+**目標**: 「なぜ Tomoko がその外部情報を覚え、話題にしたか」を後から追えるようにする。
+
+- [ ] `world_observation_trace` view を追加する
+  - document
+  - item
+  - interpretation
+  - candidate
+  - diary source
+  - conversation log
+  を辿れる
+- [ ] `_tools/inspect_world_observation_trace.py` を追加する
+  - document path / candidate id / conversation log id から trace を表示する
+- [ ] feedback と接続する
+  - 「それ今じゃない」
+  - 「それ面白い」
+  - 「その話あとで」
+  を world observation topic / source に scoped feedback として残す
+- [ ] false / outdated / sensitive 情報の扱いを定義する
+  - low confidence は話さない
+  - source_hint が弱いものは断定口調にしない
+  - user private data と混ざった artifact は failed に隔離できる
+- [ ] perf test を追加する
+  - `ContextSnapshotBuilder` に world observation source を足す場合も online budget を破らない
+  - reflective / background depth だけで重い search を行う
+
+**完了条件**:
+- 「なぜこの話をしたか」を document -> interpretation -> candidate -> conversation で追える
+- feedback により次回以降の同 topic candidate が上がる / 下がる
+- online conversation latency に影響しない
+- `pytest -m unit` と該当 integration / perf test が通る
+
+### Phase 18 全体の完了条件
+
+- Perplexity / Codex Computer Use が壊れても Tomoko 本体は壊れない
+- raw Markdown は filesystem に残り、人間が読める
+- Tomoko の解釈は DB に残り、SQL で追える
+- raw document と interpretation は混ざっていない
+- thinker / journalist は validated interpretation だけを読む
+- public repo に real observation artifact が入らない
+- `make information-ingest-once` / `make information-interpret-once` / `make thinker-once` / `make journalist-once` の順で、外部情報が候補と日記へ流れる
+- `pytest -m unit` が通る
