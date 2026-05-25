@@ -1619,3 +1619,42 @@ candidate 発話判断を行わない。
 `TomoroSession` は `AudioTurnController` の private method や内部 field を読まず、
 `reserve_start_event()` / `reserve_audio_chunk()` / `reserve_end_event()` / `reserve_stop_event()` と
 public property だけを使う。
+
+### 確定した判断: stop-intent classifier は PostgreSQL queue の shadow signal として扱う
+Phase 10.9 では、明示的な `BargeInDetector` hard interrupt ルールは即停止として維持し、
+自然発話の stop / wait / withdraw 表現は online background worker で shadow 分類する。
+
+`TomoroSession` の hot path は `stop_intent_observations` への observation insert だけを行い、
+embedding / LLM classifier は `/ws` event drain や session lock の外で動かす。
+worker は `FOR UPDATE SKIP LOCKED` で pending observation を1件ずつ取り、LLM classifier は
+process 内 `asyncio.Semaphore(1)` で最大1同時に制限する。
+
+classifier result は `SessionEvent(type="stop_intent_classified")` として `TomoroSession` に戻し、
+`turn_id` / `transcript_id` / `observation_id` で stale check する。
+高信頼 `hard_stop` / `soft_stop` / `withdraw` だけが制御に採用され、遅れた result や低信頼 result は
+observation / shadow signal として保存するだけにする。
+
+固定 WAV「はい、止めます」は control response であり、通常の Tomoko 返答として
+`conversation_logs` に保存しない。
+採用時は current reply / TTS を cancel し、`audio_control stop` の後に
+`assets/audio/stop_ack.wav` を専用 audio turn として送る。
+
+### 確定した判断: stop_ack.wav は Supertonic-3 CoreML F1 で声を揃える
+Phase 10.9 初期実装時の `say -v Kyoko` 生成は否定する。
+固定 WAV「はい、止めます」は Tomoko の default TTS と同じ `supertonic_coreml_f1`
+（Supertonic-3 CoreML / voice style F1）で生成したものを `assets/audio/stop_ack.wav` とする。
+
+生成元は `logs/stop-ack-supertonic-f1/supertonic_coreml_f1.wav`。
+出力は RIFF/WAVE PCM 16-bit mono 44.1kHz、138,430 bytes、音声長 1569.0ms。
+
+### 確定した判断: stop_ack.wav は明瞭性優先で Kyoko + tail silence にする
+上の「Supertonic F1 で声を揃える」判断は、短い固定応答では末尾「す」が弱く、
+「はい、とめま」のように聞こえるため否定する。
+
+`local_whisper_mlx_small` では、Supertonic F1 版 `assets/audio/stop_ack.wav` は `四四四` と誤認識された。
+`はい、止めます。`、`はい、止めまーす。`、F2-F5 などの Supertonic 候補も安定しなかった。
+一方、macOS `say -v Kyoko` 版は `はい、止めます` と認識された。
+
+固定 WAV は通常会話ではなく control response なので、Tomoko default voice との一致より停止意図の明瞭性を優先する。
+`assets/audio/stop_ack.wav` は `say -v Kyoko --data-format=LEI16@16000` で生成し、
+`sox ... pad 0 0.30` で末尾 300ms の無音を足した RIFF/WAVE PCM 16-bit mono 16kHz とする。

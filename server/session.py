@@ -24,6 +24,13 @@ from server.gateway.initiative_feedback import (
 )
 from server.gateway.reply import ReplyPipeline
 from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
+from server.gateway.stop_ack import StopAckAudioProvider
+from server.gateway.stop_intent import (
+    StopIntentStore,
+    build_stop_observation,
+    should_adopt_stop_signal,
+    should_record_stop_intent_candidate,
+)
 from server.gateway.thinking.base import ThinkingMode
 from server.gateway.thinking.selector import should_use_deep_memory
 from server.gateway.turn_taking.barge_in import BargeInDetector
@@ -94,6 +101,8 @@ class TomoroSession:
         barge_in_detector: BargeInDetector | None = None,
         transcript_filter: TranscriptFilter | None = None,
         candidate_feedback_store: CandidateFeedbackStore | None = None,
+        stop_intent_store: StopIntentStore | None = None,
+        stop_ack_audio_provider: StopAckAudioProvider | None = None,
         connected_output_state: ConnectedOutputState | None = None,
         engaged_timeout_ms: int = 8000,
         cooldown_timeout_ms: int = 8000,
@@ -120,6 +129,8 @@ class TomoroSession:
         self.barge_in_detector = barge_in_detector
         self.transcript_filter = transcript_filter
         self.candidate_feedback_store = candidate_feedback_store
+        self.stop_intent_store = stop_intent_store
+        self.stop_ack_audio_provider = stop_ack_audio_provider or StopAckAudioProvider()
         self.state: SessionState = "idle"
         self.attention_mode: AttentionMode = "ambient"
         self.latest_segment: SpeechSegment | None = None
@@ -243,6 +254,8 @@ class TomoroSession:
             return self._reduce_initiative_candidate_loaded(event)
         if event.type == "arrival_candidate_loaded":
             return self._reduce_arrival_candidate_loaded(event)
+        if event.type == "stop_intent_classified":
+            return self._reduce_stop_intent_classified(event)
         if event.type == "candidate_command_failed":
             return self._transition_result(
                 "candidate_command_failed",
@@ -644,6 +657,52 @@ class TomoroSession:
             commands=commands,
         )
 
+    def _reduce_stop_intent_classified(self, event: SessionEvent) -> TransitionResult:
+        turn_id = _optional_str_payload(event.payload.get("turn_id"))
+        active_turn_id = self.audio_turns.active_turn_id
+        if turn_id is None or turn_id != active_turn_id:
+            return self._transition_result(
+                "stale_stop_intent",
+                payload={
+                    "reason": "missing_turn_id" if turn_id is None else "turn_mismatch",
+                    "observation_id": event.payload.get("observation_id"),
+                    "turn_id": turn_id,
+                    "active_turn_id": active_turn_id,
+                },
+            )
+        predicted_kind = str(event.payload.get("predicted_kind", "none"))
+        confidence = _optional_float_payload(event.payload.get("confidence")) or 0.0
+        if not should_adopt_stop_signal(predicted_kind, confidence):
+            return self._transition_result(
+                "stop_intent_observed",
+                payload={
+                    "reason": "low_confidence_or_non_stop",
+                    "observation_id": event.payload.get("observation_id"),
+                    "predicted_kind": predicted_kind,
+                    "confidence": confidence,
+                },
+            )
+        return self._transition_result(
+            "stop_intent_adopted",
+            payload={
+                "observation_id": event.payload.get("observation_id"),
+                "transcript_id": event.payload.get("transcript_id"),
+                "method": event.payload.get("method"),
+                "predicted_kind": predicted_kind,
+                "confidence": confidence,
+                "latency_ms": event.payload.get("latency_ms"),
+            },
+            commands=[
+                SessionCommand(
+                    type="apply_stop_intent_ack",
+                    payload={
+                        "status": "interrupted",
+                        "predicted_kind": predicted_kind,
+                    },
+                )
+            ],
+        )
+
     def _transition_result(
         self,
         emission_type: str,
@@ -709,6 +768,11 @@ class TomoroSession:
         previous_attention = self.attention_mode
         barge_in_decision = self._classify_barge_in(transcript)
         if barge_in_decision is not None:
+            await self._record_stop_intent_observation(
+                transcript,
+                rule_kind=barge_in_decision.kind,
+                adopted_action=barge_in_decision.action,
+            )
             await self._send_event(
                 {
                     "type": "barge_in",
@@ -748,6 +812,10 @@ class TomoroSession:
                     attention_mode=previous_attention,
                 )
             )
+        await self._maybe_record_stop_intent_observation_for_decision(
+            transcript,
+            decision,
+        )
 
         should_participate = bool(decision and decision.should_participate)
         participation_mode = decision.mode if decision is not None else "observer"
@@ -981,6 +1049,12 @@ class TomoroSession:
             telemetry.performance_now_ms,
         )
 
+    async def apply_stop_intent_event(self, event: SessionEvent) -> TransitionResult:
+        """Apply a background stop-intent advisory result and run control commands."""
+        result = await self.post_event(event)
+        await self._run_internal_commands(result.commands)
+        return result
+
     async def start_precomputed_reply(
         self,
         *,
@@ -1138,6 +1212,44 @@ class TomoroSession:
             with suppress(asyncio.CancelledError):
                 await task
 
+    async def _run_internal_commands(self, commands: list[SessionCommand]) -> None:
+        for command in commands:
+            if command.type == "apply_stop_intent_ack":
+                await self._apply_stop_intent_ack()
+            elif command.type == "insert_stop_intent_observation":
+                await self._insert_stop_intent_observation(command)
+
+    async def _insert_stop_intent_observation(self, command: SessionCommand) -> None:
+        if self.stop_intent_store is None:
+            return
+        observation = command.payload.get("observation")
+        if observation is None:
+            return
+        try:
+            await self.stop_intent_store.insert_observation(observation)
+        except Exception as exc:
+            logger.warning(
+                "TomoroSession stop-intent observation insert failed "
+                "rule_kind=%s adopted_action=%s error=%s",
+                getattr(observation, "rule_kind", None),
+                getattr(observation, "adopted_action", None),
+                exc,
+            )
+
+    async def _apply_stop_intent_ack(self) -> None:
+        await self._cancel_reply_generation(status="interrupted")
+        await self._send_reserved_audio_stop()
+        self.audio_turns.begin_turn()
+        await self._send_reserved_audio_start()
+        chunk = self.stop_ack_audio_provider.chunk()
+        outgoing = await self.audio_turns.reserve_audio_chunk(
+            text=self.stop_ack_audio_provider.text,
+            chunk=chunk,
+        )
+        await self._send_audio_chunk(outgoing)
+        await self._send_reserved_audio_end()
+        await self._send_event({"type": "reply_done", "control": "stop_ack"})
+
     async def _wait_for_reply_task(self) -> None:
         task = self._reply_task
         if task is None:
@@ -1195,6 +1307,66 @@ class TomoroSession:
                 chunk=chunk,
             )
             await self._send_audio_chunk(outgoing)
+
+    async def _record_stop_intent_observation(
+        self,
+        transcript: Transcript,
+        *,
+        rule_kind: str,
+        adopted_action: str,
+    ) -> None:
+        if self.stop_intent_store is None:
+            return
+        observation = build_stop_observation(
+            transcript_text=transcript.text,
+            conversation_session_id=self.active_conversation_session_id,
+            turn_id=self.audio_turns.active_turn_id,
+            rule_kind=rule_kind,
+            adopted_action=adopted_action,
+            playback_state_json={
+                "playback_state": self.audio_turns.playback_state,
+                "client_playback_active": self.audio_turns.is_client_playback_active(),
+                "echo_grace_active": self.audio_turns.is_playback_echo_grace_active(),
+            },
+            reply_state_json={
+                "reply_active": self._is_reply_generation_active(),
+                "first_reply_text_emitted": self._latency_first_reply_text_at
+                is not None,
+                "first_audio_chunk_emitted": self._latency_first_audio_chunk_at
+                is not None,
+            },
+        )
+        await self._run_internal_commands(
+            [
+                SessionCommand(
+                    type="insert_stop_intent_observation",
+                    payload={"observation": observation},
+                )
+            ]
+        )
+
+    async def _maybe_record_stop_intent_observation_for_decision(
+        self,
+        transcript: Transcript,
+        decision,
+    ) -> None:
+        if decision is not None and decision.mode == "withdraw":
+            await self._record_stop_intent_observation(
+                transcript,
+                rule_kind="withdraw_rule",
+                adopted_action="withdraw",
+            )
+            return
+        if should_record_stop_intent_candidate(transcript.text):
+            await self._record_stop_intent_observation(
+                transcript,
+                rule_kind="stop_candidate",
+                adopted_action=(
+                    decision.mode
+                    if decision is not None and decision.mode != "observer"
+                    else "observer"
+                ),
+            )
 
     def _classify_barge_in(self, transcript: Transcript):
         in_active_playback = self.audio_turns.is_client_playback_active()

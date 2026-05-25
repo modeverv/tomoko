@@ -32,6 +32,13 @@ from server.gateway.initiative_policy import InitiativeLLMJudge
 from server.gateway.presence import PresenceManager
 from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
 from server.gateway.resolver import DirectSpeakerResolver
+from server.gateway.stop_ack import StopAckAudioProvider
+from server.gateway.stop_intent import (
+    EmbeddingStopIntentClassifier,
+    LLMStopIntentClassifier,
+    PostgresStopIntentStore,
+    StopIntentClassifierWorker,
+)
 from server.gateway.thinking.deep import ThinkDeepMode
 from server.gateway.thinking.fast import ThinkFastMode
 from server.gateway.turn_taking.barge_in import BargeInDetector
@@ -293,6 +300,16 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         "candidate_feedback_store_factory",
         _create_default_candidate_feedback_store,
     )
+    stop_intent_store_factory = getattr(
+        app.state,
+        "stop_intent_store_factory",
+        _create_default_stop_intent_store,
+    )
+    stop_ack_audio_provider_factory = getattr(
+        app.state,
+        "stop_ack_audio_provider_factory",
+        _create_default_stop_ack_audio_provider,
+    )
     barge_in_detector_factory = getattr(
         app.state,
         "barge_in_detector_factory",
@@ -300,7 +317,9 @@ async def _central_browser_session(websocket: WebSocket) -> None:
     )
     vad_processor = vad_processor_factory()
     candidate_feedback_store = candidate_feedback_store_factory()
+    stop_intent_store = stop_intent_store_factory()
     router = router_factory()
+    embedding_backend = embedding_backend_factory()
     output_state = _connection_registry.register(
         connection_id=connection_id,
         device_id=vad_processor.device_id,
@@ -321,7 +340,7 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         thinking_mode=thinking_mode_factory(),
         deep_thinking_mode=deep_thinking_mode_factory(),
         tts_backend=tts_backend_factory(),
-        embedding_backend=embedding_backend_factory(),
+        embedding_backend=embedding_backend,
         memory_store=memory_store_factory(),
         session_summary_store=session_summary_store_factory(),
         persona_store=persona_store_factory(),
@@ -337,6 +356,8 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         barge_in_detector=barge_in_detector_factory(),
         transcript_filter=TranscriptFilter(),
         candidate_feedback_store=candidate_feedback_store,
+        stop_intent_store=stop_intent_store,
+        stop_ack_audio_provider=stop_ack_audio_provider_factory(),
         connected_output_state=output_state,
     )
     candidate_runner = CandidateCommandRunner(
@@ -357,6 +378,13 @@ async def _central_browser_session(websocket: WebSocket) -> None:
     initiative_task = asyncio.create_task(
         _initiative_idle_loop(session, candidate_runner)
     )
+    stop_intent_worker = StopIntentClassifierWorker(
+        store=stop_intent_store,
+        embedding_classifier=EmbeddingStopIntentClassifier(embedding_backend),
+        llm_classifier=LLMStopIntentClassifier(router),
+        result_callback=session.apply_stop_intent_event,
+    )
+    stop_intent_task = asyncio.create_task(stop_intent_worker.run_forever())
     logger.info("phase4 websocket connected")
     try:
         while True:
@@ -377,8 +405,12 @@ async def _central_browser_session(websocket: WebSocket) -> None:
     finally:
         _connection_registry.unregister(connection_id)
         initiative_task.cancel()
+        stop_intent_worker.stop()
+        stop_intent_task.cancel()
         with suppress(asyncio.CancelledError):
             await initiative_task
+        with suppress(asyncio.CancelledError):
+            await stop_intent_task
 
 
 @app.websocket("/edge/ws")
@@ -569,6 +601,8 @@ def _create_gateway_text_session(
         barge_in_detector=BargeInDetector(),
         transcript_filter=TranscriptFilter(),
         candidate_feedback_store=_create_default_candidate_feedback_store(),
+        stop_intent_store=_create_default_stop_intent_store(),
+        stop_ack_audio_provider=_create_default_stop_ack_audio_provider(),
         connected_output_state=connected_output_state,
     )
 
@@ -724,6 +758,15 @@ def _create_default_candidate_store() -> PostgresCandidateStore:
 def _create_default_candidate_feedback_store() -> PostgresCandidateFeedbackStore:
     config = _load_config()
     return PostgresCandidateFeedbackStore(config.database.dsn)
+
+
+def _create_default_stop_intent_store() -> PostgresStopIntentStore:
+    config = _load_config()
+    return PostgresStopIntentStore(config.database.dsn)
+
+
+def _create_default_stop_ack_audio_provider() -> StopAckAudioProvider:
+    return StopAckAudioProvider(ROOT_DIR / "assets" / "audio" / "stop_ack.wav")
 
 
 async def _initiative_idle_loop(

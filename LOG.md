@@ -4,6 +4,92 @@
 
 ---
 
+## 2026-05-25 セッション28
+
+### やること（開始時に書く）
+- `assets/audio/stop_ack.wav` が「はい、止めます」の末尾「す」を欠いて聞こえる問題を、STT と波形で確認する
+- 固定 WAV 自体が欠けている場合は Supertonic F1 で再生成または tail padding を入れて差し替える
+- `StopAckAudioProvider` のテストに音声長 / tail silence を追加し、固定 WAV が末尾切れしにくいことを保証する
+
+### やったこと
+- 現行 Supertonic F1 版 `assets/audio/stop_ack.wav` を `local_whisper_mlx_small` にかけ、`四四四` と誤認識されることを確認した
+- `はい、止めます。`、`はい、止めまーす。`、F2-F5 などの Supertonic 候補を生成して STT 比較したが、安定しなかった
+- 明瞭性優先で `say -v Kyoko` 版へ戻し、`sox ... pad 0 0.30` で末尾 300ms の無音を追加した
+- `tests/unit/test_stop_ack_audio.py` に 16kHz mono / duration / tail silence の検証を追加した
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` に、Supertonic F1 採用を否定して Kyoko + tail silence 採用へ補正する追記を入れた
+
+### 詰まったこと・解決したこと
+- MLX Whisper は短い Supertonic 音声にかなり弱く、文字起こしだけでは完全な音質評価にはならない
+  → ただし current asset の誤認識と Kyoko 版の安定認識の差が大きいため、control response は明瞭性優先で判断した
+- 末尾が聞こえない問題が生成音声由来かブラウザ再生由来かを分けるため、固定 WAV に tail silence を入れて再生側の切れにも余裕を持たせた
+
+### 検証
+- `mise exec -- uv run python _tools/bench_stt_backends.py --backends local_whisper_mlx_small --runs 3 --audio-file assets/audio/stop_ack.wav --output logs/stop-ack-kyoko-clear/stt.json`
+- `mise exec -- uv run pytest -m unit tests/unit/test_stop_ack_audio.py`
+- `mise exec -- uv run ruff check tests/unit/test_stop_ack_audio.py`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run pytest -m integration tests/integration/test_stop_intent_db.py`
+- `git diff --check`
+
+### 次のセッションでやること
+- Chrome 実セッションで Kyoko stop ack が最後まで聞こえることを確認する
+
+## 2026-05-25 セッション27
+
+### やること（開始時に書く）
+- `assets/audio/stop_ack.wav` を Supertonic-3 CoreML F1 voice style で再生成して差し替える
+- Kyoko 生成と記録していた Phase 10.9 の実装結果・latency note を Supertonic F1 生成へ補正する
+- 固定 WAV 読み込みテストと `ruff check .` / `pytest -m unit tests/unit/test_stop_ack_audio.py` で確認する
+
+### やったこと
+- `_tools/bench_tts_backends.py --targets supertonic_coreml_f1 --text 'はい、止めます' --output-dir logs/stop-ack-supertonic-f1` で Supertonic-3 CoreML F1 の固定 WAV を生成した
+- `logs/stop-ack-supertonic-f1/supertonic_coreml_f1.wav` を `assets/audio/stop_ack.wav` へコピーして、Kyoko 版を置き換えた
+- `PLAN.md` / `_docs/latency.md` / `MEMORY.md` に、Kyoko 生成を否定して Supertonic F1 採用へ補正する追記を入れた
+
+### 詰まったこと・解決したこと
+- Supertonic F1 の出力は 16kHz ではなく 44.1kHz mono PCM WAV だった
+  → 既存の fixed WAV provider と Web Audio 再生経路は WAV container をそのまま扱うため、Supertonic 生成物をそのまま採用した
+
+### 検証
+- `file assets/audio/stop_ack.wav`
+- `mise exec -- uv run pytest -m unit tests/unit/test_stop_ack_audio.py`
+- `mise exec -- uv run ruff check .`
+- `git diff --check`
+
+### 次のセッションでやること
+- Chrome 実セッションで stop ack の音量・声質・再生タイミングを確認し、必要なら固定 WAV の speed / total_step を調整する
+
+## 2026-05-25 セッション26
+
+### やること（開始時に書く）
+- Phase 10.9 全体として、online parallel stop-intent queue と固定 WAV 停止応答を実装する
+- PostgreSQL queue / store、background classifier worker、`SessionEvent(type="stop_intent_classified")`、固定 WAV `StopAckAudioProvider` をテスト先行で接続する
+- `pytest -m unit tests/unit/test_stop_intent_queue.py tests/unit/test_stop_ack_audio.py tests/unit/test_phase105_session_runtime.py`、integration DB test、全 unit で完了確認する
+
+### やったこと
+- `stop_intent_observations` / `stop_intent_shadow_signals` DDL と `stop_intent_shadow_analysis` view を追加した
+- `PostgresStopIntentStore` / `InMemoryStopIntentStore`、rule / embedding / LLM classifier、`StopIntentClassifierWorker` を追加した
+- LLM classifier は `asyncio.Semaphore(1)` で最大1同時にし、PostgreSQL 側は `FOR UPDATE SKIP LOCKED` で二重処理を避けるようにした
+- `TomoroSession` が stop / wait / withdraw 候補 transcript から observation insert command を作り、classifier result を `stop_intent_classified` event として stale check するようにした
+- 高信頼 stop 採用時は reply/TTS cancel、`audio_control stop`、固定 WAV「はい、止めます」の audio turn 送信で停止応答を完了するようにした
+- `assets/audio/stop_ack.wav` を追加した。生成コマンドは `say -v Kyoko --data-format=LEI16@16000 -o assets/audio/stop_ack.wav 'はい、止めます'`
+- `PLAN.md` の Phase 10.9 チェックボックス、`MEMORY.md`、`_docs/latency.md` を更新した
+
+### 詰まったこと・解決したこと
+- `process_transcript()` は既存の direct async path なので、SessionEvent の reducer だけでは observation insert を表せなかった
+  → `SessionCommand(type="insert_stop_intent_observation")` を internal command として作り、hot path では DB insert のみに閉じた
+- 固定 WAV は通常返答ではなく control response なので、`conversation_logs` には保存せず audio turn と playback telemetry だけ既存経路に乗せた
+
+### 検証
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit tests/unit/test_stop_intent_queue.py tests/unit/test_stop_ack_audio.py tests/unit/test_phase105_session_runtime.py`
+- `mise exec -- uv run pytest -m integration tests/integration/test_stop_intent_db.py`
+- `mise exec -- uv run pytest -m unit`
+
+### 次のセッションでやること
+- Chrome 実セッションで「その話いったん置いといて」「今は聞けない」系が observation と shadow signal に残り、間に合う場合だけ fixed WAV stop ack へ切り替わることをログで確認する
+
 ## 2026-05-25 セッション25
 
 ### やること（開始時に書く）

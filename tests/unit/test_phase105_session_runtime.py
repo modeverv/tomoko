@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 from server.edge.participation.wake_word import WakeWordJudge
 from server.edge.pipeline.vad import VADProcessor
+from server.gateway.stop_ack import StopAckAudioProvider
+from server.gateway.stop_intent import InMemoryStopIntentStore
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.session import TomoroSession
 from server.shared.candidate import (
@@ -292,3 +295,98 @@ async def test_hard_interrupt_priority_beats_active_playback_echo() -> None:
 
     assert result.emissions[0].payload["kind"] == "hard_interrupt"
     assert result.emissions[0].payload["action"] == "restart_turn"
+
+
+@pytest.mark.unit
+async def test_stale_stop_intent_event_is_ignored() -> None:
+    session = _session()
+    session.audio_turns.begin_turn()
+    active_turn_id = session.audio_turns.active_turn_id
+
+    result = await session.post_event(
+        SessionEvent(
+            type="stop_intent_classified",
+            payload={
+                "observation_id": "obs-1",
+                "turn_id": "older-turn",
+                "transcript_id": "transcript-1",
+                "method": "llm",
+                "predicted_kind": "soft_stop",
+                "confidence": 0.95,
+                "latency_ms": 20.0,
+            },
+        )
+    )
+
+    assert result.commands == []
+    assert result.emissions[0].type == "stale_stop_intent"
+    assert result.emissions[0].payload["active_turn_id"] == active_turn_id
+
+
+@pytest.mark.unit
+async def test_high_confidence_stop_intent_sends_fixed_wav_without_conversation_log(
+    tmp_path: Path,
+) -> None:
+    events: list[dict[str, object]] = []
+    audio: list[bytes] = []
+    wav_path = tmp_path / "stop_ack.wav"
+    wav_path.write_bytes(Path("assets/audio/stop_ack.wav").read_bytes())
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
+        send_event=events.append,
+        send_audio=audio.append,
+        stop_ack_audio_provider=StopAckAudioProvider(wav_path),
+    )
+    session.audio_turns.begin_turn()
+    turn_id = session.audio_turns.active_turn_id
+
+    result = await session.apply_stop_intent_event(
+        SessionEvent(
+            type="stop_intent_classified",
+            payload={
+                "observation_id": "obs-2",
+                "turn_id": turn_id,
+                "transcript_id": "transcript-2",
+                "method": "llm",
+                "predicted_kind": "soft_stop",
+                "confidence": 0.95,
+                "latency_ms": 20.0,
+            },
+        )
+    )
+
+    assert result.emissions[0].type == "stop_intent_adopted"
+    assert [event["type"] for event in events] == [
+        "audio_control",
+        "audio_start",
+        "audio_end",
+        "reply_done",
+    ]
+    assert events[0]["action"] == "stop"
+    assert audio == [wav_path.read_bytes()]
+
+
+@pytest.mark.unit
+async def test_hard_stop_records_observation_even_if_store_insert_fails() -> None:
+    class FailingStore(InMemoryStopIntentStore):
+        async def insert_observation(self, observation):  # type: ignore[no-untyped-def]
+            del observation
+            raise RuntimeError("db down")
+
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
+        send_event=lambda event: None,
+        barge_in_detector=BargeInDetector(),
+        stop_intent_store=FailingStore(),
+    )
+    session.audio_turns.begin_turn()
+    await session.post_event(
+        SessionEvent(
+            type="playback_started",
+            payload={"turn_id": session.audio_turns.active_turn_id, "chunk_id": 1},
+        )
+    )
+
+    await session.process_transcript(_transcript("ストップ"))
+
+    assert session.get_now_state().vad_state == "idle"
