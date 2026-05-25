@@ -4,6 +4,38 @@
 
 ---
 
+## 2026-05-25 セッション29
+
+### やること（開始時に書く）
+- Supertonic F1 の stop ack を諦める前に、`はい` / `止めます` の分割生成 + WAV 結合を試す
+- `はい、発話を止めます` など短すぎない制御文も生成し、Whisper で明瞭性を比較する
+- Supertonic F1 で安定する候補があれば、Kyoko 版ではなく Supertonic F1 版 `assets/audio/stop_ack.wav` へ差し替える
+
+### やったこと
+- Supertonic F1 で `はい` / `止めます` / `はい、発話を止めます` の分割生成と WAV 結合を試した
+- 追加で `はい、止めますね。` など、短すぎない候補を生成した
+- 人間の聞き取りで `logs/stop-ack-supertonic-retry/phrase_tomemasu_ne.wav` を採用する判断になったため、`assets/audio/stop_ack.wav` へコピーした
+- `StopAckAudioProvider` の control response text を `はい、止めますね` に更新した
+- `tests/unit/test_stop_ack_audio.py` を Supertonic F1 採用版の 44.1kHz mono WAV 検証に更新した
+- `PLAN.md` / `MEMORY.md` / `_docs/latency.md` に、Kyoko fallback を否定して選定済み Supertonic F1 版を採用する追記を入れた
+
+### 詰まったこと・解決したこと
+- `local_whisper_mlx_small` は短い Supertonic F1 の候補を安定して文字起こしできなかった
+  → 今回は固定アセットの最終判断として、STT 結果より人間の聞き取りを優先した
+- 既存の `はい、止めます` は末尾が欠けて聞こえやすかった
+  → `はい、止めますね。` にして発話を少し伸ばし、末尾の不自然な切れを避けた
+
+### 検証
+- `file logs/stop-ack-supertonic-retry/phrase_tomemasu_ne.wav`
+- `python` wave inspect: 44.1kHz / 16-bit / mono / 1756.8ms / 154,996 bytes
+- `mise exec -- uv run pytest -m unit tests/unit/test_stop_ack_audio.py`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `git diff --check`
+
+### 次のセッションでやること
+- Chrome 実セッションで Supertonic F1 stop ack `はい、止めますね` が最後まで自然に聞こえることを確認する
+
 ## 2026-05-25 セッション28
 
 ### やること（開始時に書く）

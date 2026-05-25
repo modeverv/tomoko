@@ -2301,6 +2301,22 @@ sox logs/stop-ack-kyoko-clear/stop_ack_raw.wav assets/audio/stop_ack.wav pad 0 0
 - 音声長は 1414.9ms、末尾 300ms は無音
 - `local_whisper_mlx_small` で 3 runs とも `はい、止めます`
 
+### 2026-05-25 追記: stop_ack.wav は選定済み Supertonic F1「はい、止めますね」を採用する
+
+上の「Kyoko + tail silence に戻す」方針は、人間の聞き取りでより自然な Supertonic F1 候補が見つかったため否定する。
+短い Supertonic F1 音声は `local_whisper_mlx_small` の文字起こしが安定しないため、今回の固定アセット選定では
+STT 結果ではなく人間の聞き取りを最終判断にする。
+
+採用ファイル:
+- source: `logs/stop-ack-supertonic-retry/phrase_tomemasu_ne.wav`
+- text: `はい、止めますね。`
+- target: `assets/audio/stop_ack.wav`
+- file format: RIFF/WAVE PCM 16-bit mono 44.1kHz
+- audio: 1756.8ms
+- bytes: 154,996
+
+`StopAckAudioProvider.text` は制御表示用に `はい、止めますね` とする。
+
 ---
 
 ## Phase 11: 事前生成（pre-generation）

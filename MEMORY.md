@@ -1658,3 +1658,14 @@ Phase 10.9 初期実装時の `say -v Kyoko` 生成は否定する。
 固定 WAV は通常会話ではなく control response なので、Tomoko default voice との一致より停止意図の明瞭性を優先する。
 `assets/audio/stop_ack.wav` は `say -v Kyoko --data-format=LEI16@16000` で生成し、
 `sox ... pad 0 0.30` で末尾 300ms の無音を足した RIFF/WAVE PCM 16-bit mono 16kHz とする。
+
+### 確定した判断: stop_ack.wav は選定済み Supertonic F1「はい、止めますね」を採用する
+上の「Kyoko + tail silence にする」判断は、人間の聞き取りでより自然な Supertonic F1 候補が見つかったため否定する。
+
+`local_whisper_mlx_small` は短い Supertonic F1 制御音声の文字起こしが不安定だった。
+このため、固定 WAV の最終採用判断は STT 文字列ではなく人間の聞き取りを優先する。
+
+採用する固定 WAV は `logs/stop-ack-supertonic-retry/phrase_tomemasu_ne.wav` を
+`assets/audio/stop_ack.wav` にコピーしたものとする。
+発話文は `はい、止めますね。`、control response text は `はい、止めますね`。
+出力は RIFF/WAVE PCM 16-bit mono 44.1kHz、154,996 bytes、音声長 1756.8ms。

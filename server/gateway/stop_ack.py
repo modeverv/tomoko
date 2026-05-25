@@ -12,7 +12,7 @@ class StopAckAudioProvider:
         self,
         path: str | Path = "assets/audio/stop_ack.wav",
         *,
-        text: str = "はい、止めます",
+        text: str = "はい、止めますね",
     ) -> None:
         self.path = Path(path)
         self.text = text
