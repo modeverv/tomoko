@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-05-25 セッション9
+
+### やること（開始時に書く）
+- MLX Whisper と CoreML / WhisperKit serve STT backend を手元で比較できるベンチ CLI を追加する
+- pytest perf ではなく、通常の `_tools` スクリプトとして warm-up / 複数回測定 / JSON 保存を行えるようにする
+- 変更は bench tool と unit test に閉じ、STT backend / TomoroSession の挙動は変えない
+
+### やったこと
+- `_tools/bench_stt_backends.py` を追加し、config の backend 名から STT backend を生成して warmup + 複数回測定 + JSON 保存できるようにした
+- `--backends` / `--runs` / `--text` / `--audio-file` / `--output` を受け取り、macOS `say` 生成音声または任意 WAV で比較できるようにした
+- `tests/unit/test_stt_bench_tool.py` を追加し、backend 名 parsing / 測定値集計 / JSON の日本語保持を unit test で確認した
+- `local_whisper_mlx_small` と `local_whisperkit_serve_small` を実測し、結果を `logs/stt-mlx-coreml-bench.json` に保存した
+
+### 詰まったこと・解決したこと
+- `write_json_summary()` が表より先に JSON path を表示して読みにくかった
+  → CLI は表を先に出し、最後に `JSON: ...` を表示する形にした
+- WhisperKit serve backend は今回も auto-start 後に `close()` で終了し、測定後に port 50060 が残っていないことを確認した
+
+### 次のセッションでやること
+- CoreML STT を default にする場合は、今回の CLI で Chrome 実セッションに近い録音 WAV を指定して再測定する
+
 ## 2026-05-25 セッション8
 
 ### やること（開始時に書く）
