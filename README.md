@@ -126,6 +126,24 @@ make server-debug
 
 `make server-debug` は DEBUG レベルで起動し、stdout/stderr も `logs/server-debug.log` に追記する。
 
+### STT 負荷ベンチ
+
+Ctrl-C で止めるまで STT を生成し続ける負荷ベンチは次で実行する。
+
+```bash
+make soak-stt
+```
+
+結果は `logs/stt-soak.jsonl` に sample / error / summary として追記される。
+TTS や会話推論を横で走らせた状態の STT レイテンシーを見る場合は、次のように load backend を指定する。
+
+```bash
+mise exec -- uv run python _tools/soak_stt_backends.py \
+  --backends local_whisper_mlx_small,local_whisperkit_serve_small \
+  --load-tts-backend supertonic_coreml_f1 \
+  --load-conversation-backend local_lfm25_12b_jp_mlx
+```
+
 ## 開発状況
 
 実装はマイルストーンに沿って段階的に進める。詳細は `PLAN.md` を参照。

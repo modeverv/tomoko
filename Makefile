@@ -28,7 +28,7 @@ JOURNALIST_DATE ?=
 .PHONY: session-summarizer session-summarizer-once
 .PHONY: persona-updater persona-updater-once thinker thinker-once journalist journalist-once
 .PHONY: background-once background-watch background-dry-run
-.PHONY: db-up db-stop db-down db-dump test-unit bench-stt lint check
+.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt lint check
 
 deps:
 	mise exec -- uv sync
@@ -131,6 +131,9 @@ test-unit:
 
 bench-stt:
 	mise exec -- uv run pytest tests/perf/test_stt_latency.py -m perf -s --tb=short
+
+soak-stt:
+	mise exec -- uv run python _tools/soak_stt_backends.py
 
 lint:
 	mise exec -- uv run ruff check .

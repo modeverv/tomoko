@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-05-25 セッション16
+
+### やること（開始時に書く）
+- Ctrl-C で止めるまで STT を生成し続ける負荷ベンチスクリプトを追加する
+- 既存の STT backend / concurrent load 設定を再利用し、長時間の avg / p95 / throughput を見られるようにする
+
+### やったこと
+- `_tools/soak_stt_backends.py` を追加し、Ctrl-C / SIGTERM で止めるまで STT backend を継続実行できるようにした
+- 実行中は avg / min / max / recent p95 / qps / error count を定期表示し、sample / error / summary を `logs/stt-soak.jsonl` に追記するようにした
+- 既存の STT benchmark と同じ backend 指定、sample 音声生成、`--load-tts-backend` / `--load-conversation-backend` の横負荷指定を再利用した
+- `make soak-stt` と README の実行例を追加した
+- `tests/unit/test_stt_soak_tool.py` で percentile / running stats / recent-window summary を固定した
+
+### 詰まったこと・解決したこと
+- 最初に `ruff check` の対象へ `Makefile` を混ぜてしまい syntax error 表示が出た
+  → Python ファイルだけを対象にし、最終的には `ruff check .` で全体検証した
+- smoke では `local_whisper_mlx_small` を 12.7 秒回し、125 回、avg 101.4ms、recent p95 104.7ms、error 0 で Ctrl-C summary 出力を確認した
+
+### 検証
+- `mise exec -- uv run pytest -m unit tests/unit/test_stt_soak_tool.py tests/unit/test_stt_bench_tool.py`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+- `mise exec -- uv run python _tools/soak_stt_backends.py --backends local_whisper_mlx_small --status-interval-sec 2 --output logs/stt-soak-smoke.jsonl`
+
+### 次のセッションでやること
+- 実運用の負荷確認では WhisperKit serve を起動したうえで `local_whisper_mlx_small,local_whisperkit_serve_small` を長時間回し、TTS / 会話推論横負荷ありの分布を見る
+
 ## 2026-05-25 セッション15
 
 ### やること（開始時に書く）
