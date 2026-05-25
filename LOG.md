@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-05-25 セッション18
+
+### やること（開始時に書く）
+- markdown 編集制限の一時解除を受け、自発発話の「話したい欲」「発話可能性」「ユーザーフィードバック」「LLM 状況判断」の設計を文書化する
+- `TomoroSession` にオンライン推論を増やさず、状態管理は決定的に保つ方針を `ARCHITECTURE.md` / `PLAN.md` / `MEMORY.md` に反映する
+
+### やったこと
+- `ARCHITECTURE.md` に「自発発話の欲求と発話可能性モデル」を追加した
+- `TomokoDesireState` / `SpeakabilityState` / `PersonalityDynamics` / `CandidateSpeakPolicy` の責務を整理した
+- LLM judge は常時判定器ではなく、score が境界帯の時だけ JSON で状況判断する方針にした
+- `PLAN.md` に Phase 10.6「TomokoDesire / Speakability model」を追加し、DTO、load average 更新器、personality drift、policy、LLM judge、runtime 接続に分解した
+- `MEMORY.md` に確定判断として、自発発話を desire / speakability / policy に分ける方針を追記した
+
+### 詰まったこと・解決したこと
+- 45 秒 idle timer は「固定間隔で話す仕組み」ではなく、候補取得・発話判断の poll 間隔として残す整理にした
+- `ambient_logs` がないことは人がいない証拠ではなく、presence signal の弱い一部として扱う方針にした
+- ランダム性は状態遷移へ直接入れず、personality mood が desire gain / decay / threshold を補正する形にした
+
+### 検証
+- `git diff --check`
+
+### 次のセッションでやること
+- Phase 10.6 実装時は DTO と純粋判定器の unit test から始める
+- runtime 接続前に、手元の候補・presence・feedback サンプルで score の妥当性を確認する
+
 ## 2026-05-25 セッション17
 
 ### やること（開始時に書く）

@@ -1474,3 +1474,73 @@ Supertonic は CoreML 内部生成の逐次 chunk streaming ではなく、Tomok
 
 ライセンスは OpenRAIL family なので、モデル重みは repo に同梱しない。
 `make download-optional-models` か初回起動時の明示的な取得で扱う。
+
+## 2026-05-25 追記
+
+### 確定した判断: 自発発話は desire / speakability / policy に分ける
+Phase 10 の 45 秒 idle timer + highest priority candidate 消費は、候補消費の足場としては維持する。
+ただし、それを「45 秒ごとに機械的に話す」仕組みとして育てるのは否定する。
+
+次段階では、Tomoko 側の「話したい欲」と、状況側の「今話してよい度合い」を分けて扱う。
+
+- `TomokoDesireState`: Tomoko が話したい内圧
+- `SpeakabilityState`: presence / activity / focus / rejection などの状況 signal
+- `PersonalityDynamics`: 話したがり / 黙りたがり / 好奇心 / 遠慮 / 感受性 / 遊び心
+- `CandidateSpeakPolicy`: desire、speakability、personality、candidate metadata から決定的に採点する純粋判定器
+
+`TomoroSession` は引き続き最終 gate を担当する。
+`withdrawn`、VAD listening / processing、playback 中、stale result、hard interrupt 直後などは、
+desire や personality が高くても破れない hard gate とする。
+
+### 確定した判断: 状態管理から推論の余地を減らす
+自発発話の面白さは LLM を state machine に混ぜることではなく、
+LLM や thinker が構造化した候補と理由を作り、状態側がそれを決定的に消費することで出す。
+
+LLM の役割:
+- 候補文を作る
+- なぜ話したいかを説明する
+- `urgency` / `intrusion_risk` / `emotional_need` / `reason` を付ける
+- score が境界帯の時だけ、今出すのが自然かを JSON で判断する
+
+状態 / policy の役割:
+- 今は `ambient` / `idle` / playback idle かを見る
+- rejection / acceptance / focus / presence の load average を見る
+- desire が threshold を超えたかを見る
+- candidate が期限内で text/audio ready かを見る
+- stale result を捨てる
+
+これにより、なぜ話したか・なぜ話さなかったかを unit test と log で説明できる。
+
+### 確定した判断: 話したい欲は load average 的にモデル化する
+Tomoko の desire は単発フラグではなく、OS の 1分 / 5分 / 30分 load average のような
+指数移動平均として扱う。
+
+短期 desire は候補や presence に素早く反応し、長期 desire はゆっくり溜まる。
+発話後、無反応、拒否発話、深夜、長時間 presence 不明などで decay / penalty をかける。
+
+`ambient_logs` がないことは「人がいない」と断定しない。
+`ambient_logs` は STT まで到達した発話ログであり、無言で PC の前にいる状態や集中状態とは区別できない。
+presence 判定には `presence_reports`、audio level、VAD activity、last human speech age を合わせる。
+
+### 確定した判断: 性格は発話内容だけでなく desire の増減に効かせる
+Tomoko の personality は、プロンプト上の話し方だけでなく、desire gain / decay / threshold に影響させる。
+
+- `talkativeness`: 話したい欲の溜まりやすさ
+- `restraint`: 発話 threshold と遠慮
+- `curiosity`: observation / question 候補への反応
+- `attachment`: presence や人間への構いたさ
+- `sensitivity`: 拒否後の引き方
+- `playfulness`: 軽い茶々や短い候補の出やすさ
+
+ランダム性は毎回の乱数ではなく、1時間程度でゆっくり drift する mood として扱う。
+これにより「今日は少し話したがり」「さっき静かにしてと言われたので控えめ」のような変動を、
+状態遷移の非決定性ではなくスコア補正として表現する。
+
+### 確定した判断: LLM judge は境界ケースだけに使う
+オンライン自発発話で LLM を常時発話可否判定器にしない。
+`CandidateSpeakPolicy` が明確に `speak` / `wait` を決められる場合は LLM を呼ばない。
+score が中間帯の時だけ、candidate text / reason / recent feedback / presence signal / desire level を渡し、
+`speak_now` / `wait` / `defer` の JSON を返させる。
+
+LLM judge result も直接 state を変更せず、`SessionEvent` として `TomoroSession` に戻す。
+到着時点で人間発話や attention change と競合していれば stale / not_speakable として捨てる。

@@ -1622,6 +1622,184 @@ Phase 10.5 は、外部 EventBus や event sourcing へ広げず、`TomoroSessio
 
 ---
 
+## Phase 10.6: TomokoDesire / Speakability model
+
+上の Phase 10 / 10.5 は、候補消費の入口と runtime priority policy を固定する足場として維持する。
+ただし、現状の 45 秒 idle timer + highest priority candidate だけでは、
+Tomoko が「話したいけれど今は遠慮する」「集中中でもたまに短く茶々を入れる」といった揺らぎを表現しにくい。
+
+この Phase では、オンライン経路に重い推論を足すのではなく、
+Tomoko 側の「話したい欲」と「今話してよい度合い」を決定的なモデルとして追加する。
+
+**目標**: 自発発話を「候補があるから話す」から
+「Tomoko の desire と現在状況がしきい値を超えたから話す」へ進める。
+
+### Phase 10.6.0: モデル契約と DTO
+
+- [ ] `TomokoDesireState` DTO を追加する
+  - `desire_1m`
+  - `desire_5m`
+  - `desire_30m`
+  - `unspoken_pressure`
+  - `curiosity_pressure`
+  - `attachment_pressure`
+  - `playful_pressure`
+- [ ] `SpeakabilityState` DTO を追加する
+  - `presence_1m`
+  - `presence_5m`
+  - `activity_1m`
+  - `activity_5m`
+  - `conversation_heat_1m`
+  - `conversation_heat_5m`
+  - `focus_likelihood_5m`
+  - `recent_rejection_score`
+  - `recent_acceptance_score`
+  - `intrusion_penalty`
+- [ ] `PersonalityDynamics` DTO を追加する
+  - `talkativeness`
+  - `restraint`
+  - `curiosity`
+  - `attachment`
+  - `sensitivity`
+  - `playfulness`
+  - `mood_talkativeness_1h`
+  - `mood_restraint_1h`
+  - `mood_curiosity_1h`
+- [ ] `CandidateSpeakDecision` DTO を追加する
+  - `decision`: `speak` / `wait` / `needs_llm_judge`
+  - `score`
+  - `threshold`
+  - `reason`
+  - `signals`
+
+**テスト観点**:
+- DTO は JSON round-trip できる
+- schema version を持たせ、将来のフィールド追加時に旧 snapshot を読める
+- 生 dict を runtime に持ち回らず、境界で DTO に変換する
+
+### Phase 10.6.1: load average 的な更新器
+
+- [ ] `DesireLoadAverages` または同等の helper を追加する
+  - event input から 1m / 5m / 30m の指数移動平均を更新する
+  - 実時間依存は `now_factory` で差し替え可能にする
+- [ ] desire を上げる signal を固定する
+  - text-ready candidate がある
+  - urgent candidate がある
+  - diary / resume_unspoken 由来 candidate がある
+  - arrival / presence がある
+  - しばらく会話がない
+- [ ] desire を下げる signal を固定する
+  - Tomoko が直近で話した
+  - 自発発話が無反応だった
+  - 「静かにして」「今いい」「あとで」系 feedback があった
+  - 深夜や長時間無反応が続く
+- [ ] `ambient_logs` がないことを「人がいない」と断定しない
+  - `ambient_logs` は発話ログであり、無言 presence ではない
+  - presence 判定では `presence_reports` / VAD activity / audio level / last_human_speech_age を合わせる
+
+**テスト観点**:
+- 同じ candidate signal でも、短期 desire は早く上がり、長期 desire はゆっくり上がる
+- rejection feedback は `intrusion_penalty` を即時に上げる
+- 時間経過で penalty が徐々に decay する
+
+### Phase 10.6.2: PersonalityDynamics を desire に効かせる
+
+- [ ] `PersonalityDynamics` が desire gain / decay / threshold を補正する
+  - `talkativeness` が高いと desire が溜まりやすい
+  - `restraint` が高いと threshold が上がる
+  - `curiosity` が高いと observation / question 系 candidate が強くなる
+  - `attachment` が高いと presence への反応が強くなる
+  - `sensitivity` が高いと rejection 後に強く引く
+  - `playfulness` が高いと短い軽口 candidate が強くなる
+- [ ] ランダム性は毎回の乱数ではなく、低頻度で drift する mood として扱う
+  - `mood_talkativeness_1h`
+  - `mood_restraint_1h`
+  - `mood_curiosity_1h`
+- [ ] hard gate は人格変動で破れない
+  - `withdrawn`
+  - playback 中
+  - VAD listening / processing
+  - stale result
+  - hard interrupt 直後
+
+**テスト観点**:
+- 同じ candidate と同じ presence でも、talkativeness が高い方が `score` が高くなる
+- rejection 後は sensitivity が高いほど score が強く下がる
+- `withdrawn` 中は score が高くても `wait` になる
+
+### Phase 10.6.3: CandidateSpeakPolicy
+
+- [ ] `CandidateSpeakPolicy` を純粋判定器として追加する
+  - 入力: `TomoroRuntimeState` / `TomokoDesireState` / `SpeakabilityState` / `PersonalityDynamics` / candidate metadata
+  - 出力: `CandidateSpeakDecision`
+  - DB / LLM / WebSocket I/O を持たない
+- [ ] `clear_speak_threshold` / `clear_wait_threshold` を固定する
+  - 明確に高い score は `speak`
+  - 明確に低い score は `wait`
+  - 中間帯だけ `needs_llm_judge`
+- [ ] candidate metadata を評価に使う
+  - `priority`
+  - `urgency`
+  - `intrusion_risk`
+  - `source`
+  - `context_tags`
+  - `emotional_need`
+  - `expires_at`
+- [ ] user feedback は source / topic / emotional_need ごとに重みを変える
+  - 自発発話全体を一律に上げ下げしない
+
+**テスト観点**:
+- urgent candidate は score を押し上げるが hard gate は破れない
+- intrusion_risk が高い candidate は focus_likelihood が高い時に wait へ倒れる
+- diary 由来など source weight が高い候補は、同じ priority でも選ばれやすい
+
+### Phase 10.6.4: LLM judge は境界ケースだけに使う
+
+- [ ] `CandidateSpeakPolicy` が `needs_llm_judge` を返した時だけ LLM judge command を出す
+- [ ] LLM judge prompt は自由文ではなく JSON schema を要求する
+  - `decision`: `speak_now` / `wait` / `defer`
+  - `confidence`
+  - `reason`
+  - `tone`
+  - `max_length`
+- [ ] LLM judge result は `SessionEvent` として `TomoroSession` に戻す
+- [ ] result 到着時に現在 state と合わなければ stale / not_speakable として捨てる
+- [ ] LLM judge failure / malformed JSON は安全側に倒して `wait` にする
+
+**テスト観点**:
+- score が明確に高い/低い時は LLM judge command が出ない
+- 境界 score だけ judge command が出る
+- judge result が遅れて到着し、その間に人間が話した場合は発話しない
+- malformed judge result は発話しない
+
+### Phase 10.6.5: runtime 接続
+
+- [ ] 45 秒 idle timer は「poll 間隔」として残してよいが、発話判断は `CandidateSpeakPolicy` を通す
+- [ ] `CandidateCommandRunner` は active candidate 取得後、policy 判定に必要な snapshot を組み立てる
+- [ ] `TomoroSession` は最終 gate を維持する
+  - `attention_mode == ambient`
+  - `vad_state == idle`
+  - `playback_state == idle`
+  - `withdrawn` ではない
+  - stale request ではない
+- [ ] `TomoroSession` に LLM 推論や重い DB read を直接入れない
+- [ ] decision log を残す
+  - candidate id
+  - score / threshold
+  - desire / speakability summary
+  - personality modifiers
+  - decision reason
+  - LLM judge を呼んだか
+
+**完了条件**:
+- 自発発話の実行理由が `score` と signal で説明できる
+- 「静かにして」などの feedback で次回以降の自発発話頻度が下がる
+- 話したがり / 黙りたがりの personality drift が desire の上がり方に影響する
+- `TomoroSession` の state transition は決定的で、オンライン LLM 失敗に引きずられない
+- `pytest -m unit` が通る
+
+---
+
 ## Phase 11: 事前生成（pre-generation）
 
 - [x] `server/thinker/pregenerator.py`

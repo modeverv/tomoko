@@ -128,6 +128,154 @@
 
 ---
 
+## 自発発話の欲求と発話可能性モデル
+
+Phase 10 の初段では、45秒ごとの idle timer で候補を見に行き、
+`TomoroSession` が `ambient` / `idle` / playback idle かどうかを決定的に判定している。
+これは候補消費の足場としては正しいが、Tomoko らしい自発発話には「話したい欲」と
+「今邪魔しそうか」を別の連続値として扱う必要がある。
+
+重要な方針は、**状態機械に推論の余地を増やさないこと**である。
+LLM は候補の意味づけや境界ケースの状況判断に使うが、
+`TomoroSession` は最終 gate を決定的に実行する。
+
+```
+thinker / journalist
+  -> 候補生成
+  -> 話す価値、話したい理由、intrusion_risk、urgency を推論して保存
+
+SpeakabilityScorer
+  -> presence / activity / focus / rejection を load average 的に更新
+
+InitiativePolicy
+  -> desire + speakability + penalty + candidate metadata を決定的に採点
+  -> 明確な speak / wait は LLM を呼ばずに決める
+  -> 境界帯だけ LLM judge に構造化判断を依頼する
+
+TomoroSession
+  -> withdrawn / playback / VAD / stale result / priority policy の最終 gate
+  -> SessionCommand を返すだけで、LLM 判断や DB I/O は直接実行しない
+```
+
+### TomokoDesireState
+
+Tomoko 側の「話したい欲」を state として扱う。
+これは発話候補そのものではなく、候補や状況が Tomoko の内面に与える圧力である。
+
+```
+TomokoDesireState:
+  desire_1m
+  desire_5m
+  desire_30m
+  unspoken_pressure
+  curiosity_pressure
+  attachment_pressure
+  playful_pressure
+```
+
+OS の load average と同じように、短期・中期・長期の指数移動平均で更新する。
+発話候補がある、日記由来で伝えたいことがある、言えなかったことがある、
+人間の気配がある、しばらく会話がない、といった signal で上がる。
+Tomoko が話した、自発発話が無反応だった、「静かにして」と言われた、
+深夜や長時間無反応が続いた、といった signal で下がる。
+
+### SpeakabilityState
+
+`SpeakabilityState` は「今話してよい状況か」を表す。
+presence が弱い、集中していそう、直近で拒否された、などを連続値で持つ。
+
+```
+SpeakabilityState:
+  presence_1m
+  presence_5m
+  activity_1m
+  activity_5m
+  conversation_heat_1m
+  conversation_heat_5m
+  focus_likelihood_5m
+  recent_rejection_score
+  recent_acceptance_score
+  intrusion_penalty
+```
+
+`ambient_logs` がないことは「人がいない」と断定しない。
+`ambient_logs` は STT まで到達した発話のログであり、無言で PC の前にいる状態とは区別できない。
+presence signal としては `presence_reports` / audio level / VAD activity / 最終発話時刻を合わせて使う。
+
+### PersonalityDynamics
+
+Tomoko の基本性格は返答文体だけでなく、desire の増え方・減り方・発話 threshold に効かせる。
+ランダム性は毎回のサイコロではなく、ゆっくり drift する内部状態として扱う。
+
+```
+PersonalityDynamics:
+  talkativeness
+  restraint
+  curiosity
+  attachment
+  sensitivity
+  playfulness
+  mood_talkativeness_1h
+  mood_restraint_1h
+  mood_curiosity_1h
+```
+
+同じ候補でも、話したがり寄りの日は desire が早く溜まり、
+黙りたがり寄りの日は desire がゆっくり溜まる。
+ただし `withdrawn`、VAD listening、playback 中、stale result などの hard gate は
+人格変動では破れない。
+
+### フィードバックによる重み更新
+
+ユーザーの反応は、自発発話全体ではなく source / topic / emotional_need ごとに重みを更新する。
+
+```
+feedback examples:
+  「静かにして」 -> intrusion_penalty と recent_rejection_score を上げる
+  「うん、なに？」 -> recent_acceptance_score を上げる
+  「それ今じゃない」 -> 該当 source / topic の penalty を上げる
+  「そういうのは言って」 -> 該当 source / topic の boost を上げる
+```
+
+候補側には、少なくとも次の metadata を持たせる。
+
+```
+candidate:
+  generated_text
+  source
+  context_tags
+  priority
+  urgency
+  expires_at
+  intrusion_risk
+  emotional_need
+  expected_response_type
+  reason
+```
+
+### LLM judge の位置
+
+LLM は常時の発話可否判定器にしない。
+`InitiativePolicy` が明確に speak / wait を決められる場合は、オンライン LLM を呼ばない。
+スコアが境界帯にある時だけ、候補文、候補理由、recent feedback、presence/activity signal、
+desire level を渡して構造化判断を返させる。
+
+```json
+{
+  "decision": "speak_now",
+  "confidence": 0.72,
+  "reason": "recent interaction was warm and candidate is short",
+  "tone": "soft",
+  "max_length": "short"
+}
+```
+
+この返却も `TomoroSession` の state を直接変更しない。
+adapter / command runner が `SessionEvent` として戻し、
+`TomoroSession` が現在 state と照合して stale / not_speakable を決定的に捨てる。
+
+---
+
 ## 設定ベースの責務切り替え
 
 **コアロジックは一切変わらない。設定ファイルと起動スクリプトだけで責務が変わる。**
