@@ -28,7 +28,7 @@ JOURNALIST_DATE ?=
 .PHONY: session-summarizer session-summarizer-once
 .PHONY: persona-updater persona-updater-once thinker thinker-once journalist journalist-once
 .PHONY: background-once background-watch background-dry-run
-.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt lint check
+.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack lint check
 
 deps:
 	mise exec -- uv sync
@@ -134,6 +134,9 @@ bench-stt:
 
 soak-stt:
 	mise exec -- uv run python _tools/soak_stt_backends.py
+
+soak-voice-stack:
+	mise exec -- uv run python _tools/soak_voice_stack_scenarios.py
 
 lint:
 	mise exec -- uv run ruff check .

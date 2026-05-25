@@ -4,6 +4,34 @@
 
 ---
 
+## 2026-05-25 セッション17
+
+### やること（開始時に書く）
+- MLX STT lane と CoreML STT lane を、Supertonic CoreML TTS + LFM MLX 会話推論の横負荷下で比較できる負荷ベンチを追加する
+- Ctrl-C まで継続しつつ、STT latency だけでなく横負荷側の elapsed も同時に見られるようにする
+
+### やったこと
+- `_tools/soak_voice_stack_scenarios.py` を追加し、MLX STT stack と CoreML STT stack を同じ Supertonic CoreML TTS + LFM MLX 横負荷で交互に測れるようにした
+- default scenario は `local_whisper_mlx_small` と `local_whisperkit_serve_small` の STT lane だけを変え、TTS は `supertonic_coreml_f1`、会話推論は `local_lfm25_12b_jp_mlx` に固定した
+- 実行中は STT avg / p95 / max と load avg / p95 を表示し、sample / error / summary を `logs/voice-stack-soak.jsonl` に追記するようにした
+- smoke 用に `--max-cycles` を追加し、通常は 0 のまま Ctrl-C まで継続する仕様にした
+- `make soak-voice-stack` と README の説明を追加した
+- `tests/unit/test_voice_stack_soak_tool.py` で scenario 構成と STT/load 集計を固定した
+
+### 詰まったこと・解決したこと
+- 「Supertonic CoreML + CoreML TTS」は同じ CoreML TTS lane を指すものとして扱い、default の CoreML TTS load backend を `supertonic_coreml_f1` にした
+- 既存 `ConcurrentLoadRunner` を再利用し、同じ TTS/LLM load backend を scenario ごとに重複ロードしないよう load key で共有した
+
+### 検証
+- `mise exec -- uv run ruff check _tools/soak_voice_stack_scenarios.py tests/unit/test_voice_stack_soak_tool.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_voice_stack_soak_tool.py tests/unit/test_stt_soak_tool.py tests/unit/test_stt_bench_tool.py`
+- `mise exec -- uv run python _tools/soak_voice_stack_scenarios.py --max-cycles 1 --status-interval-sec 2 --output logs/voice-stack-soak-smoke.jsonl`
+  - MLX STT stack: 109.6ms、load 95.7ms、error 0
+  - CoreML STT stack: 212.8ms、load 89.9ms、error 0
+
+### 次のセッションでやること
+- 長時間の実判断では `make soak-voice-stack` を数分以上回し、STT lane の差だけでなく LFM first-token 側の tail も別途見る
+
 ## 2026-05-25 セッション16
 
 ### やること（開始時に書く）

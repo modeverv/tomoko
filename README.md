@@ -144,6 +144,18 @@ mise exec -- uv run python _tools/soak_stt_backends.py \
   --load-conversation-backend local_lfm25_12b_jp_mlx
 ```
 
+MLX STT lane と CoreML STT lane を、Supertonic CoreML TTS + LFM MLX 会話推論の同じ横負荷で比べる場合は次を使う。
+
+```bash
+make soak-voice-stack
+```
+
+このベンチも Ctrl-C で止めるまで継続し、`logs/voice-stack-soak.jsonl` に結果を追記する。
+default は次の2シナリオを交互に測る。
+
+- `local_whisper_mlx_small` + `supertonic_coreml_f1` + `local_lfm25_12b_jp_mlx`
+- `local_whisperkit_serve_small` + `supertonic_coreml_f1` + `local_lfm25_12b_jp_mlx`
+
 ## 開発状況
 
 実装はマイルストーンに沿って段階的に進める。詳細は `PLAN.md` を参照。
