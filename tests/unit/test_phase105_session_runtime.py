@@ -214,6 +214,7 @@ async def test_human_attention_blocks_late_initiative_candidate_result() -> None
 
     assert loaded.commands == []
     assert loaded.emissions[0].payload["reason"] == "not_speakable"
+    assert loaded.emissions[0].payload["gate_reason"] == "attention_not_ambient"
 
 
 @pytest.mark.unit

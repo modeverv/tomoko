@@ -49,6 +49,7 @@ class CandidateCommandRunner:
         personality: PersonalityDynamics | None = None,
         feedback_store: CandidateFeedbackStore | None = None,
         llm_judge: InitiativeLLMJudge | None = None,
+        presence_signal: float = 1.0,
     ) -> None:
         self.session = session
         self.store = store
@@ -64,6 +65,7 @@ class CandidateCommandRunner:
         self.personality = personality or PersonalityDynamics()
         self.feedback_store = feedback_store
         self.llm_judge = llm_judge
+        self.presence_signal = max(0.0, min(1.0, presence_signal))
 
     async def run_result(self, result: TransitionResult) -> None:
         for command in result.commands:
@@ -289,7 +291,6 @@ class CandidateCommandRunner:
             presence_signal=self._presence_signal(),
             activity_signal=self._presence_signal(),
         )
-        runtime = self.session.get_now_state()
         decisions = []
         for candidate in candidates:
             metadata = metadata_from_utterance_candidate(candidate)
@@ -313,7 +314,6 @@ class CandidateCommandRunner:
                     focus_signal=feedback_summary.intrusion_penalty,
                 )
             decision = self.speak_policy.evaluate(
-                runtime=runtime,
                 desire=desire,
                 speakability=speakability,
                 personality=self.personality,
@@ -354,8 +354,4 @@ class CandidateCommandRunner:
         return candidate, decision
 
     def _presence_signal(self) -> float:
-        return (
-            1.0
-            if self.session.get_now_state().output_state.audio_target_available
-            else 0.0
-        )
+        return self.presence_signal

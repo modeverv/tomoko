@@ -15,7 +15,6 @@ from server.shared.models import (
     PersonalityDynamics,
     SpeakabilityState,
     TomokoDesireState,
-    TomoroRuntimeState,
 )
 
 
@@ -171,21 +170,27 @@ class CandidateSpeakPolicy:
     def evaluate(
         self,
         *,
-        runtime: TomoroRuntimeState,
         desire: TomokoDesireState,
         speakability: SpeakabilityState,
         personality: PersonalityDynamics,
         candidate: CandidateSpeakMetadata,
         now: datetime | None = None,
     ) -> CandidateSpeakDecision:
-        hard_gate_reason = self._hard_gate_reason(runtime, candidate, now=now)
-        if hard_gate_reason is not None:
+        if not candidate.text_ready:
             return CandidateSpeakDecision(
                 decision="wait",
                 score=0.0,
                 threshold=self.clear_speak_threshold,
-                reason=hard_gate_reason,
-                signals={"hard_gate": hard_gate_reason},
+                reason="candidate_not_text_ready",
+                signals={"candidate_condition": "not_text_ready"},
+            )
+        if candidate.expires_at is not None and (now or datetime_now_utc()) >= candidate.expires_at:
+            return CandidateSpeakDecision(
+                decision="wait",
+                score=0.0,
+                threshold=self.clear_speak_threshold,
+                reason="candidate_expired",
+                signals={"candidate_condition": "expired"},
             )
         if candidate.feedback_penalty >= 0.75 and candidate.urgency < 0.8:
             return CandidateSpeakDecision(
@@ -270,27 +275,6 @@ class CandidateSpeakPolicy:
             reason=reason,
             signals=signals,
         )
-
-    def _hard_gate_reason(
-        self,
-        runtime: TomoroRuntimeState,
-        candidate: CandidateSpeakMetadata,
-        *,
-        now: datetime | None,
-    ) -> str | None:
-        if runtime.attention_mode != "ambient":
-            return "attention_not_ambient"
-        if runtime.vad_state != "idle":
-            return "vad_not_idle"
-        if runtime.playback_state != "idle":
-            return "playback_not_idle"
-        if not runtime.output_state.audio_target_available:
-            return "audio_target_unavailable"
-        if not candidate.text_ready:
-            return "candidate_not_text_ready"
-        if candidate.expires_at is not None and (now or datetime_now_utc()) >= candidate.expires_at:
-            return "candidate_expired"
-        return None
 
 
 class InitiativeLLMJudge:

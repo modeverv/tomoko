@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-05-25 セッション24
+
+### やること（開始時に書く）
+- Phase 10.7 全体として、candidate runtime hard gate の所有者を `TomoroSession` に集約する
+- `CandidateSpeakPolicy` / `CandidateCommandRunner` から runtime state 依存を外し、外側は soft decision と event 変換だけを担当する形へ戻す
+- policy test と session final gate test を先に固定し、`pytest -m unit` で完了確認する
+
+### やったこと
+- `CandidateSpeakPolicy.evaluate()` から `TomoroRuntimeState` 依存を外し、soft score と candidate metadata 条件だけを見る形にした
+- `CandidateCommandRunner` から `session.get_now_state()` を読む runtime gate を削除し、candidate fetch / policy decision / event post に寄せた
+- `TomoroSession` の candidate final gate reason を `gate_reason` として emission payload に残し、candidate loaded 後の gate block を log に出すようにした
+- policy が `speak` でも attention / VAD / playback / audio target の状態で `TomoroSession` が止める unit test を追加した
+- `PLAN.md` の Phase 10.7 チェックボックスと実装結果、`MEMORY.md` の確定判断を追記した
+
+### 詰まったこと・解決したこと
+- candidate text readiness / expiry は runtime hard gate ではなく candidate metadata 条件として policy 側に残した
+- fetch 前の早期 skip は `TomoroSession` 内の DB fetch 削減であり、runner / adapter 側の authoritative gate ではない形を維持した
+
+### 検証
+- `mise exec -- uv run ruff check server/gateway/initiative_policy.py server/gateway/candidate_commands.py server/session.py tests/unit/test_phase106_initiative_policy.py tests/unit/test_phase10_session_contract.py tests/unit/test_phase105_session_runtime.py`
+- `mise exec -- uv run pytest -m unit tests/unit/test_phase106_initiative_policy.py tests/unit/test_phase10_session_contract.py tests/unit/test_phase105_session_runtime.py`
+- `mise exec -- uv run ruff check .`
+- `mise exec -- uv run pytest -m unit`
+
+### 次のセッションでやること
+- Phase 10.8 に進む場合は、`AudioTurnController` への薄い delegate と private helper 依存テストを public behavior 検証へ寄せる
+
 ## 2026-05-25 セッション23
 
 ### やること（開始時に書く）

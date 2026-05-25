@@ -8,7 +8,7 @@ import pytest
 from server.edge.pipeline.vad import VADProcessor
 from server.session import TomoroSession
 from server.shared.candidate import ArrivalCandidate, ArrivalContextSnapshot, UtteranceCandidate
-from server.shared.models import ConnectedOutputState, SessionEvent
+from server.shared.models import CandidateSpeakDecision, ConnectedOutputState, SessionEvent
 
 
 class QuietVAD:
@@ -70,6 +70,15 @@ def _arrival_candidate(
     )
 
 
+def _speak_decision() -> CandidateSpeakDecision:
+    return CandidateSpeakDecision(
+        decision="speak",
+        score=1.0,
+        threshold=0.5,
+        reason="test_policy_speak",
+    )
+
+
 @pytest.mark.unit
 async def test_idle_timer_fetches_initiative_candidate_only_when_speakable() -> None:
     session = _session()
@@ -85,6 +94,7 @@ async def test_idle_timer_fetches_initiative_candidate_only_when_speakable() -> 
 
     assert blocked.commands == []
     assert blocked.emissions[0].payload["reason"] == "not_speakable"
+    assert blocked.emissions[0].payload["gate_reason"] == "vad_not_idle"
 
 
 @pytest.mark.unit
@@ -98,6 +108,7 @@ async def test_idle_timer_does_not_fetch_without_connected_audio_target() -> Non
 
     assert result.commands == []
     assert result.emissions[0].payload["reason"] == "not_speakable"
+    assert result.emissions[0].payload["gate_reason"] == "audio_target_unavailable"
     assert result.emissions[0].payload["audio_target_available"] is False
 
 
@@ -119,6 +130,7 @@ async def test_session_started_fetches_arrival_candidate_only_when_speakable() -
 
     assert blocked.commands == []
     assert blocked.emissions[0].payload["reason"] == "not_speakable"
+    assert blocked.emissions[0].payload["gate_reason"] == "attention_not_ambient"
 
 
 @pytest.mark.unit
@@ -140,6 +152,83 @@ async def test_loaded_initiative_candidate_starts_reply_and_marks_spoken() -> No
     assert result.commands[0].payload["candidate_id"] == candidate.id
     assert result.commands[0].payload["text"] == candidate.generated_text
     assert result.commands[1].payload["candidate_id"] == candidate.id
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("mutate_session", "gate_reason"),
+    [
+        (lambda session: setattr(session, "attention_mode", "engaged"), "attention_not_ambient"),
+        (lambda session: setattr(session, "state", "listening"), "vad_not_idle"),
+    ],
+)
+async def test_loaded_initiative_candidate_final_gate_blocks_runtime_state(
+    mutate_session,
+    gate_reason: str,
+) -> None:
+    session = _session()
+    mutate_session(session)
+
+    result = await session.post_event(
+        SessionEvent(
+            type="initiative_candidate_loaded",
+            payload={
+                "candidate": _utterance_candidate(),
+                "policy_decision": _speak_decision(),
+            },
+        )
+    )
+
+    assert result.commands == []
+    assert result.emissions[0].payload["reason"] == "not_speakable"
+    assert result.emissions[0].payload["gate_reason"] == gate_reason
+
+
+@pytest.mark.unit
+async def test_loaded_initiative_candidate_final_gate_blocks_playback() -> None:
+    session = _session()
+    await session.post_event(
+        SessionEvent(
+            type="playback_started",
+            payload={"turn_id": "turn-1", "chunk_id": 1},
+        )
+    )
+
+    result = await session.post_event(
+        SessionEvent(
+            type="initiative_candidate_loaded",
+            payload={
+                "candidate": _utterance_candidate(),
+                "policy_decision": _speak_decision(),
+            },
+        )
+    )
+
+    assert result.commands == []
+    assert result.emissions[0].payload["reason"] == "not_speakable"
+    assert result.emissions[0].payload["gate_reason"] == "playback_not_idle"
+
+
+@pytest.mark.unit
+async def test_loaded_initiative_candidate_final_gate_blocks_missing_audio_target() -> None:
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
+        send_event=lambda event: None,
+    )
+
+    result = await session.post_event(
+        SessionEvent(
+            type="initiative_candidate_loaded",
+            payload={
+                "candidate": _utterance_candidate(),
+                "policy_decision": _speak_decision(),
+            },
+        )
+    )
+
+    assert result.commands == []
+    assert result.emissions[0].payload["reason"] == "not_speakable"
+    assert result.emissions[0].payload["gate_reason"] == "audio_target_unavailable"
 
 
 @pytest.mark.unit

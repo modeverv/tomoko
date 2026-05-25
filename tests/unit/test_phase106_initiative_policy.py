@@ -230,21 +230,18 @@ def test_phase106_rejection_feedback_raises_and_decays_penalty() -> None:
 
 @pytest.mark.unit
 def test_phase106_personality_changes_policy_score() -> None:
-    runtime = _session().get_now_state()
     desire = TomokoDesireState(desire_1m=0.7, desire_5m=0.5, desire_30m=0.3)
     speakability = SpeakabilityState(presence_1m=1.0, presence_5m=0.8)
     candidate = metadata_from_utterance_candidate(_candidate())
     policy = CandidateSpeakPolicy()
 
     quiet = policy.evaluate(
-        runtime=runtime,
         desire=desire,
         speakability=speakability,
         personality=PersonalityDynamics(talkativeness=0.1, restraint=0.9),
         candidate=candidate,
     )
     chatty = policy.evaluate(
-        runtime=runtime,
         desire=desire,
         speakability=speakability,
         personality=PersonalityDynamics(talkativeness=0.9, restraint=0.1),
@@ -255,24 +252,25 @@ def test_phase106_personality_changes_policy_score() -> None:
 
 
 @pytest.mark.unit
-def test_phase106_hard_gate_beats_high_score() -> None:
-    session = _session()
-    session.attention_mode = "withdrawn"
+def test_phase106_policy_is_soft_and_does_not_return_runtime_gate_reasons() -> None:
     decision = CandidateSpeakPolicy().evaluate(
-        runtime=session.get_now_state(),
         desire=TomokoDesireState(desire_1m=1.0, desire_5m=1.0, desire_30m=1.0),
         speakability=SpeakabilityState(presence_1m=1.0),
         personality=PersonalityDynamics(talkativeness=1.0),
         candidate=metadata_from_utterance_candidate(_candidate(urgent=True)),
     )
 
-    assert decision.decision == "wait"
-    assert decision.reason == "attention_not_ambient"
+    assert decision.decision in {"speak", "needs_llm_judge"}
+    assert decision.reason not in {
+        "attention_not_ambient",
+        "vad_not_idle",
+        "playback_not_idle",
+        "audio_target_unavailable",
+    }
 
 
 @pytest.mark.unit
 def test_phase106_policy_uses_candidate_metadata() -> None:
-    runtime = _session().get_now_state()
     desire = TomokoDesireState(desire_1m=0.55, desire_5m=0.4, desire_30m=0.25)
     speakability = SpeakabilityState(
         presence_1m=1.0,
@@ -283,7 +281,6 @@ def test_phase106_policy_uses_candidate_metadata() -> None:
     policy = CandidateSpeakPolicy()
 
     safe = policy.evaluate(
-        runtime=runtime,
         desire=desire,
         speakability=speakability,
         personality=personality,
@@ -292,7 +289,6 @@ def test_phase106_policy_uses_candidate_metadata() -> None:
         ),
     )
     intrusive = policy.evaluate(
-        runtime=runtime,
         desire=desire,
         speakability=speakability,
         personality=personality,

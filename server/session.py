@@ -251,18 +251,14 @@ class TomoroSession:
         return TransitionResult(state=self.get_now_state())
 
     def _reduce_idle_timer_elapsed(self, event: SessionEvent) -> TransitionResult:
-        if not self._can_start_candidate_reply():
+        gate_reason = self._candidate_reply_gate_reason()
+        if gate_reason is not None:
             return self._transition_result(
                 "initiative_skipped",
                 payload={
                     "reason": "not_speakable",
                     "event": event.type,
-                    "attention_mode": self.attention_mode,
-                    "vad_state": self.state,
-                    "playback_state": self.audio_turns.playback_state,
-                    "audio_target_available": (
-                        self._connected_output_state.audio_target_available
-                    ),
+                    **self._candidate_reply_gate_payload(gate_reason),
                 },
             )
         return self._transition_result(
@@ -281,18 +277,14 @@ class TomoroSession:
         )
 
     def _reduce_session_started(self, event: SessionEvent) -> TransitionResult:
-        if not self._can_start_candidate_reply():
+        gate_reason = self._candidate_reply_gate_reason()
+        if gate_reason is not None:
             return self._transition_result(
                 "arrival_skipped",
                 payload={
                     "reason": "not_speakable",
                     "event": event.type,
-                    "attention_mode": self.attention_mode,
-                    "vad_state": self.state,
-                    "playback_state": self.audio_turns.playback_state,
-                    "audio_target_available": (
-                        self._connected_output_state.audio_target_available
-                    ),
+                    **self._candidate_reply_gate_payload(gate_reason),
                 },
             )
         return self._transition_result(
@@ -339,13 +331,23 @@ class TomoroSession:
                 "initiative_skipped",
                 payload={"reason": "invalid_candidate_payload"},
             )
-        if not self._can_start_candidate_reply():
+        gate_reason = self._candidate_reply_gate_reason()
+        if gate_reason is not None:
             self._active_initiative_request_id = None
+            logger.info(
+                "initiative candidate blocked by session final gate "
+                "candidate_id=%s gate_reason=%s policy_decision=%s",
+                candidate.id,
+                gate_reason,
+                getattr(event.payload.get("policy_decision"), "decision", None),
+            )
             return self._transition_result(
                 "initiative_skipped",
                 payload={
                     "reason": "not_speakable",
                     "candidate_id": candidate.id,
+                    "policy": _candidate_policy_payload(event),
+                    **self._candidate_reply_gate_payload(gate_reason),
                 },
             )
         if candidate.maturity < 1 or candidate.generated_text is None:
@@ -452,12 +454,20 @@ class TomoroSession:
                 "arrival_skipped",
                 payload={"reason": "invalid_candidate_payload"},
             )
-        if not self._can_start_candidate_reply():
+        gate_reason = self._candidate_reply_gate_reason()
+        if gate_reason is not None:
+            logger.info(
+                "arrival candidate blocked by session final gate "
+                "arrival_candidate_id=%s gate_reason=%s",
+                candidate.id,
+                gate_reason,
+            )
             return self._transition_result(
                 "arrival_skipped",
                 payload={
                     "reason": "not_speakable",
                     "arrival_candidate_id": candidate.id,
+                    **self._candidate_reply_gate_payload(gate_reason),
                 },
             )
 
@@ -513,12 +523,29 @@ class TomoroSession:
         )
 
     def _can_start_candidate_reply(self) -> bool:
-        return (
-            self.attention_mode == "ambient"
-            and self.state == "idle"
-            and self.audio_turns.playback_state == "idle"
-            and self._connected_output_state.audio_target_available
-        )
+        return self._candidate_reply_gate_reason() is None
+
+    def _candidate_reply_gate_reason(self) -> str | None:
+        if self.attention_mode != "ambient":
+            return "attention_not_ambient"
+        if self.state != "idle":
+            return "vad_not_idle"
+        if self.audio_turns.playback_state != "idle":
+            return "playback_not_idle"
+        if not self._connected_output_state.audio_target_available:
+            return "audio_target_unavailable"
+        return None
+
+    def _candidate_reply_gate_payload(self, gate_reason: str) -> dict[str, object]:
+        return {
+            "gate_reason": gate_reason,
+            "attention_mode": self.attention_mode,
+            "vad_state": self.state,
+            "playback_state": self.audio_turns.playback_state,
+            "audio_target_available": (
+                self._connected_output_state.audio_target_available
+            ),
+        }
 
     def _reduce_connected_output_state_changed(
         self,
@@ -1482,6 +1509,13 @@ def _playback_payload(event: SessionEvent) -> dict[str, Any]:
         "turn_id": event.payload.get("turn_id"),
         "chunk_id": event.payload.get("chunk_id"),
     }
+
+
+def _candidate_policy_payload(event: SessionEvent) -> dict[str, Any] | None:
+    policy = event.payload.get("policy_decision")
+    if isinstance(policy, CandidateSpeakDecision):
+        return policy.to_json()
+    return None
 
 
 def _optional_str_payload(value: object) -> str | None:
