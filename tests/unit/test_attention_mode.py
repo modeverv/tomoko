@@ -15,6 +15,7 @@ from server.shared.models import (
     AttentionMode,
     AudioChunkOut,
     ParticipationMode,
+    PlaybackTelemetry,
     SpeechSegment,
     Transcript,
     TTSInput,
@@ -228,6 +229,28 @@ async def test_attention_decays_from_engaged_to_cooldown_to_ambient() -> None:
     assert session.attention_mode == "ambient"
     assert {"type": "attention", "mode": "cooldown"} in events
     assert {"type": "attention", "mode": "ambient"} in events
+
+
+@pytest.mark.unit
+async def test_attention_idle_does_not_advance_while_playback_is_active() -> None:
+    events: list[dict[str, str]] = []
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.0] * 8), silence_ms=400),
+        send_event=events.append,
+        participation_judge=WakeWordJudge(),
+        engaged_timeout_ms=64,
+        cooldown_timeout_ms=64,
+    )
+    await session._transition_attention("engaged")
+    await session.handle_playback_telemetry(
+        PlaybackTelemetry(type="playback_started", turn_id="turn-1", chunk_id=1)
+    )
+
+    for _ in range(4):
+        await session.process_audio_chunk(np.zeros(512, dtype=np.float32).tobytes())
+
+    assert session.attention_mode == "engaged"
+    assert {"type": "attention", "mode": "cooldown"} not in events
 
 
 @pytest.mark.unit

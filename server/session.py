@@ -188,7 +188,11 @@ class TomoroSession:
             await self._transition(result.state_changed_to)
         if result.segment is None and self.state == "listening":
             await self._maybe_emit_partial_transcript(chunk)
-        if result.segment is None and self.state == "idle":
+        if (
+            result.segment is None
+            and self.state == "idle"
+            and self.audio_turns.playback_state == "idle"
+        ):
             await self._advance_attention_idle(len(chunk))
         if result.segment is not None:
             self.latest_segment = result.segment
