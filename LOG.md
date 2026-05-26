@@ -259,6 +259,96 @@
 
 ---
 
+## 2026-05-27 セッション1
+
+### やること（開始時に書く）
+- LM Studio の自動ロード前提で Gemma 4 E4B / 26B / 31B 候補を同一プロンプトで叩く
+- first token / total latency と、返答の意味性・会話の踏み込みを比較する
+- Tomoko の default 会話モデルを大きくした時の効果とリスクを判断する
+
+### やったこと
+- LM Studio `/v1/models` で `gemma-4-e4b-it-mlx` / `gemma-4-26b-a4b-it-mlx` / `gemma-4-31b-it-mlx` が利用可能なことを確認した
+- Tomoko の base persona 相当 prompt と同一会話 context で、3モデルの streaming latency と返答内容を比較した
+- 会話後処理 worker 相当の「会話から知見を抽出する」prompt でも、3モデルの出力を比較した
+
+### 詰まったこと・解決したこと
+- 31B は短い音声返答では first content が 0.9〜1.4s、total が 2.3〜2.9s になり、hot path には重い
+- 26B A4B は初回 model switch / load では約10sかかったが、ロード直後の短い会話返答は first content 0.28〜0.33s、total 0.48〜0.63s で E4B と同程度だった
+- 短い音声返答では 31B の品質優位は小さく、26B A4B の方が速度・意味性のバランスが良かった
+- 会話後処理の知見抽出では、E4B より 26B / 31B の方が「意味ある会話=新しい知見」「即応の口と後で考える頭の分離」などを記憶候補として具体化できた
+
+### 次のセッションでやること
+- hot path 全面置換ではなく、まず deep / background role だけ `gemma-4-26b-a4b-it-mlx` に向ける構成を検討する
+- LM Studio 同一 URL semaphore のため、background 26B/31B が conversation E4B を塞がないよう queue / process 分離を検討する
+
+## 2026-05-27 セッション2
+
+### やること（開始時に書く）
+- LM Studio の実ログを見ながら Gemma 4 31B / 26B / E4B に同一リクエストを投げる
+- formatted input / output に `<|think|>` / thought channel / reasoning field が出ているか確認する
+- 31B の遅さが thinking 由来か、モデルサイズ・ロード・生成速度由来かを切り分ける
+
+### やったこと
+- `lms log stream --source model --json --stats` を開き、LM Studio の formatted input / output を直接確認した
+- `gemma-4-31b-it-mlx` に `"think": false`、`think` 省略、`"think": true` の3パターンを投げた
+- system prompt 先頭に `<|think|>` を明示したパターンも投げた
+
+### 詰まったこと・解決したこと
+- 31B の formatted input はどのパターンでも末尾が `<|channel>thought\n<channel|>` になった
+  - これは Gemma 4 model card の「thinking disabled 時も空 thought block tag を出す」挙動に近い
+  - 実 output は本文のみで、thought 本文は生成されなかった
+- OpenAI 互換 streaming delta でも `reasoning` / `reasoning_content` / `thinking` field は出なかった
+- `"think": true` はこの LM Studio / Gemma 4 MLX 経路では formatted input を変えなかった
+- `<|think|>` を system prompt に明示しても、実 output は `17 × 23 = 391` のような本文だけで thought は出なかった
+
+### 結論
+- 今回の実測ログ上、`gemma-4-31b-it-mlx` が長い thinking を生成して遅くなっている証拠はない
+- 31B の 1秒台 first content は、hidden thinking よりモデルサイズ / MLX decode 速度 / prompt 処理の影響と見るのが妥当
+- LM Studio の Gemma 4 template は空 thought channel prefix を入れるが、これは no-think 用の assistant prefix と判断する
+
+## 2026-05-27 セッション3
+
+### やること（開始時に書く）
+- Tomoko と数ターン会話済みの状態を dummy messages と補助文脈で再現する
+- E4B / 26B A4B / 31B が文脈を使って意味のある返答を返せるか比較する
+
+### やったこと
+- base persona に、会話から得られた補助文脈を足した system prompt を作った
+- 「意味のある会話」「朝レビュー・夜設計」「即応の口と後で考える頭」の3シナリオを messages として投げた
+- 3モデルの latency と返答内容を比較した
+
+### 結論
+- E4B は速いが、踏み込み要求に対して「情報が足りない」に逃げやすい
+- 26B A4B は「作業中の会話」と「振り返りの外の会話」が混ざっている、という盲点を返せており、意味性が最も良かった
+- 31B は初回ロード/切替が約16s、ロード後も first content 約1.3〜1.5s / total 約2.7〜3.5s で重い
+- 31B の返答は悪くないが、26B A4B より明確に優れてはいなかった
+
+## 2026-05-27 セッション4
+
+### やること（開始時に書く）
+- 明日の実機会話比較のため、central realtime の active conversation backend を Gemma 4 26B A4B MLX に切り替える
+- E4B は比較・復帰用 backend として残す
+- latency を犠牲にしても 26B を試せるよう、config / contract test / docs の期待値を更新する
+
+### やったこと
+- `config/central_realtime.toml` の `conversation_backend` を `lmstudio_gemma4_26b_a4b` に変更した
+- `lmstudio_gemma4_26b_a4b` backend を追加し、model を `gemma-4-26b-a4b-it-mlx` にした
+- 26B の live trial を妨げないよう、`max_latency_ms` は 5000ms に広げた
+- `lmstudio_gemma4_e4b` は比較・復帰用として残した
+- README / MEMORY.md / `_docs/latency.md` に 26B 採用理由と未実測事項を追記した
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase0_config.py tests/unit/test_router.py`
+  - 12 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 334 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+
+### 次のセッションでやること
+- `make server-debug` で実ブラウザ会話を走らせ、26B の first text / first audio / 会話の意味性を確認する
+- 戻す場合は `config/central_realtime.toml` の `conversation_backend` を `lmstudio_gemma4_e4b` に戻す
+
 ## 2026-05-25 セッション51
 
 ### やること（開始時に書く）

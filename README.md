@@ -77,7 +77,7 @@ PostgreSQL は `make db-up` で Docker 上に起動する。
 
 現行の default 設定は次の構成：
 
-- 会話 LLM: LM Studio OpenAI 互換 API（`gemma-4-e4b-it-mlx`）
+- 会話 LLM: LM Studio OpenAI 互換 API（`gemma-4-26b-a4b-it-mlx`）
 - 会話 LLM fallback: MLX VLM（`mlx-community/gemma-4-e2b-it-4bit`）
 - STT: MLX Whisper small
 - TTS: 起動済み VOICEVOX Engine（春日部つむぎ）
@@ -114,8 +114,10 @@ VOICEVOX を使わず custom license を避けたい場合は、`config/central_
 `conversation_backend` を `local_gemma4_e2b_mlx` に、`tts_backend` を `kokoro_mlx` に変更する。
 
 LM Studio を使う場合は、`config/central_realtime.toml` の
-`[backends.lmstudio_gemma4_e4b]` に書かれた URL で LM Studio の OpenAI 互換 API を起動し、
-`gemma-4-e4b-it-mlx` をロードしておく。
+`[backends.lmstudio_gemma4_26b_a4b]` に書かれた URL で LM Studio の OpenAI 互換 API を起動し、
+`gemma-4-26b-a4b-it-mlx` をロードしておく。
+E4B は `lmstudio_gemma4_e4b` として残しているため、速度優先へ戻す場合は
+`conversation_backend` を戻すだけで比較できる。
 
 開発中にコード変更を自動反映したい場合は `make server-reload` を使う。
 サーバーログは `make server` / `make server-reload` を実行しているターミナルに出る。

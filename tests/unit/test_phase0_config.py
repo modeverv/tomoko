@@ -12,11 +12,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.unit
-def test_central_realtime_config_uses_lmstudio_gemma4_e4b_for_main_conversation() -> None:
+def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation() -> None:
     config = NodeConfig.load(ROOT / "config" / "central_realtime.toml")
 
     assert config.node.role == "central_realtime"
-    assert config.inference.conversation_backend == "lmstudio_gemma4_e4b"
+    assert config.inference.conversation_backend == "lmstudio_gemma4_26b_a4b"
     assert config.inference.conversation_fallback == "local_gemma4_e2b_mlx"
     assert config.audio.vad_silence_ms == 800
     assert config.inference.stt_backend == "local_whisperkit_serve_large_turbo_632m_cpu_ne"
@@ -24,11 +24,18 @@ def test_central_realtime_config_uses_lmstudio_gemma4_e4b_for_main_conversation(
     assert config.inference.embedding_backend == "local_bge_m3"
     assert config.inference.speech_normalizer_enabled is False
 
-    backend = config.backends["lmstudio_gemma4_e4b"]
+    backend = config.backends["lmstudio_gemma4_26b_a4b"]
     assert backend.type == "lm_studio"
     assert backend.url == "http://192.168.11.66:1234"
-    assert backend.model == "gemma-4-e4b-it-mlx"
+    assert backend.model == "gemma-4-26b-a4b-it-mlx"
+    assert backend.max_latency_ms == 5000
     assert backend.privacy_allowed is True
+
+    e4b_backend = config.backends["lmstudio_gemma4_e4b"]
+    assert e4b_backend.type == "lm_studio"
+    assert e4b_backend.url == "http://192.168.11.66:1234"
+    assert e4b_backend.model == "gemma-4-e4b-it-mlx"
+    assert e4b_backend.privacy_allowed is True
 
     lm_studio_backend = config.backends["lmstudio_gemma4_e2b"]
     assert lm_studio_backend.type == "lm_studio"
