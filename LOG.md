@@ -55,6 +55,31 @@
 ### 次のセッションでやること
 - `make server-debug` で実ブラウザ会話を走らせ、`jq 'select(.trace=="tomoko_backend_call")' logs/backend-trace.jsonl` で会話 / background の重なりと LM Studio queue wait を確認する
 
+## 2026-05-26 セッション2
+
+### やること（開始時に書く）
+- Kokoro の方が first binary 到着は速い前提を明確にしつつ、体感確認用に default TTS を通常 VOICEVOX へ戻す
+- cancellable synthesis の初回 worker 遅延を比較に混ぜないため、`voicevox_tsumugi_stream` ではなく `voicevox_tsumugi` を採用する
+
+### やったこと
+- `config/central_realtime.toml` / `config/edge_kitchen.toml` の `tts_backend` を `voicevox_tsumugi` に変更した
+- config 契約テストの期待値も `voicevox_tsumugi` に戻した
+- README / MEMORY.md に、cancellable stream ではなく通常 VOICEVOX を試す理由を追記した
+
+### 詰まったこと・解決したこと
+- `/cancellable_synthesis` は最初の binary 到着を速めるものではなかった
+  → VOICEVOX 体感確認では通常 `/synthesis` backend を使い、Kokoro との速度差は backend trace で別途見る
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase0_config.py tests/unit/test_phase14_edge_split.py tests/unit/test_voicevox_tts.py`
+  - 21 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 334 passed, 17 deselected
+- `.venv/bin/python -m ruff check config/central_realtime.toml config/edge_kitchen.toml tests/unit/test_phase0_config.py tests/unit/test_phase14_edge_split.py`
+  - pass
+- `git diff --check`
+  - pass
+
 ## 2026-05-25 セッション51
 
 ### やること（開始時に書く）

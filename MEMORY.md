@@ -47,6 +47,18 @@ Tomoko のブラウザは WebSocket の binary message ごとに `decodeAudioDat
 実 smoke では fallback 経由で first chunk 347.5ms / total 347.6ms、出力は
 `logs/voicevox-tsumugi-stream-smoke.wav`。
 
+### VOICEVOX の試用設定
+上の「default TTS は `voicevox_tsumugi_stream`」という判断は、2026-05-26 の cancellable synthesis 実測により否定する。
+
+`--enable_cancellable_synthesis` 付き Engine では `/cancellable_synthesis` が HTTP chunk を複数返すが、
+warm run の first byte は通常 `/synthesis` とほぼ同等で、初回 worker ではむしろ遅かった。
+Kokoro MLX の first binary は過去実測で約 88ms、VOICEVOX は通常 `/synthesis` で約 315-365ms なので、
+first audio だけなら Kokoro の方が明確に速い。
+
+ただし音質・体感確認のため、central / edge の default TTS は通常の `voicevox_tsumugi` にする。
+stream/cancellable 由来の初回 worker 遅延を混ぜないため、試用中は `voicevox_tsumugi_stream` ではなく
+`voicevox_tsumugi` を使う。
+
 ### 感情表現プロトコル
 - 自前プロトコル採用（Phase 6a）
   ```

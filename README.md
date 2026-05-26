@@ -105,10 +105,11 @@ LFM や Supertonic のような custom / OpenRAIL 系モデルは、ライセン
 make download-optional-models
 ```
 
-現在の `conversation_backend` は LM Studio の Gemma 4 E4B、`tts_backend` は `voicevox_tsumugi_stream` なので、
+現在の `conversation_backend` は LM Studio の Gemma 4 E4B、`tts_backend` は `voicevox_tsumugi` なので、
 VOICEVOX アプリを起動し、Engine が `http://127.0.0.1:50021` で応答する状態にしておく。
-`voicevox_tsumugi_stream` は VOICEVOX の `/cancellable_synthesis` を優先し、実験的機能が無効な Engine では
-通常の `/synthesis` に fallback する。
+`voicevox_tsumugi` は通常の `/audio_query` / `/synthesis` を使う。
+`voicevox_tsumugi_stream` は比較用に残しているが、`/cancellable_synthesis` は first binary 到着を速めなかったため、
+普段の体感確認では通常 backend を使う。
 VOICEVOX を使わず custom license を避けたい場合は、`config/central_realtime.toml` の
 `conversation_backend` を `local_gemma4_e2b_mlx` に、`tts_backend` を `kokoro_mlx` に変更する。
 
