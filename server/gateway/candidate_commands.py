@@ -177,6 +177,9 @@ class CandidateCommandRunner:
                 reason=str(command.payload.get("reason") or "initiative"),
                 audio_data=command.payload.get("generated_audio"),
                 feedback_scope=command.payload.get("feedback_scope"),
+                candidate_source=command.payload.get("candidate_source"),
+                candidate_id=command.payload.get("candidate_id")
+                or command.payload.get("arrival_candidate_id"),
             )
             return None
 

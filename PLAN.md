@@ -3880,7 +3880,7 @@ Phase 10.0〜10.7 で「候補が選ばれ、TomoroSession の gate を通り、
 
 ### Phase 10.10.0: 自発発話ログ評価セットを作る
 
-- [ ] `logs/server-debug.log` から自発発話セッションを抽出する inspection 手順を固定する
+- [x] `logs/server-debug.log` から自発発話セッションを抽出する inspection 手順を固定する
   - `arrival candidate fetched`
   - `initiative candidate fetched`
   - `policy_decision`
@@ -3888,16 +3888,16 @@ Phase 10.0〜10.7 で「候補が選ばれ、TomoroSession の gate を通り、
   - `attention changed from ambient to engaged`
   - `conversation session started reason=followup`
   - 直後 3 turn の transcript / reply text
-- [ ] `utterance_candidates` / `arrival_candidates` の DB 状態確認 query を `_docs/evaluation.md` か `_docs/latency.md` に追記する
+- [x] `utterance_candidates` / `arrival_candidates` の DB 状態確認 query を `_docs/evaluation.md` か `_docs/latency.md` に追記する
   - active / text_ready / audio_ready / spoken / dismissed counts
   - spoken candidate の `source` / `generated_text` / `spoken_at`
-- [ ] 自発発話の手動評価観点を固定する
+- [x] 自発発話の手動評価観点を固定する
   - `starts_conversation`: 人間が返したくなるか
   - `not_abrupt`: 直前文脈から見て唐突すぎないか
   - `self_contained`: 何の話か一発でわかるか
   - `recoverable`: ユーザーが聞き返した時に Tomoko が話題を保持できるか
   - `low_intrusion`: 今話しかけてよい温度か
-- [ ] 評価結果は DB の source of truth にはせず、debug / tuning artifact として扱う
+- [x] 評価結果は DB の source of truth にはせず、debug / tuning artifact として扱う
 
 **完了条件**:
 - 1回の実ブラウザ自発発話について、候補選択から会話開始後 3 turn までを同じ手順で再確認できる
@@ -3906,19 +3906,19 @@ Phase 10.0〜10.7 で「候補が選ばれ、TomoroSession の gate を通り、
 
 ### Phase 10.10.1: candidate generated_text の会話開始契約を強める
 
-- [ ] `candidate_gen` prompt を調整し、`generated_text` は単なる興味文ではなく会話開始用の短文にする
-- [ ] world observation 由来 candidate には、必要に応じて橋渡しを含める
+- [x] `candidate_gen` prompt を調整し、`generated_text` は単なる興味文ではなく会話開始用の短文にする
+- [x] world observation 由来 candidate には、必要に応じて橋渡しを含める
   - `全然別件なんだけど、...`
   - `今じゃなければ後でいいんだけど、...`
   - `さっきの話とは別で、少し気になったことがあって...`
-- [ ] `generated_text` は次の制約を満たす
+- [x] `generated_text` は次の制約を満たす
   - 1〜2文
   - 何の話か自明
   - ユーザーに説明責任を押しつけない
   - 事実断定より「気になっている」「あとで話したい」に寄せる
   - 質問で終える場合は1つだけ
-- [ ] `candidate_seed_text` / `tomoko_private_reaction` からの変換で、topic だけが裸で出ないようにする
-- [ ] unit test では LLM 内容そのものを固定しすぎず、prompt contract / fallback normalizer / forbidden pattern を検証する
+- [x] `candidate_seed_text` / `tomoko_private_reaction` からの変換で、topic だけが裸で出ないようにする
+- [x] unit test では LLM 内容そのものを固定しすぎず、prompt contract / fallback normalizer / forbidden pattern を検証する
   - 空文字
   - 主語がない `を動かすため` 風の破片
   - 長すぎる説明
@@ -3931,11 +3931,11 @@ Phase 10.0〜10.7 で「候補が選ばれ、TomoroSession の gate を通り、
 
 ### Phase 10.10.2: 自発発話を会話文脈に安全に載せる
 
-- [ ] initiative / arrival 発話だけでは `conversation_session` を開始しない既存判断は維持する
-- [ ] ただし、人間が follow-up した時の最初の LLM prompt には、直前の Tomoko 自発発話が明確に入ることを test で固定する
-- [ ] ユーザーが `それってどういうこと?` / `何の話?` と聞いた場合、Tomoko が「関係なかった」と撤回せず、直前の自発発話を説明できるようにする
-- [ ] 自発発話の `start_reason=initiative` / candidate source / generated_text を、会話開始後の context build trace から追えるようにする
-- [ ] 直前の重い相談文脈と別件 candidate が衝突する時は、candidate 文の橋渡しを優先し、会話履歴の解釈だけで謝罪に逃げない
+- [x] initiative / arrival 発話だけでは `conversation_session` を開始しない既存判断は維持する
+- [x] ただし、人間が follow-up した時の最初の LLM prompt には、直前の Tomoko 自発発話が明確に入ることを test で固定する
+- [x] ユーザーが `それってどういうこと?` / `何の話?` と聞いた場合、Tomoko が「関係なかった」と撤回せず、直前の自発発話を説明できるようにする
+- [x] 自発発話の `start_reason=initiative` / candidate source / generated_text を、会話開始後の context build trace から追えるようにする
+- [x] 直前の重い相談文脈と別件 candidate が衝突する時は、candidate 文の橋渡しを優先し、会話履歴の解釈だけで謝罪に逃げない
 
 **完了条件**:
 - 自発発話後の `え、それってどういうこと?` に対して、Tomoko が自分の出した話題を説明できる
@@ -3945,17 +3945,17 @@ Phase 10.0〜10.7 で「候補が選ばれ、TomoroSession の gate を通り、
 
 ### Phase 10.10.3: 話しかける間合いと候補優先度の実測調整
 
-- [ ] `CandidateSpeakPolicy` の deterministic speak threshold / LLM judge band を実ログ基準で見直す
+- [x] `CandidateSpeakPolicy` の deterministic speak threshold / LLM judge band を実ログ基準で見直す
   - 0.658 のような境界 score が話してよい候補だったか、人間評価と突き合わせる
   - threshold を下げる前に、candidate 文品質と bridge 文の改善を優先する
-- [ ] `recent heavy conversation` 直後の別件 candidate は、話題転換 bridge がない限り score を下げる
+- [x] `recent heavy conversation` 直後の別件 candidate は、話題転換 bridge がない限り score を下げる
 - [ ] `audio_ready=0` が続く場合、pregenerated audio の対象を高優先度 candidate に限定して見直す
   - ただし first audio 538ms 程度なら、自然さ改善を優先する
-- [ ] feedback phrase を追加する場合も、最終 gate は `TomoroSession` に残す
+- [x] feedback phrase を追加する場合も、最終 gate は `TomoroSession` に残す
   - `それ今じゃない`
   - `その話あとで`
   - `それ面白い`
-- [ ] tuning は config 増殖ではなく、少数の固定値とログ評価で進める
+- [x] tuning は config 増殖ではなく、少数の固定値とログ評価で進める
 
 **完了条件**:
 - 自発発話頻度の調整理由が score / signal / feedback / bridge 有無で説明できる
@@ -3964,7 +3964,7 @@ Phase 10.0〜10.7 で「候補が選ばれ、TomoroSession の gate を通り、
 
 ### Phase 10.10.4: 実ブラウザ smoke と判断ログ
 
-- [ ] `make thinker` または `make thinker-once` で text-ready candidate を作る
+- [x] `make thinker` または `make thinker-once` で text-ready candidate を作る
 - [ ] `make server-debug` の実ブラウザで ambient idle から 1 回以上 initiative を発話させる
 - [ ] 次の artifact を確認する
   - `logs/server-debug.log`

@@ -65,6 +65,7 @@ async def test_world_observation_source_keeps_trace_tags() -> None:
     assert len(seeds) == 1
     assert seeds[0].source == f"world_observation:{interpretation.id}"
     assert "少しだけ気になる" in seeds[0].seed_text
+    assert "topic_shift_bridge_required" in seeds[0].context_tags
     assert f"world_observation_document:{interpretation.document_id}" in seeds[0].context_tags
     assert (
         seeds[0].metadata_json["world_observation"]["document_id"]

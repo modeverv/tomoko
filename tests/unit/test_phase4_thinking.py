@@ -391,6 +391,41 @@ async def test_session_passes_recent_conversation_context_to_thinking_mode() -> 
 
 
 @pytest.mark.unit
+async def test_session_includes_last_initiative_text_when_user_asks_followup() -> None:
+    events: list[dict[str, str]] = []
+    backend = FakeBackend(["それはね、端末側で動く専用チップの話だよ。"])
+    router = FakeRouter(backend)
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.9] + [0.1] * 13), silence_ms=400),
+        send_event=events.append,
+        transcriber=ConstantTranscriber(),
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=InMemoryAmbientLogWriter(),
+        conversation_log_writer=InMemoryConversationLogWriter(),
+        router=router,  # type: ignore[arg-type]
+        thinking_mode=ThinkFastMode(),
+    )
+    await session.start_precomputed_reply(
+        text="さっきの話とは別で、ハードウェアの進化が少し気になってるんだ。",
+        device_id="desk",
+        reason="initiative",
+        candidate_source="world_observation:abc",
+        candidate_id="candidate-1",
+    )
+
+    for _ in range(14):
+        await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
+    await session._wait_for_reply_task()
+
+    assert backend.messages is not None
+    assert backend.messages[0] == {
+        "role": "assistant",
+        "content": "さっきの話とは別で、ハードウェアの進化が少し気になってるんだ。",
+    }
+    assert backend.messages[-1] == {"role": "user", "content": "トモコ、聞こえる？"}
+
+
+@pytest.mark.unit
 async def test_session_sends_emotion_event_after_wake_word() -> None:
     events: list[dict[str, str]] = []
     backend = FakeBackend(["EMOTION:surprised\n", "え、そうなんだ。"])

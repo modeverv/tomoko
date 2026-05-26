@@ -45,6 +45,7 @@ class WorldObservationSource:
                     expires_at=context.observed_at + self.ttl,
                     dedupe_key=f"{_SOURCE_PREFIX}:{interpretation.id}",
                     context_tags=(
+                        "topic_shift_bridge_required",
                         f"topic:{interpretation.topic}",
                         f"freshness:{interpretation.freshness}",
                         f"world_observation_document:{interpretation.document_id}",

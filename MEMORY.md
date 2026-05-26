@@ -2030,3 +2030,21 @@ first content 0.31〜0.41s のケースがあり、意味性は E4B より明確
 
 したがって、メイン会話モデルの探索はここで一旦止め、次は Tomoko からの自発的発話・候補選択・話しかける間合いの調整へ進む。
 速度優先比較用として `lmstudio_gemma4_e4b` は残すが、会話品質の基準線は 26B A4B とする。
+
+### 確定した判断: Phase 10.10 自発発話は会話開始用の一言として整える
+自発発話 candidate の `generated_text` は、単なる興味メモや topic 名ではなく、
+Tomoko がそのまま話しかける 1〜2文の会話開始文として扱う。
+
+world observation 由来など直前文脈と別件になりやすい candidate には、
+`さっきの話とは別で、` のような橋渡しを入れる。
+`を動かすための専用チップ` のような主語欠け断片や、`最新情報を知っている` 断定は保存前に落とす。
+
+自発発話そのものでは `conversation_session` を開始しない既存判断は維持する。
+ただし人間が follow-up した最初の LLM prompt には、直前の Tomoko 自発発話を
+assistant turn として明示的に入れる。
+これにより `それってどういうこと?` と聞かれた時、Tomoko が「関係なかった」と撤回せず、
+自分が出した話題を説明できるようにする。
+
+候補 policy では、`recent_heavy_conversation` 直後の別件 topic shift は
+bridge がない限り少し score を下げる。
+ただし最終 gate と session lifecycle の所有者は引き続き `TomoroSession` とする。

@@ -6,6 +6,7 @@ import logging
 import time
 from collections.abc import Callable
 from contextlib import suppress
+from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -170,6 +171,11 @@ class TomoroSession:
         self._last_start_reason: StartReason | None = None
         self._connected_output_state = connected_output_state or ConnectedOutputState.empty()
         self._active_initiative_feedback_scope: CandidateFeedbackScope | None = None
+        self._last_precomputed_reply_text: str | None = None
+        self._last_precomputed_reply_reason: str | None = None
+        self._last_precomputed_reply_source: str | None = None
+        self._last_precomputed_reply_candidate_id: str | None = None
+        self._last_precomputed_reply_at: datetime | None = None
 
     @property
     def _playback_echo_grace_ms(self) -> int:
@@ -433,6 +439,7 @@ class TomoroSession:
                         "candidate_id": candidate.id,
                         "text": candidate.generated_text,
                         "generated_audio": candidate.generated_audio,
+                        "candidate_source": candidate.source,
                         "feedback_scope": feedback_scope_from_candidate(candidate),
                         "reason": "initiative",
                         "start_reason": "initiative",
@@ -534,6 +541,7 @@ class TomoroSession:
                         "arrival_candidate_id": candidate.id,
                         "text": candidate.utterance_text,
                         "generated_audio": candidate.utterance_audio,
+                        "candidate_source": "arrival",
                         "reason": "arrival",
                         "start_reason": "arrival",
                         "started_by": "arrival",
@@ -959,6 +967,9 @@ class TomoroSession:
         thinking_mode = self.thinking_mode
         depth = "deep" if should_use_deep_memory(transcript.text) else "fast"
         context_snapshot = await self._build_context_snapshot(transcript, depth=depth)
+        recent_turns = self._recent_turns_with_precomputed_topic(
+            context_snapshot.recent_turns
+        )
         long_term_memory = [
             _session_summary_hit_to_memory(hit)
             for hit in context_snapshot.session_summaries
@@ -976,7 +987,7 @@ class TomoroSession:
         thinking_input = ThinkingInput(
             text=transcript.text,
             speaker=transcript.speaker,
-            context=context_snapshot.recent_turns,
+            context=recent_turns,
             emotion="neutral",
             device_id=transcript.device_id,
             long_term_memory=long_term_memory,
@@ -1091,33 +1102,45 @@ class TomoroSession:
         reason: str,
         audio_data: bytes | None = None,
         feedback_scope: CandidateFeedbackScope | None = None,
+        candidate_source: object | None = None,
+        candidate_id: object | None = None,
     ) -> None:
         """Speak a text-ready initiative/arrival candidate through the normal output path."""
-        if not text.strip():
+        stripped_text = text.strip()
+        if not stripped_text:
             return
 
         await self._cancel_reply_generation(status="cancelled")
         self._active_initiative_feedback_scope = feedback_scope
+        self._last_precomputed_reply_text = stripped_text
+        self._last_precomputed_reply_reason = reason
+        self._last_precomputed_reply_source = (
+            str(candidate_source) if candidate_source is not None else None
+        )
+        self._last_precomputed_reply_candidate_id = (
+            str(candidate_id) if candidate_id is not None else None
+        )
+        self._last_precomputed_reply_at = datetime.now(UTC)
         self._reset_latency_probe()
         self._latency_reply_start_at = time.perf_counter()
         # Initiative/arrival speech opens attention, but the conversation session
         # starts only when a human replies through the normal participation path.
         await self._transition_attention("engaged")
         self._reply_output_started = True
-        await self._send_event({"type": "reply_text", "delta": text})
+        await self._send_event({"type": "reply_text", "delta": stripped_text})
         self.audio_turns.begin_turn()
         try:
             if audio_data is None:
-                await self._flush_tts_text(text, style="neutral")
+                await self._flush_tts_text(stripped_text, style="neutral")
             else:
                 await self._send_reserved_audio_start()
                 outgoing = await self.audio_turns.reserve_audio_chunk(
-                    text=text,
+                    text=stripped_text,
                     chunk=AudioChunkOut(data=audio_data, sequence=0, is_last=True),
                 )
                 await self._send_audio_chunk(outgoing)
             await self._write_tomoko_turn(
-                text=text,
+                text=stripped_text,
                 emotion="neutral",
                 device_id=device_id,
                 status="completed",
@@ -1496,6 +1519,33 @@ class TomoroSession:
             active_session_id=self.active_conversation_session_id,
             policy=policy,
         )
+
+    def _recent_turns_with_precomputed_topic(
+        self,
+        recent_turns: list[ConversationTurn],
+    ) -> list[ConversationTurn]:
+        text = self._last_precomputed_reply_text
+        if not text:
+            return recent_turns
+        if any(turn.speaker == "tomoko" and turn.text == text for turn in recent_turns):
+            return recent_turns
+        timestamp = self._last_precomputed_reply_at or datetime.now(UTC)
+        logger.info(
+            "TomoroSession context includes last_precomputed_reply reason=%s "
+            "source=%s candidate_id=%s",
+            self._last_precomputed_reply_reason,
+            self._last_precomputed_reply_source,
+            self._last_precomputed_reply_candidate_id,
+        )
+        return [
+            *recent_turns,
+            ConversationTurn(
+                speaker="tomoko",
+                text=text,
+                timestamp=timestamp,
+                emotion="neutral",
+            ),
+        ]
 
     async def _ensure_conversation_session(
         self,

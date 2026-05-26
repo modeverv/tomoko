@@ -121,12 +121,13 @@ def _candidate(
     urgent: bool = False,
     source: str = "time_based",
     context_tags: tuple[str, ...] = (),
+    generated_text: str = "ねえ、少し休憩しない？",
 ) -> UtteranceCandidate:
     now = datetime.now(UTC)
     return UtteranceCandidate(
         id=uuid4(),
         seed="少し休憩しない？",
-        generated_text="ねえ、少し休憩しない？",
+        generated_text=generated_text,
         generated_audio=None,
         priority=priority,
         urgent=urgent,
@@ -298,6 +299,44 @@ def test_phase106_policy_uses_candidate_metadata() -> None:
     )
 
     assert safe.score > intrusive.score
+
+
+@pytest.mark.unit
+def test_phase1010_policy_penalizes_unbridged_topic_shift_after_heavy_context() -> None:
+    desire = TomokoDesireState(desire_1m=0.75, desire_5m=0.5, desire_30m=0.3)
+    speakability = SpeakabilityState(presence_1m=1.0, presence_5m=0.8)
+    personality = PersonalityDynamics()
+    policy = CandidateSpeakPolicy()
+    tags = ("recent_heavy_conversation", "topic_shift_bridge_required")
+
+    bridged = policy.evaluate(
+        desire=desire,
+        speakability=speakability,
+        personality=personality,
+        candidate=metadata_from_utterance_candidate(
+            _candidate(
+                priority=0.8,
+                source="world_observation:abc",
+                context_tags=tags,
+                generated_text="さっきの話とは別で、ハードウェアの進化が少し気になるんだ。",
+            )
+        ),
+    )
+    abrupt = policy.evaluate(
+        desire=desire,
+        speakability=speakability,
+        personality=personality,
+        candidate=metadata_from_utterance_candidate(
+            _candidate(
+                priority=0.8,
+                source="world_observation:abc",
+                context_tags=tags,
+                generated_text="ハードウェアの進化が少し気になるんだ。",
+            )
+        ),
+    )
+
+    assert bridged.score > abrupt.score
 
 
 @pytest.mark.unit

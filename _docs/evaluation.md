@@ -318,3 +318,66 @@ baseline と比較して:
 
 単一指標の改善だけでは完了にしない。
 Tomoko の目的はベンチマーク最適化ではなく、人間から自然な会話相手として見られる体験品質の改善である。
+
+---
+
+## Phase 10.10 自発発話ログ評価
+
+自発発話は「候補を読んだか」ではなく「会話の入口になったか」を見る。
+評価 artifact は debug / tuning 用であり、DB の source of truth にはしない。
+
+### ログ抽出
+
+```bash
+rg -n \
+  "arrival candidate fetched|initiative candidate fetched|policy_decision|start_initiative_reply|start_arrival_reply|attention changed from ambient to engaged|conversation session started reason=followup|ThinkFastMode llm_prompt|TomoroSession reply_text delta" \
+  logs/server-debug.log
+```
+
+確認する流れ:
+
+- `arrival candidate fetched` / `initiative candidate fetched`
+- `policy_decision` と score / threshold / reason
+- `start_initiative_reply` または `start_arrival_reply`
+- 直後の `attention changed from ambient to engaged`
+- 人間の返答後の `conversation session started reason=followup`
+- 直後 3 turn の transcript / `ThinkFastMode llm_prompt` / `reply_text`
+
+### DB 確認
+
+```sql
+SELECT
+  source,
+  count(*) FILTER (WHERE spoken_at IS NULL AND dismissed_at IS NULL AND expires_at > now()) AS active,
+  count(*) FILTER (WHERE maturity >= 1 AND generated_text IS NOT NULL) AS text_ready,
+  count(*) FILTER (WHERE maturity >= 2 AND generated_audio IS NOT NULL) AS audio_ready,
+  count(*) FILTER (WHERE spoken_at IS NOT NULL) AS spoken,
+  count(*) FILTER (WHERE dismissed_at IS NOT NULL) AS dismissed
+FROM utterance_candidates
+GROUP BY source
+ORDER BY active DESC, spoken DESC;
+
+SELECT id, source, generated_text, spoken_at, priority, urgent, context_tags
+FROM utterance_candidates
+WHERE spoken_at IS NOT NULL
+ORDER BY spoken_at DESC
+LIMIT 20;
+
+SELECT id, started_at, start_reason, ended_at, end_reason
+FROM conversation_sessions
+ORDER BY started_at DESC
+LIMIT 20;
+```
+
+### 手動評価観点
+
+- `starts_conversation`: 人間が返したくなるか
+- `not_abrupt`: 直前文脈から見て唐突すぎないか
+- `self_contained`: 何の話か一発でわかるか
+- `recoverable`: ユーザーが聞き返した時に Tomoko が話題を保持できるか
+- `low_intrusion`: 今話しかけてよい温度か
+
+最低 2 ケースを LOG に残す:
+
+- 成功: 自然に返答され、会話が 2 turn 以上続いた
+- 要改善: 唐突、撤回、主語欠け、話しすぎ、または文脈衝突

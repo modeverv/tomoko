@@ -100,6 +100,8 @@ async def test_llm_evaluator_builds_evaluated_utterance_from_json() -> None:
     )
     assert router.selections == [("candidate_gen", "privacy")]
     assert "conversation_logs" not in backend.messages[0]["content"]
+    assert "会話開始用の短文" in backend.system_prompt
+    assert "別件" in backend.system_prompt
 
 
 @pytest.mark.unit
@@ -162,6 +164,50 @@ async def test_evaluated_utterance_is_saved_as_maturity_one_candidate() -> None:
     assert saved.seed == seed.seed_text
     assert saved.generated_text == "洗濯物、そろそろ見ておく？"
     assert saved.priority == 0.7
+
+
+@pytest.mark.unit
+async def test_llm_evaluator_discards_fragmentary_generated_text() -> None:
+    router = RecordingRouter(
+        FakeBackend(
+            [
+                '{"should_keep": true, "generated_text": "を動かすための専用チップ", ',
+                '"priority": 0.7, "urgent": false, "reason": "主語がない"}',
+            ]
+        )
+    )
+    evaluator = LLMUtteranceEvaluator(router=router)  # type: ignore[arg-type]
+
+    assert await evaluator.evaluate(_seed(), _context()) is None
+
+
+@pytest.mark.unit
+async def test_llm_evaluator_adds_bridge_for_world_observation_topic_shift() -> None:
+    seed = CandidateSeed(
+        seed_text="ハードウェアの進化について気になっている",
+        source="world_observation:abc",
+        priority=0.7,
+        urgent=False,
+        expires_at=datetime(2026, 5, 24, 18, 0, tzinfo=UTC),
+        dedupe_key="world:hardware",
+        context_tags=("topic:hardware",),
+    )
+    router = RecordingRouter(
+        FakeBackend(
+            [
+                '{"should_keep": true, '
+                '"generated_text": "ハードウェアの進化、少し気になってるんだよね。", ',
+                '"priority": 0.7, "urgent": false, "reason": "別件話題"}',
+            ]
+        )
+    )
+    evaluator = LLMUtteranceEvaluator(router=router)  # type: ignore[arg-type]
+
+    evaluated = await evaluator.evaluate(seed, _context())
+
+    assert evaluated is not None
+    assert evaluated.generated_text is not None
+    assert evaluated.generated_text.startswith("さっきの話とは別で、")
 
 
 @pytest.mark.unit

@@ -324,6 +324,7 @@ class CandidateSpeakMetadata:
     expires_at: datetime | None = None
     context_tags: tuple[str, ...] = field(default_factory=tuple)
     reason: str | None = None
+    generated_text: str | None = None
     schema_version: int = 1
 
     @classmethod
@@ -349,6 +350,7 @@ class CandidateSpeakMetadata:
             expires_at=_optional_datetime_value(payload.get("expires_at")),
             context_tags=tuple(str(tag) for tag in payload.get("context_tags", ())),
             reason=_optional_str(payload.get("reason")),
+            generated_text=_optional_str(payload.get("generated_text")),
         )
 
     def to_json(self) -> dict[str, Any]:
@@ -372,6 +374,8 @@ class CandidateSpeakMetadata:
             payload["expires_at"] = self.expires_at.isoformat()
         if self.reason is not None:
             payload["reason"] = self.reason
+        if self.generated_text is not None:
+            payload["generated_text"] = self.generated_text
         return payload
 
 

@@ -26,6 +26,16 @@ EVALUATOR_OUTPUT_SCHEMA = {
 _SYSTEM_PROMPT = """\
 あなたはTomokoの自発発話候補を評価する background evaluator です。
 会話原文や全ログを要求せず、渡された要約・用語・人格 slice だけで判断してください。
+generated_text は「興味メモ」ではなく、Tomoko が実際に話しかける会話開始用の短文にしてください。
+制約:
+- 1〜2文にする
+- 何の話か一発でわかるようにする
+- ユーザーに説明責任を押しつけない
+- 事実断定より「気になっている」「あとで話したい」に寄せる
+- 質問で終える場合は1つだけにする
+- seed_source が world_observation など直前文脈と別件になりやすい話題なら、
+  「さっきの話とは別で、」などの橋渡しを入れる
+- 「を動かすための専用チップ」のような主語欠け断片を返さない
 返答は JSON object だけにしてください。schema:
 {
   "should_keep": true | false,
@@ -112,6 +122,9 @@ def _parse_evaluation(raw_text: str, seed: CandidateSeed) -> EvaluatedUtterance 
         )
     if generated_text is None:
         return None
+    generated_text = _normalize_generated_text(generated_text, seed)
+    if generated_text is None:
+        return None
 
     return EvaluatedUtterance(
         should_keep=True,
@@ -143,6 +156,63 @@ def _optional_text(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _normalize_generated_text(text: str, seed: CandidateSeed) -> str | None:
+    normalized = " ".join(line.strip() for line in text.splitlines() if line.strip())
+    normalized = normalized.strip()
+    if not normalized:
+        return None
+    if _looks_fragmentary(normalized):
+        return None
+    if _asserts_latest_knowledge(normalized):
+        return None
+    if len(normalized) > 90:
+        return None
+    if _needs_topic_shift_bridge(seed) and not _has_topic_shift_bridge(normalized):
+        normalized = f"さっきの話とは別で、{normalized}"
+    return normalized
+
+
+def _looks_fragmentary(text: str) -> bool:
+    fragment_starts = (
+        "を",
+        "が",
+        "に",
+        "で",
+        "へ",
+        "と",
+        "のため",
+        "ための",
+    )
+    return text.startswith(fragment_starts)
+
+
+def _asserts_latest_knowledge(text: str) -> bool:
+    forbidden = (
+        "最新情報を知っている",
+        "最新情報によると",
+        "確実に",
+        "間違いなく",
+    )
+    return any(phrase in text for phrase in forbidden)
+
+
+def _needs_topic_shift_bridge(seed: CandidateSeed) -> bool:
+    return seed.source.startswith("world_observation") or (
+        "topic_shift_bridge_required" in seed.context_tags
+    )
+
+
+def _has_topic_shift_bridge(text: str) -> bool:
+    bridges = (
+        "別件",
+        "さっきの話とは別",
+        "今じゃなければ後で",
+        "あとでいいんだけど",
+        "話は変わるんだけど",
+    )
+    return any(bridge in text for bridge in bridges)
 
 
 def _clamp_priority(value: object) -> float:

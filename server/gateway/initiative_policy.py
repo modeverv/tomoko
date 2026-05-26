@@ -230,6 +230,7 @@ class CandidateSpeakPolicy:
             + candidate.emotional_need * 0.12
             + candidate.feedback_boost * 0.18
             - candidate.feedback_penalty * 0.3
+            - _topic_shift_penalty(candidate)
             - candidate.intrusion_risk
             * (0.16 + speakability.focus_likelihood_5m * 0.2)
             + _source_weight(candidate.source)
@@ -329,6 +330,7 @@ def metadata_from_utterance_candidate(
         expires_at=candidate.expires_at,
         context_tags=candidate.context_tags,
         reason=candidate.seed,
+        generated_text=candidate.generated_text,
     )
 
 
@@ -456,6 +458,28 @@ def _curiosity_candidate_factor(candidate: CandidateSpeakMetadata) -> float:
     if "question" in candidate.context_tags or "observation" in candidate.context_tags:
         return 1.0
     return 0.3
+
+
+def _topic_shift_penalty(candidate: CandidateSpeakMetadata) -> float:
+    tags = set(candidate.context_tags)
+    if "recent_heavy_conversation" not in tags:
+        return 0.0
+    if "topic_shift_bridge_required" not in tags:
+        return 0.0
+    if _has_topic_shift_bridge(candidate.generated_text or ""):
+        return 0.0
+    return 0.12
+
+
+def _has_topic_shift_bridge(text: str) -> bool:
+    bridges = (
+        "別件",
+        "さっきの話とは別",
+        "今じゃなければ後で",
+        "あとでいいんだけど",
+        "話は変わるんだけど",
+    )
+    return any(bridge in text for bridge in bridges)
 
 
 def _tag_float(tags: tuple[str, ...], prefix: str) -> float:

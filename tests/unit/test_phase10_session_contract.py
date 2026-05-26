@@ -151,6 +151,7 @@ async def test_loaded_initiative_candidate_starts_reply_and_marks_spoken() -> No
     ]
     assert result.commands[0].payload["candidate_id"] == candidate.id
     assert result.commands[0].payload["text"] == candidate.generated_text
+    assert result.commands[0].payload["candidate_source"] == candidate.source
     assert result.commands[1].payload["candidate_id"] == candidate.id
 
 
@@ -265,7 +266,39 @@ async def test_arrival_speak_first_starts_reply_and_marks_used() -> None:
     ]
     assert result.commands[0].payload["arrival_candidate_id"] == candidate.id
     assert result.commands[0].payload["text"] == candidate.utterance_text
+    assert result.commands[0].payload["candidate_source"] == "arrival"
     assert result.commands[1].payload["arrival_candidate_id"] == candidate.id
+
+
+@pytest.mark.unit
+async def test_initiative_reply_does_not_start_conversation_session() -> None:
+    class SessionStore:
+        def __init__(self) -> None:
+            self.created: list[str] = []
+
+        async def create_session(self, *, device_id: str, start_reason: str):
+            del device_id
+            self.created.append(start_reason)
+            return "33333333-3333-3333-3333-333333333333"
+
+    store = SessionStore()
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
+        send_event=lambda event: None,
+        connected_output_state=ConnectedOutputState.single_client(device_id="desk"),
+        conversation_session_store=store,  # type: ignore[arg-type]
+    )
+
+    await session.start_precomputed_reply(
+        text="さっきの話とは別で、ハードウェアの進化が少し気になってるんだ。",
+        device_id="desk",
+        reason="initiative",
+        candidate_source="world_observation:abc",
+        candidate_id="candidate-1",
+    )
+
+    assert store.created == []
+    assert session.active_conversation_session_id is None
 
 
 @pytest.mark.unit
