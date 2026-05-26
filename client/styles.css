@@ -130,6 +130,7 @@ p {
 
 .read-prompt,
 .debug-result,
+.candidate-result,
 .reply-container {
   display: grid;
   gap: 6px;
@@ -140,13 +141,15 @@ p {
 }
 
 .read-prompt span,
-.debug-result span {
+.debug-result span,
+.candidate-result span {
   color: #67717b;
   font-size: 13px;
 }
 
 .read-prompt p,
 .debug-result p,
+.candidate-result p,
 .reply-container p {
   margin: 0;
   overflow-wrap: anywhere;
@@ -175,6 +178,7 @@ p {
 
   .read-prompt,
   .debug-result,
+  .candidate-result,
   .reply-container {
     border-color: #353b42;
     background: #1d2126;

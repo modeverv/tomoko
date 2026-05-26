@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import numpy as np
 import pytest
 
 from server.edge.pipeline.vad import VADProcessor
 from server.gateway.candidate_commands import CandidateCommandRunner
+from server.gateway.initiative_policy import CandidateSpeakPolicy
 from server.session import TomoroSession
 from server.shared.candidate import ArrivalContextSnapshot, InMemoryCandidateStore
-from server.shared.models import ConnectedOutputState, SessionEvent
+from server.shared.models import CandidateSpeakDecision, ConnectedOutputState, SessionEvent
 
 
 class QuietVAD:
@@ -28,6 +30,17 @@ class RecordingConversationSessionStore:
 
     async def close_session(self, session_id, *, end_reason: str) -> None:
         del session_id, end_reason
+
+
+class AlwaysWaitPolicy(CandidateSpeakPolicy):
+    def evaluate(self, **kwargs: Any) -> CandidateSpeakDecision:
+        del kwargs
+        return CandidateSpeakDecision(
+            decision="wait",
+            score=0.2,
+            threshold=0.68,
+            reason="unit_policy_wait",
+        )
 
 
 def _session(
@@ -75,6 +88,56 @@ async def test_runner_fetches_initiative_candidate_speaks_and_marks_spoken() -> 
     ]
     assert store.utterance_candidates[0].id == candidate.id
     assert store.utterance_candidates[0].spoken_at == now
+    assert events[0] == {
+        "type": "initiative_fetch_requested",
+        "reason": "idle_timer_elapsed",
+    }
+    assert events[1] == {
+        "type": "initiative_reply_requested",
+        "candidate_id": str(candidate.id),
+    }
+
+
+@pytest.mark.unit
+async def test_runner_emits_policy_wait_to_browser_without_speaking() -> None:
+    now = datetime(2026, 5, 24, 22, 30, tzinfo=UTC)
+    store = InMemoryCandidateStore()
+    candidate = await store.insert_utterance_candidate(
+        seed="休憩",
+        source="test",
+        expires_at=now + timedelta(minutes=10),
+        priority=0.9,
+        maturity=1,
+        generated_text="ねえ、少し休憩しない？",
+        created_at=now,
+    )
+    events: list[dict[str, str]] = []
+    session = _session(events)
+    runner = CandidateCommandRunner(
+        session=session,
+        store=store,
+        device_id="desk",
+        now_factory=lambda: now,
+        speak_policy=AlwaysWaitPolicy(),
+    )
+
+    result = await session.post_event(SessionEvent(type="idle_timer_elapsed"))
+    await runner.run_result(result)
+
+    assert events[0] == {
+        "type": "initiative_fetch_requested",
+        "reason": "idle_timer_elapsed",
+    }
+    assert events[1]["type"] == "initiative_skipped"
+    assert events[1]["reason"] == "policy_wait"
+    assert events[1]["candidate_id"] == str(candidate.id)
+    policy = events[1]["policy"]
+    assert policy["schema_version"] == 1
+    assert policy["decision"] == "wait"
+    assert policy["score"] == 0.2
+    assert policy["threshold"] == 0.68
+    assert policy["reason"] == "unit_policy_wait"
+    assert "metadata" in policy["signals"]
 
 
 @pytest.mark.unit

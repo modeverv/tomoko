@@ -182,7 +182,7 @@ async def test_llm_evaluator_discards_fragmentary_generated_text() -> None:
 
 
 @pytest.mark.unit
-async def test_llm_evaluator_adds_bridge_for_world_observation_topic_shift() -> None:
+async def test_llm_evaluator_requires_prompt_side_bridge_for_world_observation() -> None:
     seed = CandidateSeed(
         seed_text="ハードウェアの進化について気になっている",
         source="world_observation:abc",
@@ -192,22 +192,22 @@ async def test_llm_evaluator_adds_bridge_for_world_observation_topic_shift() -> 
         dedupe_key="world:hardware",
         context_tags=("topic:hardware",),
     )
-    router = RecordingRouter(
-        FakeBackend(
-            [
-                '{"should_keep": true, '
-                '"generated_text": "ハードウェアの進化、少し気になってるんだよね。", ',
-                '"priority": 0.7, "urgent": false, "reason": "別件話題"}',
-            ]
-        )
+    backend = FakeBackend(
+        [
+            '{"should_keep": true, '
+            '"generated_text": "ハードウェアの進化、少し気になってるんだよね。", ',
+            '"priority": 0.7, "urgent": false, "reason": "別件話題"}',
+        ]
     )
+    router = RecordingRouter(backend)
     evaluator = LLMUtteranceEvaluator(router=router)  # type: ignore[arg-type]
 
     evaluated = await evaluator.evaluate(seed, _context())
 
     assert evaluated is not None
     assert evaluated.generated_text is not None
-    assert evaluated.generated_text.startswith("さっきの話とは別で、")
+    assert evaluated.generated_text == "ハードウェアの進化、少し気になってるんだよね。"
+    assert "さっきの話とは別で" in backend.system_prompt
 
 
 @pytest.mark.unit

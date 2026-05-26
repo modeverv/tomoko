@@ -62,7 +62,10 @@ async def test_ws_sends_state_events_on_vad_transitions() -> None:
 
     await websocket_session(websocket)  # type: ignore[arg-type]
 
-    assert websocket.sent_json == [
+    state_events = [
+        event for event in websocket.sent_json if event.get("type") == "state"
+    ]
+    assert state_events == [
         {"type": "state", "state": "listening"},
         {"type": "state", "state": "processing"},
     ]
@@ -120,10 +123,15 @@ async def test_ws_debug_recording_saves_audio_without_session_processing(
 
     await websocket_session(websocket)  # type: ignore[arg-type]
 
-    assert websocket.sent_json[0]["type"] == "debug_recording_started"
-    assert websocket.sent_json[1]["type"] == "debug_recording_saved"
-    assert websocket.sent_json[1]["kind"] == "noise"
-    assert websocket.sent_json[1]["sample_count"] == 512
+    debug_events = [
+        event
+        for event in websocket.sent_json
+        if str(event.get("type")).startswith("debug_recording_")
+    ]
+    assert debug_events[0]["type"] == "debug_recording_started"
+    assert debug_events[1]["type"] == "debug_recording_saved"
+    assert debug_events[1]["kind"] == "noise"
+    assert debug_events[1]["sample_count"] == 512
     assert processor.state == "idle"
     assert list((tmp_path / "audio-recordings").glob("*.wav"))
     assert list((tmp_path / "audio-recordings").glob("*.json"))

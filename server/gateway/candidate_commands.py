@@ -68,6 +68,7 @@ class CandidateCommandRunner:
         self.presence_signal = max(0.0, min(1.0, presence_signal))
 
     async def run_result(self, result: TransitionResult) -> None:
+        await self.session.send_transition_emissions(result)
         for command in result.commands:
             next_result = await self.run_command(command)
             if next_result is not None:

@@ -1223,6 +1223,15 @@ class TomoroSession:
             if inspect.isawaitable(maybe_awaitable):
                 await maybe_awaitable
 
+    async def send_transition_emissions(self, result: TransitionResult) -> None:
+        for emission in result.emissions:
+            await self._send_event(
+                {
+                    "type": emission.type,
+                    **_json_safe_payload(emission.payload),
+                }
+            )
+
     async def _send_audio_chunk(self, chunk: AudioChunkOut) -> None:
         if self.send_audio is None:
             return
@@ -1752,6 +1761,22 @@ def _candidate_policy_payload(event: SessionEvent) -> dict[str, Any] | None:
     if isinstance(policy, CandidateSpeakDecision):
         return policy.to_json()
     return None
+
+
+def _json_safe_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return {key: _json_safe_value(value) for key, value in payload.items()}
+
+
+def _json_safe_value(value: Any) -> Any:
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(key): _json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_value(item) for item in value]
+    return value
 
 
 def _optional_str_payload(value: object) -> str | None:

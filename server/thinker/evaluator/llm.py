@@ -159,6 +159,7 @@ def _optional_text(value: object) -> str | None:
 
 
 def _normalize_generated_text(text: str, seed: CandidateSeed) -> str | None:
+    del seed
     normalized = " ".join(line.strip() for line in text.splitlines() if line.strip())
     normalized = normalized.strip()
     if not normalized:
@@ -169,8 +170,6 @@ def _normalize_generated_text(text: str, seed: CandidateSeed) -> str | None:
         return None
     if len(normalized) > 90:
         return None
-    if _needs_topic_shift_bridge(seed) and not _has_topic_shift_bridge(normalized):
-        normalized = f"さっきの話とは別で、{normalized}"
     return normalized
 
 
@@ -196,23 +195,6 @@ def _asserts_latest_knowledge(text: str) -> bool:
         "間違いなく",
     )
     return any(phrase in text for phrase in forbidden)
-
-
-def _needs_topic_shift_bridge(seed: CandidateSeed) -> bool:
-    return seed.source.startswith("world_observation") or (
-        "topic_shift_bridge_required" in seed.context_tags
-    )
-
-
-def _has_topic_shift_bridge(text: str) -> bool:
-    bridges = (
-        "別件",
-        "さっきの話とは別",
-        "今じゃなければ後で",
-        "あとでいいんだけど",
-        "話は変わるんだけど",
-    )
-    return any(bridge in text for bridge in bridges)
 
 
 def _clamp_priority(value: object) -> float:

@@ -2048,3 +2048,16 @@ assistant turn として明示的に入れる。
 候補 policy では、`recent_heavy_conversation` 直後の別件 topic shift は
 bridge がない限り少し score を下げる。
 ただし最終 gate と session lifecycle の所有者は引き続き `TomoroSession` とする。
+
+### 確定した判断: Phase 10.10 のユーザー判断反映
+active STT backend は `local_whisper_mlx_large_turbo_q4` が正であり、
+`local_whisperkit_serve_large_turbo_632m_cpu_ne` は比較 lane として残す。
+
+world observation など別件 candidate の bridge は、固定文の自動補完ではなく
+候補生成 prompt 側に寄せる。
+ただし `topic_shift_bridge_required` tag と prompt 契約は残し、bridge なし candidate は
+`recent_heavy_conversation` 直後の policy score で軽く不利にする。
+
+断片 candidate reject は厳しめで始める。
+initiative / arrival の直前 precomputed reply を follow-up context に入れる現行実装は維持する。
+実ブラウザ評価は既存候補で試すため、候補が来たが発話しなかった理由をブラウザ UI に表示する。

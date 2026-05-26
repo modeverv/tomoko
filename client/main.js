@@ -13,6 +13,7 @@ const emotionEl = document.querySelector("#emotion");
 const tomokoImageEl = document.querySelector("#tomoko-image");
 const readPromptTextEl = document.querySelector("#read-prompt-text");
 const debugResultTextEl = document.querySelector("#debug-result-text");
+const candidateResultTextEl = document.querySelector("#candidate-result-text");
 
 let audioContext = null;
 let micStream = null;
@@ -36,6 +37,19 @@ const READ_PROMPTS = [
   "小さいノイズでココココと出るなら、先にゲートした方が良さそうです。",
 ];
 
+const CANDIDATE_EVENT_TYPES = new Set([
+  "initiative_fetch_requested",
+  "initiative_skipped",
+  "initiative_llm_judge_requested",
+  "initiative_reply_requested",
+  "arrival_fetch_requested",
+  "arrival_skipped",
+  "arrival_wait_silent",
+  "arrival_subtle_react",
+  "arrival_reply_requested",
+  "candidate_command_failed",
+]);
+
 function setStatus(value) {
   statusEl.textContent = value;
 }
@@ -57,8 +71,41 @@ function sendPlaybackEvent(type, entry) {
   );
 }
 
+function formatCandidateEvent(event) {
+  const parts = [event.type];
+  if (event.reason) {
+    parts.push(`reason=${event.reason}`);
+  }
+  if (event.gate_reason) {
+    parts.push(`gate=${event.gate_reason}`);
+  }
+  if (event.candidate_id) {
+    parts.push(`id=${shortId(event.candidate_id)}`);
+  }
+  if (event.arrival_candidate_id) {
+    parts.push(`arrival=${shortId(event.arrival_candidate_id)}`);
+  }
+  if (event.policy?.decision) {
+    parts.push(`policy=${event.policy.decision}`);
+  }
+  if (typeof event.policy?.score === "number") {
+    parts.push(`score=${event.policy.score.toFixed(3)}`);
+  }
+  if (typeof event.policy?.threshold === "number") {
+    parts.push(`threshold=${event.policy.threshold.toFixed(3)}`);
+  }
+  return parts.join(" / ");
+}
+
+function shortId(value) {
+  return String(value).slice(0, 8);
+}
+
 function handleJsonEvent(data) {
   const event = JSON.parse(data);
+  if (CANDIDATE_EVENT_TYPES.has(event.type)) {
+    candidateResultTextEl.textContent = formatCandidateEvent(event);
+  }
   if (event.type === "debug_recording_started") {
     activeDebugRecording = event.recording_id;
     debugResultTextEl.textContent = `${event.kind}: recording`;
