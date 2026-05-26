@@ -2088,3 +2088,14 @@ MLX Whisper large turbo q4 avg 240.6ms。
 MLX Whisper large turbo q4 avg 248.7ms。
 Apple Speech は速い/同程度だが、「ともこ」を「智子」に漢字化し、実録音では
 `短い声` を `短いです声` と崩したため、現時点では active STT を置き換えず比較 lane として残す。
+
+### 確定した判断: Apple Speech STT を mactop 観測用に一時 active にする
+上の「active STT backend は `local_whisper_mlx_large_turbo_q4` が正」という判断は、
+2026-05-27 の CPU / ANE 実観測実験の間だけ否定する。
+
+central realtime の active `stt_backend` は `local_apple_speech_ja` とする。
+目的は Apple Speech framework が CPU / ANE / GPU のどこを使うかを、実ブラウザ会話と
+`mactop` / system monitor で観測すること。
+
+品質面では前回比較どおり `ともこ -> 智子` などの表記ゆれがあるため、
+採用判断はこの観測後に戻す/維持するかを決める。
