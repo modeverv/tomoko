@@ -161,6 +161,28 @@ async def test_apple_speech_transcribes_via_sidecar(
 
 
 @pytest.mark.unit
+async def test_apple_speech_warm_up_only_ensures_sidecar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    transcriber = AppleSpeechSTT(command="/bin/echo", language="ja-JP")
+
+    def fake_ensure_command() -> None:
+        calls.append("ensure")
+
+    def fail_run(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise AssertionError("warm_up must not transcribe silent audio")
+
+    monkeypatch.setattr(transcriber, "_ensure_command", fake_ensure_command)
+    monkeypatch.setattr("server.edge.pipeline.stt_apple.subprocess.run", fail_run)
+
+    await transcriber.warm_up()
+
+    assert calls == ["ensure"]
+
+
+@pytest.mark.unit
 async def test_whisper_coreml_transcribes_via_whisper_cpp(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

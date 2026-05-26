@@ -4,7 +4,6 @@ import asyncio
 import json
 import shutil
 import subprocess
-from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
@@ -89,15 +88,7 @@ class AppleSpeechSTT:
         )
 
     async def warm_up(self) -> None:
-        now = datetime.now(UTC)
-        segment = SpeechSegment(
-            audio=np.zeros(16000, dtype=np.float32),
-            started_at=now,
-            ended_at=now,
-            device_id="warmup",
-            vad_confidence=0.0,
-        )
-        await self.transcribe(segment)
+        await asyncio.to_thread(self._ensure_command)
 
     def _transcribe_audio(self, audio: np.ndarray, sample_rate: int) -> str:
         self._ensure_command()
