@@ -113,8 +113,10 @@ def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation(
 @pytest.mark.unit
 def test_phase0_pytest_markers_are_registered() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
-    markers = pyproject["tool"]["pytest"]["ini_options"]["markers"]
+    pytest_options = pyproject["tool"]["pytest"]["ini_options"]
+    markers = pytest_options["markers"]
 
+    assert pytest_options["addopts"] == "-m unit"
     assert any(marker.startswith("unit:") for marker in markers)
     assert any(marker.startswith("integration:") for marker in markers)
     assert any(marker.startswith("perf:") for marker in markers)
