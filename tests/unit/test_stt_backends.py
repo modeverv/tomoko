@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -180,6 +181,59 @@ async def test_apple_speech_warm_up_only_ensures_sidecar(
     await transcriber.warm_up()
 
     assert calls == ["ensure"]
+
+
+@pytest.mark.unit
+async def test_apple_speech_no_speech_is_empty_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(args: list[str], **kwargs: object) -> object:
+        del kwargs
+        raise subprocess.CalledProcessError(
+            returncode=1,
+            cmd=args,
+            stderr='{"error":"No speech detected"}\n',
+        )
+
+    monkeypatch.setattr("server.edge.pipeline.stt_apple.subprocess.run", fake_run)
+    transcriber = AppleSpeechSTT(command="/bin/echo", language="ja-JP")
+    segment = SpeechSegment(
+        audio=np.zeros(1600, dtype=np.float32),
+        started_at=datetime.now(UTC),
+        ended_at=datetime.now(UTC),
+        device_id="local",
+        vad_confidence=0.9,
+    )
+
+    transcript = await transcriber.transcribe(segment)
+
+    assert transcript.text == ""
+
+
+@pytest.mark.unit
+async def test_apple_speech_unknown_sidecar_error_still_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(args: list[str], **kwargs: object) -> object:
+        del kwargs
+        raise subprocess.CalledProcessError(
+            returncode=1,
+            cmd=args,
+            stderr='{"error":"permission denied"}\n',
+        )
+
+    monkeypatch.setattr("server.edge.pipeline.stt_apple.subprocess.run", fake_run)
+    transcriber = AppleSpeechSTT(command="/bin/echo", language="ja-JP")
+    segment = SpeechSegment(
+        audio=np.zeros(1600, dtype=np.float32),
+        started_at=datetime.now(UTC),
+        ended_at=datetime.now(UTC),
+        device_id="local",
+        vad_confidence=0.9,
+    )
+
+    with pytest.raises(RuntimeError, match="permission denied"):
+        await transcriber.transcribe(segment)
 
 
 @pytest.mark.unit

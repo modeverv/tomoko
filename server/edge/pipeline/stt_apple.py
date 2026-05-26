@@ -19,6 +19,7 @@ DEFAULT_SOURCE = ROOT / "_tools" / "apple_speech_stt" / "AppleSpeechSTT.swift"
 DEFAULT_PLIST = ROOT / "_tools" / "apple_speech_stt" / "Info.plist"
 DEFAULT_APP = ROOT / ".cache" / "tomoko" / "AppleSpeechSTT.app"
 DEFAULT_BINARY = DEFAULT_APP / "Contents" / "MacOS" / "apple-speech-stt"
+NO_SPEECH_ERROR = "No speech detected"
 
 
 class AppleSpeechSTT:
@@ -115,6 +116,8 @@ class AppleSpeechSTT:
                 )
             except subprocess.CalledProcessError as exc:
                 detail = (exc.stderr or exc.stdout or "").strip()
+                if _is_no_speech_error(detail):
+                    return ""
                 message = f"Apple Speech STT failed with exit code {exc.returncode}"
                 if detail:
                     message = f"{message}: {detail}"
@@ -193,3 +196,13 @@ def _audio_ms(audio: np.ndarray, sample_rate: int) -> float:
 
 def _elapsed_ms(started_at: float) -> float:
     return (perf_counter() - started_at) * 1000
+
+
+def _is_no_speech_error(detail: str) -> bool:
+    if not detail:
+        return False
+    try:
+        payload = json.loads(detail)
+    except json.JSONDecodeError:
+        return NO_SPEECH_ERROR in detail
+    return str(payload.get("error", "")).strip() == NO_SPEECH_ERROR
