@@ -4,8 +4,10 @@ import logging
 import time
 from collections.abc import AsyncGenerator, Callable, Iterable
 from typing import Any
+from uuid import uuid4
 
 from server.shared.inference.backends.base import InferenceBackend
+from server.shared.inference.trace import trace_backend_call
 
 logger = logging.getLogger(__name__)
 
@@ -44,18 +46,73 @@ class MLXLMBackend(InferenceBackend):
         self,
         system_prompt: str,
         messages: list[dict[str, str]],
+        *,
+        trace_role: str | None = None,
     ) -> AsyncGenerator[str, None]:
-        model, tokenizer = self._load()
-        prompt = _build_chat_prompt(tokenizer, system_prompt, messages)
-        for response in self._stream_generator(
-            model,
-            tokenizer,
-            prompt,
-            self.max_tokens,
-        ):
-            text = getattr(response, "text", "")
-            if text:
-                yield text
+        request_id = str(uuid4())
+        role = trace_role or "unknown"
+        started_at = time.perf_counter()
+        trace_backend_call(
+            event="start",
+            kind="llm",
+            role=role,
+            backend=self.name,
+            model=self.model_name,
+            request_id=request_id,
+            queue_key="local_mlx",
+        )
+        chunk_count = 0
+        first_delta_emitted = False
+        try:
+            model, tokenizer = self._load()
+            prompt = _build_chat_prompt(tokenizer, system_prompt, messages)
+            for response in self._stream_generator(
+                model,
+                tokenizer,
+                prompt,
+                self.max_tokens,
+            ):
+                text = getattr(response, "text", "")
+                if text:
+                    if not first_delta_emitted:
+                        first_delta_emitted = True
+                        trace_backend_call(
+                            event="first_delta",
+                            kind="llm",
+                            role=role,
+                            backend=self.name,
+                            model=self.model_name,
+                            request_id=request_id,
+                            queue_key="local_mlx",
+                            elapsed_ms=_elapsed_ms(started_at),
+                        )
+                    chunk_count += 1
+                    yield text
+        except Exception as exc:
+            trace_backend_call(
+                event="error",
+                kind="llm",
+                role=role,
+                backend=self.name,
+                model=self.model_name,
+                request_id=request_id,
+                queue_key="local_mlx",
+                total_ms=_elapsed_ms(started_at),
+                error=type(exc).__name__,
+            )
+            raise
+        else:
+            trace_backend_call(
+                event="done",
+                kind="llm",
+                role=role,
+                backend=self.name,
+                model=self.model_name,
+                request_id=request_id,
+                queue_key="local_mlx",
+                total_ms=_elapsed_ms(started_at),
+                chunk_count=chunk_count,
+            )
 
     def _load(self) -> tuple[Any, Any]:
         if self._model is None or self._tokenizer is None:
@@ -111,3 +168,7 @@ def _build_chat_prompt(
         f"{message['role']}:\n{message['content']}" for message in chat_messages
     )
     return f"{rendered}\nassistant:\n"
+
+
+def _elapsed_ms(started_at: float) -> float:
+    return (time.perf_counter() - started_at) * 1000

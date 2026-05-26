@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 import psycopg
 
 from server.shared.inference.backends.base import InferenceBackend
+from server.shared.inference.trace import chat_stream_with_trace_role
 
 
 class InferenceRouterProto:
@@ -147,9 +148,11 @@ class BackendHealthMonitor:
             if warm_up is not None:
                 await warm_up()
             else:
-                async for _ in backend.chat_stream(
+                async for _ in chat_stream_with_trace_role(
+                    backend,
                     "短く返事してください。",
                     [{"role": "user", "content": "ping"}],
+                    trace_role=task_type,
                 ):
                     break
             sample = InferenceMetricSample(

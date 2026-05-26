@@ -7,13 +7,16 @@ import tempfile
 import wave
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 from typing import Protocol
+from uuid import uuid4
 
 import numpy as np
 
 from server.edge.pipeline.stt_coreml import WhisperCoreMLSTT
 from server.edge.pipeline.stt_whisperkit import WhisperKitServeSTT
 from server.shared.config import BackendSpec
+from server.shared.inference.trace import trace_backend_call
 from server.shared.models import SpeechSegment, Transcript
 
 
@@ -52,7 +55,45 @@ class FasterWhisperSTT:
         self.language = language
 
     async def transcribe(self, segment: SpeechSegment) -> Transcript:
-        text = await asyncio.to_thread(self._transcribe_text, segment.audio)
+        request_id = str(uuid4())
+        started_at = perf_counter()
+        model = getattr(self.model, "model_name", None)
+        trace_backend_call(
+            event="start",
+            kind="stt",
+            role="stt",
+            backend="faster_whisper",
+            model=str(model) if model is not None else None,
+            request_id=request_id,
+            queue_key="local_stt",
+            audio_ms=_audio_ms(segment.audio, 16000),
+        )
+        try:
+            text = await asyncio.to_thread(self._transcribe_text, segment.audio)
+        except Exception as exc:
+            trace_backend_call(
+                event="error",
+                kind="stt",
+                role="stt",
+                backend="faster_whisper",
+                model=str(model) if model is not None else None,
+                request_id=request_id,
+                queue_key="local_stt",
+                total_ms=_elapsed_ms(started_at),
+                error=type(exc).__name__,
+            )
+            raise
+        trace_backend_call(
+            event="done",
+            kind="stt",
+            role="stt",
+            backend="faster_whisper",
+            model=str(model) if model is not None else None,
+            request_id=request_id,
+            queue_key="local_stt",
+            total_ms=_elapsed_ms(started_at),
+            text_len=len(text),
+        )
         return Transcript(
             text=text,
             device_id=segment.device_id,
@@ -97,7 +138,44 @@ class MlxWhisperSTT:
         self._last_stream_text = ""
 
     async def transcribe(self, segment: SpeechSegment) -> Transcript:
-        text = await asyncio.to_thread(self._transcribe_audio, segment.audio, 16000)
+        request_id = str(uuid4())
+        started_at = perf_counter()
+        trace_backend_call(
+            event="start",
+            kind="stt",
+            role="stt",
+            backend="mlx_whisper",
+            model=self.model_name,
+            request_id=request_id,
+            queue_key="local_mlx",
+            audio_ms=_audio_ms(segment.audio, 16000),
+        )
+        try:
+            text = await asyncio.to_thread(self._transcribe_audio, segment.audio, 16000)
+        except Exception as exc:
+            trace_backend_call(
+                event="error",
+                kind="stt",
+                role="stt",
+                backend="mlx_whisper",
+                model=self.model_name,
+                request_id=request_id,
+                queue_key="local_mlx",
+                total_ms=_elapsed_ms(started_at),
+                error=type(exc).__name__,
+            )
+            raise
+        trace_backend_call(
+            event="done",
+            kind="stt",
+            role="stt",
+            backend="mlx_whisper",
+            model=self.model_name,
+            request_id=request_id,
+            queue_key="local_mlx",
+            total_ms=_elapsed_ms(started_at),
+            text_len=len(text),
+        )
         return Transcript(
             text=text,
             device_id=segment.device_id,
@@ -235,6 +313,16 @@ def _audio_level_db(audio: np.ndarray) -> float:
     if rms <= 0:
         return -120.0
     return 20.0 * math.log10(rms)
+
+
+def _audio_ms(audio: np.ndarray, sample_rate: int) -> float:
+    if sample_rate <= 0:
+        return 0.0
+    return len(audio) / sample_rate * 1000.0
+
+
+def _elapsed_ms(started_at: float) -> float:
+    return (perf_counter() - started_at) * 1000
 
 
 def _write_temp_wav(audio: np.ndarray, sample_rate: int) -> Path:

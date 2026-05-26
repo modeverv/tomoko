@@ -13,6 +13,7 @@ from server.shared.candidate import (
     CandidateStore,
 )
 from server.shared.inference.router import InferenceRouter
+from server.shared.inference.trace import chat_stream_with_trace_role
 
 logger = logging.getLogger(__name__)
 
@@ -151,9 +152,11 @@ class ArrivalPrecomputer:
             raw_text = "".join(
                 [
                     chunk
-                    async for chunk in backend.chat_stream(
+                    async for chunk in chat_stream_with_trace_role(
+                        backend,
                         _SYSTEM_PROMPT,
                         [_user_message(snapshot)],
+                        trace_role="candidate_gen",
                     )
                 ]
             )

@@ -15,6 +15,7 @@ from psycopg.types.json import Jsonb
 
 from server.shared.inference.embedding.base import EmbeddingBackend
 from server.shared.inference.router import InferenceRouter
+from server.shared.inference.trace import chat_stream_with_trace_role
 from server.shared.models import SessionEvent
 
 StopIntentMethod = Literal["rule", "embedding", "llm"]
@@ -343,9 +344,11 @@ class LLMStopIntentClassifier:
         started_at = time.perf_counter()
         backend = await self.router.select(self.role, "privacy")
         chunks: list[str] = []
-        async for chunk in backend.chat_stream(
+        async for chunk in chat_stream_with_trace_role(
+            backend,
             _STOP_INTENT_SYSTEM_PROMPT,
             [{"role": "user", "content": observation.transcript_text}],
+            trace_role="stop_intent",
         ):
             chunks.append(chunk)
         parsed = _parse_llm_json("".join(chunks))

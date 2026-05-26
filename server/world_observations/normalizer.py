@@ -4,6 +4,10 @@ import json
 import time
 from typing import Any, Protocol
 
+from server.shared.inference.trace import (
+    chat_stream_structured_with_trace_role,
+    chat_stream_with_trace_role,
+)
 from server.shared.models import (
     WorldObservationNormalizedBatch,
     WorldObservationNormalizedItem,
@@ -162,13 +166,20 @@ class WorldObservationNormalizer:
         messages = [{"role": "user", "content": _format_document_for_prompt(document)}]
         structured_stream = getattr(self.backend, "chat_stream_structured", None)
         if structured_stream is None:
-            stream = self.backend.chat_stream(NORMALIZER_SYSTEM_PROMPT, messages)
+            stream = chat_stream_with_trace_role(
+                self.backend,
+                NORMALIZER_SYSTEM_PROMPT,
+                messages,
+                trace_role="world_observation_normalizer",
+            )
         else:
-            stream = structured_stream(
+            stream = chat_stream_structured_with_trace_role(
+                self.backend,
                 NORMALIZER_SYSTEM_PROMPT,
                 messages,
                 json_schema=NORMALIZER_JSON_SCHEMA,
                 max_tokens=4096,
+                trace_role="world_observation_normalizer",
             )
         async for chunk in stream:
             chunks.append(chunk)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -149,3 +150,80 @@ async def test_lm_studio_backend_can_request_structured_output() -> None:
         "json_schema": schema,
     }
     assert fake_client.requests[0]["json"]["max_tokens"] == 512
+
+
+@pytest.mark.unit
+async def test_lm_studio_backend_writes_jsonl_lifecycle_trace(tmp_path, monkeypatch) -> None:
+    trace_path = tmp_path / "backend-trace.jsonl"
+    monkeypatch.setenv("TOMOKO_BACKEND_TRACE_FILE", str(trace_path))
+    fake_client = FakeClient(
+        [
+            'data: {"choices":[{"delta":{"content":"こ"}}]}',
+            'data: {"choices":[{"delta":{"content":"ん"}}]}',
+            "data: [DONE]",
+        ]
+    )
+    backend = LMStudioBackend(
+        name="lmstudio_gemma4_e4b",
+        url="http://192.168.11.66:1234",
+        model="gemma-4-e4b-it-mlx",
+        client_factory=lambda: fake_client,
+    )
+
+    chunks = [
+        chunk
+        async for chunk in backend.chat_stream(
+            "日本語だけで返して。",
+            [{"role": "user", "content": "挨拶して。"}],
+            trace_role="conversation",
+        )
+    ]
+
+    rows = [json.loads(line) for line in trace_path.read_text().splitlines()]
+    assert chunks == ["こ", "ん"]
+    assert [row["event"] for row in rows] == [
+        "start",
+        "queue_acquired",
+        "response_headers",
+        "first_delta",
+        "done",
+    ]
+    assert {row["trace"] for row in rows} == {"tomoko_backend_call"}
+    assert {row["role"] for row in rows} == {"conversation"}
+    assert {row["backend"] for row in rows} == {"lmstudio_gemma4_e4b"}
+    assert {row["model"] for row in rows} == {"gemma-4-e4b-it-mlx"}
+    assert rows[1]["queue_key"] == "lmstudio:http://192.168.11.66:1234"
+    assert rows[-1]["chunk_count"] == 2
+    assert len({row["request_id"] for row in rows}) == 1
+
+
+@pytest.mark.unit
+async def test_lm_studio_backend_writes_error_trace(tmp_path, monkeypatch) -> None:
+    trace_path = tmp_path / "backend-trace.jsonl"
+    monkeypatch.setenv("TOMOKO_BACKEND_TRACE_FILE", str(trace_path))
+
+    class FailingClient(FakeClient):
+        def stream(self, method: str, url: str, json: dict[str, Any]) -> FakeResponse:
+            del method, url, json
+            raise RuntimeError("boom")
+
+    backend = LMStudioBackend(
+        name="lmstudio_gemma4_e4b",
+        url="http://192.168.11.66:1234",
+        model="gemma-4-e4b-it-mlx",
+        client_factory=lambda: FailingClient([]),
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        _ = [
+            chunk
+            async for chunk in backend.chat_stream(
+                "日本語だけで返して。",
+                [{"role": "user", "content": "挨拶して。"}],
+                trace_role="conversation",
+            )
+        ]
+
+    rows = [json.loads(line) for line in trace_path.read_text().splitlines()]
+    assert [row["event"] for row in rows] == ["start", "queue_acquired", "error"]
+    assert rows[-1]["error"] == "RuntimeError"

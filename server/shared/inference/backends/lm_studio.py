@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
 from collections.abc import AsyncGenerator, Callable
 from contextlib import AbstractAsyncContextManager
 from typing import Any
+from uuid import uuid4
 
 import httpx
 
 from server.shared.inference.backends.base import InferenceBackend
+from server.shared.inference.trace import trace_backend_call
 
 logger = logging.getLogger(__name__)
+
+_SEMAPHORES: dict[str, asyncio.Semaphore] = {}
 
 
 def chat_completions_url(base_url: str) -> str:
@@ -78,13 +83,18 @@ class LMStudioBackend(InferenceBackend):
         )
 
     async def chat_stream(
-        self, system_prompt: str, messages: list[dict[str, str]]
+        self,
+        system_prompt: str,
+        messages: list[dict[str, str]],
+        *,
+        trace_role: str | None = None,
     ) -> AsyncGenerator[str, None]:
         async for content in self._chat_stream(
             system_prompt,
             messages,
             response_format=None,
             max_tokens=self.max_tokens,
+            trace_role=trace_role or "unknown",
         ):
             yield content
 
@@ -95,6 +105,7 @@ class LMStudioBackend(InferenceBackend):
         *,
         json_schema: dict[str, Any],
         max_tokens: int | None = None,
+        trace_role: str | None = None,
     ) -> AsyncGenerator[str, None]:
         async for content in self._chat_stream(
             system_prompt,
@@ -104,6 +115,7 @@ class LMStudioBackend(InferenceBackend):
                 "json_schema": json_schema,
             },
             max_tokens=max_tokens or self.max_tokens,
+            trace_role=trace_role or "unknown",
         ):
             yield content
 
@@ -114,7 +126,20 @@ class LMStudioBackend(InferenceBackend):
         *,
         response_format: dict[str, Any] | None,
         max_tokens: int,
+        trace_role: str,
     ) -> AsyncGenerator[str, None]:
+        request_id = str(uuid4())
+        started_at = time.perf_counter()
+        queue_key = f"lmstudio:{self.url}"
+        trace_backend_call(
+            event="start",
+            kind="llm",
+            role=trace_role,
+            backend=self.name,
+            model=self.model,
+            request_id=request_id,
+            queue_key=queue_key,
+        )
         formatted_messages = [{"role": "system", "content": system_prompt}] + messages
         payload = {
             "model": self.model,
@@ -126,24 +151,97 @@ class LMStudioBackend(InferenceBackend):
         if response_format is not None:
             payload["response_format"] = response_format
 
-        async with self._create_client() as client:
-            async with client.stream(
-                "POST",
-                chat_completions_url(self.url),
-                json=payload,
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    try:
-                        content = parse_sse_content(line)
-                    except json.JSONDecodeError:
-                        logger.warning("Invalid LM Studio SSE line ignored: %r", line)
-                        continue
-                    if content is not None:
-                        yield content
+        chunk_count = 0
+        first_delta_emitted = False
+        wait_started_at = time.perf_counter()
+        try:
+            async with _semaphore_for(queue_key):
+                trace_backend_call(
+                    event="queue_acquired",
+                    kind="llm",
+                    role=trace_role,
+                    backend=self.name,
+                    model=self.model,
+                    request_id=request_id,
+                    queue_key=queue_key,
+                    wait_ms=_elapsed_ms(wait_started_at),
+                )
+                async with self._create_client() as client:
+                    async with client.stream(
+                        "POST",
+                        chat_completions_url(self.url),
+                        json=payload,
+                    ) as response:
+                        response.raise_for_status()
+                        trace_backend_call(
+                            event="response_headers",
+                            kind="llm",
+                            role=trace_role,
+                            backend=self.name,
+                            model=self.model,
+                            request_id=request_id,
+                            queue_key=queue_key,
+                            elapsed_ms=_elapsed_ms(started_at),
+                        )
+                        async for line in response.aiter_lines():
+                            try:
+                                content = parse_sse_content(line)
+                            except json.JSONDecodeError:
+                                logger.warning("Invalid LM Studio SSE line ignored: %r", line)
+                                continue
+                            if content is not None:
+                                if not first_delta_emitted:
+                                    first_delta_emitted = True
+                                    trace_backend_call(
+                                        event="first_delta",
+                                        kind="llm",
+                                        role=trace_role,
+                                        backend=self.name,
+                                        model=self.model,
+                                        request_id=request_id,
+                                        queue_key=queue_key,
+                                        elapsed_ms=_elapsed_ms(started_at),
+                                    )
+                                chunk_count += 1
+                                yield content
+        except Exception as exc:
+            trace_backend_call(
+                event="error",
+                kind="llm",
+                role=trace_role,
+                backend=self.name,
+                model=self.model,
+                request_id=request_id,
+                queue_key=queue_key,
+                total_ms=_elapsed_ms(started_at),
+                error=type(exc).__name__,
+            )
+            raise
+        else:
+            trace_backend_call(
+                event="done",
+                kind="llm",
+                role=trace_role,
+                backend=self.name,
+                model=self.model,
+                request_id=request_id,
+                queue_key=queue_key,
+                total_ms=_elapsed_ms(started_at),
+                chunk_count=chunk_count,
+            )
 
     def _create_client(self) -> AbstractAsyncContextManager[Any]:
         if self._client_factory is not None:
             return self._client_factory()
         timeout = httpx.Timeout(self.timeout_sec, connect=5.0)
         return httpx.AsyncClient(timeout=timeout)
+
+
+def _semaphore_for(queue_key: str) -> asyncio.Semaphore:
+    if queue_key not in _SEMAPHORES:
+        _SEMAPHORES[queue_key] = asyncio.Semaphore(1)
+    return _SEMAPHORES[queue_key]
+
+
+def _elapsed_ms(started_at: float) -> float:
+    return (time.perf_counter() - started_at) * 1000

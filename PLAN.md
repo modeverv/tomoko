@@ -3764,3 +3764,64 @@ validated interpretation だけを thinker / journalist へ流す形で実装し
 - public repo に real observation artifact が入らない
 - `make information-ingest-once` / `make information-interpret-once` / `make thinker-once` / `make journalist-once` の順で、外部情報が候補と日記へ流れる
 - `pytest -m unit` が通る
+
+---
+
+## 2026-05-26 追記: Phase 13.5 backend call JSONL trace
+
+上の Phase 13 の `inference_metrics` は backend health の latest sample には有効だが、
+実会話で「LM Studio が queue で詰まったのか」「background LLM が会話 backend を塞いだのか」
+「TTS / STT / local MLX が同時に GPU を叩きすぎたのか」を request 単位で追うには粒度が足りない。
+
+この不足は、従来の人間向け server log だけを増やすのではなく、機械解析しやすい JSONL trace として補う。
+
+**目標**: LLM / TTS / STT / embedding の依頼開始、queue 待ち、first output、完了、失敗を
+`request_id` と共通フィールドで追えるようにし、`jq` / `rg` で会話体験低下の原因を切り分ける。
+
+- [x] `logs/backend-trace.jsonl` に backend call trace を JSONL で追記する
+  - 各行に `trace="tomoko_backend_call"` を入れる
+  - `ts` は timezone 付き ISO8601 にする
+  - `event` は `start` / `queue_acquired` / `response_headers` / `first_delta` / `first_chunk` / `done` / `error` を基本にする
+  - `kind` は `llm` / `tts` / `stt` / `embedding`
+  - `role` は `conversation` / `session_summary` / `candidate_gen` / `diary` / `stop_intent` / `initiative_judge` /
+    `world_observation_normalizer` / `world_observation_interpreter` / `tts` / `stt` / `embedding`
+  - `backend` / `model` / `request_id` / `queue_key` / `wait_ms` / `elapsed_ms` / `total_ms` / `chunk_count` /
+    `error` を必要に応じて持つ
+- [x] LM Studio backend に request lifecycle trace を追加する
+  - `start`
+  - URL 単位 process-local semaphore の `queue_acquired` と `wait_ms`
+  - HTTP headers 受領時の `response_headers`
+  - 初回 SSE content の `first_delta`
+  - 完了時の `done`
+  - 例外時の `error`
+- [x] local LLM backend に同じ語彙の trace を追加する
+  - `GemmaMLXBackend`
+  - `MLXLMBackend`
+  - 必要なら `OllamaBackend`
+- [x] TTS backend に同じ語彙の trace を追加する
+  - `VoicevoxBackend` / `VoicevoxStreamBackend`
+  - `KokoroMLXBackend`
+  - `SayBackend`
+  - first audio chunk と done を区別する
+- [x] STT / embedding backend に request 単位 trace を追加する
+  - `FasterWhisperSTT` / `MlxWhisperSTT` / `WhisperCoreMLSTT` / `WhisperKitServeSTT`
+  - `SentenceTransformerEmbeddingBackend`
+  - STT は audio ms / text length、embedding は text length / dimensions を出す
+- [x] 呼び出し元 role を trace に渡す
+  - online 会話は `conversation`
+  - session summarizer は `session_summary`
+  - thinker / evaluator / stop-intent / initiative はそれぞれ用途別 role
+  - journalist は `diary`
+  - world observation は normalizer / interpreter を分ける
+- [x] unit test を追加する
+  - JSONL が 1 行 1 JSON として parse できる
+  - LM Studio が `queue_acquired` / `response_headers` / `first_delta` / `done` を出す
+  - 例外時に `error` を出す
+  - local TTS/LLM も `tomoko_backend_call` trace を出す
+
+**完了条件**:
+- `jq 'select(.trace=="tomoko_backend_call" and .role=="conversation")' logs/backend-trace.jsonl` で会話 LLM trace を抽出できる
+- LM Studio の同一 URL に複数 role が投げられた時、Tomoko 側の `wait_ms` が見える
+- `first_delta` が遅いのか、TTS `first_chunk` が遅いのか、STT が遅いのかを trace 上で分離できる
+- JSONL trace は source of truth ではなく debug artifact として扱い、会話 hot path の制御判断には使わない
+- `pytest -m unit` が通る

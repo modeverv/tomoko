@@ -4,6 +4,7 @@ import json
 from typing import Protocol
 
 from server.shared.inference.router import InferenceRouter
+from server.shared.inference.trace import chat_stream_with_trace_role
 from server.shared.models import (
     PersonaLexiconSnapshot,
     PersonaStateSnapshot,
@@ -138,7 +139,8 @@ class LLMPersonaSnapshotExtractor:
         backend = await self.router.select("session_summary", "privacy")
         self.model = backend.name
         chunks: list[str] = []
-        async for chunk in backend.chat_stream(
+        async for chunk in chat_stream_with_trace_role(
+            backend,
             PERSONA_EXTRACTOR_SYSTEM_PROMPT,
             [
                 {
@@ -151,6 +153,7 @@ class LLMPersonaSnapshotExtractor:
                     ),
                 }
             ],
+            trace_role="persona_update",
         ):
             chunks.append(chunk)
         payload = _load_json_object("".join(chunks))

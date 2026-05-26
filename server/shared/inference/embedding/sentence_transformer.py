@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+from time import perf_counter
 from typing import Any
+from uuid import uuid4
 
 import numpy as np
 
 from server.shared.inference.embedding.base import EmbeddingBackend
+from server.shared.inference.trace import trace_backend_call
 
 
 class SentenceTransformerEmbeddingBackend(EmbeddingBackend):
@@ -28,13 +31,51 @@ class SentenceTransformerEmbeddingBackend(EmbeddingBackend):
         self._model: Any | None = None
 
     async def embed_query(self, text: str) -> list[float]:
-        return await self._embed(f"{self.query_prefix}{text}")
+        return await self._embed(f"{self.query_prefix}{text}", role="embedding_query")
 
     async def embed_passage(self, text: str) -> list[float]:
-        return await self._embed(f"{self.passage_prefix}{text}")
+        return await self._embed(f"{self.passage_prefix}{text}", role="embedding_passage")
 
-    async def _embed(self, text: str) -> list[float]:
-        return await asyncio.to_thread(self._embed_sync, text)
+    async def _embed(self, text: str, *, role: str) -> list[float]:
+        request_id = str(uuid4())
+        started_at = perf_counter()
+        trace_backend_call(
+            event="start",
+            kind="embedding",
+            role=role,
+            backend=self.name,
+            model=self.model,
+            request_id=request_id,
+            queue_key="local_embedding",
+            text_len=len(text),
+        )
+        try:
+            embedding = await asyncio.to_thread(self._embed_sync, text)
+        except Exception as exc:
+            trace_backend_call(
+                event="error",
+                kind="embedding",
+                role=role,
+                backend=self.name,
+                model=self.model,
+                request_id=request_id,
+                queue_key="local_embedding",
+                total_ms=_elapsed_ms(started_at),
+                error=type(exc).__name__,
+            )
+            raise
+        trace_backend_call(
+            event="done",
+            kind="embedding",
+            role=role,
+            backend=self.name,
+            model=self.model,
+            request_id=request_id,
+            queue_key="local_embedding",
+            total_ms=_elapsed_ms(started_at),
+            dimensions=len(embedding),
+        )
+        return embedding
 
     def _embed_sync(self, text: str) -> list[float]:
         model = self._load_model()
@@ -88,3 +129,7 @@ class BGEM3Backend(SentenceTransformerEmbeddingBackend):
             model=model,
             dimensions=dimensions,
         )
+
+
+def _elapsed_ms(started_at: float) -> float:
+    return (perf_counter() - started_at) * 1000

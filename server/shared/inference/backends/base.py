@@ -10,7 +10,12 @@ class InferenceBackend(abc.ABC):
 
     @abc.abstractmethod
     async def chat_stream(
-        self, system_prompt: str, messages: list[dict[str, str]]
+        self,
+        system_prompt: str,
+        messages: list[dict[str, str]],
+        *,
+        trace_role: str | None = None,
     ) -> AsyncGenerator[str, None]:
+        del trace_role
         if False:
             yield ""

@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 from server.shared.candidate import UtteranceCandidate
 from server.shared.inference.router import InferenceRouter
+from server.shared.inference.trace import chat_stream_with_trace_role
 from server.shared.models import (
     CandidateSpeakDecision,
     CandidateSpeakMetadata,
@@ -301,9 +302,11 @@ class InitiativeLLMJudge:
         raw = "".join(
             [
                 chunk
-                async for chunk in backend.chat_stream(
+                async for chunk in chat_stream_with_trace_role(
+                    backend,
                     _LLM_JUDGE_SYSTEM_PROMPT,
                     [{"role": "user", "content": prompt}],
+                    trace_role="initiative_judge",
                 )
             ]
         )

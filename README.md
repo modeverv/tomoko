@@ -77,10 +77,10 @@ PostgreSQL は `make db-up` で Docker 上に起動する。
 
 現行の default 設定は次の構成：
 
-- 会話 LLM: MLX LM（`lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit`）
+- 会話 LLM: LM Studio OpenAI 互換 API（`gemma-4-e4b-it-mlx`）
 - 会話 LLM fallback: MLX VLM（`mlx-community/gemma-4-e2b-it-4bit`）
 - STT: MLX Whisper small
-- TTS: Supertonic-3 CoreML F1
+- TTS: 起動済み VOICEVOX Engine（春日部つむぎ）
 - embedding: BGE-M3
 
 初回起動時は Whisper / Supertonic / Gemma / embedding モデルのダウンロードや warm-up に時間がかかる。
@@ -105,14 +105,16 @@ LFM や Supertonic のような custom / OpenRAIL 系モデルは、ライセン
 make download-optional-models
 ```
 
-現在の `conversation_backend` は LFM 4bit 版、`tts_backend` は Supertonic-3 CoreML F1 なので、
-`make download-optional-models` を実行するか、初回起動時の自動取得を許容する。
-custom license を避けたい場合は、`config/central_realtime.toml` の
+現在の `conversation_backend` は LM Studio の Gemma 4 E4B、`tts_backend` は `voicevox_tsumugi_stream` なので、
+VOICEVOX アプリを起動し、Engine が `http://127.0.0.1:50021` で応答する状態にしておく。
+`voicevox_tsumugi_stream` は VOICEVOX の `/cancellable_synthesis` を優先し、実験的機能が無効な Engine では
+通常の `/synthesis` に fallback する。
+VOICEVOX を使わず custom license を避けたい場合は、`config/central_realtime.toml` の
 `conversation_backend` を `local_gemma4_e2b_mlx` に、`tts_backend` を `kokoro_mlx` に変更する。
 
 LM Studio を使う場合は、`config/central_realtime.toml` の
-`[backends.lmstudio_gemma4_e2b]` に書かれた URL で LM Studio の OpenAI 互換 API を起動し、
-`gemma-4-e2b-it-mlx` をロードしておく。
+`[backends.lmstudio_gemma4_e4b]` に書かれた URL で LM Studio の OpenAI 互換 API を起動し、
+`gemma-4-e4b-it-mlx` をロードしておく。
 
 開発中にコード変更を自動反映したい場合は `make server-reload` を使う。
 サーバーログは `make server` / `make server-reload` を実行しているターミナルに出る。
@@ -203,6 +205,8 @@ Tomoko 本体のコードは MIT License だが、利用するモデル重みと
 - Qwen / Gemma 系の現在の設定対象: Apache-2.0
 - LFM2.5: `lfm1.0` custom model license
 - Supertonic-3 CoreML: OpenRAIL-family license
+- VOICEVOX Engine: LGPL v3 / 別ライセンス。Tomoko は起動済み Engine へ HTTP で接続するだけで、
+  VOICEVOX 本体・音声ライブラリ・生成音声はそれぞれの利用規約に従う
 - psycopg: LGPL-3.0-only dependency
 
 LGPL の psycopg は通常の Python dependency として import して使う範囲では Tomoko 本体の MIT License を

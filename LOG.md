@@ -1,3 +1,96 @@
+## 2026-05-26 セッション1
+
+### やること（開始時に書く）
+- backend 依頼/応答の debug trace を JSONL として `logs/backend-trace.jsonl` に出す
+- LM Studio request lifecycle に `start` / `queue_acquired` / `response_headers` / `first_delta` / `done` / `error` を出す
+- local LLM / TTS backend も同じ `tomoko_backend_call` trace 語彙で start / first / done / error を出し、GPU/queue 詰まりを推測できるようにする
+- PLAN.md に backend trace Phase を追記してから実装する
+
+### やったこと
+- PLAN.md に Phase 13.5 backend call JSONL trace を追記し、完了チェックを更新した
+- `server/shared/inference/trace.py` を追加し、`logs/backend-trace.jsonl` へ 1 行 1 JSON の `tomoko_backend_call` trace を出すようにした
+- `chat_stream_with_trace_role()` / `chat_stream_structured_with_trace_role()` を追加し、既存 fake backend と互換性を保ちながら role を渡せるようにした
+- `LMStudioBackend` に URL 単位 process-local semaphore と lifecycle trace を追加した
+  - `start`
+  - `queue_acquired` + `wait_ms`
+  - `response_headers`
+  - `first_delta`
+  - `done`
+  - `error`
+- local LLM backend に同じ trace 語彙を追加した
+  - `GemmaMLXBackend`
+  - `MLXLMBackend`
+  - `OllamaBackend`
+- TTS backend に同じ trace 語彙を追加した
+  - `SayBackend`
+  - `KokoroMLXBackend`
+  - `VoicevoxBackend`
+  - `VoicevoxStreamBackend`
+- STT / embedding backend に request 単位の trace を追加した
+  - `FasterWhisperSTT`
+  - `MlxWhisperSTT`
+  - `WhisperCoreMLSTT`
+  - `WhisperKitServeSTT`
+  - `SentenceTransformerEmbeddingBackend`
+- 会話 / 要約 / candidate / stop intent / initiative / diary / world observation から role を渡すようにした
+
+### 詰まったこと・解決したこと
+- 既存 unit test には `chat_stream(..., trace_role=...)` を受けない fake backend が多い
+  → 直接 signature を変えた呼び出しにせず、helper が `trace_role` 対応可否を見て渡す形にした
+- LM Studio の複数 backend 名は同じ URL を共有しうる
+  → backend 名単位ではなく `lmstudio:<url>` を `queue_key` にした
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_backend_trace.py tests/unit/test_lm_studio_backend.py tests/unit/test_gemma_mlx_backend.py tests/unit/test_mlx_lm_backend.py tests/unit/test_voicevox_tts.py tests/unit/test_kokoro_mlx_tts.py tests/unit/test_phase4_thinking.py tests/unit/test_world_observation_normalizer.py tests/unit/test_world_observation_interpreter.py`
+  - 34 passed
+- `.venv/bin/python -m pytest -m unit tests/unit/test_backend_trace.py tests/unit/test_stt_backends.py tests/unit/test_phase8_memory.py tests/unit/test_phase88_context_snapshot.py`
+  - 31 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 334 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- `make server-debug` で実ブラウザ会話を走らせ、`jq 'select(.trace=="tomoko_backend_call")' logs/backend-trace.jsonl` で会話 / background の重なりと LM Studio queue wait を確認する
+
+## 2026-05-25 セッション51
+
+### やること（開始時に書く）
+- LM Studio の OpenAI 互換 API で `gemma-4-e4b-it-mlx` を使う backend 設定を追加する
+- central realtime の会話 backend に `lmstudio_gemma4_e4b` を採用し、既存 Gemma E2B / LFM fallback を崩さない
+- config / router / LM Studio backend の unit test で採用モデルを固定する
+
+### やったこと
+- `config/central_realtime.toml` に `lmstudio_gemma4_e4b` backend を追加した
+- active `conversation_backend` を `lmstudio_gemma4_e4b` に切り替えた
+- `conversation_fallback` を `local_gemma4_e2b_mlx` にし、LM Studio 側が落ちた/遅い場合も Gemma 系 local fallback に留めた
+- config / router の unit test を E4B 採用前提へ更新した
+- README / MEMORY.md / `_docs/latency.md` に採用モデルと smoke 実測を追記した
+
+### 詰まったこと・解決したこと
+- 既存の LM Studio backend 実装は OpenAI 互換 SSE に対して十分汎用だった
+  → Python 実装は増やさず、backend spec と契約テストの追加に限定した
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase0_config.py tests/unit/test_router.py tests/unit/test_lm_studio_backend.py`
+  - 16 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 326 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+- LM Studio E4B short smoke
+  - backend: `lmstudio_gemma4_e4b`
+  - model: `gemma-4-e4b-it-mlx`
+  - first delta 313.5ms / total 314.6ms
+  - output: `はい。`
+
+### 次のセッションでやること
+- `make server-debug` で実ブラウザ会話を起動し、E4B の応答品質・口調・first audio 体感を確認する
+
 ## 2026-05-25 セッション41
 
 ### やること（開始時に書く）
@@ -106,6 +199,87 @@
 実装セッションの時系列ログ。セッションをまたいだ引き継ぎのために書く。
 
 ---
+
+## 2026-05-25 セッション51
+
+### やること（開始時に書く）
+- VOICEVOX Engine の stream / cancellable synthesis 対応状況を確認する
+- 既存ブラウザ再生契約を壊さずに使える `voicevox_stream` TTS backend を追加する
+- central / edge の default TTS を stream 版 VOICEVOX へ切り替え、unit test で固定する
+
+### やったこと
+- `VoicevoxStreamBackend` を追加し、VOICEVOX Engine の `/cancellable_synthesis` を優先して使うようにした
+- 実行中の VOICEVOX Engine 0.25.2 では experimental feature が default 無効で `/cancellable_synthesis` が 404 になるため、`/synthesis` fallback を入れた
+- Tomoko の現ブラウザは binary chunk ごとに `decodeAudioData()` するため、backend は完全な WAV chunk を返す契約を維持した
+- `config/central_realtime.toml` / `config/edge_kitchen.toml` の `tts_backend` を `voicevox_tsumugi_stream` に変更した
+- README / MEMORY / `_docs/latency.md` に stream endpoint と fallback の扱いを記録した
+
+### 詰まったこと・解決したこと
+- OpenAPI 上は `/cancellable_synthesis` が存在するが、実 AudioQuery では `{"detail":"実験的機能はデフォルトで無効になっています。使用するには引数を指定してください。"}` で 404 になった
+  → 現環境では fallback を必須とし、真の部分音声再生は PCM framing / client playback 変更の別作業に切り出す
+
+### 検証
+- `curl -sS --max-time 3 http://127.0.0.1:50021/openapi.json`
+  - `/cancellable_synthesis` の存在を確認
+- `.venv/bin/python -m pytest -m unit tests/unit/test_voicevox_tts.py tests/unit/test_phase14_edge_split.py`
+  - 17 passed
+- `.venv/bin/python -m ruff check server/shared/inference/tts/voicevox.py tests/unit/test_voicevox_tts.py server/shared/inference/tts/__init__.py tests/unit/test_phase14_edge_split.py`
+  - pass
+- `.venv/bin/python -m pytest -m unit`
+  - 327 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+- 実 smoke
+  - text: `うん、わかった。少し待ってね。`
+  - first chunk 347.5ms / total 347.6ms / 24kHz mono / 2837.3ms audio
+  - output: `logs/voicevox-tsumugi-stream-smoke.wav`
+
+## 2026-05-25 セッション50
+
+### やること（開始時に書く）
+- VOICEVOX Engine の stream / cancellable synthesis 対応状況を確認する
+- 既存ブラウザ再生契約を壊さずに使える `voicevox_stream` TTS backend を追加する
+- central / edge の default TTS を stream 版 VOICEVOX へ切り替え、unit test で固定する
+
+## 2026-05-25 セッション49
+
+### やること（開始時に書く）
+- 起動済み `voicevox.app` / VOICEVOX Engine を使う TTS backend を追加する
+- 春日部つむぎの speaker/style を default にし、Tomoko の `tts_backend` として設定で使えるようにする
+- VOICEVOX 側の推論は外部 app / Engine に任せ、Tomoko 側では GPU/MLX TTS を使わない HTTP adapter として実装する
+
+### やったこと
+- `VoicevoxBackend` を追加し、VOICEVOX Engine の `/audio_query` / `/synthesis` を叩いて WAV を返す TTS backend にした
+- 春日部つむぎの speaker id `8` を default にし、`春日部つむぎ` / `春日つむぎ` / `tsumugi` alias でも指定できるようにした
+- `config/central_realtime.toml` と `config/edge_kitchen.toml` の `tts_backend` を `voicevox_tsumugi` に変更した
+- README に、VOICEVOX は起動済み外部 Engine を使い、本体・音源・出力音声は各規約に従うことを追記した
+- `_docs/latency.md` に `voicevox.app` 実 smoke の first / total latency を記録した
+
+### 詰まったこと・解決したこと
+- `voicevox.app` は `127.0.0.1:50021` で `/speakers` に応答しており、春日部つむぎは speaker id `8` だった
+- Tomoko 側では GPU/MLX TTS を起動せず、CPU 側で動いている外部 VOICEVOX Engine へ HTTP で依頼する形にした
+
+### 検証
+- `curl -sS --max-time 2 http://127.0.0.1:50021/speakers`
+  - `春日部つむぎ` / `id=8` を確認
+- `.venv/bin/python -m pytest -m unit tests/unit/test_voicevox_tts.py tests/unit/test_phase0_config.py tests/unit/test_phase14_edge_split.py`
+  - 18 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 324 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+- 実 smoke
+  - text: `うん、わかった。少し待ってね。`
+  - first chunk 364.7ms / total 364.9ms / 24kHz mono / 2837.3ms audio
+  - output: `logs/voicevox-tsumugi-smoke.wav`
+
+### 次のセッションでやること
+- `make server-debug` で実ブラウザ会話を起動し、VOICEVOX TTS の体感・音質・回り込みを確認する
+- 長文で first audio が遅い場合は、TTS flush 単位や VOICEVOX audio_query の pause / speed 調整を見直す
 
 ## 2026-05-25 セッション40
 

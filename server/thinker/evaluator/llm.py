@@ -10,6 +10,7 @@ from server.shared.candidate import (
     ThinkerEvaluationContext,
 )
 from server.shared.inference.router import InferenceRouter
+from server.shared.inference.trace import chat_stream_with_trace_role
 from server.thinker.evaluator.base import UtteranceEvaluator
 
 logger = logging.getLogger(__name__)
@@ -49,9 +50,11 @@ class LLMUtteranceEvaluator(UtteranceEvaluator):
             backend = await self.router.select("candidate_gen", "privacy")
             chunks = [
                 chunk
-                async for chunk in backend.chat_stream(
+                async for chunk in chat_stream_with_trace_role(
+                    backend,
                     _SYSTEM_PROMPT,
                     [_user_message(seed, context)],
+                    trace_role="candidate_gen",
                 )
             ]
             return _parse_evaluation("".join(chunks), seed)
@@ -148,4 +151,3 @@ def _clamp_priority(value: object) -> float:
     except (TypeError, ValueError):
         priority = 0.5
     return min(1.0, max(0.0, priority))
-

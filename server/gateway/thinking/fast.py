@@ -7,6 +7,7 @@ from pathlib import Path
 
 from server.gateway.thinking.base import ThinkingMode
 from server.shared.inference.backends.base import InferenceBackend
+from server.shared.inference.trace import chat_stream_with_trace_role
 from server.shared.models import ThinkingEvent, ThinkingInput
 from server.shared.persona_prompt import format_persona_prompt_slice_for_prompt
 
@@ -66,7 +67,12 @@ class ThinkFastMode(ThinkingMode):
         )
         header_buffer = ""
         header_parsed = False
-        async for chunk in backend.chat_stream(system_prompt, messages):
+        async for chunk in chat_stream_with_trace_role(
+            backend,
+            system_prompt,
+            messages,
+            trace_role="conversation",
+        ):
             if not chunk:
                 continue
 

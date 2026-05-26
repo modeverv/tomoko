@@ -15,6 +15,7 @@ from server.journalist.input import (
 from server.shared.config import NodeConfig
 from server.shared.diary import DiaryEntry, DiaryStore, PostgresDiaryStore
 from server.shared.inference.router import InferenceRouter
+from server.shared.inference.trace import chat_stream_with_trace_role
 
 logger = logging.getLogger(__name__)
 
@@ -90,9 +91,11 @@ class DiaryWriter:
         backend = await self.router.select("diary", "privacy")
         prompt = _format_snapshot_for_prompt(snapshot)
         chunks: list[str] = []
-        async for chunk in backend.chat_stream(
+        async for chunk in chat_stream_with_trace_role(
+            backend,
             DIARY_SYSTEM_PROMPT,
             [{"role": "user", "content": prompt}],
+            trace_role="diary",
         ):
             chunks.append(chunk)
         return _clean_diary_text("".join(chunks))

@@ -10,8 +10,8 @@ chunk_ms = 32
 vad_silence_ms = 800
 
 [inference]
-conversation_backend = "local_gemma4_e2b_mlx"
-conversation_fallback = "local_lfm25_12b_jp_mlx"
+conversation_backend = "lmstudio_gemma4_e4b"
+conversation_fallback = "local_gemma4_e2b_mlx"
 session_summary_backend = "lmstudio_gemma4_e2b"
 session_summary_fallback = "local_gemma4_e2b_mlx"
 candidate_gen_backend = "lmstudio_gemma4_e2b"
@@ -20,7 +20,7 @@ diary_backend = "lmstudio_gemma4_e2b"
 diary_fallback = "local_gemma4_e2b_mlx"
 stt_backend = "local_whisper_mlx_large_turbo_q4"
 vad_backend = "silero_vad"
-tts_backend = "kokoro_mlx"
+tts_backend = "voicevox_tsumugi_stream"
 embedding_backend = "local_bge_m3"
 speech_normalizer_enabled = false
 
@@ -53,6 +53,13 @@ privacy_allowed = true
 type = "lm_studio"
 url = "http://192.168.11.66:1234"
 model = "gemma-4-e2b-it-mlx"
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.lmstudio_gemma4_e4b]
+type = "lm_studio"
+url = "http://192.168.11.66:1234"
+model = "gemma-4-e4b-it-mlx"
 max_latency_ms = 800
 privacy_allowed = true
 
@@ -139,6 +146,24 @@ model = "mlx-community/Kokoro-82M-bf16"
 voice = "jf_alpha"
 sample_rate = 24000
 max_latency_ms = 200
+privacy_allowed = true
+
+[backends.voicevox_tsumugi]
+type = "voicevox"
+url = "http://127.0.0.1:50021"
+voice = "8"
+sample_rate = 24000
+speed = 1.0
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.voicevox_tsumugi_stream]
+type = "voicevox_stream"
+url = "http://127.0.0.1:50021"
+voice = "8"
+sample_rate = 24000
+speed = 1.0
+max_latency_ms = 800
 privacy_allowed = true
 
 [backends.kokoro_coreml]

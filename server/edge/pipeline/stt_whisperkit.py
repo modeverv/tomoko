@@ -5,14 +5,17 @@ import atexit
 import shutil
 import subprocess
 from datetime import UTC, datetime
+from time import perf_counter
 from types import TracebackType
 from typing import Any
 from urllib.parse import urlparse
+from uuid import uuid4
 
 import httpx
 import numpy as np
 
 from server.edge.pipeline.stt_coreml import _audio_level_db, _write_temp_wav
+from server.shared.inference.trace import trace_backend_call
 from server.shared.models import SpeechSegment, Transcript
 
 
@@ -49,7 +52,44 @@ class WhisperKitServeSTT:
         self._last_stream_text = ""
 
     async def transcribe(self, segment: SpeechSegment) -> Transcript:
-        text = await self._transcribe_audio(segment.audio, 16000)
+        request_id = str(uuid4())
+        started_at = perf_counter()
+        trace_backend_call(
+            event="start",
+            kind="stt",
+            role="stt",
+            backend="whisperkit_serve",
+            model=self.model_name,
+            request_id=request_id,
+            queue_key=f"whisperkit:{self.url}",
+            audio_ms=_audio_ms(segment.audio, 16000),
+        )
+        try:
+            text = await self._transcribe_audio(segment.audio, 16000)
+        except Exception as exc:
+            trace_backend_call(
+                event="error",
+                kind="stt",
+                role="stt",
+                backend="whisperkit_serve",
+                model=self.model_name,
+                request_id=request_id,
+                queue_key=f"whisperkit:{self.url}",
+                total_ms=_elapsed_ms(started_at),
+                error=type(exc).__name__,
+            )
+            raise
+        trace_backend_call(
+            event="done",
+            kind="stt",
+            role="stt",
+            backend="whisperkit_serve",
+            model=self.model_name,
+            request_id=request_id,
+            queue_key=f"whisperkit:{self.url}",
+            total_ms=_elapsed_ms(started_at),
+            text_len=len(text),
+        )
         return Transcript(
             text=text,
             device_id=segment.device_id,
@@ -238,3 +278,13 @@ def _host_port_from_url(url: str) -> tuple[str, int]:
     host = parsed.hostname or "127.0.0.1"
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     return host, port
+
+
+def _audio_ms(audio: np.ndarray, sample_rate: int) -> float:
+    if sample_rate <= 0:
+        return 0.0
+    return len(audio) / sample_rate * 1000.0
+
+
+def _elapsed_ms(started_at: float) -> float:
+    return (perf_counter() - started_at) * 1000

@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import io
+import time
 import wave
 from collections.abc import Iterator
 from typing import Any
+from uuid import uuid4
 
 import numpy as np
 
 from server.shared.config import BackendSpec
+from server.shared.inference.trace import trace_backend_call
 from server.shared.inference.tts.base import TTSBackend
 from server.shared.models import AudioChunkOut, TTSInput
 
@@ -80,28 +83,80 @@ class KokoroMLXBackend(TTSBackend):
         if not text:
             return
 
+        request_id = str(uuid4())
+        started_at = time.perf_counter()
+        trace_backend_call(
+            event="start",
+            kind="tts",
+            role="tts",
+            backend=self.name,
+            model="kokoro_mlx",
+            request_id=request_id,
+            queue_key="local_mlx",
+        )
         voice = self._resolve_voice(
             tts_input.voice or self.STYLE_TO_VOICE.get(tts_input.style, self.default_voice)
         )
         speed = self.STYLE_TO_SPEED.get(tts_input.style, 1.0)
-        iterator = self._tts.generate_stream(
-            text,
-            voice=voice,
-            speed=speed,
-            sample_rate=self.sample_rate,
-            language="ja" if voice.startswith(("jf_", "jm_")) else None,
-        )
         sequence = 0
-        while True:
-            chunk = await asyncio.to_thread(_next_or_end, iterator)
-            if chunk is _END:
-                return
-            yield AudioChunkOut(
-                data=_wav_bytes_from_audio(np.asarray(chunk), sample_rate=self.sample_rate),
-                sequence=sequence,
-                is_last=False,
+        first_chunk_emitted = False
+        try:
+            iterator = self._tts.generate_stream(
+                text,
+                voice=voice,
+                speed=speed,
+                sample_rate=self.sample_rate,
+                language="ja" if voice.startswith(("jf_", "jm_")) else None,
             )
-            sequence += 1
+            while True:
+                chunk = await asyncio.to_thread(_next_or_end, iterator)
+                if chunk is _END:
+                    break
+                audio_chunk = AudioChunkOut(
+                    data=_wav_bytes_from_audio(np.asarray(chunk), sample_rate=self.sample_rate),
+                    sequence=sequence,
+                    is_last=False,
+                )
+                if not first_chunk_emitted:
+                    first_chunk_emitted = True
+                    trace_backend_call(
+                        event="first_chunk",
+                        kind="tts",
+                        role="tts",
+                        backend=self.name,
+                        model="kokoro_mlx",
+                        request_id=request_id,
+                        queue_key="local_mlx",
+                        elapsed_ms=_elapsed_ms(started_at),
+                        bytes=len(audio_chunk.data),
+                    )
+                yield audio_chunk
+                sequence += 1
+        except Exception as exc:
+            trace_backend_call(
+                event="error",
+                kind="tts",
+                role="tts",
+                backend=self.name,
+                model="kokoro_mlx",
+                request_id=request_id,
+                queue_key="local_mlx",
+                total_ms=_elapsed_ms(started_at),
+                error=type(exc).__name__,
+            )
+            raise
+        else:
+            trace_backend_call(
+                event="done",
+                kind="tts",
+                role="tts",
+                backend=self.name,
+                model="kokoro_mlx",
+                request_id=request_id,
+                queue_key="local_mlx",
+                total_ms=_elapsed_ms(started_at),
+                chunk_count=sequence,
+            )
 
     def _resolve_voice(self, preferred: str) -> str:
         if not self._available_voices or preferred in self._available_voices:
@@ -163,3 +218,7 @@ def _wav_bytes_from_audio(audio: np.ndarray, *, sample_rate: int) -> bytes:
         wav.setframerate(sample_rate)
         wav.writeframes(pcm.tobytes())
     return output.getvalue()
+
+
+def _elapsed_ms(started_at: float) -> float:
+    return (time.perf_counter() - started_at) * 1000

@@ -9,6 +9,10 @@ from uuid import UUID
 
 import psycopg
 
+from server.shared.inference.trace import (
+    chat_stream_structured_with_trace_role,
+    chat_stream_with_trace_role,
+)
 from server.shared.models import (
     PersonaLexiconSnapshot,
     PersonaStateSnapshot,
@@ -254,13 +258,20 @@ class WorldObservationInterpreter:
         )
         structured_stream = getattr(self.backend, "chat_stream_structured", None)
         if structured_stream is None:
-            stream = self.backend.chat_stream(system_prompt, messages)
+            stream = chat_stream_with_trace_role(
+                self.backend,
+                system_prompt,
+                messages,
+                trace_role="world_observation_interpreter",
+            )
         else:
-            stream = structured_stream(
+            stream = chat_stream_structured_with_trace_role(
+                self.backend,
                 system_prompt,
                 messages,
                 json_schema=INTERPRETER_JSON_SCHEMA,
                 max_tokens=1024,
+                trace_role="world_observation_interpreter",
             )
         async for chunk in stream:
             chunks.append(chunk)

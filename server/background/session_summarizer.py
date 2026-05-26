@@ -5,6 +5,7 @@ from uuid import UUID
 
 from server.shared.inference.embedding.base import EmbeddingBackend
 from server.shared.inference.router import InferenceRouter
+from server.shared.inference.trace import chat_stream_with_trace_role
 from server.shared.memory import ConversationSessionSummaryStore
 from server.shared.models import ConversationTurn
 
@@ -77,9 +78,11 @@ class SessionSummarizer:
         transcript_text = _format_turns_for_summary(turns)
         backend = await self.router.select("session_summary", "privacy")
         chunks: list[str] = []
-        async for chunk in backend.chat_stream(
+        async for chunk in chat_stream_with_trace_role(
+            backend,
             SUMMARY_SYSTEM_PROMPT,
             [{"role": "user", "content": transcript_text}],
+            trace_role="session_summary",
         ):
             chunks.append(chunk)
         summary_text = _clean_summary("".join(chunks))

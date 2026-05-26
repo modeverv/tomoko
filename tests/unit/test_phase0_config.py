@@ -12,21 +12,22 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.unit
-def test_central_realtime_config_uses_gemma_mlx_for_main_conversation() -> None:
+def test_central_realtime_config_uses_lmstudio_gemma4_e4b_for_main_conversation() -> None:
     config = NodeConfig.load(ROOT / "config" / "central_realtime.toml")
 
     assert config.node.role == "central_realtime"
-    assert config.inference.conversation_backend == "local_gemma4_e2b_mlx"
-    assert config.inference.conversation_fallback == "local_lfm25_12b_jp_mlx"
+    assert config.inference.conversation_backend == "lmstudio_gemma4_e4b"
+    assert config.inference.conversation_fallback == "local_gemma4_e2b_mlx"
     assert config.audio.vad_silence_ms == 800
     assert config.inference.stt_backend == "local_whisper_mlx_large_turbo_q4"
-    assert config.inference.tts_backend == "kokoro_mlx"
+    assert config.inference.tts_backend == "voicevox_tsumugi_stream"
     assert config.inference.embedding_backend == "local_bge_m3"
     assert config.inference.speech_normalizer_enabled is False
 
-    backend = config.backends["local_gemma4_e2b_mlx"]
-    assert backend.type == "gemma_mlx"
-    assert backend.model == "mlx-community/gemma-4-e2b-it-4bit"
+    backend = config.backends["lmstudio_gemma4_e4b"]
+    assert backend.type == "lm_studio"
+    assert backend.url == "http://192.168.11.66:1234"
+    assert backend.model == "gemma-4-e4b-it-mlx"
     assert backend.privacy_allowed is True
 
     lm_studio_backend = config.backends["lmstudio_gemma4_e2b"]
@@ -56,6 +57,18 @@ def test_central_realtime_config_uses_gemma_mlx_for_main_conversation() -> None:
     assert tts_backend.model == "mlx-community/Kokoro-82M-bf16"
     assert tts_backend.voice == "jf_alpha"
     assert tts_backend.sample_rate == 24000
+
+    voicevox_backend = config.backends["voicevox_tsumugi"]
+    assert voicevox_backend.type == "voicevox"
+    assert voicevox_backend.url == "http://127.0.0.1:50021"
+    assert voicevox_backend.voice == "8"
+    assert voicevox_backend.sample_rate == 24000
+
+    voicevox_stream_backend = config.backends["voicevox_tsumugi_stream"]
+    assert voicevox_stream_backend.type == "voicevox_stream"
+    assert voicevox_stream_backend.url == "http://127.0.0.1:50021"
+    assert voicevox_stream_backend.voice == "8"
+    assert voicevox_stream_backend.sample_rate == 24000
 
     irodori_backend = config.backends["irodori_mlx"]
     assert irodori_backend.type == "irodori_mlx"

@@ -10,9 +10,12 @@ import tempfile
 import wave
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
+from uuid import uuid4
 
 import numpy as np
 
+from server.shared.inference.trace import trace_backend_call
 from server.shared.models import SpeechSegment, Transcript
 
 
@@ -41,7 +44,44 @@ class WhisperCoreMLSTT:
         self._last_stream_text = ""
 
     async def transcribe(self, segment: SpeechSegment) -> Transcript:
-        text = await asyncio.to_thread(self._transcribe_audio, segment.audio, 16000)
+        request_id = str(uuid4())
+        started_at = perf_counter()
+        trace_backend_call(
+            event="start",
+            kind="stt",
+            role="stt",
+            backend="whisper_coreml",
+            model=self.model_path,
+            request_id=request_id,
+            queue_key="local_coreml",
+            audio_ms=_audio_ms(segment.audio, 16000),
+        )
+        try:
+            text = await asyncio.to_thread(self._transcribe_audio, segment.audio, 16000)
+        except Exception as exc:
+            trace_backend_call(
+                event="error",
+                kind="stt",
+                role="stt",
+                backend="whisper_coreml",
+                model=self.model_path,
+                request_id=request_id,
+                queue_key="local_coreml",
+                total_ms=_elapsed_ms(started_at),
+                error=type(exc).__name__,
+            )
+            raise
+        trace_backend_call(
+            event="done",
+            kind="stt",
+            role="stt",
+            backend="whisper_coreml",
+            model=self.model_path,
+            request_id=request_id,
+            queue_key="local_coreml",
+            total_ms=_elapsed_ms(started_at),
+            text_len=len(text),
+        )
         return Transcript(
             text=text,
             device_id=segment.device_id,
@@ -167,6 +207,16 @@ def _audio_level_db(audio: np.ndarray) -> float:
     return 20.0 * math.log10(rms)
 
 
+def _audio_ms(audio: np.ndarray, sample_rate: int) -> float:
+    if sample_rate <= 0:
+        return 0.0
+    return len(audio) / sample_rate * 1000.0
+
+
+def _elapsed_ms(started_at: float) -> float:
+    return (perf_counter() - started_at) * 1000
+
+
 def _write_temp_wav(audio: np.ndarray, sample_rate: int) -> Path:
     samples = np.clip(audio.astype(np.float32, copy=False), -1.0, 1.0)
     pcm = (samples * 32767.0).astype(np.int16)
@@ -193,4 +243,3 @@ def _clean_whisper_cpp_output(output: str) -> str:
         if line:
             lines.append(line)
     return " ".join(lines).strip()
-
