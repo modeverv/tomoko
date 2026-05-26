@@ -140,6 +140,14 @@ streaming = true
 stream_interval_ms = 1000
 stream_min_audio_ms = 1000
 
+[backends.local_apple_speech_ja]
+type = "apple_speech"
+language = "ja-JP"
+on_device = true
+timeout_s = 30
+privacy_allowed = true
+streaming = false
+
 [backends.local_bge_m3]
 type = "bge_m3"
 model = "BAAI/bge-m3"

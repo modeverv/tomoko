@@ -2072,3 +2072,19 @@ initiative / arrival の直前 precomputed reply を follow-up context に入れ
 attention idle time を進めており、`AudioTurnController.playback_state` を見ていなかったこと。
 Tomoko が喋っている間は「会話が途切れた」時間ではないため、attention timeout は進めない。
 以後は playback state が `idle` の時だけ `engaged -> cooldown -> ambient` の idle timer を進める。
+
+### 気づき: Apple Speech framework は Swift sidecar なら Python STT backend として比較できる
+Apple 純正 Speech framework は CoreML モデルを直接ロードする形ではないが、
+Swift sidecar CLI を Python から subprocess で呼ぶ `apple_speech` backend として比較できる。
+
+実装上、`SFSpeechRecognizer.requestAuthorization` を CLI から呼ぶと TCC が
+`NSSpeechRecognitionUsageDescription` を認識せず abort する環境があった。
+このため sidecar は authorization request を明示実行せず、`.app` bundle + embedded Info.plist +
+ad-hoc codesign した実行ファイルで `SFSpeechURLRecognitionRequest` を実行する。
+
+2026-05-27 の 3 runs 比較では、synthetic `say` 音声で Apple Speech avg 183.3ms、
+MLX Whisper large turbo q4 avg 240.6ms。
+実録音 `work/audio-recordings/20260525T125851Z-read_aloud.wav` では Apple Speech avg 242.7ms、
+MLX Whisper large turbo q4 avg 248.7ms。
+Apple Speech は速い/同程度だが、「ともこ」を「智子」に漢字化し、実録音では
+`短い声` を `短いです声` と崩したため、現時点では active STT を置き換えず比較 lane として残す。

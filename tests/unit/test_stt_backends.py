@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from server.edge.pipeline.stt import (
+    AppleSpeechSTT,
     FasterWhisperSTT,
     MlxWhisperSTT,
     WhisperCoreMLSTT,
@@ -79,6 +80,24 @@ def test_create_stt_transcriber_supports_whisperkit_serve() -> None:
 
 
 @pytest.mark.unit
+def test_create_stt_transcriber_supports_apple_speech() -> None:
+    transcriber = create_stt_transcriber(
+        BackendSpec(
+            name="local_apple_speech_ja",
+            type="apple_speech",
+            language="ja-JP",
+            on_device=True,
+            timeout_s=12.0,
+        )
+    )
+
+    assert isinstance(transcriber, AppleSpeechSTT)
+    assert transcriber.language == "ja-JP"
+    assert transcriber.on_device is True
+    assert transcriber.timeout_s == 12.0
+
+
+@pytest.mark.unit
 async def test_mlx_whisper_transcribes_via_temp_wav(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict[str, object]] = []
 
@@ -106,6 +125,39 @@ async def test_mlx_whisper_transcribes_via_temp_wav(monkeypatch: pytest.MonkeyPa
     assert calls[0]["path_or_hf_repo"] == "mlx-community/whisper-small-mlx"
     assert calls[0]["language"] == "ja"
     assert calls[0]["initial_prompt"] == "ともこ"
+
+
+@pytest.mark.unit
+async def test_apple_speech_transcribes_via_sidecar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    class FakeCompleted:
+        stdout = '{"text":"ともこ、聞こえます","locale":"ja-JP","onDevice":true,"elapsedMs":42.0}\n'
+
+    def fake_run(args: list[str], **kwargs: object) -> FakeCompleted:
+        calls.append(args)
+        assert kwargs["check"] is True
+        return FakeCompleted()
+
+    monkeypatch.setattr("server.edge.pipeline.stt_apple.subprocess.run", fake_run)
+    transcriber = AppleSpeechSTT(command="/bin/echo", language="ja-JP")
+    segment = SpeechSegment(
+        audio=np.zeros(1600, dtype=np.float32),
+        started_at=datetime.now(UTC),
+        ended_at=datetime.now(UTC),
+        device_id="local",
+        vad_confidence=0.9,
+    )
+
+    transcript = await transcriber.transcribe(segment)
+
+    assert transcript.text == "ともこ、聞こえます"
+    assert calls[0][0] == "/bin/echo"
+    assert "--audio" in calls[0]
+    assert calls[0][calls[0].index("--locale") + 1] == "ja-JP"
+    assert "--on-device" in calls[0]
 
 
 @pytest.mark.unit

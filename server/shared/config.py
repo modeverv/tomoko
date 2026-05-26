@@ -45,6 +45,8 @@ class BackendSpec:
     total_step: int | None = None
     speed: float | None = None
     compute_units: str | None = None
+    on_device: bool = True
+    timeout_s: float | None = None
     max_latency_ms: int | None = None
     privacy_allowed: bool = True
     streaming: bool = False

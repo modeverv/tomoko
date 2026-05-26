@@ -59,6 +59,12 @@ def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation(
     assert active_stt_backend.type == "mlx_whisper"
     assert active_stt_backend.model == "mlx-community/whisper-large-v3-turbo-q4"
 
+    apple_speech_backend = config.backends["local_apple_speech_ja"]
+    assert apple_speech_backend.type == "apple_speech"
+    assert apple_speech_backend.language == "ja-JP"
+    assert apple_speech_backend.on_device is True
+    assert apple_speech_backend.streaming is False
+
     embedding_backend = config.backends["local_bge_m3"]
     assert embedding_backend.type == "bge_m3"
     assert embedding_backend.model == "BAAI/bge-m3"

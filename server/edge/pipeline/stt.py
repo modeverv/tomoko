@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import numpy as np
 
+from server.edge.pipeline.stt_apple import AppleSpeechSTT
 from server.edge.pipeline.stt_coreml import WhisperCoreMLSTT
 from server.edge.pipeline.stt_whisperkit import WhisperKitServeSTT
 from server.shared.config import BackendSpec
@@ -290,6 +291,13 @@ def create_stt_transcriber(spec: BackendSpec) -> SpeechTranscriber:
             streaming=spec.streaming,
             stream_interval_ms=spec.stream_interval_ms,
             stream_min_audio_ms=spec.stream_min_audio_ms,
+        )
+    if spec.type == "apple_speech":
+        return AppleSpeechSTT(
+            command=spec.command,
+            language=spec.language or "ja-JP",
+            on_device=spec.on_device,
+            timeout_s=spec.timeout_s or 30.0,
         )
     raise ValueError(f"unsupported STT backend type: {spec.type}")
 
