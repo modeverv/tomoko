@@ -59,11 +59,12 @@ def test_create_stt_transcriber_supports_whisper_coreml() -> None:
 def test_create_stt_transcriber_supports_whisperkit_serve() -> None:
     transcriber = create_stt_transcriber(
         BackendSpec(
-            name="local_whisperkit_serve_small",
+            name="local_whisperkit_serve_large_turbo_632m_cpu_ne",
             type="whisperkit_serve",
-            url="http://127.0.0.1:50060",
-            model="small",
+            url="http://127.0.0.1:50062",
+            model="large-v3-v20240930_turbo_632MB",
             command="whisperkit-cli",
+            compute_units="cpuAndNeuralEngine",
             streaming=True,
             stream_interval_ms=500,
             stream_min_audio_ms=500,
@@ -71,8 +72,9 @@ def test_create_stt_transcriber_supports_whisperkit_serve() -> None:
     )
 
     assert isinstance(transcriber, WhisperKitServeSTT)
-    assert transcriber.url == "http://127.0.0.1:50060"
-    assert transcriber.model_name == "small"
+    assert transcriber.url == "http://127.0.0.1:50062"
+    assert transcriber.model_name == "large-v3-v20240930_turbo_632MB"
+    assert transcriber.compute_units == "cpuAndNeuralEngine"
     assert transcriber.streaming is True
 
 
@@ -284,6 +286,7 @@ async def test_whisperkit_serve_starts_process_when_healthcheck_fails(
     transcriber = WhisperKitServeSTT(
         url="http://127.0.0.1:50061",
         model_name="small",
+        compute_units="cpuAndNeuralEngine",
         client=client,
     )
 
@@ -303,6 +306,10 @@ async def test_whisperkit_serve_starts_process_when_healthcheck_fails(
         "127.0.0.1",
         "--port",
         "50061",
+        "--audio-encoder-compute-units",
+        "cpuAndNeuralEngine",
+        "--text-decoder-compute-units",
+        "cpuAndNeuralEngine",
     ]
 
 

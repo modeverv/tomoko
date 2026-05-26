@@ -286,6 +286,7 @@ def create_stt_transcriber(spec: BackendSpec) -> SpeechTranscriber:
             url=spec.url or "http://127.0.0.1:50060",
             model_name=spec.model or "small",
             command=spec.command or "whisperkit-cli",
+            compute_units=spec.compute_units,
             streaming=spec.streaming,
             stream_interval_ms=spec.stream_interval_ms,
             stream_min_audio_ms=spec.stream_min_audio_ms,

@@ -19,7 +19,7 @@ def test_central_realtime_config_uses_lmstudio_gemma4_e4b_for_main_conversation(
     assert config.inference.conversation_backend == "lmstudio_gemma4_e4b"
     assert config.inference.conversation_fallback == "local_gemma4_e2b_mlx"
     assert config.audio.vad_silence_ms == 800
-    assert config.inference.stt_backend == "local_whisper_mlx_large_turbo_q4"
+    assert config.inference.stt_backend == "local_whisperkit_serve_large_turbo_632m_cpu_ne"
     assert config.inference.tts_backend == "voicevox_tsumugi"
     assert config.inference.embedding_backend == "local_bge_m3"
     assert config.inference.speech_normalizer_enabled is False
@@ -41,9 +41,11 @@ def test_central_realtime_config_uses_lmstudio_gemma4_e4b_for_main_conversation(
     assert fallback_backend.model == "lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit"
     assert fallback_backend.privacy_allowed is True
 
-    stt_backend = config.backends["local_whisper_mlx_large_turbo_q4"]
-    assert stt_backend.type == "mlx_whisper"
-    assert stt_backend.model == "mlx-community/whisper-large-v3-turbo-q4"
+    stt_backend = config.backends["local_whisperkit_serve_large_turbo_632m_cpu_ne"]
+    assert stt_backend.type == "whisperkit_serve"
+    assert stt_backend.url == "http://127.0.0.1:50062"
+    assert stt_backend.model == "large-v3-v20240930_turbo_632MB"
+    assert stt_backend.compute_units == "cpuAndNeuralEngine"
     assert stt_backend.streaming is True
 
     embedding_backend = config.backends["local_bge_m3"]

@@ -1941,3 +1941,18 @@ LM Studio は URL 単位の process-local semaphore を使い、`queue_acquired.
 STT は `audio_ms` / `text_len`、embedding は `text_len` / `dimensions` を出し、GPU/CPU 側の負荷推測に使う。
 
 この JSONL は debug artifact であり、Tomoko の制御判断や source of truth には使わない。
+
+### 確定した判断: WhisperKit large turbo 632MB CPU+ANE を STT 比較 lane にする
+上の「WhisperKit large は small と別 port で serve する」判断は否定しない。
+ただし、そこで使った `large-v3-v20240930_626MB` は画像で示された
+`openai_whisper-large-v3-v20240930_turbo_632MB + .cpuAndNeuralEngine` そのものではなかった。
+
+WhisperKit CLI の `serve` は `--audio-encoder-compute-units` / `--text-decoder-compute-units` を持ち、
+help 上の default は `cpuAndNeuralEngine` だが、Tomoko 側では実験条件を明示するため config から渡す。
+
+central runtime の active `stt_backend` は `local_whisperkit_serve_large_turbo_632m_cpu_ne` とする。
+model は `large-v3-v20240930_turbo_632MB`、port は `127.0.0.1:50062`、compute units は
+`cpuAndNeuralEngine`。
+
+既存の `local_whisper_mlx_large_turbo_q4` は、STT 品質が良かった MLX fallback / 比較候補として残す。
+実比較では `logs/backend-trace.jsonl` の STT `total_ms` と実ブラウザ transcript、GPU/ANE 使用状況を見る。

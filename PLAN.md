@@ -3825,3 +3825,32 @@ validated interpretation だけを thinker / journalist へ流す形で実装し
 - `first_delta` が遅いのか、TTS `first_chunk` が遅いのか、STT が遅いのかを trace 上で分離できる
 - JSONL trace は source of truth ではなく debug artifact として扱い、会話 hot path の制御判断には使わない
 - `pytest -m unit` が通る
+
+---
+
+## 2026-05-26 追記: Phase 13.6 WhisperKit turbo 632MB CPU+ANE STT lane
+
+上の WhisperKit serve large 採用は `large-v3-v20240930_626MB` の確認であり、
+画像で示された `openai_whisper-large-v3-v20240930_turbo_632MB` 相当の turbo 632MB model を
+明示的に active STT として使う構成ではなかった。
+
+また、WhisperKit CLI の `serve` は `cpuAndNeuralEngine` を default にしているが、Tomoko の config からは
+compute units を明示できなかったため、実験条件をログや config から読みにくかった。
+
+**目標**: GPU を空けつつ STT を CoreML/ANE 側へ逃がす候補として、
+`WhisperKit + large-v3-v20240930_turbo_632MB + cpuAndNeuralEngine` を設定で固定し、
+MLX STT へすぐ戻せる比較 lane として扱う。
+
+- [x] `WhisperKitServeSTT` が `--audio-encoder-compute-units` と `--text-decoder-compute-units` を渡せるようにする
+- [x] `BackendSpec.compute_units` を STT backend factory から `WhisperKitServeSTT` へ渡す
+- [x] `local_whisperkit_serve_large_turbo_632m_cpu_ne` backend を追加する
+  - `url = "http://127.0.0.1:50062"`
+  - `model = "large-v3-v20240930_turbo_632MB"`
+  - `compute_units = "cpuAndNeuralEngine"`
+- [x] central realtime の active `stt_backend` をこの backend に切り替える
+- [x] config / factory / process 起動引数の unit test を追加する
+
+**完了条件**:
+- `whisperkit-cli serve` が turbo 632MB model と `cpuAndNeuralEngine` compute units で起動される
+- `pytest -m unit tests/unit/test_stt_backends.py tests/unit/test_phase0_config.py` が通る
+- 実ブラウザ比較では `logs/backend-trace.jsonl` の STT `total_ms` と GPU/ANE 使用状況を見る

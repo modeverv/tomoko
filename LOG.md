@@ -80,6 +80,40 @@
 - `git diff --check`
   - pass
 
+## 2026-05-26 セッション3
+
+### やること（開始時に書く）
+- STT で `WhisperKit + openai_whisper-large-v3-v20240930_turbo_632MB + cpuAndNeuralEngine` 相当を試した履歴があるか確認する
+- exact model / compute units を明示できる `whisperkit_serve` backend 設定を追加する
+- central realtime の active STT をこの backend に切り替え、unit test で契約を固定する
+
+### やったこと
+- 過去ログ上では `WhisperKit serve small`、`WhisperKit serve large-v3-v20240930_626MB`、`local_whisper_mlx_large_turbo_q4` は試していたが、画像の turbo 632MB exact lane は active config として固定していなかったことを確認した
+- `WhisperKitServeSTT` に `compute_units` を追加し、`whisperkit-cli serve` 起動時に `--audio-encoder-compute-units` / `--text-decoder-compute-units` を渡すようにした
+- `config/central_realtime.toml` に `local_whisperkit_serve_large_turbo_632m_cpu_ne` を追加した
+  - model: `large-v3-v20240930_turbo_632MB`
+  - port: `127.0.0.1:50062`
+  - compute units: `cpuAndNeuralEngine`
+- central realtime の active `stt_backend` をこの backend に切り替えた
+- PLAN.md / MEMORY.md / `_docs/latency.md` に判断と未実測事項を追記した
+
+### 詰まったこと・解決したこと
+- WhisperKit CLI help 上は `cpuAndNeuralEngine` が default だったが、実験条件を明示するため config から渡す形にした
+- 既存 `local_whisper_mlx_large_turbo_q4` は品質が良かった比較候補として残した
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_stt_backends.py tests/unit/test_phase0_config.py`
+  - 16 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 334 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- `make server-debug` で実ブラウザ会話を起動し、`logs/backend-trace.jsonl` の STT `total_ms`、実 transcript、mactop 等の CPU/ANE/GPU 使用状況を確認する
+
 ## 2026-05-25 セッション51
 
 ### やること（開始時に書く）

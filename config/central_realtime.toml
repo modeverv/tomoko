@@ -18,7 +18,7 @@ candidate_gen_backend = "lmstudio_gemma4_e2b"
 candidate_gen_fallback = "local_gemma4_e2b_mlx"
 diary_backend = "lmstudio_gemma4_e2b"
 diary_fallback = "local_gemma4_e2b_mlx"
-stt_backend = "local_whisper_mlx_large_turbo_q4"
+stt_backend = "local_whisperkit_serve_large_turbo_632m_cpu_ne"
 vad_backend = "silero_vad"
 tts_backend = "voicevox_tsumugi"
 embedding_backend = "local_bge_m3"
@@ -117,6 +117,17 @@ type = "whisperkit_serve"
 url = "http://127.0.0.1:50061"
 model = "large-v3-v20240930_626MB"
 command = "whisperkit-cli"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
+
+[backends.local_whisperkit_serve_large_turbo_632m_cpu_ne]
+type = "whisperkit_serve"
+url = "http://127.0.0.1:50062"
+model = "large-v3-v20240930_turbo_632MB"
+command = "whisperkit-cli"
+compute_units = "cpuAndNeuralEngine"
 privacy_allowed = true
 streaming = true
 stream_interval_ms = 1000

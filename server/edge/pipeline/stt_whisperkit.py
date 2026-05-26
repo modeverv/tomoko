@@ -28,6 +28,7 @@ class WhisperKitServeSTT:
         command: str = "whisperkit-cli",
         language: str = "ja",
         initial_prompt: str = "ともこ",
+        compute_units: str | None = None,
         streaming: bool = False,
         stream_interval_ms: int = 1000,
         stream_min_audio_ms: int = 1000,
@@ -39,6 +40,7 @@ class WhisperKitServeSTT:
         self.command = command
         self.language = language
         self.initial_prompt = initial_prompt
+        self.compute_units = compute_units
         self.streaming = streaming
         self.stream_interval_ms = stream_interval_ms
         self.stream_min_audio_ms = stream_min_audio_ms
@@ -231,22 +233,32 @@ class WhisperKitServeSTT:
                 "backends.<name>.command."
             )
         host, port = _host_port_from_url(self.url)
+        args = [
+            self.command,
+            "serve",
+            "--model",
+            self.model_name,
+            "--language",
+            self.language,
+            "--prompt",
+            self.initial_prompt,
+            "--without-timestamps",
+            "--host",
+            host,
+            "--port",
+            str(port),
+        ]
+        if self.compute_units:
+            args.extend(
+                [
+                    "--audio-encoder-compute-units",
+                    self.compute_units,
+                    "--text-decoder-compute-units",
+                    self.compute_units,
+                ]
+            )
         self._process = subprocess.Popen(
-            [
-                self.command,
-                "serve",
-                "--model",
-                self.model_name,
-                "--language",
-                self.language,
-                "--prompt",
-                self.initial_prompt,
-                "--without-timestamps",
-                "--host",
-                host,
-                "--port",
-                str(port),
-            ],
+            args,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
