@@ -3854,3 +3854,138 @@ MLX STT へすぐ戻せる比較 lane として扱う。
 - `whisperkit-cli serve` が turbo 632MB model と `cpuAndNeuralEngine` compute units で起動される
 - `pytest -m unit tests/unit/test_stt_backends.py tests/unit/test_phase0_config.py` が通る
 - 実ブラウザ比較では `logs/backend-trace.jsonl` の STT `total_ms` と GPU/ANE 使用状況を見る
+
+---
+
+## 2026-05-27 追記: Phase 10.10 自発発話の会話開始品質調整
+
+Phase 10.0〜10.7 で「候補が選ばれ、TomoroSession の gate を通り、Tomoko が自発的に話す」
+経路は成立した。
+2026-05-27 の実ブラウザログでは、world observation 由来 candidate
+`最近、ハードウェアの進化についてちょっと気になってることがあるんだよね。` が実際に発話され、
+人間の返答 `え、それってどういうこと?` から `conversation_session` が開始した。
+
+ただし、上の Phase 10 の「自発発話を賢くすることではなく経路を通す」という前提は、この Phase では否定する。
+ここからは発話可否だけでなく、話しかけ方が会話として自然に受け取られるかを調整対象にする。
+
+**観測された課題**:
+- 自発発話そのものは成功したが、直前の人生相談文脈から急に `ハードウェアの進化` へ移ったため、初手がやや唐突だった
+- ユーザーの `え、それってどういうこと?` に対して、Tomoko が `さっきの言葉はちょっと関係なかったよね` と謝り、前の相談文脈へ戻ろうとした
+- ユーザーが `ハードウェアの進化について知りたい` と明示した後は復帰できた
+- 返答中に `を動かすための専用チップ` のような主語欠け文が出た
+- `policy_decision=needs_llm_judge` / score 0.658 / threshold 0.68 のように、境界 score での LLM judge 発話だった
+
+**目標**: 自発発話を「システム的に発火する」段階から、
+人間が自然に受け取れて、返答後に Tomoko 自身もその話題を保持できる段階へ進める。
+
+### Phase 10.10.0: 自発発話ログ評価セットを作る
+
+- [ ] `logs/server-debug.log` から自発発話セッションを抽出する inspection 手順を固定する
+  - `arrival candidate fetched`
+  - `initiative candidate fetched`
+  - `policy_decision`
+  - `start_initiative_reply`
+  - `attention changed from ambient to engaged`
+  - `conversation session started reason=followup`
+  - 直後 3 turn の transcript / reply text
+- [ ] `utterance_candidates` / `arrival_candidates` の DB 状態確認 query を `_docs/evaluation.md` か `_docs/latency.md` に追記する
+  - active / text_ready / audio_ready / spoken / dismissed counts
+  - spoken candidate の `source` / `generated_text` / `spoken_at`
+- [ ] 自発発話の手動評価観点を固定する
+  - `starts_conversation`: 人間が返したくなるか
+  - `not_abrupt`: 直前文脈から見て唐突すぎないか
+  - `self_contained`: 何の話か一発でわかるか
+  - `recoverable`: ユーザーが聞き返した時に Tomoko が話題を保持できるか
+  - `low_intrusion`: 今話しかけてよい温度か
+- [ ] 評価結果は DB の source of truth にはせず、debug / tuning artifact として扱う
+
+**完了条件**:
+- 1回の実ブラウザ自発発話について、候補選択から会話開始後 3 turn までを同じ手順で再確認できる
+- 「動いたか」ではなく「自然に会話へ入れたか」を同じ言葉で評価できる
+- `pytest -m unit` が通る
+
+### Phase 10.10.1: candidate generated_text の会話開始契約を強める
+
+- [ ] `candidate_gen` prompt を調整し、`generated_text` は単なる興味文ではなく会話開始用の短文にする
+- [ ] world observation 由来 candidate には、必要に応じて橋渡しを含める
+  - `全然別件なんだけど、...`
+  - `今じゃなければ後でいいんだけど、...`
+  - `さっきの話とは別で、少し気になったことがあって...`
+- [ ] `generated_text` は次の制約を満たす
+  - 1〜2文
+  - 何の話か自明
+  - ユーザーに説明責任を押しつけない
+  - 事実断定より「気になっている」「あとで話したい」に寄せる
+  - 質問で終える場合は1つだけ
+- [ ] `candidate_seed_text` / `tomoko_private_reaction` からの変換で、topic だけが裸で出ないようにする
+- [ ] unit test では LLM 内容そのものを固定しすぎず、prompt contract / fallback normalizer / forbidden pattern を検証する
+  - 空文字
+  - 主語がない `を動かすため` 風の破片
+  - 長すぎる説明
+  - `最新情報を知っている` 断定
+
+**完了条件**:
+- 新規 candidate は「話題名」ではなく「話しかける一言」として保存される
+- world observation candidate が直前文脈と無関係でも、別件であることが自然に伝わる
+- `pytest -m unit tests/unit/test_phase92_llm_evaluator.py tests/unit/test_phase18_world_observation_source.py` が通る
+
+### Phase 10.10.2: 自発発話を会話文脈に安全に載せる
+
+- [ ] initiative / arrival 発話だけでは `conversation_session` を開始しない既存判断は維持する
+- [ ] ただし、人間が follow-up した時の最初の LLM prompt には、直前の Tomoko 自発発話が明確に入ることを test で固定する
+- [ ] ユーザーが `それってどういうこと?` / `何の話?` と聞いた場合、Tomoko が「関係なかった」と撤回せず、直前の自発発話を説明できるようにする
+- [ ] 自発発話の `start_reason=initiative` / candidate source / generated_text を、会話開始後の context build trace から追えるようにする
+- [ ] 直前の重い相談文脈と別件 candidate が衝突する時は、candidate 文の橋渡しを優先し、会話履歴の解釈だけで謝罪に逃げない
+
+**完了条件**:
+- 自発発話後の `え、それってどういうこと?` に対して、Tomoko が自分の出した話題を説明できる
+- 自発発話は人間の返答が来るまで正式な `conversation_session` を開始しない
+- `TomoroSession` が session lifecycle の最終所有者である構造を崩さない
+- `pytest -m unit tests/unit/test_phase10_session_contract.py tests/unit/test_phase105_session_runtime.py` が通る
+
+### Phase 10.10.3: 話しかける間合いと候補優先度の実測調整
+
+- [ ] `CandidateSpeakPolicy` の deterministic speak threshold / LLM judge band を実ログ基準で見直す
+  - 0.658 のような境界 score が話してよい候補だったか、人間評価と突き合わせる
+  - threshold を下げる前に、candidate 文品質と bridge 文の改善を優先する
+- [ ] `recent heavy conversation` 直後の別件 candidate は、話題転換 bridge がない限り score を下げる
+- [ ] `audio_ready=0` が続く場合、pregenerated audio の対象を高優先度 candidate に限定して見直す
+  - ただし first audio 538ms 程度なら、自然さ改善を優先する
+- [ ] feedback phrase を追加する場合も、最終 gate は `TomoroSession` に残す
+  - `それ今じゃない`
+  - `その話あとで`
+  - `それ面白い`
+- [ ] tuning は config 増殖ではなく、少数の固定値とログ評価で進める
+
+**完了条件**:
+- 自発発話頻度の調整理由が score / signal / feedback / bridge 有無で説明できる
+- 「話しすぎる」より先に「話しかけ方が自然」を改善する順序が守られている
+- `pytest -m unit tests/unit/test_phase106_initiative_policy.py` が通る
+
+### Phase 10.10.4: 実ブラウザ smoke と判断ログ
+
+- [ ] `make thinker` または `make thinker-once` で text-ready candidate を作る
+- [ ] `make server-debug` の実ブラウザで ambient idle から 1 回以上 initiative を発話させる
+- [ ] 次の artifact を確認する
+  - `logs/server-debug.log`
+  - `logs/backend-trace.jsonl`
+  - `utterance_candidates.spoken_at`
+  - `conversation_sessions.start_reason`
+- [ ] 実ログから、最低 2 ケースを記録する
+  - 成功: 自然に返答され、会話が 2 turn 以上続いた
+  - 要改善: 唐突、撤回、主語欠け、話しすぎ、または文脈衝突
+- [ ] 確定した tuning 判断を `MEMORY.md`、セッション結果を `LOG.md` に追記する
+
+**完了条件**:
+- 自発発話が 1 回以上、実ブラウザで自然な会話開始まで到達する
+- 失敗例もログ上の candidate / policy / prompt / reply に分解できる
+- `pytest -m unit` が通る
+
+### Phase 10.10 全体の完了条件
+
+- 自発発話は「候補を読んだ」ではなく「会話の入口」として聞ける
+- ユーザーが聞き返した時、Tomoko は直前の自発話題を説明できる
+- 別件の話題は橋渡し付きで入り、前の会話文脈に謝罪で戻りすぎない
+- 主語欠け・断片的な candidate 文が保存または発話されにくい
+- `TomoroSession` の gate / session lifecycle 所有は維持される
+- `pytest -m unit` が通る
