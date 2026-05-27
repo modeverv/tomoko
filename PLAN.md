@@ -3989,3 +3989,126 @@ Phase 10.0〜10.7 で「候補が選ばれ、TomoroSession の gate を通り、
 - 主語欠け・断片的な candidate 文が保存または発話されにくい
 - `TomoroSession` の gate / session lifecycle 所有は維持される
 - `pytest -m unit` が通る
+
+---
+
+## 2026-05-27 追記: Phase 10.11 local turn-taking judge worker
+
+上の Phase 10.10 では自発発話の入口品質を扱ったが、実会話では別の問題が見えた。
+2026-05-27 の Apple Speech STT + Gemma 4 26B A4B 実ブラウザ会話で、
+会話 LLM reply が開始した直後に VAD が `listening` へ入り、
+`stale reply cancelled reason=resumed_user_speech_before_output` により未出力 reply が捨てられた。
+しかしその後の STT は `text=''` / `reason=empty` で、実際には意味のある追い発話ではなかった。
+
+このため「新しい入力が今の reply を変えるべきか」を、VAD state だけで即決しない。
+ただし、会話生成に使う `lmstudio_gemma4_26b_a4b` のキューへこの制御判断を投げることも避ける。
+LM Studio のキュー・キャンセル挙動は外部プロセス側のブラックボックスであり、go/cancel のような
+100〜200ms 以内に返ってほしい制御判定には向かない。
+
+**目標**: Tomoko 管理下の local small LLM worker を使い、
+reply 継続 / 出力 defer / restart / stop / ignore を低遅延に判定する。
+最終 gate と session lifecycle の所有者は引き続き `TomoroSession` とする。
+
+### Phase 10.11.0: TurnTakingJudge の契約を固定する
+
+- [ ] `server/shared/models.py` に turn-taking 判定用 DTO を追加する
+  - `TurnTakingInput`
+  - `pending_reply_state`: `none` / `generating_not_started` / `text_started` / `audio_started`
+  - `new_transcript`
+  - `audio_metrics`: segment ms / rms db / peak db / active frame ratio
+  - `attention_mode`
+  - `playback_state`
+  - 直近 user / Tomoko turn の小さい context
+- [ ] 出力 DTO は enum と短い reason に限定する
+  - `ignore_as_noise`
+  - `continue_current_reply`
+  - `defer_output`
+  - `restart_with_new_input`
+  - `stop_speaking`
+- [ ] DTO は session 内部の生 dict ではなく、層間境界用モデルとして扱う
+- [ ] unit test で、空 transcript / 低音量 / stop word / 長い追い発話の基本分類契約を固定する
+
+**完了条件**:
+- 判定入力と出力が DTO と enum で表現され、文字列 ad-hoc 判定が session に散らばらない
+- `TomoroSession` は判定結果を受けて最終制御するだけで、worker の実装詳細に依存しない
+- `pytest -m unit tests/unit/test_turn_taking_judge.py` が通る
+
+### Phase 10.11.1: rule-first judge を hot path に入れる
+
+- [ ] まず LLM を使わない deterministic rule を実装する
+  - 空 transcript は `continue_current_reply`
+  - `No speech detected` 由来の空認識は `continue_current_reply`
+  - 低音量かつ短い segment は `ignore_as_noise` または `continue_current_reply`
+  - 明確な stop word は `stop_speaking`
+  - 明確な訂正・否定・長い新内容は `restart_with_new_input`
+- [ ] VAD `listening` だけでは reply をキャンセルしない方針を維持する
+- [ ] `defer_output` は、ユーザーが話し始めた可能性が高いが transcript が未確定の短い間だけ使う
+- [ ] 判定結果と elapsed ms を `logs/server-debug.log` と `logs/backend-trace.jsonl` で追えるようにする
+
+**完了条件**:
+- 低音量/空 STT で pending reply が消えない
+- 明確な stop / restart は rule だけで 1 frame 相当に近い低遅延で効く
+- 判定理由がログで説明できる
+- `pytest -m unit tests/unit/test_streaming_tts_pipeline.py tests/unit/test_barge_in.py tests/unit/test_turn_taking_judge.py` が通る
+
+### Phase 10.11.2: local small LLM worker を追加する
+
+- [ ] `background-process/run_turn_taking_worker.py` を追加する
+- [ ] worker は Tomoko 本体とは別プロセスで常駐し、E2B または E4B 相当の小さい local MLX model をロードする
+- [ ] worker は会話生成文を作らず、固定 enum JSON だけを返す
+- [ ] worker 呼び出しは 100〜200ms timeout を持つ
+- [ ] timeout / worker unavailable / parse error は rule fallback に戻す
+- [ ] 会話 26B backend と worker の queue は共有しない
+- [ ] worker の model / prompt / timeout は最小限の固定値から始め、config 増殖を避ける
+
+**完了条件**:
+- `make turn-taking-worker` で worker を起動できる
+- `make turn-taking-worker-once` で sample 判定を 1 回実行できる
+- worker が遅い/落ちている時でも、Tomoko 本体は rule fallback で会話を継続できる
+- `logs/backend-trace.jsonl` で turn-taking judge の wait / total / timeout が見える
+- `pytest -m unit tests/unit/test_turn_taking_worker_client.py` が通る
+
+### Phase 10.11.3: TomoroSession と worker 判定を接続する
+
+- [ ] `TomoroSession` は確定 transcript を受け取った時に `TurnTakingJudge` を呼び、結果に応じて control command を実行する
+- [ ] `ignore_as_noise` / `continue_current_reply` は既存 reply を維持する
+- [ ] `defer_output` は短い上限付きで reply output を遅らせ、未確定発話と衝突しにくくする
+- [ ] `restart_with_new_input` は既存 reply を `cancelled` または `interrupted` として扱い、新 transcript で reply を作り直す
+- [ ] `stop_speaking` は playback stop と stop-intent observation に接続する
+- [ ] 判断結果は `TomoroSession` の state transition / command log に残す
+- [ ] worker 判定が外れても conversation log の原本は壊さない
+
+**完了条件**:
+- LLM 推論直後の空 STT で Tomoko の reply が消えない
+- ユーザーが本当に話し足した時は、古い reply を止めて新しい入力へ自然に移れる
+- stop word は会話生成 worker を待たずに止まる
+- `TomoroSession` が final control owner である構造を崩さない
+- `pytest -m unit` が通る
+
+### Phase 10.11.4: 実ブラウザ評価と tuning
+
+- [ ] `make server-debug` と `make turn-taking-worker` を別 terminal で起動する
+- [ ] 実ブラウザで次を試す
+  - LLM 推論直後に黙って待つ
+  - LLM 推論中に短い相槌を入れる
+  - LLM 推論中に「いや違う」と訂正する
+  - Tomoko 再生中に「待って」「ストップ」と言う
+- [ ] 各ケースで `turn_taking_decision` / `reply_start` / `first_reply_text` / `first_audio_chunk` / `playback_started` を時系列確認する
+- [ ] 誤判定は rule / worker / timeout / STT のどこが原因か分けて LOG に残す
+- [ ] 確定した tuning 判断を MEMORY に追記する
+
+**完了条件**:
+- 空 STT / ノイズ / 息で reply が消えない
+- 本当の追い発話では reply が自然に差し替わる
+- stop intent は速く効く
+- worker が落ちても hot path は破綻しない
+- `pytest -m unit` が通る
+
+### Phase 10.11 全体の完了条件
+
+- turn-taking の go/cancel 判定が VAD state だけに依存しない
+- LM Studio の会話生成 queue と turn-taking judge queue が分離される
+- local small LLM worker は補助判定であり、最終 gate は `TomoroSession` が持つ
+- 低遅延 rule fallback があり、worker の timeout / error で会話 runtime が落ちない
+- `make turn-taking-worker` / `make turn-taking-worker-once` が存在する
+- `pytest -m unit` が通る
