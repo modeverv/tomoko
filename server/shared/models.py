@@ -1411,6 +1411,7 @@ class ContextBuildPolicy:
     allow_turn_memory_search: bool
     allow_persona_slice: bool
     max_parallel_sources: int = 6
+    prioritize_session_summaries: bool = True
 
     @classmethod
     def for_depth(cls, depth: ContextDepth) -> ContextBuildPolicy:
@@ -1487,6 +1488,7 @@ class ContextBuildTrace:
     stage_timings_ms: dict[str, float]
     cache_hits: dict[str, bool]
     source_errors: dict[str, str]
+    skipped_reasons: dict[str, str] = field(default_factory=dict)
     cache_entries: dict[str, ContextCacheTrace] = field(default_factory=dict)
 
 

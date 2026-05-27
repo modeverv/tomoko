@@ -6,6 +6,7 @@ import logging
 import time
 from collections.abc import Callable
 from contextlib import suppress
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -34,7 +35,7 @@ from server.gateway.stop_intent import (
     should_record_stop_intent_candidate,
 )
 from server.gateway.thinking.base import ThinkingMode
-from server.gateway.thinking.selector import should_use_deep_memory
+from server.gateway.thinking.selector import has_deep_memory_cue, should_use_deep_memory
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.gateway.turn_taking.judge import RuleFirstTurnTakingJudge, TurnTakingJudge
 from server.shared.candidate import ArrivalCandidate, UtteranceCandidate
@@ -1234,8 +1235,13 @@ class TomoroSession:
             self._elapsed_since_speech_end_ms(),
         )
         thinking_mode = self.thinking_mode
+        explicit_memory_cue = has_deep_memory_cue(transcript.text)
         depth = "deep" if should_use_deep_memory(transcript.text) else "fast"
-        context_snapshot = await self._build_context_snapshot(transcript, depth=depth)
+        context_snapshot = await self._build_context_snapshot(
+            transcript,
+            depth=depth,
+            explicit_memory_cue=explicit_memory_cue,
+        )
         recent_turns = self._recent_turns_with_precomputed_topic(
             context_snapshot.recent_turns
         )
@@ -1782,8 +1788,11 @@ class TomoroSession:
         transcript: Transcript,
         *,
         depth: ContextDepth,
+        explicit_memory_cue: bool = False,
     ) -> TomokoContextSnapshot:
         policy = ContextBuildPolicy.for_depth(depth)
+        if depth == "deep" and explicit_memory_cue:
+            policy = replace(policy, max_build_ms=300)
         builder = self.context_snapshot_builder or ContextSnapshotBuilder(
             conversation_log_reader=self.conversation_log_writer,
             embedding_backend=self.embedding_backend,

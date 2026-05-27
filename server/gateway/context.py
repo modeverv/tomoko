@@ -43,6 +43,7 @@ class ContextSnapshotBuilder:
         "recent_turns": 3000,
         "session_summaries": 10000,
         "memory_hits": 5000,
+        "query_embedding": 5000,
         "lexicon_terms": 30000,
         "persona_slice": 10000,
     }
@@ -83,10 +84,33 @@ class ContextSnapshotBuilder:
         stage_timings_ms: dict[str, float] = {}
         source_errors: dict[str, str] = {}
         skipped_sources: list[str] = []
+        skipped_reasons: dict[str, str] = {}
         cache_entries: dict[str, ContextCacheTrace] = {}
         source_semaphore = asyncio.Semaphore(max(1, policy.max_parallel_sources))
 
         tasks: dict[str, asyncio.Task[Any]] = {}
+        query_embedding_task: asyncio.Task[list[float]] | None = None
+
+        def get_query_embedding_task() -> asyncio.Task[list[float]]:
+            nonlocal query_embedding_task
+            if query_embedding_task is None:
+                assert self.embedding_backend is not None
+                query_embedding_task = asyncio.create_task(
+                    self._timed_unbounded(
+                        "query_embedding",
+                        stage_timings_ms,
+                        source_errors,
+                        lambda: self._cached_source(
+                            source="query_embedding",
+                            key=("query_embedding", text),
+                            cache_entries=cache_entries,
+                            loader=lambda: self.embedding_backend.embed_query(text),
+                        ),
+                    )
+                )
+            return query_embedding_task
+
+        session_summary_task: asyncio.Task[Any] | None = None
         if self.conversation_log_reader is not None:
             read_session_turns = getattr(
                 self.conversation_log_reader,
@@ -143,7 +167,7 @@ class ContextSnapshotBuilder:
             and self.embedding_backend is not None
             and self.session_summary_store is not None
         ):
-            tasks["session_summaries"] = asyncio.create_task(
+            session_summary_task = asyncio.create_task(
                 self._timed(
                     "session_summaries",
                     stage_timings_ms,
@@ -154,13 +178,15 @@ class ContextSnapshotBuilder:
                         key=("session_summaries", text, policy.max_session_summaries),
                         cache_entries=cache_entries,
                         loader=lambda: self._search_session_summaries(
-                            text, policy.max_session_summaries
+                            get_query_embedding_task(), policy.max_session_summaries
                         ),
                     ),
                 )
             )
+            tasks["session_summaries"] = session_summary_task
         elif policy.max_session_summaries > 0:
             skipped_sources.append("session_summaries")
+            skipped_reasons["session_summaries"] = "missing_embedding_or_store"
 
         if (
             policy.allow_turn_memory_search
@@ -179,13 +205,18 @@ class ContextSnapshotBuilder:
                         key=("memory_hits", text, policy.max_memory_hits),
                         cache_entries=cache_entries,
                         loader=lambda: self._search_memory_hits(
-                            text, policy.max_memory_hits
+                            get_query_embedding_task(),
+                            policy.max_memory_hits,
+                            wait_for=session_summary_task
+                            if policy.prioritize_session_summaries
+                            else None,
                         ),
                     ),
                 )
             )
         elif policy.allow_turn_memory_search and policy.max_memory_hits > 0:
             skipped_sources.append("memory_hits")
+            skipped_reasons["memory_hits"] = "missing_embedding_or_store"
 
         if policy.allow_persona_slice and self.persona_store is not None:
             tasks["lexicon_terms"] = asyncio.create_task(
@@ -220,8 +251,10 @@ class ContextSnapshotBuilder:
             )
         elif policy.allow_persona_slice:
             skipped_sources.append("persona_slice")
+            skipped_reasons["persona_slice"] = "missing_persona_store"
             if policy.max_lexicon_terms > 0:
                 skipped_sources.append("lexicon_terms")
+                skipped_reasons["lexicon_terms"] = "missing_persona_store"
 
         if tasks:
             done, pending = await asyncio.wait(
@@ -236,6 +269,11 @@ class ContextSnapshotBuilder:
         for source, task in tasks.items():
             if task in pending:
                 skipped_sources.append(source)
+                skipped_reasons[source] = "timed_out"
+        if query_embedding_task is not None and not query_embedding_task.done():
+            query_embedding_task.cancel()
+            skipped_sources.append("query_embedding")
+            skipped_reasons["query_embedding"] = "timed_out"
         results = {
             source: task.result()
             for source, task in tasks.items()
@@ -275,12 +313,14 @@ class ContextSnapshotBuilder:
                 source: entry.hit for source, entry in cache_entries.items()
             },
             source_errors=source_errors,
+            skipped_reasons=skipped_reasons,
             cache_entries=cache_entries,
         )
         logger.info(
             "ContextSnapshotBuilder depth=%s elapsed_ms=%.1f budget_ms=%s "
             "timed_out=%s recent_turns=%s session_summaries=%s memory_hits=%s "
-            "lexicon_terms=%s max_parallel_sources=%s cache_hits=%s",
+            "lexicon_terms=%s max_parallel_sources=%s cache_hits=%s "
+            "stage_timings_ms=%s skipped_reasons=%s source_errors=%s",
             policy.depth,
             elapsed_ms,
             policy.max_build_ms,
@@ -291,6 +331,9 @@ class ContextSnapshotBuilder:
             source_counts["lexicon_terms"],
             policy.max_parallel_sources,
             trace.cache_hits,
+            trace.stage_timings_ms,
+            trace.skipped_reasons,
+            trace.source_errors,
         )
         return TomokoContextSnapshot(
             depth=policy.depth,
@@ -360,23 +403,48 @@ class ContextSnapshotBuilder:
         finally:
             stage_timings_ms[source] = (time.perf_counter() - started_at) * 1000
 
+    async def _timed_unbounded(
+        self,
+        source: str,
+        stage_timings_ms: dict[str, float],
+        source_errors: dict[str, str],
+        awaitable_factory: Callable[[], Awaitable[Any]],
+    ) -> Any:
+        started_at = time.perf_counter()
+        try:
+            awaitable = awaitable_factory()
+            return await awaitable
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            source_errors[source] = str(exc)
+            return []
+        finally:
+            stage_timings_ms[source] = (time.perf_counter() - started_at) * 1000
+
     async def _search_session_summaries(
         self,
-        text: str,
+        embedding_task: asyncio.Task[list[float]],
         limit: int,
     ) -> list[SessionSummaryHit]:
-        assert self.embedding_backend is not None
         assert self.session_summary_store is not None
-        embedding = await self.embedding_backend.embed_query(text)
+        embedding = await embedding_task
         return await self.session_summary_store.search_similar_summaries(
             embedding=embedding,
             limit=limit,
         )
 
-    async def _search_memory_hits(self, text: str, limit: int) -> list[MemoryHit]:
-        assert self.embedding_backend is not None
+    async def _search_memory_hits(
+        self,
+        embedding_task: asyncio.Task[list[float]],
+        limit: int,
+        *,
+        wait_for: asyncio.Task[Any] | None = None,
+    ) -> list[MemoryHit]:
         assert self.memory_store is not None
-        embedding = await self.embedding_backend.embed_query(text)
+        if wait_for is not None:
+            await asyncio.shield(wait_for)
+        embedding = await embedding_task
         return await self.memory_store.search_similar(embedding=embedding, limit=limit)
 
     async def _read_lexicon_terms(self, text: str, limit: int) -> list[LexiconTerm]:

@@ -253,11 +253,113 @@
 - `make server-debug` の実ブラウザ確認で、発話途中の分割返答が減ったか確認する
 - WhisperKit serve 切り替え後の mactop ANE/CPU/GPU の見え方を実機で確認する
 
+## 2026-05-27 セッション14
+
+### やること（開始時に書く）
+- ARCHITECTURE.md / PLAN.md / LOG.md / MEMORY.md を参照し、Tomoko の進捗・判断・実装の流れを読み物としてまとめる
+- レポート兼記録として読める同人誌っぽい HTML を `work/` 配下に生成する
+- 既存の計画・判断ファイルは source of truth として変更せず、今回の成果物は artifact として隔離する
+
+### やったこと
+- `work/tomoko-progress-doujin-report-20260527.html` を追加した
+- README / ARCHITECTURE / PLAN / LOG / MEMORY と `_reference/` の旧 Unity / REST 実装を踏まえ、Tomoko の進捗・判断・実装を制作記録風の章立てでまとめた
+- M1 音声経路、M2 記憶構造、TomoroSession の stateful control core、自発発話、backend trace、turn-taking judge までを読み物として整理した
+
+### 詰まったこと・解決したこと
+- `work/` は git 管理外 artifact なので `git status` には HTML が出ない
+  - 解決: 成果物パスを LOG と最終報告で明示する
+
+### 検証
+- `wc -l work/tomoko-progress-doujin-report-20260527.html`
+  - 865 lines
+- `rg -n "<h1>|Chapter 10|参照したローカル文書|Tomoko 制作記録" work/tomoko-progress-doujin-report-20260527.html`
+  - title / h1 / Chapter 10 / appendix heading を確認
+- `git diff --check -- LOG.md`
+  - pass
+
+### 次のセッションでやること
+- 実装作業に戻る場合は Phase 10.10.4 / Phase 10.11.4 の実ブラウザ評価から再開する
+
 # LOG.md
 
 実装セッションの時系列ログ。セッションをまたいだ引き継ぎのために書く。
 
 ---
+
+## 2026-05-28 セッション1
+
+### やること（開始時に書く）
+- README.md の古い構成・開発状況・default backend 記述を、現行の Tomoko 実装状態に合わせて全体更新する
+- ユーザー指示により md ファイルの通常更新制限は一時解除されているため、README.md は追記ではなく本文を整理し直す
+- 既存の AGENTS / MEMORY / LOG / PLAN / ARCHITECTURE / _reference の判断から外れないようにする
+
+### やったこと
+- README.md を現行 runtime の入口として全面更新した
+- 古い「M1 実装中 / M2 未着手」前提を、M1/M2 実装済み、M3 実装中、M4 一部実装という状態へ修正した
+- default backend を `config/central_realtime.toml` に合わせて更新した
+  - 会話 LLM: `lmstudio_gemma4_26b_a4b`
+  - fallback: `local_gemma4_e2b_mlx`
+  - STT: `local_apple_speech_ja`
+  - TTS: `voicevox_tsumugi`
+  - embedding: `local_bge_m3`
+- `TomoroSession` / `ContextSnapshotBuilder` / `InferenceRouter` / background worker / PostgreSQL tables / debug logs の現在形を README に整理した
+- よく使う Makefile command、background worker command、test command、外部観察 pipeline、`_reference/` の意味を更新した
+
+### 詰まったこと・解決したこと
+- README の既存記述には Gemma E4B や MLX Whisper small など、現行 config とズレた記述が残っていた
+  - 解決: `config/central_realtime.toml` と Makefile を現物確認し、README 側を合わせた
+- 通常の markdown 追記制限は、今回のユーザー指示により一時解除として扱った
+
+### 検証
+- `git diff --check -- README.md LOG.md`
+  - pass
+- `rg -n "M1 \\| 話せるTomoko \\|.*実装中|M2 \\| 記憶があるTomoko \\| 未着手|Gemma 4 E4B|MLX Whisper small|logs/server\\.log|🚧|未着手" README.md`
+  - M5 の未着手記述のみ残存
+- `make test-unit`
+  - 359 passed, 17 deselected
+
+### 次のセッションでやること
+- README の運用導線をさらに詰めるなら、`make server-debug` 起動前に必要な LM Studio / VOICEVOX / Apple Speech 権限チェックを短い troubleshooting として追加する
+
+## 2026-05-27 セッション15
+
+### やること（開始時に書く）
+- 明示的な記憶想起発話で deep context が 100ms timeout し、長期記憶が空になる問題を修正する
+- ContextSnapshotBuilder 内で query embedding を共有し、session summary search と turn memory search の二重 embedding を避ける
+- session summary を turn memory より優先し、明示的想起時の context budget を現実的な値へ上げる
+- source 別 timing / skipped reason / cache / source error がログから追えるようにする
+
+### やったこと
+- `ContextSnapshotBuilder` で query embedding を build 単位に共有し、session summary search と turn memory search が同じ `embed_query()` 結果を使うようにした
+- `query_embedding` を context trace / cache trace / stage timing の独立 source として記録するようにした
+- `prioritize_session_summaries=True` を `ContextBuildPolicy` に追加し、turn memory search は session summary search 完了後に走るようにした
+- `ContextBuildTrace` に `skipped_reasons` を追加し、timeout / missing store などの理由をログで読めるようにした
+- `ContextSnapshotBuilder` の info log に `stage_timings_ms` / `skipped_reasons` / `source_errors` を出すようにした
+- 明示的な記憶 cue（`この前` / `覚えてる` / `話してた` など）で deep に入った時だけ、context budget を 300ms に上げるようにした
+- 通常の長文 deep は従来どおり `ContextBuildPolicy.for_depth("deep")` の 100ms budget を維持した
+
+### 詰まったこと・解決したこと
+- SQL 自体は実測で 1ms 前後だったため、budget 問題の主因は DB ではなく query embedding 生成と二重実行だった
+  - 解決: 同一 build 内の query embedding を共有し、source timing と skipped reason をログ化した
+- `memory_hits` と `session_summaries` を完全並列にすると、summary が間に合わないまま両方 timeout しやすい
+  - 解決: 明示的な想起ではまず session summary を優先し、turn memory は補助に回す方針を code contract にした
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase88_context_snapshot.py -q`
+  - 10 passed
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase8_memory.py tests/unit/test_phase88_context_snapshot.py -q`
+  - 16 passed
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase105_session_runtime.py tests/unit/test_phase10_session_contract.py tests/unit/test_phase4_thinking.py tests/unit/test_phase88_context_snapshot.py -q`
+  - 46 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 359 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- `make server-debug` の実ブラウザで「この前話していたAIの話って覚えてる？」を再試行し、`ContextSnapshotBuilder` log の `query_embedding` / `session_summaries` / `memory_hits` timings と hit counts を確認する
 
 ## 2026-05-27 セッション1
 

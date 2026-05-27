@@ -1,205 +1,313 @@
 # Tomoko
 
-ローカル推論で動く音声対話型の人格シミュレーション。
+ローカル推論で動く、記憶と人格を持つ一人用の音声対話システムです。
 
-## これは何か
+Tomoko はブラウザのマイク入力を 1 本の WebSocket で受け取り、VAD / STT / 会話生成 / TTS /
+再生制御をすべてサーバー側の状態機械に集約して、声で返答します。会話ログ、会話セッション、
+要約、人格 snapshot、自発発話候補、外部観察の解釈は PostgreSQL に保存されます。
 
-Tomoko（トモコ）は、ブラウザのマイクに向かって話すと声で返事をしてくれる対話AIです。
-ただし普通のチャットボットとは違います。
+## 現在の位置づけ
 
-- **記憶を持つ** — 会話を PostgreSQL に蓄積し、関連する話題が来たら思い出として引き出す
-- **人格を持つ** — 基本性格プロンプトに加えて、会話を重ねるごとに少しずつ変化する
-- **感情を表現する** — 静止画の切り替えと声のトーン変化で今の気分を伝える
-- **自分から話しかけてくる** — 沈黙を破って自発的に話し始める
-- **日記を書く** — その日あったことを振り返り、言えなかったことも書き留める
-- **完全にローカルで動く** — LLM・STT・TTS すべて手元のマシンで推論する
+このリポジトリは、商品化されたチャットボットではなく、個人環境で「そこにいる感じ」を作るための
+実験的な runtime です。セットアップやモデル選定は重めですが、その代わり次の方針を優先しています。
 
-## 思想
+- 音声対話の体験品質を最優先する
+- 会話と記憶の source of truth をローカル PostgreSQL に置く
+- ブラウザは薄い入出力端末にし、状態判断をクライアントへ逃がさない
+- 会話 hot path は lean に保ち、重い解釈や要約は background worker へ逃がす
+- LLM / STT / TTS backend は `InferenceRouter` 経由で差し替え可能にする
+- 最終的な会話制御は `server/session.py` の `TomoroSession` に集約する
 
-- 一人用。商用ではない。レイテンシーと体験の質に全振りする
-- **「内面の時間が流れている存在」としての Tomoko を作る**
-- 話しかけなくてもそこにいる感
-- 音声データはエッジの外に出ない。家族の会話が外に流れない
-- クライアント（ブラウザ）はただの入出力装置。状態はサーバーが全部持つ
-- シンプルに保つ: ノード分散 + PostgreSQL、pub/sub なし
+詳細な設計判断は [ARCHITECTURE.md](ARCHITECTURE.md)、実装計画と未完了項目は [PLAN.md](PLAN.md)、
+セッションごとの作業履歴は [LOG.md](LOG.md)、確定判断と気づきは [MEMORY.md](MEMORY.md) を参照してください。
 
-## なぜ OSS か
+## できること
 
-企業製品では実現できない設計思想がここにあります。
+- ブラウザからマイク音声を float32 chunk として `/ws` に送る
+- Silero VAD で発話区間を検出する
+- STT backend を切り替えながら日本語音声を transcript 化する
+- wake word / attention mode / follow-up に応じて参加判断する
+- LM Studio / MLX / Ollama などの backend で会話返答を streaming 生成する
+- emotion 行を分離し、画面表示と立ち絵切り替えに使う
+- TTS chunk を WebSocket binary として返し、ブラウザで gapless に近い再生をする
+- playback telemetry と barge-in / stop-intent / turn-taking judge で割り込みを扱う
+- `conversation_sessions` と `conversation_logs` で会話のまとまりと原本を保存する
+- session summary / embedding / persona lexicon / persona state を background worker で更新する
+- thinker / journalist / world observation pipeline から自発発話候補や日記材料を作る
+- `logs/backend-trace.jsonl` で STT / LLM / TTS / embedding の queue wait と first chunk を切り分ける
 
+## 主要アーキテクチャ
+
+```text
+Browser
+  AudioWorklet
+  WebSocket /ws
+  playback telemetry
+        |
+        v
+server.edge.main
+  WebSocket adapter
+  VAD / STT / debug recording
+  JSON event and binary audio I/O
+        |
+        v
+TomoroSession
+  attention mode
+  conversation session lifecycle
+  playback / barge-in / stop-intent
+  initiative / arrival final gate
+  turn-taking final control
+        |
+        +--> ContextSnapshotBuilder
+        |      same session turns
+        |      session summaries
+        |      memory hits
+        |      lexicon / persona slices
+        |
+        +--> InferenceRouter
+               conversation LLM
+               STT / VAD / TTS / embedding
+               summary / candidate / diary roles
+
+PostgreSQL
+  ambient_logs
+  conversation_sessions
+  conversation_logs
+  conversation_embeddings
+  persona_lexicon_versions
+  persona_state_versions
+  utterance_candidates
+  arrival_candidates
+  diary
+  stop_intent_observations
+  world_observation_interpretations
+
+background-process/
+  summarize_pending_sessions.py
+  update_persona_snapshots.py
+  run_thinker.py
+  run_journalist.py
+  run_turn_taking_worker.py
+  ingest_world_observations.py
+  interpret_world_observations.py
 ```
-ambient_logs に全発話をローカルで保持する
-dismissed_at（言えなかったこと）から日記を書く
-arrival_candidates で入室前から一言を事前計算する
-utterance_candidates という内面のプールが常に流れている
-```
 
-セットアップが複雑すぎて商品にはなりません。
-また、プライバシー問題があるため、企業が提供するサービスとしても成立が困難です。
-でも**個人エンジニアが自分のために作るからこそできる設計**です。
-その設計思想をコードと ARCHITECTURE.md に残すことに意味があると考えています。
+設計上の制約として、新しい機能も原則 `/ws` の message type として増やします。REST endpoint を増やす前に
+必ず [ARCHITECTURE.md](ARCHITECTURE.md) を確認してください。
 
-## 構成
+## 現行 default backend
 
-```
-エッジ（各部屋）
-  VAD + STT + TTS（+ 軽量LLM）
-  音声データはここから外に出ない
+`config/central_realtime.toml` の現在の default は次の構成です。
 
-中央リアルタイムノード
-  TomoroSession（状態機械）
-  InferenceRouter（LLM選択・フォールバック）
-  DirectSpeakerResolver（回り込み除去）
+| 役割 | backend | 補足 |
+|---|---|---|
+| 会話 LLM | `lmstudio_gemma4_26b_a4b` | LM Studio OpenAI 互換 API の `gemma-4-26b-a4b-it-mlx` |
+| 会話 fallback | `local_gemma4_e2b_mlx` | MLX VLM の `mlx-community/gemma-4-e2b-it-4bit` |
+| STT | `local_apple_speech_ja` | Apple Speech 比較 lane。品質・失敗分類はまだ調整中 |
+| STT 比較候補 | `local_whisper_mlx_large_turbo_q4` | 実会話品質が良かった MLX Whisper lane |
+| STT 比較候補 | `local_whisperkit_serve_large_turbo_632m_cpu_ne` | WhisperKit turbo 632MB + CPU/ANE lane |
+| VAD | `silero_vad` | 16kHz / 32ms chunk / silence 800ms |
+| TTS | `voicevox_tsumugi` | 起動済み VOICEVOX Engine の春日部つむぎ speaker id 8 |
+| TTS 比較候補 | `kokoro_mlx` | first audio が速い local MLX TTS lane |
+| embedding | `local_bge_m3` | `BAAI/bge-m3` / 1024 dimensions |
 
-中央バックグラウンドノード
-  thinker（候補生成、常駐）
-  journalist（日記、定期）
+LM Studio は `http://192.168.11.66:1234` の OpenAI 互換 API を想定しています。
+別マシンや別ポートで動かす場合は `config/central_realtime.toml` の該当 backend URL を変更してください。
 
-PostgreSQL（全ノードが共有する唯一の真実）
-  conversation_logs / ambient_logs
-  utterance_candidates / arrival_candidates
-  diary / persona_state
-```
-
-詳細は `ARCHITECTURE.md` を参照。
+VOICEVOX を使う場合は、VOICEVOX Engine が `http://127.0.0.1:50021` で応答している必要があります。
+VOICEVOX を使わない比較では `tts_backend = "kokoro_mlx"` へ切り替えます。
 
 ## セットアップ
 
-### 必要なもの
+必要なもの:
 
+- Apple Silicon Mac 推奨
 - mise
-- Docker / Docker Compose（PostgreSQL 用）
-- Apple Silicon Mac 推奨（MLX 系 STT / TTS / fallback LLM を使うため）
-- LM Studio（現行 default の会話 LLM 用）
+- Docker / Docker Compose
+- LM Studio
+- VOICEVOX Engine
 
-`mise.toml` で Python 3.11 と uv を管理しているため、Python / uv は `mise` 経由で揃える。
-PostgreSQL は `make db-up` で Docker 上に起動する。
-
-現行の default 設定は次の構成：
-
-- 会話 LLM: LM Studio OpenAI 互換 API（`gemma-4-26b-a4b-it-mlx`）
-- 会話 LLM fallback: MLX VLM（`mlx-community/gemma-4-e2b-it-4bit`）
-- STT: MLX Whisper small
-- TTS: 起動済み VOICEVOX Engine（春日部つむぎ）
-- embedding: BGE-M3
-
-初回起動時は Whisper / Supertonic / Gemma / embedding モデルのダウンロードや warm-up に時間がかかる。
-LM Studio を使わずに動かす場合は `config/central_realtime.toml` の
-`conversation_backend` を `local_gemma4_e2b_mlx` などに変更する。
-
-### 手順
+初回セットアップ:
 
 ```bash
 make deps
 make db-up
 make download-models
-make server
 ```
 
-ブラウザで `http://localhost:8000` を開く。
-
-`make download-models` は MIT / Apache-2.0 などの permissive license のモデルだけを事前取得する。
-LFM や Supertonic のような custom / OpenRAIL 系モデルは、ライセンスを確認したうえで明示的に取得する。
+optional / custom license を含むモデルを明示的に取得する場合:
 
 ```bash
 make download-optional-models
 ```
 
-現在の `conversation_backend` は LM Studio の Gemma 4 E4B、`tts_backend` は `voicevox_tsumugi` なので、
-VOICEVOX アプリを起動し、Engine が `http://127.0.0.1:50021` で応答する状態にしておく。
-`voicevox_tsumugi` は通常の `/audio_query` / `/synthesis` を使う。
-`voicevox_tsumugi_stream` は比較用に残しているが、`/cancellable_synthesis` は first binary 到着を速めなかったため、
-普段の体感確認では通常 backend を使う。
-VOICEVOX を使わず custom license を避けたい場合は、`config/central_realtime.toml` の
-`conversation_backend` を `local_gemma4_e2b_mlx` に、`tts_backend` を `kokoro_mlx` に変更する。
+通常起動:
 
-LM Studio を使う場合は、`config/central_realtime.toml` の
-`[backends.lmstudio_gemma4_26b_a4b]` に書かれた URL で LM Studio の OpenAI 互換 API を起動し、
-`gemma-4-26b-a4b-it-mlx` をロードしておく。
-E4B は `lmstudio_gemma4_e4b` として残しているため、速度優先へ戻す場合は
-`conversation_backend` を戻すだけで比較できる。
+```bash
+make server
+```
 
-開発中にコード変更を自動反映したい場合は `make server-reload` を使う。
-サーバーログは `make server` / `make server-reload` を実行しているターミナルに出る。
-ファイルにも `logs/server.log` として出力される。
+ブラウザで開く:
 
-詳細なデバッグログをファイルに残したい場合は次を使う。
+```text
+http://127.0.0.1:8000
+```
+
+開発中の debug 起動:
 
 ```bash
 make server-debug
 ```
 
-`make server-debug` は DEBUG レベルで起動し、stdout/stderr も `logs/server-debug.log` に追記する。
+`make server-debug` は DEBUG ログを `logs/server-debug.log` に追記します。会話品質や遅延を調べるときは、
+まずこのファイルと `logs/backend-trace.jsonl` を見ます。
 
-### STT 負荷ベンチ
-
-Ctrl-C で止めるまで STT を生成し続ける負荷ベンチは次で実行する。
+## よく使うコマンド
 
 ```bash
-make soak-stt
+make deps                    # uv sync
+make db-up                   # PostgreSQL 起動
+make db-stop                 # PostgreSQL 停止
+make db-dump                 # logs/db-dumps/ に pg_dump
+make server                  # runtime 起動
+make server-reload           # reload 付き runtime
+make server-debug            # DEBUG ログ付き runtime
+make test-unit               # pytest -m unit
+make lint                    # ruff check .
+make check                   # lint + unit
+make bench-stt               # STT latency perf
+make soak-stt                # STT soak
+make soak-voice-stack        # STT/TTS/LLM 横負荷 soak
 ```
 
-結果は `logs/stt-soak.jsonl` に sample / error / summary として追記される。
-TTS や会話推論を横で走らせた状態の STT レイテンシーを見る場合は、次のように load backend を指定する。
+background 系:
 
 ```bash
-mise exec -- uv run python _tools/soak_stt_backends.py \
-  --backends local_whisper_mlx_small,local_whisperkit_serve_small \
-  --load-tts-backend supertonic_coreml_f1 \
-  --load-conversation-backend local_lfm25_12b_jp_mlx
-```
-
-MLX STT lane と CoreML STT lane を、Supertonic CoreML TTS + LFM MLX 会話推論の同じ横負荷で比べる場合は次を使う。
-
-```bash
-make soak-voice-stack
-```
-
-このベンチも Ctrl-C で止めるまで継続し、`logs/voice-stack-soak.jsonl` に結果を追記する。
-default は次の2シナリオを交互に測る。
-
-- `local_whisper_mlx_small` + `supertonic_coreml_f1` + `local_lfm25_12b_jp_mlx`
-- `local_whisperkit_serve_small` + `supertonic_coreml_f1` + `local_lfm25_12b_jp_mlx`
-
-default の横負荷は、各 STT 測定ごとに Supertonic TTS 2 回、LFM 会話推論 6 回を連続実行する。
-さらに詰める場合は repeats / workers を増やす。
-
-```bash
-mise exec -- uv run python _tools/soak_voice_stack_scenarios.py \
-  --load-conversation-repeats 12 \
-  --load-tts-repeats 4
+make session-summarizer      # pending conversation session を要約
+make persona-updater         # persona lexicon/state snapshot 更新
+make persona-seed-initial    # 初期 persona snapshot seed
+make thinker                 # 自発発話 candidate / arrival candidate 生成
+make thinker-once            # thinker を 1 回だけ実行
+make journalist              # diary worker
+make journalist-once         # diary worker を 1 回だけ実行
+make turn-taking-worker      # local turn-taking judge worker
+make turn-taking-worker-once # rule sample を 1 回実行
+make information-ingest-once # informations/work の raw markdown ingest
+make information-interpret   # world observation interpretation worker
 ```
 
 ## 開発状況
 
-実装はマイルストーンに沿って段階的に進める。詳細は `PLAN.md` を参照。
-
-| マイルストーン | 内容 | 状態 |
+| 領域 | 状態 | 補足 |
 |---|---|---|
-| M1 | 話せるTomoko | 🚧 実装中 |
-| M2 | 記憶があるTomoko | 未着手 |
-| M3 | 自分から話すTomoko | 未着手 |
-| M4 | インフラが安定したTomoko | 未着手 |
-| M5 | 家族のTomoko | 未着手 |
+| M1: 話せる Tomoko | 実装済み | `/ws`、VAD、STT、LLM streaming、emotion、TTS、ブラウザ再生 |
+| M2: 記憶がある Tomoko | 実装済み | conversation session、summary、embedding、persona JSONB snapshot、ContextSnapshotBuilder |
+| M3: 自分から話す Tomoko | 実装中 | candidate 生成と発話経路は成立。Phase 10.10/10.11 の実ブラウザ評価が残り |
+| M4: インフラ安定化 | 一部実装 | backend trace、edge split scaffold、stop-intent、turn-taking worker |
+| M5: 家族の Tomoko | 未着手 | 複数部屋・複数人の本格運用はまだ先 |
+
+直近の注力点:
+
+- Phase 10.10: 自発発話を「候補を読む」から「自然な会話の入口」へ調整する
+- Phase 10.11: VAD state だけで pending reply を捨てず、rule-first + local worker で turn-taking を判定する
+- 明示的な記憶想起では query embedding を共有し、session summary を優先して context build timeout を減らす
+- 実ブラウザ会話で `server-debug.log` と `backend-trace.jsonl` を見ながら STT / LLM / TTS / playback のどこが体験を支配しているかを分ける
+
+## データとログ
+
+重要な DB テーブル:
+
+- `ambient_logs`: 会話に参加しなかった観測発話
+- `conversation_sessions`: 会話のまとまり、summary、summary embedding
+- `conversation_logs`: user / tomoko の原本 turn
+- `conversation_embeddings`: turn-level embedding
+- `persona_lexicon_versions`: 用語集・関係性 marker の versioned JSONB snapshot
+- `persona_state_versions`: 人格状態の versioned JSONB snapshot
+- `utterance_candidates`: Tomoko が自分から話す候補
+- `arrival_candidates`: 入室・接続時の一言候補
+- `stop_intent_observations`: stop / interrupt の観測
+- `world_observation_interpretations`: 外部観察 Markdown から解釈した候補材料
+
+主なログ:
+
+- `logs/server-debug.log`: 状態遷移、transcript、reply、playback、candidate、turn-taking の人間向けログ
+- `logs/backend-trace.jsonl`: backend call の JSONL trace
+- `logs/thinker.log`: candidate generation
+- `logs/session-summarizer.log`: session summary worker
+- `logs/persona-updater.log`: persona snapshot worker
+- `logs/journalist.log`: diary worker
+- `logs/turn-taking-worker.log`: turn-taking worker
+- `logs/world-observations.log`: external observation ingest / interpretation
+
+`backend-trace.jsonl` は次のように抽出できます。
+
+```bash
+jq 'select(.trace=="tomoko_backend_call" and .role=="conversation")' logs/backend-trace.jsonl
+jq 'select(.trace=="tomoko_backend_call" and .kind=="tts")' logs/backend-trace.jsonl
+jq 'select(.trace=="tomoko_backend_call" and .kind=="stt")' logs/backend-trace.jsonl
+```
+
+## テスト
+
+unit test は常に通す前提です。
+
+```bash
+make test-unit
+make lint
+make check
+```
+
+個別に見ることが多いテスト:
+
+```bash
+.venv/bin/python -m pytest -m unit tests/unit/test_phase88_context_snapshot.py -q
+.venv/bin/python -m pytest -m unit tests/unit/test_phase105_session_runtime.py -q
+.venv/bin/python -m pytest -m unit tests/unit/test_phase106_initiative_policy.py -q
+.venv/bin/python -m pytest -m unit tests/unit/test_turn_taking_judge.py -q
+.venv/bin/python -m pytest -m unit tests/unit/test_turn_taking_worker_client.py -q
+```
+
+perf / integration はローカル middleware や実モデルに依存します。
+
+```bash
+.venv/bin/python -m pytest -m integration
+.venv/bin/python -m pytest -m perf --tb=short
+```
+
+## 外部観察 pipeline
+
+`informations/work` に置いた raw Markdown は、直接会話 prompt へ流しません。
+Phase 18 では次の境界を守ります。
+
+```text
+raw Markdown artifact
+  -> validator / normalizer
+  -> world_observation_interpretations
+  -> thinker / journalist consumption
+```
+
+raw artifact は source of truth ではなく、DB に保存された validated interpretation を runtime が参照します。
 
 ## _reference/ について
 
-過去の実装経験から得た参考コードを置いている。
-今回の設計が「何を解決しようとしているか」を理解するための資料。
+`_reference/` は過去実装の経験を残す場所です。現在の実装へそのまま取り込むためのコードではありません。
 
-- `_reference/unity/MyAIRoomScript.cs` — 音量閾値VAD・OGGエンコード・REST一括APIの旧実装
-- `_reference/server/api.py` — OGG→MP3変換・Base64・REST一括返却の旧サーバー実装
+- `_reference/unity/MyAIRoomScript.cs`: Unity 版の音量閾値 VAD、録音状態、OGG 送信、分散した状態 flag
+- `_reference/server/api.py`: Base64 / OGG to MP3 / REST 一括返却の旧サーバー
 
-今回はこれらの「逆」を実装する。
+Tomoko の現行設計は、これらで苦しかった点の逆をやっています。
+
+- 音声は float32 chunk として WebSocket で流す
+- REST の一括 API ではなく `/ws` streaming で扱う
+- クライアントに状態判断を置かず、`TomoroSession` に集約する
+- TTS / playback / barge-in / stop は turn id / chunk id / telemetry で扱う
 
 ## ライセンス
 
-MIT License — 著作権表示を残せば、商用利用を含め自由に使用・改変・再配布できます。
+Tomoko 本体のコードは MIT License です。モデル重み、VOICEVOX、外部ライブラリはそれぞれのライセンスに従います。
+モデル重みは repository に同梱せず、ユーザー操作で取得します。
 
-### モデルと依存ライブラリ
-
-Tomoko 本体のコードは MIT License だが、利用するモデル重みと外部ライブラリはそれぞれ別のライセンスに従う。
-モデル重みは repository に同梱せず、Hugging Face cache へユーザー操作で取得する。
+代表的な依存と注意点:
 
 - Whisper / WhisperKit / faster-whisper: MIT
 - Kokoro-82M: Apache-2.0
@@ -208,16 +316,12 @@ Tomoko 本体のコードは MIT License だが、利用するモデル重みと
 - Qwen / Gemma 系の現在の設定対象: Apache-2.0
 - LFM2.5: `lfm1.0` custom model license
 - Supertonic-3 CoreML: OpenRAIL-family license
-- VOICEVOX Engine: LGPL v3 / 別ライセンス。Tomoko は起動済み Engine へ HTTP で接続するだけで、
-  VOICEVOX 本体・音声ライブラリ・生成音声はそれぞれの利用規約に従う
+- VOICEVOX Engine: LGPL v3 / 別ライセンス。Tomoko は起動済み Engine へ HTTP で接続する
 - psycopg: LGPL-3.0-only dependency
-
-LGPL の psycopg は通常の Python dependency として import して使う範囲では Tomoko 本体の MIT License を
-LGPL に変えるものではない。ただし psycopg 自体を改変して再配布する場合や、配布物に wheel / binary を同梱する場合は、
-LGPL のライセンス文と該当 component の入手・差し替え可能性を保つ必要がある。
 
 Copyright (c) 2026 modeverv
 
-## Made with llm
+## Made with LLM
 
-this project is made with llm and worked through [llm orchestrator](https://github.com/modeverv/llm-orchestrator)
+This project is made with LLMs and worked through
+[llm-orchestrator](https://github.com/modeverv/llm-orchestrator).

@@ -78,6 +78,18 @@ class FakeEmbeddingBackend:
         return [0.4, 0.5, 0.6]
 
 
+class CountingEmbeddingBackend(FakeEmbeddingBackend):
+    def __init__(self, events: list[str] | None = None) -> None:
+        self.query_calls = 0
+        self.events = events
+
+    async def embed_query(self, text: str) -> list[float]:
+        self.query_calls += 1
+        if self.events is not None:
+            self.events.append("query_embedding")
+        return await super().embed_query(text)
+
+
 class FakeMemoryStore:
     async def search_similar(
         self,
@@ -131,6 +143,39 @@ class FakeSummaryStore:
                 similarity=0.94,
             )
         ]
+
+
+class OrderedSummaryStore(FakeSummaryStore):
+    def __init__(self, events: list[str]) -> None:
+        super().__init__()
+        self.events = events
+
+    async def search_similar_summaries(
+        self,
+        *,
+        embedding: list[float],
+        limit: int,
+    ) -> list[SessionSummaryHit]:
+        self.events.append("session_summaries")
+        return await super().search_similar_summaries(
+            embedding=embedding,
+            limit=limit,
+        )
+
+
+class OrderedMemoryStore(FakeMemoryStore):
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+
+    async def search_similar(
+        self,
+        *,
+        embedding: list[float],
+        limit: int,
+    ) -> list[MemoryHit]:
+        assert "session_summaries" in self.events
+        self.events.append("memory_hits")
+        return await super().search_similar(embedding=embedding, limit=limit)
 
 
 class FakePersonaStore:
@@ -245,6 +290,33 @@ async def test_deep_snapshot_reads_summaries_and_turn_memory() -> None:
     ]
     assert snapshot.trace.included_counts["session_summaries"] == 1
     assert snapshot.trace.included_counts["memory_hits"] == 1
+    assert snapshot.trace.stage_timings_ms["query_embedding"] >= 0
+
+
+@pytest.mark.unit
+async def test_deep_snapshot_shares_query_embedding_and_prioritizes_summary() -> None:
+    events: list[str] = []
+    embedding_backend = CountingEmbeddingBackend(events)
+    builder = ContextSnapshotBuilder(
+        conversation_log_reader=InMemoryConversationReader(),
+        embedding_backend=embedding_backend,  # type: ignore[arg-type]
+        memory_store=OrderedMemoryStore(events),  # type: ignore[arg-type]
+        session_summary_store=OrderedSummaryStore(events),  # type: ignore[arg-type]
+    )
+
+    snapshot = await builder.build(
+        text="トモコ、この前のカレー覚えてる？",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=ContextBuildPolicy.for_depth("deep"),
+    )
+
+    assert embedding_backend.query_calls == 1
+    assert events == ["query_embedding", "session_summaries", "memory_hits"]
+    assert snapshot.trace.cache_hits["query_embedding"] is False
+    assert snapshot.session_summaries
+    assert snapshot.memory_hits
 
 
 @pytest.mark.unit
@@ -298,6 +370,10 @@ async def test_timeout_returns_degraded_snapshot_with_trace() -> None:
     assert snapshot.recent_turns == []
     assert snapshot.trace.timed_out is True
     assert snapshot.trace.skipped_sources == ["recent_turns", "same_session_turns"]
+    assert snapshot.trace.skipped_reasons == {
+        "recent_turns": "timed_out",
+        "same_session_turns": "timed_out",
+    }
     assert snapshot.trace.cache_hits["recent_turns"] is False
     assert snapshot.trace.cache_entries["recent_turns"].age_ms is None
 
@@ -458,6 +534,37 @@ async def test_tomoro_session_passes_context_snapshot_to_thinking_input() -> Non
     assert thinking_input.context == [turn]
     assert thinking_input.context_snapshot is not None
     assert thinking_input.context_snapshot.recent_turns == [turn]
+
+
+@pytest.mark.unit
+async def test_tomoro_session_uses_larger_budget_for_explicit_memory_cue() -> None:
+    transcript = Transcript(
+        text="トモコ、この前話していたAIの話って覚えてる？",
+        device_id="local",
+        speaker=None,
+        audio_level_db=-20.0,
+        recorded_at=datetime(2026, 5, 24, 9, 1, tzinfo=UTC),
+        is_final=True,
+    )
+    mode = RecordingThinkingMode()
+    session = TomoroSession(
+        vad_processor=FakeVADProcessor(),  # type: ignore[arg-type]
+        send_event=lambda event: None,
+        router=FakeRouter(),  # type: ignore[arg-type]
+        thinking_mode=mode,
+        context_snapshot_builder=ContextSnapshotBuilder(
+            conversation_log_reader=InMemoryConversationReader()
+        ),
+    )
+
+    await session._reply_to(transcript)
+    await session._wait_for_reply_task()
+
+    assert mode.inputs
+    snapshot = mode.inputs[0].context_snapshot
+    assert snapshot is not None
+    assert snapshot.depth == "deep"
+    assert snapshot.trace.budget_ms == 300
 
 
 class FakeVADProcessor:
