@@ -23,14 +23,15 @@ button {
   display: grid;
   min-height: 100svh;
   place-items: center;
-  padding: 24px;
+  padding: 16px;
 }
 
 .panel {
   display: grid;
   width: min(100%, 440px);
-  gap: 24px;
-  padding: 28px;
+  max-height: calc(100svh - 32px);
+  gap: 14px;
+  padding: 18px;
   border: 1px solid #d8d0c5;
   border-radius: 8px;
   background: #fffdf8;
@@ -39,15 +40,15 @@ button {
 
 .identity {
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
+  grid-template-columns: 88px minmax(0, 1fr);
   align-items: center;
   gap: 16px;
 }
 
 .portrait {
   display: grid;
-  width: 112px;
-  height: 132px;
+  width: 88px;
+  height: 104px;
   place-items: center;
   overflow: hidden;
   border: 1px solid #d8d0c5;
@@ -64,7 +65,7 @@ button {
 
 h1 {
   margin: 0;
-  font-size: 34px;
+  font-size: 30px;
   line-height: 1.05;
 }
 
@@ -75,14 +76,15 @@ p {
 
 .meters {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .meters div {
   display: grid;
-  gap: 6px;
-  padding: 14px;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px;
   border: 1px solid #e3ded6;
   border-radius: 8px;
   background: #f6f0e7;
@@ -90,29 +92,29 @@ p {
 
 .meters span {
   color: #67717b;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .meters strong {
   overflow-wrap: anywhere;
-  font-size: 18px;
+  font-size: 14px;
 }
 
 .controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .debug-controls {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .controls button,
 .debug-controls button {
-  min-height: 44px;
+  min-height: 36px;
   border: 1px solid #1f4d55;
   border-radius: 8px;
   background: #315f68;
@@ -131,10 +133,12 @@ p {
 .read-prompt,
 .debug-result,
 .candidate-result,
+.transcript-log,
 .reply-container {
   display: grid;
   gap: 6px;
-  padding: 14px;
+  min-height: 0;
+  padding: 10px;
   border: 1px solid #e3ded6;
   border-radius: 8px;
   background: #fbf7ef;
@@ -142,7 +146,8 @@ p {
 
 .read-prompt span,
 .debug-result span,
-.candidate-result span {
+.candidate-result span,
+.transcript-log > span {
   color: #67717b;
   font-size: 13px;
 }
@@ -153,6 +158,71 @@ p {
 .reply-container p {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.read-prompt p,
+.debug-result p,
+.candidate-result p {
+  display: -webkit-box;
+  max-height: 2.8em;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.transcript-log {
+  height: 132px;
+}
+
+.transcript-log-entries {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.transcript-entry {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px;
+  border-left: 3px solid #8b949e;
+  background: rgb(255 255 255 / 52%);
+}
+
+.transcript-entry[data-mode="called"],
+.transcript-entry[data-mode="invited"] {
+  border-left-color: #2f7d62;
+}
+
+.transcript-entry[data-mode="withdraw"] {
+  border-left-color: #9a4b50;
+}
+
+.transcript-entry span {
+  color: #67717b;
+  font-size: 11px;
+}
+
+.transcript-entry p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.reply-container {
+  min-height: 72px;
+}
+
+.reply-container p {
+  display: -webkit-box;
+  max-height: 4.4em;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -179,9 +249,14 @@ p {
   .read-prompt,
   .debug-result,
   .candidate-result,
+  .transcript-log,
   .reply-container {
     border-color: #353b42;
     background: #1d2126;
+  }
+
+  .transcript-entry {
+    background: rgb(255 255 255 / 5%);
   }
 
   .portrait {
@@ -191,12 +266,30 @@ p {
 }
 
 @media (width < 420px) {
+  .app-shell {
+    padding: 10px;
+  }
+
+  .panel {
+    max-height: calc(100svh - 20px);
+    gap: 10px;
+    padding: 12px;
+  }
+
   .identity {
-    grid-template-columns: 88px minmax(0, 1fr);
+    grid-template-columns: 72px minmax(0, 1fr);
   }
 
   .portrait {
-    width: 88px;
-    height: 104px;
+    width: 72px;
+    height: 86px;
+  }
+
+  .meters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  h1 {
+    font-size: 26px;
   }
 }

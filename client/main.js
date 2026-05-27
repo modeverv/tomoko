@@ -14,6 +14,7 @@ const tomokoImageEl = document.querySelector("#tomoko-image");
 const readPromptTextEl = document.querySelector("#read-prompt-text");
 const debugResultTextEl = document.querySelector("#debug-result-text");
 const candidateResultTextEl = document.querySelector("#candidate-result-text");
+const transcriptLogEntriesEl = document.querySelector("#transcript-log-entries");
 
 let audioContext = null;
 let micStream = null;
@@ -29,6 +30,7 @@ let nextPlaybackChunkId = 1;
 let recordingTimer = null;
 let activeDebugRecording = null;
 let readPromptIndex = 0;
+const MAX_TRANSCRIPT_LOG_ENTRIES = 8;
 
 const READ_PROMPTS = [
   "正直ログを見ながら喋る感じ、ウィスパーがまともに拾えている感じが全くないのですが。",
@@ -101,10 +103,40 @@ function shortId(value) {
   return String(value).slice(0, 8);
 }
 
+function appendTranscriptEntry(event) {
+  const entry = document.createElement("div");
+  entry.className = "transcript-entry";
+  entry.dataset.mode = event.participation_mode || "observer";
+
+  const meta = document.createElement("span");
+  const parts = [
+    event.attention_mode || "ambient",
+    event.participation_mode || "observer",
+  ];
+  if (event.conversation_session_id) {
+    parts.push(`session=${shortId(event.conversation_session_id)}`);
+  }
+  meta.textContent = parts.join(" / ");
+
+  const text = document.createElement("p");
+  text.textContent = event.text || "";
+
+  entry.append(meta, text);
+  transcriptLogEntriesEl.prepend(entry);
+
+  while (transcriptLogEntriesEl.children.length > MAX_TRANSCRIPT_LOG_ENTRIES) {
+    transcriptLogEntriesEl.lastElementChild.remove();
+  }
+}
+
 function handleJsonEvent(data) {
   const event = JSON.parse(data);
   if (CANDIDATE_EVENT_TYPES.has(event.type)) {
     candidateResultTextEl.textContent = formatCandidateEvent(event);
+  }
+  if (event.type === "transcript_final") {
+    appendTranscriptEntry(event);
+    return;
   }
   if (event.type === "debug_recording_started") {
     activeDebugRecording = event.recording_id;

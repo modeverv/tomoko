@@ -33,16 +33,21 @@ THINKER_CANDIDATE_INTERVAL_SEC ?= 60
 THINKER_ARRIVAL_INTERVAL_SEC ?= 180
 JOURNALIST_INTERVAL_SEC ?= 3600
 JOURNALIST_DATE ?=
+SCREEN_SESSION ?= tomoko-runtime
+SCREEN_SHELL ?= zsh
 
-.PHONY: deps download-models download-optional-models server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
+.PHONY: deps prepare download-models download-optional-models server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
 .PHONY: session-summarizer session-summarizer-once
 .PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
 .PHONY: information-ingest-once information-ingest-dry-run information-interpret-once information-interpret
-.PHONY: background-once background-watch background-dry-run
+.PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list
 .PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack lint check
 
 deps:
 	mise exec -- uv sync
+
+prepare:
+	mise exec -- uv run python _tools/prepare_runtime.py --config $(CENTRAL_CONFIG)
 
 download-models:
 	mise exec -- uv run python _tools/download_models.py
@@ -164,10 +169,41 @@ background-watch:
 	@echo "  make persona-updater"
 	@echo "  make thinker"
 	@echo "  make journalist"
+	@echo "  make turn-taking-worker"
 	@echo "  make information-interpret"
 
 background-dry-run:
 	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once persona-seed-initial persona-updater persona-updater-once information-ingest-dry-run information-ingest-once information-interpret-once information-interpret thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
+
+screen-runtime:
+	@command -v screen >/dev/null || { echo "screen is required"; exit 1; }
+	@mkdir -p logs
+	@if screen -list | grep -q "[.]$(SCREEN_SESSION)[[:space:]]"; then \
+		echo "screen session already exists: $(SCREEN_SESSION)"; \
+		echo "attach with: make screen-attach"; \
+		exit 1; \
+	fi
+	screen -dmS $(SCREEN_SESSION) -t server $(SCREEN_SHELL) -lc 'cd "$(CURDIR)" && exec make server-debug'
+	screen -S $(SCREEN_SESSION) -X screen -t turn-taking $(SCREEN_SHELL) -lc 'cd "$(CURDIR)" && exec make turn-taking-worker'
+	screen -S $(SCREEN_SESSION) -X screen -t thinker $(SCREEN_SHELL) -lc 'cd "$(CURDIR)" && exec make thinker'
+	screen -S $(SCREEN_SESSION) -X screen -t summarizer $(SCREEN_SHELL) -lc 'cd "$(CURDIR)" && exec make session-summarizer'
+	screen -S $(SCREEN_SESSION) -X screen -t persona $(SCREEN_SHELL) -lc 'cd "$(CURDIR)" && exec make persona-updater'
+	@echo "started screen session: $(SCREEN_SESSION)"
+	@echo "attach with: make screen-attach"
+
+screen-runtime-full: screen-runtime
+	screen -S $(SCREEN_SESSION) -X screen -t journalist $(SCREEN_SHELL) -lc 'cd "$(CURDIR)" && exec make journalist'
+	screen -S $(SCREEN_SESSION) -X screen -t information $(SCREEN_SHELL) -lc 'cd "$(CURDIR)" && exec make information-interpret'
+	@echo "added full background workers to screen session: $(SCREEN_SESSION)"
+
+screen-attach:
+	screen -r $(SCREEN_SESSION)
+
+screen-stop:
+	screen -S $(SCREEN_SESSION) -X quit
+
+screen-list:
+	screen -ls
 
 db-up:
 	$(COMPOSE) up -d postgres

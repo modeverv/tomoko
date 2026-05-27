@@ -2172,3 +2172,20 @@ turn-level `conversation_embeddings` は補助として扱う。
 Context build log には `query_embedding` / `session_summaries` / `memory_hits` の
 stage timing、cache hit、skipped reason、source error を出し、今後は「記憶が空だった理由」を
 ログから切り分ける。
+
+### 確定した判断: STT final transcript は既存 `/ws` の観測 event として UI に流す
+2026-05-28 に、ambient / 会話中の人間発話の STT 確定文字列を UI に表示する経路を追加した。
+
+DB 保存経路は変更しない。
+`ambient_logs` / `conversation_logs` / `conversation_sessions` は従来どおり `TomoroSession` が所有し、
+UI には同じ `/ws` 上の `transcript_final` JSON event として観測情報だけを送る。
+
+`transcript_final` には `text` / `attention_mode` / `participation_mode` / `attended` /
+`audio_level_db` / `is_final` を含める。
+会話参加発話では、`TomoroSession` が session を確保した後に
+`conversation_session_id` も付ける。
+ambient observer 発話では session を作らず、UI だけが表示する。
+
+クライアントは判定を行わず、高さ固定の transcript log に追記表示するだけにする。
+これにより、1 本の WebSocket と server-side state ownership を維持したまま、
+実ブラウザで「STT が何を聞いたか」を確認できる。

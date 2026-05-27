@@ -87,7 +87,7 @@ class TomoroSession:
         self,
         *,
         vad_processor: VADProcessor,
-        send_event: Callable[[dict[str, str]], Any],
+        send_event: Callable[[dict[str, Any]], Any],
         send_audio: Callable[[bytes], Any] | None = None,
         transcriber: SpeechTranscriber | None = None,
         participation_judge: ParticipationJudge | None = None,
@@ -861,6 +861,12 @@ class TomoroSession:
                         attended=False,
                         participation_mode="observer",
                     )
+                await self._send_transcript_final_event(
+                    transcript,
+                    attention_mode=previous_attention,
+                    participation_mode="observer",
+                    attended=False,
+                )
                 if reset_audio_input:
                     self.vad_processor.reset()
                     self._reset_transcriber_stream()
@@ -909,7 +915,6 @@ class TomoroSession:
                 start_reason=start_reason,
             )
             await self._transition_attention("engaged")
-            await self._send_event({"type": "participation", "mode": decision.mode})
             if self.conversation_log_writer is not None:
                 conversation_log_id = await self._write_user_turn(
                     transcript,
@@ -920,9 +925,24 @@ class TomoroSession:
                         conversation_log_id=conversation_log_id,
                         text=transcript.text,
                     )
+            await self._send_transcript_final_event(
+                transcript,
+                attention_mode=previous_attention,
+                participation_mode=participation_mode,
+                attended=True,
+                conversation_session_id=self.active_conversation_session_id,
+            )
+            await self._send_event({"type": "participation", "mode": decision.mode})
 
             if self.router is not None and self.thinking_mode is not None:
                 await self._start_reply_task(transcript)
+        else:
+            await self._send_transcript_final_event(
+                transcript,
+                attention_mode=previous_attention,
+                participation_mode=participation_mode,
+                attended=attended,
+            )
 
         if reset_audio_input:
             self.vad_processor.reset()
@@ -1205,6 +1225,12 @@ class TomoroSession:
             attention_mode=previous_attention,
             attended=False,
             participation_mode="observer",
+        )
+        await self._send_transcript_final_event(
+            transcript,
+            attention_mode=previous_attention,
+            participation_mode="observer",
+            attended=False,
         )
         logger.info("TomoroSession turn-taking observer reason=%s", reason)
 
@@ -1493,11 +1519,35 @@ class TomoroSession:
         ):
             await self._transition_attention("ambient")
 
-    async def _send_event(self, event: dict[str, str]) -> None:
+    async def _send_event(self, event: dict[str, Any]) -> None:
         async with self._send_lock:
             maybe_awaitable = self.send_event(event)
             if inspect.isawaitable(maybe_awaitable):
                 await maybe_awaitable
+
+    async def _send_transcript_final_event(
+        self,
+        transcript: Transcript,
+        *,
+        attention_mode: AttentionMode,
+        participation_mode: ParticipationMode,
+        attended: bool,
+        conversation_session_id: UUID | None = None,
+    ) -> None:
+        event: dict[str, Any] = {
+            "type": "transcript_final",
+            "text": transcript.text,
+            "attention_mode": attention_mode,
+            "participation_mode": participation_mode,
+            "attended": attended,
+            "audio_level_db": transcript.audio_level_db,
+            "is_final": transcript.is_final,
+        }
+        if transcript.speaker is not None:
+            event["speaker"] = transcript.speaker
+        if conversation_session_id is not None:
+            event["conversation_session_id"] = str(conversation_session_id)
+        await self._send_event(event)
 
     async def send_transition_emissions(self, result: TransitionResult) -> None:
         for emission in result.emissions:

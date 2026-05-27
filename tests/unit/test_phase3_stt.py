@@ -116,6 +116,15 @@ async def test_session_transcribes_and_logs_all_finished_speech() -> None:
     assert transcript.text == "今日いい天気だね"
     assert participated is False
     assert {"type": "participation", "mode": "called"} not in events
+    assert {
+        "type": "transcript_final",
+        "text": "今日いい天気だね",
+        "attention_mode": "ambient",
+        "participation_mode": "observer",
+        "attended": False,
+        "audio_level_db": -20.0,
+        "is_final": True,
+    } in events
 
 
 @pytest.mark.unit
@@ -135,6 +144,13 @@ async def test_session_emits_participation_event_for_wake_word() -> None:
 
     assert ambient_logs.rows[0][1] is True
     assert {"type": "participation", "mode": "called"} in events
+    assert any(
+        event["type"] == "transcript_final"
+        and event["text"] == "トモコ、聞こえる？"
+        and event["participation_mode"] == "called"
+        and event["attended"] is True
+        for event in events
+    )
     assert events[-1] == {"type": "state", "state": "idle"}
 
 
@@ -177,6 +193,7 @@ async def test_session_drops_filtered_final_transcript_before_participation() ->
 
     assert ambient_logs.rows == []
     assert {"type": "participation", "mode": "invited"} not in events
+    assert not any(event["type"] == "transcript_final" for event in events)
     assert events[-1] == {"type": "state", "state": "idle"}
 
 

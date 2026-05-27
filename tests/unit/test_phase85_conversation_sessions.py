@@ -185,12 +185,13 @@ async def run_one_finished_speech(session: TomoroSession) -> None:
 async def test_participating_speech_creates_one_active_conversation_session() -> None:
     sessions = InMemoryConversationSessionStore()
     conversation_logs = InMemoryConversationLogWriter()
+    events: list[dict[str, object]] = []
     session = TomoroSession(
         vad_processor=VADProcessor(
             vad=SequenceVAD(([0.9] + [0.1] * 13) * 2),
             silence_ms=400,
         ),
-        send_event=lambda event: None,
+        send_event=events.append,
         transcriber=QueueTranscriber(["トモコ、聞こえる？", "さっきの続き"]),
         participation_judge=WakeWordJudge(),
         ambient_log_writer=InMemoryAmbientLogWriter(),
@@ -210,6 +211,13 @@ async def test_participating_speech_creates_one_active_conversation_session() ->
         first_session_id,
         first_session_id,
     ]
+    transcript_events = [
+        event for event in events if event["type"] == "transcript_final"
+    ]
+    assert transcript_events[0]["conversation_session_id"] == str(first_session_id)
+    assert transcript_events[0]["participation_mode"] == "called"
+    assert transcript_events[1]["conversation_session_id"] == str(first_session_id)
+    assert transcript_events[1]["participation_mode"] == "invited"
 
 
 @pytest.mark.unit

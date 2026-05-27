@@ -80,3 +80,11 @@ def test_makefile_has_grouped_background_maintenance_entries() -> None:
         "information-interpret",
     ]:
         assert target in dry_run_body
+
+
+@pytest.mark.unit
+def test_makefile_prepare_uses_current_central_config() -> None:
+    prepare_body = _target_body("prepare")
+
+    assert "_tools/prepare_runtime.py" in prepare_body
+    assert "--config $(CENTRAL_CONFIG)" in prepare_body
