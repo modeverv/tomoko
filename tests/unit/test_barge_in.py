@@ -320,10 +320,13 @@ async def test_session_suppresses_followup_while_playback_chunk_is_active() -> N
         barge_in_detector=BargeInDetector(),
     )
     await session._transition_attention("engaged")
+    session.audio_turns.begin_turn()
+    await session._send_reserved_audio_start()
+    active_turn_id = session.audio_turns.active_turn_id
     await session.handle_playback_telemetry(
         PlaybackTelemetry(
             type="playback_started",
-            turn_id="turn-1",
+            turn_id=active_turn_id,
             chunk_id=5,
         )
     )
@@ -337,6 +340,94 @@ async def test_session_suppresses_followup_while_playback_chunk_is_active() -> N
         "kind": "echo",
         "action": "continue_speaking",
     } in events
+
+
+@pytest.mark.unit
+async def test_session_routes_wait_interrupt_through_turn_taking_during_playback() -> None:
+    ambient_logs = InMemoryAmbientLogWriter()
+    events: list[dict[str, str]] = []
+    session = TomoroSession(
+        vad_processor=VADProcessor(
+            vad=SequenceVAD([0.9] + [0.1] * 13),
+            silence_ms=400,
+        ),
+        send_event=events.append,
+        send_audio=lambda chunk: None,
+        transcriber=QueueTranscriber(["ちょっと待って"]),
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=ambient_logs,
+        router=FakeRouter(),  # type: ignore[arg-type]
+        thinking_mode=ThinkFastMode(),
+        tts_backend=FakeTTSBackend(),
+        barge_in_detector=BargeInDetector(),
+    )
+    await session._transition_attention("engaged")
+    session.audio_turns.begin_turn()
+    await session._send_reserved_audio_start()
+    active_turn_id = session.audio_turns.active_turn_id
+    await session.handle_playback_telemetry(
+        PlaybackTelemetry(
+            type="playback_started",
+            turn_id=active_turn_id,
+            chunk_id=5,
+        )
+    )
+
+    await run_one_finished_speech(session)
+
+    assert {
+        "type": "turn_taking_decision",
+        "decision": "stop_speaking",
+        "reason": "wait_keyword",
+        "source": "rule",
+    } in events
+    assert any(
+        event["type"] == "audio_control" and event["action"] == "stop"
+        for event in events
+    )
+    assert [row[3] for row in ambient_logs.rows] == ["observer"]
+
+
+@pytest.mark.unit
+async def test_session_routes_wait_inflection_through_turn_taking_during_playback() -> None:
+    events: list[dict[str, str]] = []
+    session = TomoroSession(
+        vad_processor=VADProcessor(
+            vad=SequenceVAD([0.9] + [0.1] * 13),
+            silence_ms=400,
+        ),
+        send_event=events.append,
+        send_audio=lambda chunk: None,
+        transcriber=QueueTranscriber(["この映像ちょっとちょっと待とうか"]),
+        participation_judge=WakeWordJudge(),
+        router=FakeRouter(),  # type: ignore[arg-type]
+        thinking_mode=ThinkFastMode(),
+        tts_backend=FakeTTSBackend(),
+        barge_in_detector=BargeInDetector(),
+    )
+    await session._transition_attention("engaged")
+    session.audio_turns.begin_turn()
+    await session._send_reserved_audio_start()
+    await session.handle_playback_telemetry(
+        PlaybackTelemetry(
+            type="playback_started",
+            turn_id=session.audio_turns.active_turn_id,
+            chunk_id=5,
+        )
+    )
+
+    await run_one_finished_speech(session)
+
+    assert {
+        "type": "turn_taking_decision",
+        "decision": "stop_speaking",
+        "reason": "wait_keyword",
+        "source": "rule",
+    } in events
+    assert not any(
+        event.get("type") == "barge_in" and event.get("reason") == "playback_active_chunk"
+        for event in events
+    )
 
 
 @pytest.mark.unit

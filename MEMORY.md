@@ -2121,3 +2121,31 @@ sidecar が `{"error":"No speech detected"}` を exit code 1 で返した時に 
 Tomoko の返答が消える。
 以後は VAD が listening に入っただけでは未出力 reply をキャンセルしない。
 意味のある follow-up transcript が確定して参加対象になった時は、次の `_start_reply_task()` が既存 reply を差し替える。
+
+### 確定した判断: turn-taking judge は rule-first + worker 補助にする
+Phase 10.11 では、未出力 reply を消すかどうかを VAD state ではなく確定 transcript 後の
+`TurnTakingJudge` で判定する。
+
+`TurnTakingInput` / `TurnTakingDecision` は `server/shared/models.py` の DTO とし、session 内部の生 dict 判定にしない。
+hot path では `RuleFirstTurnTakingJudge` が空 transcript / 低信号 / stop word / 訂正 / 相槌 / 実質 follow-up を先に分類する。
+明確な stop / restart / continue は worker を待たず、`defer_output` のような曖昧ケースだけ
+`TurnTakingWorkerClient` が別プロセス worker へ投げる。
+
+worker は `background-process/run_turn_taking_worker.py` として常駐し、会話文は生成せず固定 enum JSON だけを返す。
+`make turn-taking-worker` は小型 MLX model 用の別 queue、`make turn-taking-worker-once` はモデルロードなしの rule sample として使う。
+worker timeout / unavailable / parse error は rule fallback へ戻し、TomoroSession が最終 gate と session lifecycle を所有する。
+
+### 確定した判断: playback 中 interrupt 候補も turn-taking judge に通す
+上の「pending reply / 生成中 reply の確定 transcript に judge を適用し、playback echo は既存 barge-in 層に残す」
+という初期判断は部分的に否定する。
+
+実ブラウザログでは、Tomoko 再生中の `ちょっと待って` が `playback_active_chunk` の echo として消費され、
+turn-taking judge / worker の動作確認ができなかった。
+以後は playback 中でも `待って` / `ストップ` / `違う` などの interrupt 候補は先に `TurnTakingJudge` へ通す。
+一方、通常 follow-up や回り込みらしい transcript は `turn_taking_skipped reason=playback_non_interrupt_candidate`
+をログに出した上で、従来通り `BargeInDetector` / playback echo grace に任せる。
+
+STT は `待って` を `待とうか` のように起こすことがあるため、turn-taking 側では
+`待とう` / `まとう` も wait keyword として扱う。
+また、既存 stop-intent が拾う語は turn-taking interrupt candidate として先に扱い、
+「judge を skip した後に stop-intent worker だけが hard stop する」経路を減らす。

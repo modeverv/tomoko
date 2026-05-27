@@ -35,6 +35,19 @@ PlaybackState = Literal["idle", "speaking", "client_playing", "echo_grace"]
 ConnectionRole = Literal["browser", "edge", "monitor"]
 CandidateSpeakDecisionKind = Literal["speak", "wait", "needs_llm_judge"]
 LLMJudgeDecisionKind = Literal["speak_now", "wait", "defer"]
+TurnTakingPendingReplyState = Literal[
+    "none",
+    "generating_not_started",
+    "text_started",
+    "audio_started",
+]
+TurnTakingDecisionKind = Literal[
+    "ignore_as_noise",
+    "continue_current_reply",
+    "defer_output",
+    "restart_with_new_input",
+    "stop_speaking",
+]
 WorldObservationDocumentStatus = Literal[
     "pending",
     "normalizing",
@@ -145,6 +158,134 @@ class ConnectedOutputState:
             connected_connection_count=1,
             last_presence_at=last_presence_at or datetime.now(UTC),
         )
+
+
+@dataclass(frozen=True)
+class TurnTakingAudioMetrics:
+    segment_ms: float
+    rms_db: float
+    peak_db: float
+    active_frame_ratio: float
+
+    @classmethod
+    def unknown(cls, *, audio_level_db: float) -> TurnTakingAudioMetrics:
+        return cls(
+            segment_ms=0.0,
+            rms_db=audio_level_db,
+            peak_db=audio_level_db,
+            active_frame_ratio=0.0,
+        )
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> TurnTakingAudioMetrics:
+        return cls(
+            segment_ms=_float_or_zero(payload.get("segment_ms")),
+            rms_db=_float_or_zero(payload.get("rms_db")),
+            peak_db=_float_or_zero(payload.get("peak_db")),
+            active_frame_ratio=_float_or_zero(payload.get("active_frame_ratio")),
+        )
+
+    def to_json(self) -> dict[str, float]:
+        return {
+            "segment_ms": self.segment_ms,
+            "rms_db": self.rms_db,
+            "peak_db": self.peak_db,
+            "active_frame_ratio": self.active_frame_ratio,
+        }
+
+
+@dataclass(frozen=True)
+class TurnTakingInput:
+    pending_reply_state: TurnTakingPendingReplyState
+    new_transcript: str
+    audio_metrics: TurnTakingAudioMetrics
+    attention_mode: AttentionMode
+    playback_state: PlaybackState
+    recent_turns: tuple[ConversationTurn, ...] = field(default_factory=tuple)
+    recent_tomoko_text: str = ""
+    schema_version: int = 1
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> TurnTakingInput:
+        pending_reply_state = str(payload.get("pending_reply_state", "none"))
+        if pending_reply_state not in {
+            "none",
+            "generating_not_started",
+            "text_started",
+            "audio_started",
+        }:
+            pending_reply_state = "none"
+        attention_mode = str(payload.get("attention_mode", "ambient"))
+        if attention_mode not in {"ambient", "engaged", "cooldown", "withdrawn"}:
+            attention_mode = "ambient"
+        playback_state = str(payload.get("playback_state", "idle"))
+        if playback_state not in {"idle", "speaking", "client_playing", "echo_grace"}:
+            playback_state = "idle"
+        return cls(
+            schema_version=int(payload.get("schema_version", 1)),
+            pending_reply_state=pending_reply_state,  # type: ignore[arg-type]
+            new_transcript=str(payload.get("new_transcript", "")),
+            audio_metrics=TurnTakingAudioMetrics.from_json(
+                dict(payload.get("audio_metrics") or {})
+            ),
+            attention_mode=attention_mode,  # type: ignore[arg-type]
+            playback_state=playback_state,  # type: ignore[arg-type]
+            recent_tomoko_text=str(payload.get("recent_tomoko_text", "")),
+            recent_turns=tuple(),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "pending_reply_state": self.pending_reply_state,
+            "new_transcript": self.new_transcript,
+            "audio_metrics": self.audio_metrics.to_json(),
+            "attention_mode": self.attention_mode,
+            "playback_state": self.playback_state,
+            "recent_tomoko_text": self.recent_tomoko_text,
+            "recent_turns": [
+                {
+                    "user_text": turn.user_text,
+                    "tomoko_text": turn.tomoko_text,
+                    "emotion": turn.emotion,
+                }
+                for turn in self.recent_turns
+            ],
+        }
+
+
+@dataclass(frozen=True)
+class TurnTakingDecision:
+    decision: TurnTakingDecisionKind
+    reason: str
+    source: str = "rule"
+    elapsed_ms: float = 0.0
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> TurnTakingDecision:
+        decision = str(payload.get("decision", "continue_current_reply"))
+        if decision not in {
+            "ignore_as_noise",
+            "continue_current_reply",
+            "defer_output",
+            "restart_with_new_input",
+            "stop_speaking",
+        }:
+            decision = "continue_current_reply"
+        return cls(
+            decision=decision,  # type: ignore[arg-type]
+            reason=str(payload.get("reason", "invalid_or_missing_decision"))[:120],
+            source=str(payload.get("source", "worker"))[:40],
+            elapsed_ms=_float_or_zero(payload.get("elapsed_ms")),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "decision": self.decision,
+            "reason": self.reason[:120],
+            "source": self.source,
+            "elapsed_ms": self.elapsed_ms,
+        }
 
 
 @dataclass(frozen=True)

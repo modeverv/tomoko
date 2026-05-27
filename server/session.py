@@ -36,6 +36,7 @@ from server.gateway.stop_intent import (
 from server.gateway.thinking.base import ThinkingMode
 from server.gateway.thinking.selector import should_use_deep_memory
 from server.gateway.turn_taking.barge_in import BargeInDetector
+from server.gateway.turn_taking.judge import RuleFirstTurnTakingJudge, TurnTakingJudge
 from server.shared.candidate import ArrivalCandidate, UtteranceCandidate
 from server.shared.db import AmbientLogWriter, ConversationLogWriter, ConversationSessionStore
 from server.shared.inference.embedding.base import EmbeddingBackend
@@ -70,6 +71,8 @@ from server.shared.models import (
     Transcript,
     TransitionResult,
     TTSInput,
+    TurnTakingAudioMetrics,
+    TurnTakingInput,
 )
 from server.shared.persona import PersonaSnapshotStore
 
@@ -101,6 +104,7 @@ class TomoroSession:
         context_snapshot_builder: ContextSnapshotBuilder | None = None,
         speech_normalizer: ReplySpeechNormalizer | None = None,
         barge_in_detector: BargeInDetector | None = None,
+        turn_taking_judge: TurnTakingJudge | None = None,
         transcript_filter: TranscriptFilter | None = None,
         stt_audio_frontend: SttAudioFrontend | None = None,
         stt_signal_gate: SttSignalGate | None = None,
@@ -131,6 +135,7 @@ class TomoroSession:
         self.context_snapshot_builder = context_snapshot_builder
         self.speech_normalizer = speech_normalizer
         self.barge_in_detector = barge_in_detector
+        self.turn_taking_judge = turn_taking_judge or RuleFirstTurnTakingJudge()
         self.transcript_filter = transcript_filter
         self.stt_audio_frontend = stt_audio_frontend or SttAudioFrontend(
             sample_rate=getattr(vad_processor, "sample_rate", 16000),
@@ -149,6 +154,7 @@ class TomoroSession:
             playback_echo_grace_ms=playback_echo_grace_ms
         )
         self._send_lock = asyncio.Lock()
+        self._turn_taking_control_lock = asyncio.Lock()
         self._reply_task: asyncio.Task[None] | None = None
         self._tts_worker_task: asyncio.Task[None] | None = None
         self._tts_queue: asyncio.Queue[tuple[str, str] | None] | None = None
@@ -158,7 +164,10 @@ class TomoroSession:
         self._latency_tts_start_at: float | None = None
         self._latency_first_audio_chunk_at: float | None = None
         self._reply_output_started = False
+        self._reply_output_defer_until: float | None = None
+        self._turn_taking_stop_suppress_until: float | None = None
         self._reply_cancel_status: ConversationLogStatus | None = None
+        self._last_turn_taking_audio_metrics: TurnTakingAudioMetrics | None = None
         self.active_conversation_session_id: UUID | None = None
         self._context_build_id: UUID | None = None
         self._event_queue: asyncio.Queue[
@@ -764,6 +773,12 @@ class TomoroSession:
             frontend_decision.metrics.peak_db,
             frontend_decision.metrics.active_frame_ratio,
         )
+        self._last_turn_taking_audio_metrics = TurnTakingAudioMetrics(
+            segment_ms=frontend_decision.metrics.duration_ms,
+            rms_db=frontend_decision.metrics.rms_db,
+            peak_db=frontend_decision.metrics.peak_db,
+            active_frame_ratio=frontend_decision.metrics.active_frame_ratio,
+        )
         if not frontend_decision.accepted:
             self.vad_processor.reset()
             self._reset_transcriber_stream()
@@ -802,7 +817,18 @@ class TomoroSession:
             await self._transition("idle")
             return
         previous_attention = self.attention_mode
-        barge_in_decision = self._classify_barge_in(transcript)
+        turn_taking_action = await self._maybe_apply_turn_taking_decision(
+            transcript,
+            previous_attention=previous_attention,
+            reset_audio_input=reset_audio_input,
+        )
+        if turn_taking_action == "consumed":
+            return
+        barge_in_decision = (
+            None
+            if turn_taking_action == "skip_barge_in"
+            else self._classify_barge_in(transcript)
+        )
         if barge_in_decision is not None:
             await self._record_stop_intent_observation(
                 transcript,
@@ -957,6 +983,245 @@ class TomoroSession:
             assert self.transcriber is not None
             self.transcriber.reset_stream()  # type: ignore[attr-defined]
 
+    async def _maybe_apply_turn_taking_decision(
+        self,
+        transcript: Transcript,
+        *,
+        previous_attention: AttentionMode,
+        reset_audio_input: bool,
+    ) -> Literal["consumed", "skip_barge_in"] | None:
+        if self._should_suppress_duplicate_turn_taking_stop(transcript):
+            await self._write_turn_taking_observer(
+                transcript,
+                previous_attention=previous_attention,
+                reason="duplicate_stop_suppressed",
+            )
+            if reset_audio_input:
+                self.vad_processor.reset()
+                self._reset_transcriber_stream()
+            await self._transition("idle")
+            return "consumed"
+        skip_reason = self._turn_taking_skip_reason(transcript)
+        if skip_reason is not None:
+            self._log_turn_taking_skipped(transcript, reason=skip_reason)
+            return None
+        async with self._turn_taking_control_lock:
+            skip_reason = self._turn_taking_skip_reason(transcript)
+            if skip_reason is not None:
+                self._log_turn_taking_skipped(transcript, reason=skip_reason)
+                return None
+            return await self._apply_turn_taking_decision_locked(
+                transcript,
+                previous_attention=previous_attention,
+                reset_audio_input=reset_audio_input,
+            )
+
+    async def _apply_turn_taking_decision_locked(
+        self,
+        transcript: Transcript,
+        *,
+        previous_attention: AttentionMode,
+        reset_audio_input: bool,
+    ) -> Literal["consumed", "skip_barge_in"] | None:
+
+        turn_input = TurnTakingInput(
+            pending_reply_state=self._pending_reply_state(),
+            new_transcript=transcript.text,
+            audio_metrics=self._last_turn_taking_audio_metrics
+            or TurnTakingAudioMetrics.unknown(audio_level_db=transcript.audio_level_db),
+            attention_mode=self.attention_mode,
+            playback_state=self.audio_turns.playback_state,  # type: ignore[arg-type]
+            recent_tomoko_text=self.audio_turns.recent_tomoko_text,
+        )
+        decision = await self.turn_taking_judge.judge(turn_input)
+        logger.info(
+            "TomoroSession turn_taking_decision decision=%s reason=%s source=%s "
+            "elapsed_ms=%.1f pending_reply_state=%s playback_state=%s text=%r",
+            decision.decision,
+            decision.reason,
+            decision.source,
+            decision.elapsed_ms,
+            turn_input.pending_reply_state,
+            turn_input.playback_state,
+            transcript.text,
+        )
+        await self._send_event(
+            {
+                "type": "turn_taking_decision",
+                "decision": decision.decision,
+                "reason": decision.reason,
+                "source": decision.source,
+            }
+        )
+
+        if decision.decision in {"ignore_as_noise", "continue_current_reply"}:
+            await self._write_turn_taking_observer(
+                transcript,
+                previous_attention=previous_attention,
+                reason=decision.reason,
+            )
+            if reset_audio_input:
+                self.vad_processor.reset()
+                self._reset_transcriber_stream()
+            await self._transition("idle")
+            return "consumed"
+
+        if decision.decision == "defer_output":
+            self._defer_reply_output(max_ms=220)
+            await self._write_turn_taking_observer(
+                transcript,
+                previous_attention=previous_attention,
+                reason=decision.reason,
+            )
+            if reset_audio_input:
+                self.vad_processor.reset()
+                self._reset_transcriber_stream()
+            await self._transition("idle")
+            return "consumed"
+
+        if decision.decision == "stop_speaking":
+            self._turn_taking_stop_suppress_until = time.perf_counter() + 0.5
+            await self._record_stop_intent_observation(
+                transcript,
+                rule_kind="turn_taking_stop",
+                adopted_action="stop_speaking",
+            )
+            await self._write_turn_taking_observer(
+                transcript,
+                previous_attention=previous_attention,
+                reason=decision.reason,
+            )
+            await self._apply_stop_intent_ack()
+            if reset_audio_input:
+                self.vad_processor.reset()
+                self._reset_transcriber_stream()
+            await self._transition("idle")
+            return "consumed"
+
+        if decision.decision == "restart_with_new_input":
+            await self._send_event(
+                {
+                    "type": "barge_in",
+                    "kind": "hard_interrupt",
+                    "action": "restart_turn",
+                }
+            )
+            await self._cancel_reply_generation(status="interrupted")
+            await self._send_reserved_audio_stop()
+            await self._record_stop_intent_observation(
+                transcript,
+                rule_kind="turn_taking_restart",
+                adopted_action="restart_with_new_input",
+            )
+            return "skip_barge_in"
+
+        return None
+
+    def _should_judge_turn_taking(self) -> bool:
+        return self._turn_taking_skip_reason_for_state() is None
+
+    def _turn_taking_skip_reason(self, transcript: Transcript) -> str | None:
+        state_reason = self._turn_taking_skip_reason_for_state()
+        if state_reason is not None:
+            return state_reason
+        if self.audio_turns.playback_state == "idle":
+            return None
+        if not self._is_turn_taking_interrupt_candidate(transcript.text):
+            return "playback_non_interrupt_candidate"
+        return None
+
+    def _turn_taking_skip_reason_for_state(self) -> str | None:
+        if self._is_reply_generation_active():
+            return None
+        if self.audio_turns.playback_state == "idle":
+            return "no_active_reply_or_playback"
+        return None
+
+    def _is_turn_taking_interrupt_candidate(self, text: str) -> bool:
+        judge = self.turn_taking_judge
+        fallback = getattr(judge, "fallback", None)
+        for candidate in (judge, fallback):
+            is_interrupt_candidate = getattr(candidate, "is_interrupt_candidate", None)
+            if callable(is_interrupt_candidate):
+                return bool(is_interrupt_candidate(text))
+        if should_record_stop_intent_candidate(text):
+            return True
+        return any(
+            word in text.casefold()
+            for word in (
+                "ストップ",
+                "止めて",
+                "やめて",
+                "停止",
+                "待って",
+                "まって",
+                "違う",
+                "ちがう",
+            )
+        )
+
+    def _log_turn_taking_skipped(self, transcript: Transcript, *, reason: str) -> None:
+        logger.info(
+            "TomoroSession turn_taking_skipped reason=%s reply_active=%s "
+            "playback_state=%s text=%r",
+            reason,
+            self._is_reply_generation_active(),
+            self.audio_turns.playback_state,
+            transcript.text,
+        )
+
+    def _should_suppress_duplicate_turn_taking_stop(self, transcript: Transcript) -> bool:
+        suppress_until = self._turn_taking_stop_suppress_until
+        if suppress_until is None or time.perf_counter() > suppress_until:
+            return False
+        text = transcript.text.casefold()
+        return any(word in text for word in ("ストップ", "止めて", "やめて", "停止"))
+
+    def _pending_reply_state(self):
+        if not self._is_reply_generation_active() and self.audio_turns.playback_state == "idle":
+            return "none"
+        if (
+            self._latency_first_audio_chunk_at is not None
+            or self.audio_turns.playback_state != "idle"
+        ):
+            return "audio_started"
+        if self._latency_first_reply_text_at is not None or self._reply_output_started:
+            return "text_started"
+        return "generating_not_started"
+
+    async def _write_turn_taking_observer(
+        self,
+        transcript: Transcript,
+        *,
+        previous_attention: AttentionMode,
+        reason: str,
+    ) -> None:
+        if self.ambient_log_writer is None:
+            return
+        await self.ambient_log_writer.write(
+            transcript,
+            tomoko_participated=False,
+            attention_mode=previous_attention,
+            attended=False,
+            participation_mode="observer",
+        )
+        logger.info("TomoroSession turn-taking observer reason=%s", reason)
+
+    def _defer_reply_output(self, *, max_ms: int) -> None:
+        self._reply_output_defer_until = max(
+            self._reply_output_defer_until or 0.0,
+            time.perf_counter() + max_ms / 1000,
+        )
+
+    async def _maybe_wait_reply_output_defer(self) -> None:
+        defer_until = self._reply_output_defer_until
+        if defer_until is None:
+            return
+        remaining = defer_until - time.perf_counter()
+        self._reply_output_defer_until = None
+        if remaining > 0:
+            await asyncio.sleep(min(remaining, 0.25))
+
     async def _reply_to(self, transcript: Transcript) -> None:
         if self.router is None or self.thinking_mode is None:
             return
@@ -1008,6 +1273,7 @@ class TomoroSession:
                 for command in reply.handle_event(event):
                     if command.action == "emotion":
                         assert command.image is not None
+                        await self._maybe_wait_reply_output_defer()
                         self._reply_output_started = True
                         await self._send_event(
                             {
@@ -1017,6 +1283,7 @@ class TomoroSession:
                             }
                         )
                     elif command.action == "text_delta":
+                        await self._maybe_wait_reply_output_defer()
                         if self._latency_first_reply_text_at is None:
                             self._latency_first_reply_text_at = time.perf_counter()
                             logger.info(
@@ -1031,6 +1298,7 @@ class TomoroSession:
                         logger.info("TomoroSession reply_text delta=%r", command.value)
                         await self._send_event({"type": "reply_text", "delta": command.value})
                     elif command.action == "tts_text":
+                        await self._maybe_wait_reply_output_defer()
                         await tts_queue.put((command.value, command.style))
                     elif command.action == "done":
                         await tts_queue.put(None)

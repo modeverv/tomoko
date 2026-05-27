@@ -259,6 +259,23 @@ candidate:
 
 ### LLM judge の位置
 
+## Turn-taking judge の位置
+
+Phase 10.11 以降、「新しい入力で pending reply を消すか」は VAD state だけで決めない。
+確定 transcript を `TurnTakingInput` DTO に包み、`TurnTakingJudge` が
+`ignore_as_noise` / `continue_current_reply` / `defer_output` /
+`restart_with_new_input` / `stop_speaking` の enum で返す。
+
+この judge は rule-first とする。
+空 transcript、低信号、明確な stop word、訂正、相槌、実質 follow-up は deterministic rule で判定し、
+会話生成用の Gemma 4 26B queue を待たない。
+曖昧な `defer_output` だけ、別プロセスの `turn-taking-worker` が小型 local MLX model で補助判定する。
+worker timeout / unavailable / parse error は rule fallback に戻る。
+
+`TomoroSession` は judge の実装詳細を知らず、判定 enum を最終制御へ反映する。
+session lifecycle、reply cancellation、playback stop、stop-intent observation の最終所有者は
+引き続き `TomoroSession` である。
+
 LLM は常時の発話可否判定器にしない。
 `InitiativePolicy` が明確に speak / wait を決められる場合は、オンライン LLM を呼ばない。
 スコアが境界帯にある時だけ、候補文、候補理由、recent feedback、presence/activity signal、

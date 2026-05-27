@@ -12,6 +12,10 @@ SESSION_SUMMARY_LOG_FILE ?= logs/session-summarizer.log
 PERSONA_UPDATE_LOG_FILE ?= logs/persona-updater.log
 THINKER_LOG_FILE ?= logs/thinker.log
 JOURNALIST_LOG_FILE ?= logs/journalist.log
+TURN_TAKING_LOG_FILE ?= logs/turn-taking-worker.log
+TURN_TAKING_HOST ?= 127.0.0.1
+TURN_TAKING_PORT ?= 8765
+TURN_TAKING_MODEL ?= mlx-community/gemma-4-e2b-it-4bit
 WORLD_OBSERVATION_LOG_FILE ?= logs/world-observations.log
 WORLD_OBSERVATION_WORK ?= informations/work
 WORLD_OBSERVATION_ARCHIVED ?= informations/archived
@@ -32,7 +36,7 @@ JOURNALIST_DATE ?=
 
 .PHONY: deps download-models download-optional-models server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
 .PHONY: session-summarizer session-summarizer-once
-.PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once
+.PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
 .PHONY: information-ingest-once information-ingest-dry-run information-interpret-once information-interpret
 .PHONY: background-once background-watch background-dry-run
 .PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack lint check
@@ -110,6 +114,18 @@ journalist-once:
 		--once \
 		$(if $(JOURNALIST_DATE),--date $(JOURNALIST_DATE),)
 
+turn-taking-worker:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TURN_TAKING_LOG_FILE) TOMOKO_TURN_TAKING_MODEL=$(TURN_TAKING_MODEL) mise exec -- uv run python background-process/run_turn_taking_worker.py \
+		--host $(TURN_TAKING_HOST) \
+		--port $(TURN_TAKING_PORT) \
+		--model $(TURN_TAKING_MODEL)
+
+turn-taking-worker-once:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TURN_TAKING_LOG_FILE) TOMOKO_TURN_TAKING_MODEL=$(TURN_TAKING_MODEL) mise exec -- uv run python background-process/run_turn_taking_worker.py \
+		--once \
+		--disable-llm \
+		--sample-text "うん"
+
 information-ingest-once:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(WORLD_OBSERVATION_LOG_FILE) mise exec -- uv run python background-process/ingest_world_observations.py \
 		--config $(CENTRAL_CONFIG) \
@@ -151,7 +167,7 @@ background-watch:
 	@echo "  make information-interpret"
 
 background-dry-run:
-	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once persona-seed-initial persona-updater persona-updater-once information-ingest-dry-run information-ingest-once information-interpret-once information-interpret thinker thinker-once journalist journalist-once
+	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once persona-seed-initial persona-updater persona-updater-once information-ingest-dry-run information-ingest-once information-interpret-once information-interpret thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
 
 db-up:
 	$(COMPOSE) up -d postgres

@@ -44,6 +44,7 @@ from server.gateway.stop_intent import (
 from server.gateway.thinking.deep import ThinkDeepMode
 from server.gateway.thinking.fast import ThinkFastMode
 from server.gateway.turn_taking.barge_in import BargeInDetector
+from server.gateway.turn_taking.worker_client import TurnTakingWorkerClient
 from server.session import TomoroSession
 from server.shared.candidate import PostgresCandidateStore
 from server.shared.config import NodeConfig
@@ -365,6 +366,13 @@ async def _central_browser_session(websocket: WebSocket) -> None:
             )
         ),
         barge_in_detector=barge_in_detector_factory(),
+        turn_taking_judge=TurnTakingWorkerClient(
+            url=os.environ.get(
+                "TOMOKO_TURN_TAKING_WORKER_URL",
+                "http://127.0.0.1:8765/judge",
+            ),
+            timeout_ms=int(os.environ.get("TOMOKO_TURN_TAKING_TIMEOUT_MS", "180")),
+        ),
         transcript_filter=TranscriptFilter(),
         stt_audio_frontend=_create_default_stt_audio_frontend(vad_processor.sample_rate),
         candidate_feedback_store=candidate_feedback_store,
@@ -635,6 +643,13 @@ def _create_gateway_text_session(
         persona_store=_create_default_persona_store(),
         speech_normalizer=None,
         barge_in_detector=BargeInDetector(),
+        turn_taking_judge=TurnTakingWorkerClient(
+            url=os.environ.get(
+                "TOMOKO_TURN_TAKING_WORKER_URL",
+                "http://127.0.0.1:8765/judge",
+            ),
+            timeout_ms=int(os.environ.get("TOMOKO_TURN_TAKING_TIMEOUT_MS", "180")),
+        ),
         transcript_filter=TranscriptFilter(),
         candidate_feedback_store=_create_default_candidate_feedback_store(),
         stop_intent_store=_create_default_stop_intent_store(),
