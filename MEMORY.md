@@ -2110,3 +2110,14 @@ sidecar が `{"error":"No speech detected"}` を exit code 1 で返した時に 
 まだ詰め切っていない。
 `No speech detected` は VAD が拾った短い/弱い区間で起きうる通常系として扱い、空 transcript に畳む。
 権限エラーや sidecar 実行失敗など未知の失敗は引き続き例外として表に出す。
+
+### 確定した判断: VAD listening だけで未出力 reply を捨てない
+2026-05-27 の実会話ログでは、09:10:57.008 に `lmstudio_gemma4_26b_a4b` の会話 reply が開始した直後、
+09:10:57.110 に VAD が `listening` へ入っただけで
+`stale reply cancelled reason=resumed_user_speech_before_output` が発火していた。
+しかし、その後の STT は `text=''` / `reason=empty` で、低音量の短い区間を Apple Speech が空認識しただけだった。
+
+未出力 reply を `listening` への遷移だけで捨てると、ノイズ・息・残響・空 STT によって
+Tomoko の返答が消える。
+以後は VAD が listening に入っただけでは未出力 reply をキャンセルしない。
+意味のある follow-up transcript が確定して参加対象になった時は、次の `_start_reply_task()` が既存 reply を差し替える。

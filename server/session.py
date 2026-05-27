@@ -1182,8 +1182,6 @@ class TomoroSession:
     async def _transition(self, state: str) -> None:
         if state not in {"idle", "listening", "processing"}:
             raise ValueError(f"unknown session state: {state}")
-        if state == "listening":
-            await self._cancel_unstarted_reply_for_resumed_user_speech()
         self.state = state  # type: ignore[assignment]
         logger.info("TomoroSession state changed to %s", state)
         await self._send_event({"type": "state", "state": state})
