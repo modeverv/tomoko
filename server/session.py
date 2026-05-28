@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import inspect
 import logging
 import time
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -39,6 +38,10 @@ from server.gateway.thinking.base import ThinkingMode
 from server.gateway.thinking.selector import has_deep_memory_cue, should_use_deep_memory
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.gateway.turn_taking.judge import RuleFirstTurnTakingJudge, TurnTakingJudge
+from server.session_carryover import (
+    RetrievedContextCarryoverState,
+    retrieved_context_key,
+)
 from server.session_latency import LatencyProbeState, elapsed_ms
 from server.shared.candidate import ArrivalCandidate, UtteranceCandidate
 from server.shared.db import AmbientLogWriter, ConversationLogWriter, ConversationSessionStore
@@ -82,18 +85,6 @@ from server.shared.persona import PersonaSnapshotStore
 SessionState = Literal["idle", "listening", "processing"]
 
 logger = logging.getLogger(__name__)
-
-RETRIEVED_CONTEXT_CARRYOVER_MAX_ENTRIES = 6
-RETRIEVED_CONTEXT_CARRYOVER_MAX_CHARS = 900
-
-
-@dataclass
-class _RetrievedContextCarryoverEntry:
-    key: str
-    memory: MemoryHit
-    added_seq: int
-    last_used_seq: int
-
 
 class TomoroSession:
     def __init__(
@@ -193,8 +184,7 @@ class TomoroSession:
         self._last_precomputed_reply_source: str | None = None
         self._last_precomputed_reply_candidate_id: str | None = None
         self._last_precomputed_reply_at: datetime | None = None
-        self._retrieved_context_carryover: list[_RetrievedContextCarryoverEntry] = []
-        self._retrieved_context_carryover_seq = 0
+        self._retrieved_context_carryover = RetrievedContextCarryoverState()
 
     @property
     def _playback_echo_grace_ms(self) -> int:
@@ -1295,111 +1285,67 @@ class TomoroSession:
         self,
         fresh_memory: list[MemoryHit],
     ) -> list[MemoryHit]:
-        carried = self._carried_long_term_memory()
-        if not carried:
-            return fresh_memory
-
-        merged: list[MemoryHit] = []
-        seen: set[str] = set()
-        for hit in [*fresh_memory, *carried]:
-            key = _retrieved_context_key(hit)
-            if key in seen:
-                continue
-            seen.add(key)
-            merged.append(hit)
+        result = self._retrieved_context_carryover.merge_carried_long_term_memory(
+            fresh_memory
+        )
+        if not result.carried_count:
+            return result.memories
 
         logger.info(
             "TomoroSession carryover_used count=%s fresh_count=%s merged_count=%s",
-            len(carried),
-            len(fresh_memory),
-            len(merged),
+            result.carried_count,
+            result.fresh_count,
+            result.merged_count,
         )
-        return merged
+        return result.memories
 
     def _carried_long_term_memory(self) -> list[MemoryHit]:
-        if not self._retrieved_context_carryover:
-            return []
-        self._retrieved_context_carryover_seq += 1
-        used_seq = self._retrieved_context_carryover_seq
-        for entry in self._retrieved_context_carryover:
-            entry.last_used_seq = used_seq
-        return [entry.memory for entry in self._retrieved_context_carryover]
+        return self._retrieved_context_carryover.carried_long_term_memory()
 
     def _remember_retrieved_context(self, memories: list[MemoryHit]) -> None:
-        if not memories:
+        result = self._retrieved_context_carryover.remember(memories)
+        if result is None:
             return
-        existing_by_key = {
-            entry.key: entry for entry in self._retrieved_context_carryover
-        }
-        added = 0
-        for memory in memories:
-            key = _retrieved_context_key(memory)
-            if key in existing_by_key:
-                existing_by_key[key].memory = memory
-                existing_by_key[key].last_used_seq = (
-                    self._retrieved_context_carryover_seq
-                )
-                continue
-            self._retrieved_context_carryover_seq += 1
-            entry = _RetrievedContextCarryoverEntry(
-                key=key,
-                memory=memory,
-                added_seq=self._retrieved_context_carryover_seq,
-                last_used_seq=self._retrieved_context_carryover_seq,
-            )
-            self._retrieved_context_carryover.append(entry)
-            existing_by_key[key] = entry
-            added += 1
 
-        evicted = self._evict_retrieved_context_carryover()
+        for eviction in result.evicted:
+            logger.info(
+                "TomoroSession carryover_evicted reason=%s key=%s similarity=%.3f chars=%s",
+                eviction.reason,
+                eviction.key,
+                eviction.similarity,
+                eviction.chars,
+            )
         logger.info(
             "TomoroSession carryover_added added=%s total=%s evicted=%s",
-            added,
-            len(self._retrieved_context_carryover),
-            evicted,
+            result.added,
+            result.total,
+            len(result.evicted),
         )
 
     def _evict_retrieved_context_carryover(self) -> int:
-        evicted = 0
-
-        def total_chars() -> int:
-            return sum(
-                len(entry.memory.text)
-                for entry in self._retrieved_context_carryover
+        evictions = self._retrieved_context_carryover.evict()
+        for eviction in evictions:
+            logger.info(
+                "TomoroSession carryover_evicted reason=%s key=%s similarity=%.3f chars=%s",
+                eviction.reason,
+                eviction.key,
+                eviction.similarity,
+                eviction.chars,
             )
-
-        while len(self._retrieved_context_carryover) > RETRIEVED_CONTEXT_CARRYOVER_MAX_ENTRIES:
-            self._evict_one_carryover(reason="entry_count")
-            evicted += 1
-        while (
-            self._retrieved_context_carryover
-            and total_chars() > RETRIEVED_CONTEXT_CARRYOVER_MAX_CHARS
-        ):
-            self._evict_one_carryover(reason="text_budget")
-            evicted += 1
-        return evicted
+        return len(evictions)
 
     def _evict_one_carryover(self, *, reason: str) -> None:
-        victim = min(
-            self._retrieved_context_carryover,
-            key=lambda entry: (
-                entry.last_used_seq,
-                entry.memory.similarity,
-                entry.added_seq,
-            ),
-        )
-        self._retrieved_context_carryover.remove(victim)
+        eviction = self._retrieved_context_carryover.evict_one(reason=reason)
         logger.info(
             "TomoroSession carryover_evicted reason=%s key=%s similarity=%.3f chars=%s",
-            reason,
-            victim.key,
-            victim.memory.similarity,
-            len(victim.memory.text),
+            eviction.reason,
+            eviction.key,
+            eviction.similarity,
+            eviction.chars,
         )
 
     def _clear_retrieved_context_carryover(self, *, reason: str) -> None:
-        count = len(self._retrieved_context_carryover)
-        self._retrieved_context_carryover.clear()
+        count = self._retrieved_context_carryover.clear()
         if count:
             logger.info(
                 "TomoroSession carryover_cleared reason=%s count=%s",
@@ -2311,11 +2257,7 @@ def _session_summary_hit_to_memory(hit: SessionSummaryHit) -> MemoryHit:
 
 
 def _retrieved_context_key(hit: MemoryHit) -> str:
-    if hit.source_id:
-        return hit.source_id
-    normalized_text = " ".join(hit.text.split())
-    digest = hashlib.sha1(normalized_text.encode("utf-8")).hexdigest()[:16]
-    return f"{hit.speaker}:{hit.timestamp.isoformat()}:{digest}"
+    return retrieved_context_key(hit)
 
 
 def _accepts_keyword(callable_obj: Callable[..., Any], keyword: str) -> bool:

@@ -2967,3 +2967,50 @@ OutputDemand / Watcher は作らない。
 `state` / `attention_mode` / `audio_turns`、reply task / TTS queue lifecycle、
 candidate gate、conversation session lifecycle、DB write ordering、LLM/TTS ordering は
 引き続き `TomoroSession` core に残す。
+
+### 確定した判断: Phase 10.20.4 split 再開は安全地点ごとに止める
+2026-05-29 の Phase 10.20.4 では、Phase 10.20.3 の `LatencyProbeState` 抽出を
+monolith baseline からの最初の安全な小分割として扱う。
+
+人間側の実ブラウザ確認で、wake word、conversation session start、`reply_text`、TTS audio、
+playback telemetry、follow-up、memory recall が通った。
+latency log は `reply_start` / `first_reply_text` / `tts_start` / `first_audio_chunk`
+として出ており、runtime error / Traceback / 未実装 warning は見当たらない。
+空 transcript / `too_short` / `low_audio_short_text` drop は filter 正常系として扱う。
+
+今後 split を再開する場合も、1 回に 1 責務だけを扱う。
+名前は ARCHITECTURE.md の closed-loop 用語または現行責務と一致する dedicated name にする。
+汎用 `state.py`、`server/session/` package、dispatcher / effects / event_runner / maps、
+OutputDemand / Watcher はまだ作らない。
+audio hot path、reply orchestration、reply task / TTS queue、DB write ordering、
+candidate gate、conversation session lifecycle は dedicated phase と characterization test なしに触らない。
+実装前に必ず characterization test で現状挙動を固定する。
+
+次に抽出してよい候補は `retrieved context carryover state` 1 つだけにする。
+対象は `_RetrievedContextCarryoverEntry`、`_retrieved_context_carryover`、
+`_retrieved_context_carryover_seq`、carryover merge / remember / evict / clear helper 群である。
+これは authoritative state ではなく、audio hot path、reply task / TTS queue、
+LLM-TTS ordering、DB write ordering、candidate gate には直接触れない。
+ただし memory quality に関わるため、実装する場合は merge order、dedup key、eviction、
+session close clear、log 文言を characterization test で固定してから pure extraction に限定する。
+
+### 確定した判断: Phase 10.20.5 は retrieved context carryover 専用抽出に限定する
+2026-05-29 の Phase 10.20.5 では、`server/session_carryover.py` を追加し、
+`RetrievedContextCarryoverState` に長期記憶 carryover の小さな state/helper だけを抽出した。
+
+抽出対象は `_retrieved_context_carryover` / `_retrieved_context_carryover_seq` 相当の状態と、
+`_merge_carried_long_term_memory()` / `_carried_long_term_memory()` /
+`_remember_retrieved_context()` / `_evict_retrieved_context_carryover()` /
+`_evict_one_carryover()` / `_clear_retrieved_context_carryover()` の中身である。
+
+`TomoroSession` 側の private method 名は残し、既存 log 文言も維持する。
+key 生成は `source_id` 優先、fallback は normalized text の sha1 digest のままにする。
+merge は fresh memory を先、carried memory を後にし、duplicate key は先に現れた hit を残す。
+entry count / text budget eviction、session close clear の挙動も維持する。
+
+この phase では memory retrieval policy、ContextSnapshotBuilder、prompt format、DB query、
+context quota / weight、reply orchestration、audio hot path、DB write ordering、
+candidate gate、conversation session lifecycle は変更しない。
+OutputDemand / Watcher / dispatcher / effects / event_runner / maps、汎用 `state.py` も作らない。
+commit は行わず、人間の実ブラウザで「智子、〇〇のこと覚えてる？」、
+「もっと詳しく」、同一会話内 follow-up、memory recall / carryover log、返答品質を確認してから判断する。
