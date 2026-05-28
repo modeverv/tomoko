@@ -444,7 +444,13 @@ async def _central_browser_session(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         logger.info("phase4 websocket disconnected after %s chunks", chunk_count)
     finally:
-        _connection_registry.unregister(connection_id)
+        output_state = _connection_registry.unregister(connection_id)
+        await session.apply_client_lifecycle_event(
+            SessionEvent(
+                type="connected_output_state_changed",
+                payload={"output_state": output_state},
+            )
+        )
         initiative_task.cancel()
         stop_intent_worker.stop()
         stop_intent_task.cancel()
@@ -524,7 +530,13 @@ async def edge_gateway_session(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         logger.info("edge gateway websocket disconnected device_id=%s", device_id)
     finally:
-        _connection_registry.unregister(connection_id)
+        output_state = _connection_registry.unregister(connection_id)
+        await session.apply_client_lifecycle_event(
+            SessionEvent(
+                type="connected_output_state_changed",
+                payload={"output_state": output_state},
+            )
+        )
 
 
 async def _edge_browser_session(websocket: WebSocket, config: NodeConfig) -> None:
@@ -868,6 +880,14 @@ async def _handle_client_text_event(
             await send_event({"type": "debug_recording_error", "error": str(e)})
             return
         await send_event(result.to_event())
+        return
+    if event_type == "client_stop":
+        await session.apply_client_lifecycle_event(
+            SessionEvent(
+                type="client_stop_requested",
+                payload={"reason": "ui_stop"},
+            )
+        )
         return
     if event_type not in {"playback_started", "playback_ended"}:
         logger.warning("ignored unknown websocket text event type=%s", event_type)

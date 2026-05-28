@@ -14,8 +14,10 @@ from server.session import TomoroSession
 from server.shared.inference.backends.base import InferenceBackend
 from server.shared.models import (
     AttentionMode,
+    ConnectedOutputState,
     ConversationTurn,
     ParticipationMode,
+    SessionEvent,
     SpeechSegment,
     ThinkingEvent,
     ThinkingInput,
@@ -330,3 +332,81 @@ async def test_ambient_observer_speech_does_not_create_conversation_session() ->
 
     assert sessions.created == []
     assert conversation_logs.user_turns == []
+
+
+@pytest.mark.unit
+async def test_client_stop_event_closes_active_conversation_session() -> None:
+    sessions = InMemoryConversationSessionStore()
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.1]), silence_ms=400),
+        send_event=lambda event: None,
+        conversation_session_store=sessions,  # type: ignore[arg-type]
+    )
+    active_session_id = await session._ensure_conversation_session(
+        device_id="desk",
+        start_reason="wake_word",
+    )
+
+    await session.apply_client_lifecycle_event(
+        SessionEvent(
+            type="client_stop_requested",
+            payload={"reason": "ui_stop"},
+        )
+    )
+
+    assert active_session_id is not None
+    assert session.active_conversation_session_id is None
+    assert sessions.closed == [(active_session_id, "ui_stop")]
+
+
+@pytest.mark.unit
+async def test_client_disconnect_closes_active_session_when_no_output_target_remains() -> None:
+    sessions = InMemoryConversationSessionStore()
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.1]), silence_ms=400),
+        send_event=lambda event: None,
+        conversation_session_store=sessions,  # type: ignore[arg-type]
+        connected_output_state=ConnectedOutputState.single_client(device_id="desk"),
+    )
+    active_session_id = await session._ensure_conversation_session(
+        device_id="desk",
+        start_reason="wake_word",
+    )
+
+    await session.apply_client_lifecycle_event(
+        SessionEvent(
+            type="connected_output_state_changed",
+            payload={"output_state": ConnectedOutputState.empty()},
+        )
+    )
+
+    assert active_session_id is not None
+    assert session.active_conversation_session_id is None
+    assert sessions.closed == [(active_session_id, "client_disconnect")]
+
+
+@pytest.mark.unit
+async def test_output_state_change_keeps_session_open_when_an_output_target_remains() -> None:
+    sessions = InMemoryConversationSessionStore()
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.1]), silence_ms=400),
+        send_event=lambda event: None,
+        conversation_session_store=sessions,  # type: ignore[arg-type]
+        connected_output_state=ConnectedOutputState.single_client(device_id="desk"),
+    )
+    active_session_id = await session._ensure_conversation_session(
+        device_id="desk",
+        start_reason="wake_word",
+    )
+
+    await session.apply_client_lifecycle_event(
+        SessionEvent(
+            type="connected_output_state_changed",
+            payload={
+                "output_state": ConnectedOutputState.single_client(device_id="monitor")
+            },
+        )
+    )
+
+    assert session.active_conversation_session_id == active_session_id
+    assert sessions.closed == []

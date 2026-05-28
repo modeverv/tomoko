@@ -286,6 +286,8 @@ class TomoroSession:
             )
         if event.type == "connected_output_state_changed":
             return self._reduce_connected_output_state_changed(event)
+        if event.type == "client_stop_requested":
+            return self._reduce_client_stop_requested(event)
         if event.type == "transcript_finalized":
             return self._reduce_transcript_finalized(event)
         if event.type == "idle_timer_elapsed":
@@ -615,6 +617,17 @@ class TomoroSession:
                 payload={"reason": "invalid_output_state"},
             )
         self._connected_output_state = output_state
+        commands: list[SessionCommand] = []
+        if (
+            self.active_conversation_session_id is not None
+            and output_state.connected_connection_count == 0
+        ):
+            commands.append(
+                SessionCommand(
+                    type="close_conversation_session",
+                    payload={"end_reason": "client_disconnect"},
+                )
+            )
         return self._transition_result(
             "connected_output_state_changed",
             payload={
@@ -624,6 +637,30 @@ class TomoroSession:
                 "connected_device_count": output_state.connected_device_count,
                 "connected_connection_count": output_state.connected_connection_count,
             },
+            commands=commands,
+        )
+
+    def _reduce_client_stop_requested(self, event: SessionEvent) -> TransitionResult:
+        reason = str(event.payload.get("reason") or "ui_stop")
+        commands: list[SessionCommand] = []
+        if self.active_conversation_session_id is not None:
+            commands.append(
+                SessionCommand(
+                    type="close_conversation_session",
+                    payload={"end_reason": reason},
+                )
+            )
+        return self._transition_result(
+            "client_stop_requested",
+            payload={
+                "reason": reason,
+                "active_conversation_session_id": (
+                    str(self.active_conversation_session_id)
+                    if self.active_conversation_session_id is not None
+                    else None
+                ),
+            },
+            commands=commands,
         )
 
     def _new_candidate_request_id(self, kind: Literal["initiative", "arrival"]) -> str:
@@ -1531,6 +1568,15 @@ class TomoroSession:
         await self._run_internal_commands(result.commands)
         return result
 
+    async def apply_client_lifecycle_event(
+        self,
+        event: SessionEvent,
+    ) -> TransitionResult:
+        """Apply client lifecycle facts while keeping session close ownership here."""
+        result = await self.post_event(event)
+        await self._run_internal_commands(result.commands)
+        return result
+
     async def start_precomputed_reply(
         self,
         *,
@@ -1749,6 +1795,10 @@ class TomoroSession:
                 await self._apply_stop_intent_ack()
             elif command.type == "insert_stop_intent_observation":
                 await self._insert_stop_intent_observation(command)
+            elif command.type == "close_conversation_session":
+                await self._close_conversation_session(
+                    end_reason=str(command.payload.get("end_reason") or "unknown")
+                )
 
     async def _insert_stop_intent_observation(self, command: SessionCommand) -> None:
         if self.stop_intent_store is None:

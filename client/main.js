@@ -388,6 +388,7 @@ async function stopSession() {
   sourceNode?.disconnect();
   sinkNode?.disconnect();
   micStream?.getTracks().forEach((track) => track.stop());
+  sendJsonEvent({ type: "client_stop" });
   websocket?.close();
   await audioContext?.close();
 

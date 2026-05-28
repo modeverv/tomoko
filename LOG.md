@@ -317,6 +317,47 @@
 
 ---
 
+## 2026-05-28 セッション6
+
+### やること（開始時に書く）
+- STOP/START UI で会話をぶつ切りした時も、会話 session が summarizer 対象へ進むようにする
+- `/ws` adapter が DB close を直接実行する設計は避け、Stop/Disconnect の事実を `SessionEvent` として `TomoroSession` に渡す
+- `TomoroSession` が final owner として active conversation session を `ui_stop` / `client_disconnect` で close する
+- 先に unit test を追加し、transport lifecycle が store 直叩きではなく session event 経由で close されることを固定する
+
+### やったこと
+- PLAN.md に Phase 8.6.1 client lifecycle による session close を追記し、完了チェックを更新した
+- UI Stop が WebSocket close 前に `{"type":"client_stop"}` を送るようにした
+- `/ws` adapter が `client_stop` を `SessionEvent(type="client_stop_requested")` へ変換するようにした
+- WebSocket disconnect 時は `_connection_registry.unregister()` 後の snapshot を `connected_output_state_changed` として `TomoroSession` へ戻すようにした
+- `TomoroSession.apply_client_lifecycle_event()` を追加し、lifecycle event の internal command として active conversation session を close するようにした
+- active session は UI Stop では `end_reason="ui_stop"`、connected client 0 の disconnect では `end_reason="client_disconnect"` で閉じる
+- MEMORY.md に、Stop/Disconnect は SessionEvent 経由で conversation session を閉じる判断を追記した
+
+### 詰まったこと・解決したこと
+- 最初に考えた `/ws` disconnect から store を直接 close する案は、TomoroSession の session lifecycle 所有境界を壊すため採用しなかった
+  - 解決: adapter は transport 事実だけを event 化し、close の判断と DB 更新は TomoroSession の internal command に寄せた
+- `client_stop` event の unit test は `SessionEvent` の timestamp まで比較して落ちた
+  - 解決: event type / payload の契約だけを検証する形にした
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase85_conversation_sessions.py tests/unit/test_phase1_echo.py -q`
+  - 13 passed
+- `node --check client/main.js`
+  - pass
+- `.venv/bin/python -m ruff check server/session.py server/edge/main.py tests/unit/test_phase85_conversation_sessions.py tests/unit/test_phase1_echo.py`
+  - pass
+- `.venv/bin/python -m pytest -m unit`
+  - 372 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- 実ブラウザで Stop/Start を数回行い、`conversation_sessions` が `end_reason='ui_stop'` / `summary_status='pending'` へ進むことを確認する
+- `make session-summarizer-once` で Stop 由来 session が `completed` になることを DB と `logs/session-summarizer.log` で確認する
+
 ## 2026-05-28 セッション5
 
 ### やること（開始時に書く）

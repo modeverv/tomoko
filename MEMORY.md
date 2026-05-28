@@ -2208,3 +2208,18 @@ session close / withdrawn / ambient 復帰では clear する。
 
 ログには `carryover_added` / `carryover_used` / `carryover_evicted` / `carryover_cleared` を出し、
 follow-up のたびに embedding search を増やさず、前 turn の retrieval 結果を再利用できたか確認する。
+
+### 確定した判断: Stop/Disconnect は SessionEvent 経由で conversation session を閉じる
+2026-05-28 の確認で、UI Stop は WebSocket を閉じるだけで、`cooldown -> ambient` や `withdrawn` を経由しないため、
+active `conversation_sessions` が `summary_status='not_ready'` のまま残り、session summarizer の対象にならないことがわかった。
+
+ただし、`/ws` adapter が `conversation_session_store.close_session()` を直接呼ぶ設計は採用しない。
+transport 層は Stop / Disconnect という事実を `SessionEvent` に変換するだけにし、conversation session lifecycle の最終判断は
+引き続き `TomoroSession` に集約する。
+
+UI Stop は `client_stop` JSON event として送られ、`TomoroSession` が `client_stop_requested` を受けて
+active session を `end_reason='ui_stop'` で閉じる。
+WebSocket disconnect は connection registry の snapshot を `connected_output_state_changed` として戻し、
+connected client が 0 になった場合だけ `end_reason='client_disconnect'` で閉じる。
+これにより既存 `PostgresConversationSessionStore.close_session()` 契約で `summary_status='pending'` へ進み、
+background summarizer が拾える。

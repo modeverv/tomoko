@@ -8,8 +8,9 @@ import pytest
 from fastapi import WebSocketDisconnect
 
 from server.edge.debug_recording import DebugAudioRecorder
-from server.edge.main import app, websocket_session
+from server.edge.main import _handle_client_text_event, app, websocket_session
 from server.edge.pipeline.vad import VADProcessor
+from server.shared.models import SessionEvent
 
 
 class ConstantVAD:
@@ -135,6 +136,25 @@ async def test_ws_debug_recording_saves_audio_without_session_processing(
     assert processor.state == "idle"
     assert list((tmp_path / "audio-recordings").glob("*.wav"))
     assert list((tmp_path / "audio-recordings").glob("*.json"))
+
+
+@pytest.mark.unit
+async def test_client_stop_text_event_is_forwarded_to_tomoro_session() -> None:
+    session = FakeLifecycleSession()
+
+    await _handle_client_text_event(session, json.dumps({"type": "client_stop"}))  # type: ignore[arg-type]
+
+    assert len(session.events) == 1
+    assert session.events[0].type == "client_stop_requested"
+    assert session.events[0].payload == {"reason": "ui_stop"}
+
+
+class FakeLifecycleSession:
+    def __init__(self) -> None:
+        self.events: list[SessionEvent] = []
+
+    async def apply_client_lifecycle_event(self, event: SessionEvent) -> None:
+        self.events.append(event)
 
 
 class FakeWebSocket:

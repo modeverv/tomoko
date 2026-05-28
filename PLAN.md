@@ -4159,3 +4159,47 @@ Phase 8.8 の `ContextSnapshotBuilder` は、明示的な記憶 cue がある発
 - `TomoroSession` が session lifecycle と carryover clear の最終所有者である
 - `pytest -m unit tests/unit/test_phase88_context_snapshot.py` が通る
 - `pytest -m unit` が通る
+
+---
+
+## 2026-05-28 追記: Phase 8.6.1 client lifecycle による session close
+
+Phase 8.6 の session summarizer は、`summary_status='pending'` かつ `ended_at IS NOT NULL` の
+閉じた `conversation_sessions` だけを background worker が処理する。
+上の「online path では session を閉じ、`summary_status='pending'` にするだけ」という判断は否定しない。
+ただし、現行 UI の Stop は WebSocket を閉じるだけで、`cooldown -> ambient` や `withdrawn` を経由しないため、
+active conversation session が `not_ready` のまま残り、summarizer 対象にならない。
+
+一方で、`/ws` adapter が `conversation_session_store.close_session()` を直接呼ぶ設計は採用しない。
+WebSocket は transport の事実を観測する層であり、conversation session lifecycle の最終判断は
+引き続き `TomoroSession` に集約する。
+
+**目標**: Stop / Disconnect を transport event から `SessionEvent` へ変換し、
+`TomoroSession` が final owner として active conversation session を閉じられるようにする。
+
+- [x] UI Stop は WebSocket close の前に `client_stop` JSON event を既存 `/ws` へ送る
+  - client は判定を持たず、「人間が Stop を押した」という事実だけを送る
+  - REST endpoint や別 WebSocket は増やさない
+- [x] `/ws` adapter は `client_stop` を `SessionEvent(type="client_stop_requested")` に変換する
+  - adapter は DB store を直接呼ばない
+  - close reason は `ui_stop` として TomoroSession に渡す
+- [x] WebSocket disconnect は connection registry の snapshot を更新し、
+  `SessionEvent(type="connected_output_state_changed")` として TomoroSession に戻す
+  - connected client が 0 になった時だけ `client_disconnect` close 候補にする
+  - 複数 client / edge 接続が残っている場合は会話 session を閉じない
+- [x] `TomoroSession` は active conversation session がある時だけ internal command で close する
+  - `end_reason="ui_stop"` または `end_reason="client_disconnect"`
+  - `PostgresConversationSessionStore.close_session()` 既存契約により `summary_status='pending'` へ進める
+  - retrieved context carryover も既存 close 処理で clear する
+- [x] unit test を追加する
+  - `client_stop_requested` で active session が `ui_stop` として閉じる
+  - connected output が 0 になった disconnect で active session が `client_disconnect` として閉じる
+  - connected output が残る場合は close しない
+  - `/ws` の `client_stop` text event が session event 経由で処理される
+
+**完了条件**:
+- UI Stop / START のぶつ切りでも、active conversation session が pending summary 対象へ進む
+- `/ws` adapter が conversation session store を直接操作しない
+- `TomoroSession` が session lifecycle の final owner である構造を維持する
+- `pytest -m unit tests/unit/test_phase85_conversation_sessions.py tests/unit/test_phase1_echo.py` が通る
+- `pytest -m unit` が通る
