@@ -2236,3 +2236,25 @@ background summarizer が拾える。
 
 これは fast mode に新しい DB 検索や embedding search を増やす判断ではない。
 `TomoroSession` / `ContextSnapshotBuilder` がすでに選んだ memory を、会話生成 prompt へ正しく接続するだけの判断である。
+
+### 確定した判断: Phase 8.8.8 retrieval は quota と weight を両方使う
+2026-05-28 に Phase 8.8.8 の memory retrieval weighting / session turn restore を実装した。
+
+`ContextSnapshotBuilder` は memory source を `session_summary` / `user_turn_snippet` /
+`tomoko_turn_snippet` / `memory_hit_user` / `memory_hit_tomoko` / `lexicon_term` に分け、
+source ごとの quota で占有上限を切った後、`raw_similarity * source_weight * role_weight *
+recency_weight * salience_weight` の final score で選択・並び替える。
+
+初期値では user turn を主、Tomoko turn を補助として扱う。
+`tomoko_turn_snippet` は max 1 / role_weight 0.25、`user_turn_snippet` は max 4 / role_weight 1.0 とし、
+Tomoko の過去発話がユーザー原文を押しのけないようにする。
+cue type は rule-first で `recall` / `detail` / `stance` / `normal` に分類し、
+`detail` では user turn snippets、`stance` では user turn と lexicon を相対的に強める。
+
+summary hit 後の原文復元は `ConversationSessionSummaryStore.read_session_turns()` から raw logs を読む optional source とする。
+session_id から読むだけなら online path で新しい embedding は作らない。
+今後 rerank に embedding が必要になった場合も、同一 context build 内の `query_embedding_task` を使い回し、
+同じ発話から二重に query embedding を生成しない。
+
+`ContextBuildTrace` には `cue_type` と selected / dropped / score breakdown を残す。
+実ブラウザでの最終 tuning は、`ContextSnapshotBuilder` の `source_scores` と `ThinkFastMode llm_prompt` を見て行う。

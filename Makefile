@@ -9,6 +9,7 @@ TOMOKO_LOG_FILE ?= logs/server.log
 TOMOKO_DEBUG_LOG_FILE ?= logs/server-debug.log
 EDGE_KITCHEN_LOG_FILE ?= logs/edge-kitchen.log
 SESSION_SUMMARY_LOG_FILE ?= logs/session-summarizer.log
+TURN_EMBEDDER_LOG_FILE ?= logs/turn-embedder.log
 PERSONA_UPDATE_LOG_FILE ?= logs/persona-updater.log
 THINKER_LOG_FILE ?= logs/thinker.log
 JOURNALIST_LOG_FILE ?= logs/journalist.log
@@ -27,6 +28,8 @@ DB_DUMP_DIR ?= logs/db-dumps
 DB_DUMP_FILE ?= $(DB_DUMP_DIR)/tomoko-$(shell date +%Y%m%d-%H%M%S).sql
 SESSION_SUMMARY_LIMIT ?= 10
 SESSION_SUMMARY_INTERVAL_SEC ?= 30
+TURN_EMBEDDER_LIMIT ?= 50
+TURN_EMBEDDER_INTERVAL_SEC ?= 60
 PERSONA_UPDATE_LIMIT ?= 10
 PERSONA_UPDATE_INTERVAL_SEC ?= 60
 THINKER_CANDIDATE_INTERVAL_SEC ?= 60
@@ -37,7 +40,7 @@ SCREEN_SESSION ?= tomoko-runtime
 SCREEN_SHELL ?= zsh
 
 .PHONY: deps prepare download-models download-optional-models server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
-.PHONY: session-summarizer session-summarizer-once
+.PHONY: session-summarizer session-summarizer-once turn-embedder turn-embedder-once
 .PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
 .PHONY: information-ingest-once information-ingest-dry-run information-interpret-once information-interpret
 .PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list
@@ -82,6 +85,12 @@ session-summarizer:
 
 session-summarizer-once:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(SESSION_SUMMARY_LOG_FILE) mise exec -- uv run python background-process/summarize_pending_sessions.py --config $(CENTRAL_CONFIG) --limit $(SESSION_SUMMARY_LIMIT)
+
+turn-embedder:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TURN_EMBEDDER_LOG_FILE) mise exec -- uv run python background-process/embed_conversation_turns.py --config $(CENTRAL_CONFIG) --limit $(TURN_EMBEDDER_LIMIT) --watch --interval-sec $(TURN_EMBEDDER_INTERVAL_SEC)
+
+turn-embedder-once:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TURN_EMBEDDER_LOG_FILE) mise exec -- uv run python background-process/embed_conversation_turns.py --config $(CENTRAL_CONFIG) --limit $(TURN_EMBEDDER_LIMIT)
 
 persona-updater:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(PERSONA_UPDATE_LOG_FILE) mise exec -- uv run python background-process/update_persona_snapshots.py --config $(CENTRAL_CONFIG) --limit $(PERSONA_UPDATE_LIMIT) --watch --interval-sec $(PERSONA_UPDATE_INTERVAL_SEC)
@@ -160,11 +169,12 @@ information-interpret:
 		--limit $(WORLD_OBSERVATION_INTERPRET_LIMIT) \
 		--interval-sec $(WORLD_OBSERVATION_INTERPRET_INTERVAL_SEC)
 
-background-once: persona-seed-initial session-summarizer-once persona-updater-once information-ingest-once information-interpret-once thinker-once journalist-once
+background-once: persona-seed-initial session-summarizer-once turn-embedder-once persona-updater-once information-ingest-once information-interpret-once thinker-once journalist-once
 
 background-watch:
 	@echo "Run long-lived processes in separate terminals:"
 	@echo "  make session-summarizer"
+	@echo "  make turn-embedder"
 	@echo "  make persona-seed-initial"
 	@echo "  make persona-updater"
 	@echo "  make thinker"
@@ -173,7 +183,7 @@ background-watch:
 	@echo "  make information-interpret"
 
 background-dry-run:
-	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once persona-seed-initial persona-updater persona-updater-once information-ingest-dry-run information-ingest-once information-interpret-once information-interpret thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
+	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once turn-embedder turn-embedder-once persona-seed-initial persona-updater persona-updater-once information-ingest-dry-run information-ingest-once information-interpret-once information-interpret thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
 
 screen-runtime:
 	@command -v screen >/dev/null || { echo "screen is required"; exit 1; }
@@ -187,6 +197,7 @@ screen-runtime:
 	screen -S $(SCREEN_SESSION) -X screen -t turn-taking $(SCREEN_SHELL) -lc 'cd "$(CURDIR)" && exec make turn-taking-worker'
 	screen -S $(SCREEN_SESSION) -X screen -t thinker $(SCREEN_SHELL) -lc 'cd "$(CURDIR)" && exec make thinker'
 	screen -S $(SCREEN_SESSION) -X screen -t summarizer $(SCREEN_SHELL) -lc 'cd "$(CURDIR)" && exec make session-summarizer'
+	screen -S $(SCREEN_SESSION) -X screen -t embedder $(SCREEN_SHELL) -lc 'cd "$(CURDIR)" && exec make turn-embedder'
 	screen -S $(SCREEN_SESSION) -X screen -t persona $(SCREEN_SHELL) -lc 'cd "$(CURDIR)" && exec make persona-updater'
 	@echo "started screen session: $(SCREEN_SESSION)"
 	@echo "attach with: make screen-attach"

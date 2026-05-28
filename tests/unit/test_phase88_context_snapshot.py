@@ -145,6 +145,38 @@ class FakeSummaryStore:
         ]
 
 
+class RestoringSummaryStore(FakeSummaryStore):
+    def __init__(self) -> None:
+        super().__init__()
+        self.read_calls = 0
+
+    async def read_session_turns(self, *, session_id: UUID) -> list[ConversationTurn]:
+        assert session_id == self.session_id
+        self.read_calls += 1
+        return [
+            ConversationTurn(
+                speaker="user",
+                text="著作権の話では、AIに学習させる入力側の許諾が気になっていた。",
+                timestamp=datetime(2026, 5, 22, 20, 1, tzinfo=UTC),
+            ),
+            ConversationTurn(
+                speaker="user",
+                text="生成物よりも、作る過程で誰の作品を使ったかを重く見ていた。",
+                timestamp=datetime(2026, 5, 22, 20, 2, tzinfo=UTC),
+            ),
+            ConversationTurn(
+                speaker="tomoko",
+                text="つまり、結論としては入力の扱いを分けて考えたいんだね。",
+                timestamp=datetime(2026, 5, 22, 20, 3, tzinfo=UTC),
+            ),
+            ConversationTurn(
+                speaker="tomoko",
+                text="まとめると、ユーザーは許諾と過程を分けて考えていた。",
+                timestamp=datetime(2026, 5, 22, 20, 4, tzinfo=UTC),
+            ),
+        ]
+
+
 class OrderedSummaryStore(FakeSummaryStore):
     def __init__(self, events: list[str]) -> None:
         super().__init__()
@@ -317,6 +349,134 @@ async def test_deep_snapshot_shares_query_embedding_and_prioritizes_summary() ->
     assert snapshot.trace.cache_hits["query_embedding"] is False
     assert snapshot.session_summaries
     assert snapshot.memory_hits
+
+
+@pytest.mark.unit
+async def test_summary_hit_restores_user_turn_snippets_with_source_scores() -> None:
+    summary_store = RestoringSummaryStore()
+    builder = ContextSnapshotBuilder(
+        conversation_log_reader=InMemoryConversationReader(),
+        embedding_backend=CountingEmbeddingBackend(),  # type: ignore[arg-type]
+        memory_store=FakeMemoryStore(),  # type: ignore[arg-type]
+        session_summary_store=summary_store,  # type: ignore[arg-type]
+    )
+
+    snapshot = await builder.build(
+        text="著作権の話、詳しくはどんな話やったっけ",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=ContextBuildPolicy.for_depth("deep"),
+    )
+
+    assert summary_store.read_calls == 1
+    restored_texts = [
+        hit.text
+        for hit in snapshot.memory_hits
+        if hit.source_id and hit.source_id.startswith("restored_turn:")
+    ]
+    assert restored_texts == [
+        "著作権の話では、AIに学習させる入力側の許諾が気になっていた。",
+        "生成物よりも、作る過程で誰の作品を使ったかを重く見ていた。",
+    ]
+    assert snapshot.trace.included_counts["restored_turn_snippets"] == 2
+    assert snapshot.trace.cue_type == "detail"
+    selected_sources = {
+        trace.source
+        for trace in snapshot.trace.source_score_traces
+        if trace.selected
+    }
+    assert "user_turn_snippet" in selected_sources
+    assert "tomoko_turn_snippet" not in selected_sources
+
+
+@pytest.mark.unit
+async def test_context_source_quota_keeps_tomoko_turns_from_dominating() -> None:
+    summary_store = RestoringSummaryStore()
+    builder = ContextSnapshotBuilder(
+        conversation_log_reader=InMemoryConversationReader(),
+        embedding_backend=FakeEmbeddingBackend(),  # type: ignore[arg-type]
+        memory_store=FakeMemoryStore(),  # type: ignore[arg-type]
+        session_summary_store=summary_store,  # type: ignore[arg-type]
+    )
+
+    snapshot = await builder.build(
+        text="著作権の話、どういう風に考えてたっけ",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=ContextBuildPolicy.for_depth("deep"),
+    )
+
+    restored_tomoko = [
+        hit
+        for hit in snapshot.memory_hits
+        if hit.source_id
+        and hit.source_id.startswith("restored_turn:")
+        and hit.speaker == "tomoko"
+    ]
+    assert [hit.text for hit in restored_tomoko] == [
+        "つまり、結論としては入力の扱いを分けて考えたいんだね。"
+    ]
+    assert all(
+        not (
+            trace.source == "tomoko_turn_snippet"
+            and trace.selected
+            and trace.final_score
+            > max(
+                user_trace.final_score
+                for user_trace in snapshot.trace.source_score_traces
+                if user_trace.source == "user_turn_snippet"
+                and user_trace.selected
+            )
+        )
+        for trace in snapshot.trace.source_score_traces
+    )
+
+
+@pytest.mark.unit
+async def test_memory_cue_type_changes_source_weighting() -> None:
+    detail_builder = ContextSnapshotBuilder(
+        conversation_log_reader=InMemoryConversationReader(),
+        embedding_backend=FakeEmbeddingBackend(),  # type: ignore[arg-type]
+        memory_store=FakeMemoryStore(),  # type: ignore[arg-type]
+        session_summary_store=RestoringSummaryStore(),  # type: ignore[arg-type]
+    )
+    stance_builder = ContextSnapshotBuilder(
+        conversation_log_reader=InMemoryConversationReader(),
+        embedding_backend=FakeEmbeddingBackend(),  # type: ignore[arg-type]
+        memory_store=FakeMemoryStore(),  # type: ignore[arg-type]
+        session_summary_store=RestoringSummaryStore(),  # type: ignore[arg-type]
+    )
+
+    detail_snapshot = await detail_builder.build(
+        text="詳しくはどんな話やったっけ",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=ContextBuildPolicy.for_depth("deep"),
+    )
+    stance_snapshot = await stance_builder.build(
+        text="どういう風に考えてたっけ",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=ContextBuildPolicy.for_depth("deep"),
+    )
+
+    detail_user_weight = next(
+        trace.source_weight
+        for trace in detail_snapshot.trace.source_score_traces
+        if trace.source == "user_turn_snippet"
+    )
+    stance_user_weight = next(
+        trace.source_weight
+        for trace in stance_snapshot.trace.source_score_traces
+        if trace.source == "user_turn_snippet"
+    )
+    assert detail_snapshot.trace.cue_type == "detail"
+    assert stance_snapshot.trace.cue_type == "stance"
+    assert detail_user_weight > stance_user_weight
 
 
 @pytest.mark.unit

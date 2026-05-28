@@ -1479,6 +1479,23 @@ class ContextCacheTrace:
 
 
 @dataclass(frozen=True)
+class ContextSourceScoreTrace:
+    source: str
+    source_id: str | None
+    speaker: str | None
+    selected: bool
+    dropped_reason: str | None
+    raw_similarity: float | None
+    base_score: float | None
+    source_weight: float
+    role_weight: float
+    recency_weight: float
+    salience_weight: float
+    final_score: float
+    quota_hit: bool = False
+
+
+@dataclass(frozen=True)
 class ContextBuildTrace:
     budget_ms: int
     elapsed_ms: float
@@ -1491,6 +1508,8 @@ class ContextBuildTrace:
     source_errors: dict[str, str]
     skipped_reasons: dict[str, str] = field(default_factory=dict)
     cache_entries: dict[str, ContextCacheTrace] = field(default_factory=dict)
+    cue_type: str = "normal"
+    source_score_traces: list[ContextSourceScoreTrace] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

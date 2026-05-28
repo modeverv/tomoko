@@ -4263,7 +4263,7 @@ topic / stance / quote / persona effect の抽象度を分け、retrieval source
 
 ### Phase 8.8.8.0: memory source の粒度と ranking 契約を固定する
 
-- [ ] context assembly 内の memory source を明示的に分類する
+- [x] context assembly 内の memory source を明示的に分類する
   - `same_session_recent_turns`: 今の会話の直近文脈
   - `recent_turns`: 近い過去の completed turns
   - `session_summary`: 会話単位の索引カード
@@ -4271,28 +4271,28 @@ topic / stance / quote / persona effect の抽象度を分け、retrieval source
   - `tomoko_turn_snippet`: Tomoko 発話の復元断片
   - `lexicon_term`: 人間側の重要語・関係性マーカー
   - `persona_slice`: Tomoko の人格・関係性状態
-- [ ] source selection は **quota と weight を両方使う** 契約にする
+- [x] source selection は **quota と weight を両方使う** 契約にする
   - quota は「各 source が prompt を占有しすぎないための上限」
   - weight は「quota 内で候補を並べるための score 補正」
   - source ごとの quota で最大件数を制限してから、weight 付き final score で assemble 順を決める
   - source 間の最終 assemble でも final score / priority / token budget を使う
   - `weight or quota` ではなく `weight and quota` として扱う
-- [ ] 初期 quota / weight はコード内定数として持つ
+- [x] 初期 quota / weight はコード内定数として持つ
   - `session_summary`: max 2, source_weight 1.1
   - `user_turn_snippet`: max 4, source_weight 1.0, role_weight 1.0
   - `tomoko_turn_snippet`: max 1, source_weight 0.7, role_weight 0.25
   - `lexicon_term`: max 4, source_weight 0.6
   - `persona_slice`: quota ではなく固定 slice として薄く入れる
   - same-session recent turns は retrieval ranking ではなく baseline context として別枠で優先する
-- [ ] final score の計算式をコード上で明示する
+- [x] final score の計算式をコード上で明示する
   - `final_score = raw_similarity * source_weight * role_weight * recency_weight * salience_weight`
   - 値がない要素は `1.0` として扱う
   - raw similarity がない候補は source 固有の base score を使う
   - score は prompt 投入順の参考であり、会話 state の source of truth ではない
-- [ ] 最初から config 化しすぎない
+- [x] 最初から config 化しすぎない
   - tuning はまずコード内定数と debug log で行う
   - 必要になったものだけ後で config へ出す
-- [ ] `ContextBuildTrace` に selected / dropped / score breakdown を残す
+- [x] `ContextBuildTrace` に selected / dropped / score breakdown を残す
   - raw similarity
   - source weight
   - role weight
@@ -4309,21 +4309,21 @@ topic / stance / quote / persona effect の抽象度を分け、retrieval source
 
 ### Phase 8.8.8.1: summary hit から session turn snippets を復元する
 
-- [ ] deep / explicit recall cue で `session_summaries` が hit した場合、上位 session_id から原文 turn を復元する
+- [x] deep / explicit recall cue で `session_summaries` が hit した場合、上位 session_id から原文 turn を復元する
   - まず top 1 session から始める
   - 必要なら top 2 まで広げる
-- [ ] 復元は `ContextSnapshotBuilder` 内の optional source として扱う
+- [x] 復元は `ContextSnapshotBuilder` 内の optional source として扱う
   - deadline 内に戻れば prompt に追加
   - timeout / budget 超過なら summary だけで返す
   - online path で未 embedding turn をその場で embed しない
-- [ ] DB read は async task として横に出す
+- [x] DB read は async task として横に出す
   - summary search 後の二段階 async でよい
   - PostgreSQL read は軽い前提だが、必ず elapsed を trace する
-- [ ] user turn を主に復元する
+- [x] user turn を主に復元する
   - primary quota: user turn snippets
   - secondary quota: Tomoko turn snippets
   - Tomoko turn は要約・確認・結論っぽい文だけ少数
-- [ ] snippet は prompt budget 内で短く整形する
+- [x] snippet は prompt budget 内で短く整形する
   - role
   - timestamp
   - session_id
@@ -4337,29 +4337,29 @@ topic / stance / quote / persona effect の抽象度を分け、retrieval source
 
 ### Phase 8.8.8.2: query embedding を使い回し、background embedding を強化する
 
-- [ ] 1 context build 内では query embedding を 1 回だけ作る
+- [x] 1 context build 内では query embedding を 1 回だけ作る
   - `query_embedding_task = asyncio.create_task(embed_query(text))` を build の最初に作る
   - session summary search は `await query_embedding_task` を使う
   - turn memory search は同じ `await query_embedding_task` を使う
   - summary hit 後に横出しする restored turn query / rerank も、embedding が必要な場合は同じ `await query_embedding_task` を使う
   - 二段階 async の後続 DB query でも、同じ発話から新しい query embedding を作らない
-- [ ] restored turn snippets の取得では、処理を分ける
+- [x] restored turn snippets の取得では、処理を分ける
   - session_id で raw logs を読むだけなら embedding は不要
   - session 内の embedded turns を類似順に rerank する場合は、同じ `query_embedding_task` を使う
   - embedding 未生成 turn に対して online path で `embed_passage` しない
-- [ ] async 横出しの順序を明示する
+- [x] async 横出しの順序を明示する
   - first wave: same session turns / recent turns / query_embedding_task / session summary search / memory hit search
   - second wave: session summary hit が返った後、top session_id の turn snippet fetch を task として投げる
   - second wave で vector rerank が必要なら、first wave の `query_embedding_task` を await して使う
   - deadline に間に合わない second wave は skipped とし、summary だけで返す
-- [ ] summarizer / background worker 側で `conversation_logs` の embedding backfill を進める
+- [x] summarizer / background worker 側で `conversation_logs` の embedding backfill を進める
   - CPU lane に逃がす
   - GPU は会話 LLM / STT / TTS のために空ける
   - bounded worker として動かし、会話 hot path を塞がない
-- [ ] まずは全 completed logs に embedding がある状態を目指してよい
+- [x] まずは全 completed logs に embedding がある状態を目指してよい
   - ただし retrieval 時には role / salience / status / session / source weight で重み付けする
   - embedding 済み = prompt に入れる、ではない
-- [ ] primary retrieval は user 発話を強めに扱う
+- [x] primary retrieval は user 発話を強めに扱う
   - user turns を多めに取得
   - Tomoko turns は低 weight かつ少数 quota
   - session summary は別 source として維持する
@@ -4372,18 +4372,18 @@ topic / stance / quote / persona effect の抽象度を分け、retrieval source
 
 ### Phase 8.8.8.3: 質問タイプに応じた memory weight を入れる
 
-- [ ] 発話 cue を軽く分類する
+- [x] 発話 cue を軽く分類する
   - `recall`: 覚えてる / この前 / 前に話した
   - `detail`: 詳しく / どんな話 / 何の話
   - `stance`: どう考えてた / どういう風に捉えてた / 結論
   - `normal`: 通常会話
-- [ ] cue type ごとに source weight を変える
+- [x] cue type ごとに source weight を変える
   - recall: session summary / topic を強め
   - detail: restored user turn snippets を強め
   - stance: lexicon / orientation / salient user turn を強め
   - normal: same session / recent turns を優先し、long-term memory は薄く
-- [ ] cue type は LLM 判定ではなく rule-first で始める
-- [ ] 判定結果を `ContextBuildTrace` と debug log に出す
+- [x] cue type は LLM 判定ではなく rule-first で始める
+- [x] 判定結果を `ContextBuildTrace` と debug log に出す
 
 **完了条件**:
 - 「覚えてる？」と「詳しくは？」と「どう考えてたっけ？」で、prompt に入る memory の粒度が変わる

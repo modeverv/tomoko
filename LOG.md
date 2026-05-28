@@ -1,3 +1,47 @@
+## 2026-05-28 セッション9
+
+### やること（開始時に書く）
+- Phase 8.8.8 memory retrieval weighting and session turn restore と配下タスクを実装する
+- source quota / weight / score breakdown を `ContextSnapshotBuilder` の trace に出す
+- summary hit から user turn snippets を復元し、同一 query embedding を使い回す
+- cue type ごとの memory weighting を rule-first で入れ、unit test と実ログで確認できる形にする
+
+### やったこと
+- `ContextSnapshotBuilder` に memory source ごとの quota / weight / final score 計算を追加した
+- `ContextBuildTrace` に `cue_type` と selected / dropped / score breakdown を追加した
+- `session_summaries` hit 後に、上位 session の raw user turn snippets を optional source として復元するようにした
+- restored turn は session_id で raw logs を読むだけにし、online path では未 embedding turn を生成しない形にした
+- cue type を rule-first で `recall` / `detail` / `stance` / `normal` に分類し、source weight を切り替えるようにした
+- user turn を主、Tomoko turn を補助にする初期 quota / role weight をコード内定数として固定した
+- background embedding 用に `background-process/embed_conversation_turns.py` と `make turn-embedder` / `make turn-embedder-once` を追加した
+- PLAN.md の Phase 8.8.8.0〜8.8.8.3 のチェックを更新し、MEMORY.md に確定判断を追記した
+
+### 詰まったこと・解決したこと
+- `make server-debug` は既存の 8000 番サーバーが生きていて address in use になった
+  - 解決: `PORT=8018 make server-debug` で起動 smoke を行い、startup warm-up と `/` の 200 応答を確認した
+- Phase 8.8.8.4 の実マイク会話 quality tuning は、このセッションでは自動化できないため未チェックのまま残す
+  - ただし、`source_scores` / `cue_type` / restored snippet counts はログで見える状態にした
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase88_context_snapshot.py -q`
+  - 17 passed
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase8_memory.py tests/unit/test_phase88_context_snapshot.py -q`
+  - 25 passed
+- `.venv/bin/python -m pytest -m unit tests/unit/test_makefile_process_entries.py tests/unit/test_phase88_context_snapshot.py -q`
+  - 21 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 377 passed, 17 deselected
+- `.venv/bin/python -m ruff check background-process/embed_conversation_turns.py server/gateway/context.py server/shared/models.py tests/unit/test_phase88_context_snapshot.py tests/unit/test_makefile_process_entries.py`
+  - pass
+- `make -n turn-embedder-once && make -n turn-embedder`
+  - pass
+- `PORT=8018 make server-debug`
+  - startup complete, `GET /` 200, then stopped manually
+
+### 次のセッションでやること
+- 実ブラウザのマイク入力で `著作権の話覚えてる` / `詳しくはどんな話やったっけ` / `どういう風に考えてたっけ` を確認する
+- `source_scores` と `ThinkFastMode llm_prompt` を見て、detail / stance の source weight を微調整する
+
 ## 2026-05-28 セッション8
 
 ### やること（開始時に書く）
