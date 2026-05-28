@@ -1,3 +1,24 @@
+## 2026-05-28 セッション8
+
+### やること（開始時に書く）
+- 記憶 retrieval / restored turn / source weighting の核心設計を PLAN.md に Phase として追記する
+- `weight or quota` ではなく、quota は source 占有上限、weight は quota 内と assemble 時の ranking 補正として両方使う契約にする
+- summary hit 後に横出しする DB query / rerank でも、embedding が必要な場合は同一 `query_embedding_task` を使い回すことを明記する
+- 今回は実装せず、後続 LLM が迷わない計画境界を作る
+
+### やったこと
+- PLAN.md に Phase 8.8.8 memory retrieval weighting and session turn restore を追記した
+- memory source の粒度、quota と weight の役割分担、final score の計算式を計画として固定した
+- summary hit 後の二段階 async query / restored turn rerank でも同一 `query_embedding_task` を使い回す契約を明記した
+- background embedding は CPU lane に寄せ、online path では未 embedding turn を作らない方針を明記した
+
+### 検証
+- `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- Phase 8.8.8.0 から、まず source quota / weight のコード内定数と trace 追加を実装する
+
 ## 2026-05-28 セッション7
 
 ### やること（開始時に書く）
