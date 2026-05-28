@@ -4429,3 +4429,185 @@ topic / stance / quote / persona effect の抽象度を分け、retrieval source
 - background embedding は CPU lane に寄せ、会話 hot path の GPU / LLM / TTS / STT を邪魔しない
 - source quota / weight / selected reason がログで観測できる
 - `pytest -m unit` が通る
+
+---
+
+## 2026-05-28 追記: Phase 10.12 TomoroSession package split and internal responsibility extraction
+
+TomoroSession に participation / playback / session lifecycle の最終判断を集約する判断は否定しない。
+むしろ、`STT -> TomoroSession -> LLM -> TTS` の左から右への主データフローと、
+「状態変更の最終所有者は TomoroSession」という原則は維持する。
+
+ただし、現状の `server/session.py` は状態本体・状態遷移・情報取得・reply orchestration・TTS queue・
+session-local memory carryover の実装詳細を同じクラス内に抱え始めている。
+これは初期の Fat Controller としては健康な中央集権だが、次の段階では
+TomoroSession の所有権を保ったまま、`server/session/` package の中で reducer / effects / helper に責任を分ける。
+
+**目標**: まず `server/session.py` を `server/session/core.py` へ移し、
+`from server.session import TomoroSession` という外部 import 契約を維持したまま、
+TomoroSession を public facade + state holder として残す。
+状態遷移判断、外部副作用、会話生成 orchestration、session-local 作業メモを段階的に分離する。
+外部 API / WebSocket event / ThinkingInput / TTSInput の契約は原則変えない。
+
+### Phase 10.12.0: session package へ安全に移す
+
+- [ ] `server/session/` directory を作る
+  - `server/session/core.py`
+  - `server/session/__init__.py`
+- [ ] 現行 `server/session.py` の内容をまず `server/session/core.py` へそのまま移す
+  - 挙動変更を混ぜない
+  - import path の機械的変更に限定する
+- [ ] `server/session/__init__.py` は外部向け public entry だけを export する
+  - `TomoroSession`
+  - 必要なら既存 test が参照する型だけ
+- [ ] `server/session.py` と `server/session/` は同時に存在できないため、一回の変更で package 化する
+  - 互換 shim file は置かない
+  - 全 import を `from server.session import TomoroSession` または package 内相対 import に更新する
+- [ ] package 化後も外部から new するのは `TomoroSession` だけにする
+  - reducer / effects / carryover / reply helper は production 外部から直接組み立てない
+  - reducer unit test など test からの direct import は許可する
+- [ ] package 化時点では責任分離を始めない
+  - まず moved-only commit 相当の差分にする
+  - `pytest -m unit` で挙動不変を確認する
+
+**完了条件**:
+- `server/session.py` が `server/session/core.py` へ移っている
+- 外部 import 契約は `from server.session import TomoroSession` に揃っている
+- `/ws` / tests / background process からの TomoroSession 利用が壊れていない
+- 挙動変更なしで `pytest -m unit` が通る
+
+### Phase 10.12.1: package 内の責任を棚卸しする
+
+- [ ] `server/session/core.py` の private method を責任カテゴリに分類する
+  - state core: state fields / `get_now_state()` / public facade
+  - reducer: `SessionEvent + state -> TransitionResult`
+  - effects: DB write/read / send_event / send_audio / context build / close session
+  - reply orchestration: LLM stream / `ReplyPipeline` / TTS queue
+  - session-local workbench: retrieved context carryover
+- [ ] 外部契約を変えてはいけない境界を明記する
+  - `/ws` adapter は事実を `SessionEvent` に変換するだけ
+  - `ThinkingMode` は DB / session state を読まない
+  - TTS backend は `TTSInput -> AudioChunkOut` のみ
+  - conversation session lifecycle の final owner は TomoroSession
+- [ ] 先に分けるもの / 後回しにするものを決める
+  - 先に分ける: carryover helper、event reducer の一部
+  - 後回し: transcript participation、reply orchestration 全体、state immutable 化
+
+**完了条件**:
+- TomoroSession の太さが「制御の太さ」か「実装詳細の積み上がり」か分類できている
+- package 内で後続 Phase に切り出す対象が明確である
+
+### Phase 10.12.2: RetrievedContextCarryover を package 内 helper に分離する
+
+- [ ] `server/session/carryover.py` に `RetrievedContextCarryover` を追加する
+  - dedupe
+  - source key 生成
+  - entry count / text budget eviction
+  - `carryover_added` / `carryover_used` / `carryover_evicted` / `carryover_cleared` logging
+- [ ] TomoroSession は利用タイミングだけを決める
+  - fresh memory と merge する
+  - deep retrieval 結果を remember する
+  - session close / withdrawn / ambient 復帰で clear する
+- [ ] 外部 DTO は変えない
+  - `MemoryHit` / `ThinkingInput.long_term_memory` は現状維持
+  - WebSocket event は増やさない
+- [ ] unit test を移す/追加する
+  - duplicate source が重複しない
+  - entry count / text budget で eviction される
+  - clear reason がログに残る
+  - TomoroSession 経由の carryover regression が通る
+
+**完了条件**:
+- TomoroSession から carryover の細かい実装詳細が消える
+- carryover の所有権・利用タイミングは TomoroSession に残る
+- `pytest -m unit tests/unit/test_phase88_context_snapshot.py` が通る
+- `pytest -m unit` が通る
+
+### Phase 10.12.3: event reducer を package 内へ切り出す
+
+- [ ] `server/session/reducer.py` に `TomoroSessionReducer` を追加する
+  - `reduce(state, event) -> TransitionResult`
+  - 原則 `await` しない
+  - DB / LLM / TTS / WebSocket send を触らない
+- [ ] まず event-driven な既存 reducer だけを移す
+  - `client_stop_requested`
+  - `connected_output_state_changed`
+  - `playback_started`
+  - `playback_ended`
+  - `idle_timer_elapsed`
+  - `stop_intent_classified`
+- [ ] transcript / reply 系はまだ TomoroSession に残す
+  - participation 判定
+  - `_reply_to()`
+  - context build
+  - TTS queue
+- [ ] mutable state で始めてよい
+  - 最初から immutable state replacement へ飛ばない
+  - `TomoroRuntimeState` への集約は別 Phase で検討する
+- [ ] reducer unit test を追加する
+  - event と state から expected commands / emissions が返る
+  - stale playback / duplicate stop など既存 gate が維持される
+
+**完了条件**:
+- 状態遷移判断の一部が TomoroSession から reducer へ移る
+- reducer は副作用を実行しない
+- TomoroSession は public facade / state holder / reducer 呼び出しとして振る舞う
+- `pytest -m unit tests/unit/test_phase10_session_contract.py tests/unit/test_phase105_session_runtime.py` が通る
+- `pytest -m unit` が通る
+
+### Phase 10.12.4: effects executor を package 内で明確化する
+
+- [ ] `server/session/effects.py` に `TomoroSessionEffects` または同等の内部 helper を追加する
+  - `SessionCommand` を実行する
+  - DB write/read
+  - context build
+  - send_event / send_audio
+  - close conversation session
+- [ ] TomoroSession は command 実行の順序と結果 event の戻し方を管理する
+  - final judgment は reducer / TomoroSession に残す
+  - effects helper は「判断しない」
+- [ ] `/ws` adapter が DB store を直接触らない構造を維持する
+- [ ] effects の失敗を `SessionEvent` / degraded log に戻す方針を固定する
+
+**完了条件**:
+- 副作用実行の場所が読みやすくなる
+- reducer は pure-ish、effects は副作用、TomoroSession は facade/state holder として役割が分かれる
+- 既存 WebSocket / Thinking / TTS 契約に外部影響がない
+- `pytest -m unit` が通る
+
+### Phase 10.12.5: reply orchestration の分離を検討する
+
+- [ ] `_reply_to()` を分解する
+  - context request policy
+  - thinking mode selection
+  - LLM stream consumption
+  - `ReplyPipeline`
+  - TTS queue
+  - Tomoko turn write
+- [ ] すぐに外へ出すのは TTS/reply output 周辺に限定する
+  - session state と強く絡む participation / lifecycle は残す
+- [ ] `ReplyOrchestrator` を作る場合も判断を持たせない
+  - TomoroSession が作った `ThinkingInput` を実行するだけ
+  - stop / stale / playback gate の final owner にはしない
+- [ ] latency log を維持する
+  - `reply_start`
+  - `first_reply_text`
+  - `tts_start`
+  - `first_audio_chunk`
+
+**完了条件**:
+- `_reply_to()` の見通しが良くなる
+- LLM/TTS 実行の順序は変わらない
+- stale reply / interruption / stop intent の既存挙動が変わらない
+- `pytest -m unit` が通る
+
+### Phase 10.12 全体の完了条件
+
+- `STT -> TomoroSession -> LLM -> TTS` の主データフローが維持される
+- TomoroSession が public facade / state holder として残る
+- production 外部から new するのは TomoroSession だけである
+- 状態遷移判断は reducer、外部副作用は effects、作業メモは helper に分かれる
+- 判断の出口を増やさない
+- `/ws` adapter / ThinkingMode / TTS backend に新しい責任を持たせない
+- 外部契約を変えずに `server/session/` package 内の見通しが良くなる
+- `pytest -m unit` が通る
