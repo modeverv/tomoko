@@ -990,6 +990,7 @@ class MemoryHit:
     timestamp: datetime
     similarity: float
     emotion: str | None = None
+    source_id: str | None = None
 
 
 @dataclass(frozen=True)

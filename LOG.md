@@ -317,6 +317,51 @@
 
 ---
 
+## 2026-05-28 セッション5
+
+### やること（開始時に書く）
+- PLAN.md に、会話セッション内で一度 deep retrieval した長期記憶を短期 carryover として保持する Phase を追記する
+- `TomoroSession` が active conversation session の作業メモとして retrieval carryover を持ち、次の短い follow-up でも prompt に渡せるようにする
+- carryover は source of truth ではなく、source id / hash / 文字列 budget で dedupe / eviction し、ログから挙動を追えるようにする
+- 先に regression test を追加し、`著作権の話とか覚えてる` の次の `どういう風に考えてたっけ` で retrieval が維持されることを固定する
+
+### やったこと
+- PLAN.md に Phase 8.8.6 session retrieval carryover を追記し、完了チェックを更新した
+- `TomoroSession` に session-local の retrieved context carryover を追加した
+  - fresh retrieval と carryover を `ThinkingInput.long_term_memory` へ merge する
+  - fast follow-up でも、直前 deep retrieval の `session_summaries` / `memory_hits` が prompt に残る
+  - fresh retrieval がある時は carryover に記録し、次 turn 以降は DB 再検索なしで再利用する
+- `MemoryHit.source_id` を追加し、session summary 由来の memory は `session_summary:<session_id>` で dedupe できるようにした
+- turn-level hit は speaker / timestamp / normalized text hash で dedupe するようにした
+- carryover は最大 6 entry / 900 文字に収め、超過時は古い / 低 similarity entry から落とすようにした
+- session close 時に carryover を clear するようにした
+- `carryover_added` / `carryover_used` / `carryover_evicted` / `carryover_cleared` の debug log を追加した
+- regression test を追加した
+  - deep retrieval した memory が次の短い follow-up に渡る
+  - fresh retrieval と carryover が重複しない
+  - text budget 超過で古い entry が落ちる
+  - session close で clear される
+
+### 詰まったこと・解決したこと
+- 最初は `MemoryHit` だけでは session summary の source id を保持できず、text hash だけの dedupe になっていた
+  - 解決: `MemoryHit.source_id` を任意 field として追加し、summary 変換時に `session_summary:<session_id>` を入れるようにした
+- `ContextSnapshotBuilder` の read cache に混ぜる案もあったが、prompt 内容に影響するため `TomoroSession` の active session 作業メモとして扱う方針にした
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase88_context_snapshot.py -q`
+  - 14 passed
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase85_conversation_sessions.py tests/unit/test_phase88_context_snapshot.py tests/unit/test_phase105_session_runtime.py -q`
+  - 32 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 368 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- 実ブラウザで `著作権の話とか覚えてる` に続けて `どういう風に考えてたっけ` を試し、`carryover_used` と `ThinkFastMode llm_prompt` を確認する
+
 ## 2026-05-28 セッション1
 
 ### やること（開始時に書く）

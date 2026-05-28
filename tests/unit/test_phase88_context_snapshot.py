@@ -567,6 +567,142 @@ async def test_tomoro_session_uses_larger_budget_for_explicit_memory_cue() -> No
     assert snapshot.trace.budget_ms == 300
 
 
+@pytest.mark.unit
+async def test_tomoro_session_carries_deep_memory_into_short_followup() -> None:
+    mode = RecordingThinkingMode()
+    session = TomoroSession(
+        vad_processor=FakeVADProcessor(),  # type: ignore[arg-type]
+        send_event=lambda event: None,
+        router=FakeRouter(),  # type: ignore[arg-type]
+        thinking_mode=mode,
+        context_snapshot_builder=ContextSnapshotBuilder(
+            conversation_log_reader=InMemoryConversationReader(),
+            embedding_backend=FakeEmbeddingBackend(),  # type: ignore[arg-type]
+            memory_store=FakeMemoryStore(),  # type: ignore[arg-type]
+            session_summary_store=FakeSummaryStore(),  # type: ignore[arg-type]
+        ),
+    )
+    session.active_conversation_session_id = uuid4()
+
+    await session._reply_to(
+        Transcript(
+            text="著作権の話とか覚えてる",
+            device_id="local",
+            speaker=None,
+            audio_level_db=-20.0,
+            recorded_at=datetime(2026, 5, 24, 9, 1, tzinfo=UTC),
+            is_final=True,
+        )
+    )
+    await session._wait_for_reply_task()
+
+    await session._reply_to(
+        Transcript(
+            text="どういう風に考えてたっけ",
+            device_id="local",
+            speaker=None,
+            audio_level_db=-20.0,
+            recorded_at=datetime(2026, 5, 24, 9, 2, tzinfo=UTC),
+            is_final=True,
+        )
+    )
+    await session._wait_for_reply_task()
+
+    assert len(mode.inputs) == 2
+    followup_input = mode.inputs[1]
+    assert followup_input.context_snapshot is not None
+    assert followup_input.context_snapshot.depth == "fast"
+    assert [hit.text for hit in followup_input.long_term_memory] == [
+        "会話セッション要約: カレーの材料と買い物について話した。",
+        "トモコ、この前のカレー覚えてる？",
+        "スパイスはクミンの話をしていたよ。",
+    ]
+
+
+@pytest.mark.unit
+async def test_tomoro_session_deduplicates_carryover_against_fresh_retrieval() -> None:
+    mode = RecordingThinkingMode()
+    session = TomoroSession(
+        vad_processor=FakeVADProcessor(),  # type: ignore[arg-type]
+        send_event=lambda event: None,
+        router=FakeRouter(),  # type: ignore[arg-type]
+        thinking_mode=mode,
+        context_snapshot_builder=ContextSnapshotBuilder(
+            conversation_log_reader=InMemoryConversationReader(),
+            embedding_backend=FakeEmbeddingBackend(),  # type: ignore[arg-type]
+            memory_store=FakeMemoryStore(),  # type: ignore[arg-type]
+            session_summary_store=FakeSummaryStore(),  # type: ignore[arg-type]
+        ),
+    )
+    session.active_conversation_session_id = uuid4()
+
+    for text in (
+        "トモコ、この前のカレー覚えてる？",
+        "もう一回この前のカレー覚えてる？",
+    ):
+        await session._reply_to(
+            Transcript(
+                text=text,
+                device_id="local",
+                speaker=None,
+                audio_level_db=-20.0,
+                recorded_at=datetime(2026, 5, 24, 9, 1, tzinfo=UTC),
+                is_final=True,
+            )
+        )
+        await session._wait_for_reply_task()
+
+    second_texts = [hit.text for hit in mode.inputs[1].long_term_memory]
+    assert second_texts == list(dict.fromkeys(second_texts))
+
+
+@pytest.mark.unit
+def test_tomoro_session_evicts_old_carryover_entries_by_text_budget() -> None:
+    session = TomoroSession(
+        vad_processor=FakeVADProcessor(),  # type: ignore[arg-type]
+        send_event=lambda event: None,
+    )
+    entries = [
+        MemoryHit(
+            speaker="user",
+            text=f"{index}:" + "長い記憶" * 80,
+            timestamp=datetime(2026, 5, 24, 9, index, tzinfo=UTC),
+            similarity=0.5 + index / 100,
+        )
+        for index in range(8)
+    ]
+
+    session._remember_retrieved_context(entries)
+
+    carried_texts = [hit.text for hit in session._carried_long_term_memory()]
+    assert carried_texts
+    assert entries[0].text not in carried_texts
+    assert sum(len(text) for text in carried_texts) <= 900
+
+
+@pytest.mark.unit
+async def test_tomoro_session_clears_carryover_when_session_closes() -> None:
+    session = TomoroSession(
+        vad_processor=FakeVADProcessor(),  # type: ignore[arg-type]
+        send_event=lambda event: None,
+    )
+    session.active_conversation_session_id = uuid4()
+    session._remember_retrieved_context(
+        [
+            MemoryHit(
+                speaker="tomoko",
+                text="会話セッション要約: 著作権の話",
+                timestamp=datetime(2026, 5, 24, 9, 1, tzinfo=UTC),
+                similarity=0.9,
+            )
+        ]
+    )
+
+    await session._close_conversation_session(end_reason="attention_timeout")
+
+    assert session._carried_long_term_memory() == []
+
+
 class FakeVADProcessor:
     device_id = "local"
     sample_rate = 16000

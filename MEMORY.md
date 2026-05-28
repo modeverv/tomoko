@@ -2189,3 +2189,22 @@ ambient observer 発話では session を作らず、UI だけが表示する。
 クライアントは判定を行わず、高さ固定の transcript log に追記表示するだけにする。
 これにより、1 本の WebSocket と server-side state ownership を維持したまま、
 実ブラウザで「STT が何を聞いたか」を確認できる。
+
+### 確定した判断: deep retrieval 結果は active session 内で短期 carryover する
+2026-05-28 の実ログでは、`著作権の話とか覚えてる` では `depth=deep` の
+`session_summaries` / `memory_hits` が prompt に投入されたが、直後の
+`どういう風に考えてたっけ` は `depth=fast` になり、長期記憶が 0 件の prompt になった。
+
+このため、一度 deep retrieval で取り出した長期記憶は、active conversation session 内の
+`TomoroSession` 作業メモとして短期 carryover する。
+これは DB の source of truth でも `ContextSnapshotBuilder` の read cache でもなく、
+自然な follow-up のための prompt 補助である。
+
+carryover は `MemoryHit.source_id` があればそれを優先し、なければ speaker / timestamp /
+normalized text hash で dedupe する。
+`conversation_sessions` 由来の summary は `session_summary:<session_id>` を `source_id` として持つ。
+固定値として最大 6 entry / 900 文字から始め、超過時は古い・低 similarity の entry から落とす。
+session close / withdrawn / ambient 復帰では clear する。
+
+ログには `carryover_added` / `carryover_used` / `carryover_evicted` / `carryover_cleared` を出し、
+follow-up のたびに embedding search を増やさず、前 turn の retrieval 結果を再利用できたか確認する。
