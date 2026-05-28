@@ -5751,3 +5751,46 @@ command 現在リストを再確認する。
 - [ ] `.venv/bin/python -m ruff check .`
 - [ ] 実ブラウザで stop / playback interrupt / initiative / memory recall の最小確認
 - [ ] `logs/server-debug.log` で closed-loop の trace が読めるか確認する
+
+### Phase 10.19.y: monolithic session closed-loop reading map docs-only
+
+復旧ブランチでは、未来の Phase 10.17 / 10.18 / 10.19 系を「今すぐ再実装する計画」として読まない。
+これらは主に、前回の package split / dispatcher / effects / event runner / maps 増殖で人間が怖くなった箇所と、
+触ると危ない boundary を残した記録として扱う。
+
+現在の runtime code は `960be36` の `server/session.py` 一枚構成を baseline として戻したものなので、
+closed-loop architecture を再開する場合も、まず一枚の `server/session.py` の中で読み方だけを固定する。
+`server/session/README.md` は `server/session.py` と同じ basename のディレクトリを必要とするため、この復旧状態では作らない。
+今回の対応表は PLAN.md に docs-only で置き、runtime code には触らない。
+
+#### ARCHITECTURE.md closed-loop 用語と現行 `server/session.py` の対応
+
+| closed-loop 用語 | 現行 `server/session.py` での読み方 | 触らない境界 |
+|---|---|---|
+| `input` | `process_audio_chunk()` の WebSocket binary audio、`process_transcript()` の finalized transcript、`post_event()` / `handle_playback_telemetry()` / `apply_stop_intent_event()` / `apply_client_lifecycle_event()` の `SessionEvent` | audio binary を `SessionEvent` 化しない。`reply_done` / cancel / `tts_finished` を lifecycle input へ移管しない |
+| `changer` | `_reduce()` と `_reduce_*()` 群、`process_transcript()` の participation / attention / session lifecycle 判断、`_transition()` / `_transition_attention()` / `_ensure_conversation_session()` / `_close_conversation_session()` | reducer package、dispatcher、event_runner を再作成しない。一度に複数責務を切り出さない |
+| `state` | `self.state`、`self.attention_mode`、`self.audio_turns`、`active_conversation_session_id`、reply / TTS task fields、candidate request ids、context build / carryover fields、`get_now_state()` | `TomoroSession` が final owner。別クラスの `TomoroSessionState` / OutputDemand / Watcher を新設しない |
+| `demand` | `TransitionResult.commands` / `SessionCommand`、および現状 direct await で実現している reply start、DB write、TTS flush、client event send の必要性 | DB write を SessionCommand 化しない。`ambient_log_write` を非同期化しない。OutputDemand を作らない |
+| `watcher` | 現在は独立クラスではなく、`_process_event()` の telemetry command 実行、`_run_internal_commands()`、`_start_reply_task()` / `_run_reply_task()`、`_run_tts_queue()`、`_flush_tts_text()`、`_send_*()` helpers が分担している | `effects.py` / Watcher class を再作成しない。watcher を賢くしすぎない |
+| `output` | `_send_event()` の client JSON、`_send_audio_chunk()` の binary audio、`_write_user_turn()` / `_write_tomoko_turn()` / ambient log writer / session store / embedding schedule、LLM call、TTS call、candidate store command | `/ws` contract、audio chunk、playback timing、LLM/TTS ordering、conversation log / embedding schedule を動かさない |
+| `new input` | 現在 runtime-current なのは playback telemetry、stop-intent advisory、candidate loaded / candidate command failed、client lifecycle event。future candidate としては `reply_cancelled` / `tts_finished` などがあるが未配線 | future candidate を runtime-current へ昇格しない。`reply_done` は client notification のまま |
+| `hot path` | `process_audio_chunk()` の `np.frombuffer` -> `vad_processor.process_chunk()`、streaming partial transcript、`_flush_tts_text()` -> `_send_audio_chunk()`、audio_turns reserve start/chunk/end、browser playback telemetry | audio hot path を DTO / demand / OutputDemand / lifecycle queue に吸収しない。TTS flush / audio chunk / playback timing は触らない |
+| `should-not-move-yet` | `_reply_to()` の LLM -> reply_text / emotion -> TTS queue -> audio -> `reply_done`、`start_precomputed_reply()`、`_apply_stop_intent_ack()`、turn persistence、conversation embedding schedule、conversation session close、turn-taking stop / restart handling | ReplyOrchestrator 相当の順序、stop ack path、turn persistence、embedding schedule、conversation session ownership を動かさない |
+
+#### 最小再開方針
+
+- [x] 一枚の `server/session.py` baseline のまま、closed-loop 用語と現行メソッド群の対応を docs-only で読めるようにした
+- [x] 未来の PLAN.md を、そのまま再実装すべき計画ではなく危険箇所の記録として扱う
+- [x] `dispatcher.py` / `effects.py` / `event_runner.py` / `flow_*` / `maps` package を再作成しない
+- [x] runtime behavior、audio hot path、LLM/TTS ordering、DB write ordering、`reply_done` routing、cancel / TTS finished routing は変更しない
+- [ ] 次に切り出す場合は、ARCHITECTURE.md の語彙に一致する 1 責務だけを explicit phase と characterization test 付きで扱う
+
+**禁止事項**:
+- `reply_done` を lifecycle input へ移管しない
+- cancel / `tts_finished` を new input 化しない
+- OutputDemand / Watcher class を新設しない
+- dispatcher / effects / event_runner / maps package を再作成しない
+- DB write を SessionCommand 化しない
+- `ambient_log_write` を非同期化しない
+- `conversation_log_write` / embedding schedule を動かさない
+- audio hot path、TTS flush、audio chunk、playback timing、LLM/TTS ordering、stop ack path を触らない

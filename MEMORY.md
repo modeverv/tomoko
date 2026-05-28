@@ -2865,3 +2865,18 @@ unit + startup smoke 済み functional baseline として扱う。
 flow maps / registry / forbidden transitions / readiness / runtime touchpoints / DB write flow /
 reply lifecycle inventory / closed-loop vocabulary は、実装分割として保持しなくても
 PLAN / LOG / MEMORY / README / test appendix に知見として残せる。
+
+### 確定した判断: 復旧ブランチでは closed-loop をまず一枚 session.py の読み方として固定する
+2026-05-28 の復旧ブランチでは、runtime code は `960be36` の `server/session.py` 一枚構成を baseline として戻した状態で扱う。
+
+未来の PLAN.md / LOG.md / MEMORY.md / ARCHITECTURE.md に残る package split、closed-loop convergence、
+map-only guard、forbidden transition、readiness、rollback 判断は、今すぐ再実装する計画ではなく、
+何を触ると危ないか、何を禁止すべきかの記録として読む。
+
+closed-loop architecture を再開する場合も、まず `server/session.py` の中の現行メソッド群を
+`input` / `changer` / `state` / `demand` / `watcher` / `output` / `new input` /
+`hot path` / `should-not-move-yet` に対応づける docs-only map から始める。
+`dispatcher.py` / `effects.py` / `event_runner.py` / `flow_*` / `maps` package は再作成しない。
+OutputDemand / Watcher class、DB write の SessionCommand 化、`reply_done` lifecycle input 化、
+cancel / `tts_finished` new input 化、audio hot path、TTS flush、audio chunk、playback timing、
+LLM/TTS ordering、ambient / conversation log write ordering は触らない。

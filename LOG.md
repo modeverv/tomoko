@@ -1,3 +1,26 @@
+## 2026-05-28 セッション50
+
+### やること（開始時に書く）
+- 復旧ブランチの `server/session.py` 一枚 baseline を前提に、ARCHITECTURE.md の closed-loop 用語と現行メソッド群の対応表を docs-only で追記する
+- 未来の PLAN.md は実装計画ではなく、危険箇所・禁止事項・人間が怖くなった粒度の記録として扱う
+- 今回は runtime behavior、audio hot path、TTS flush / audio chunk / playback timing、ReplyOrchestrator 相当の LLM/TTS ordering、`reply_done` / cancel / TTS finished routing、OutputDemand / Watcher、dispatcher / effects / event_runner / maps package、DB write SessionCommand 化、ambient_log_write 非同期化を変更しない
+
+### やったこと
+- `server/session.py` の現行一枚構成を読み、主要メソッド群を closed-loop 用語に対応づけた
+- `ARCHITECTURE.md` の `input -> changer -> state -> demand -> watcher -> output -> new input` 用語を確認した
+- `server/session/README.md` は `server/session.py` と同名ディレクトリが必要になるため、この復旧状態では作らない判断にした
+- PLAN.md に Phase 10.19.y として、`input` / `changer` / `state` / `demand` / `watcher` / `output` / `new input` / `hot path` / `should-not-move-yet` の対応表を docs-only で追記した
+- MEMORY.md に、復旧ブランチでは closed-loop をまず一枚 `session.py` の読み方として固定する判断を追記した
+- runtime code、audio hot path、TTS flush / audio chunk / playback timing、LLM/TTS ordering、`reply_done` / cancel / TTS finished routing、DB write ordering は変更していない
+
+### 詰まったこと・解決したこと
+- `server/session/README.md` は現行 filesystem 上で `server/session.py` と basename が衝突する
+  - 解決: README を作らず、PLAN.md に対応表を追記して docs-only の目的を満たした
+
+### 検証
+- `git diff --check`
+  - pass
+
 ## 2026-05-28 セッション49
 
 ### やること（開始時に書く）
