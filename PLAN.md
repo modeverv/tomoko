@@ -4451,22 +4451,22 @@ TomoroSession を public facade + state holder として残す。
 
 ### Phase 10.12.0: session package へ安全に移す
 
-- [ ] `server/session/` directory を作る
+- [x] `server/session/` directory を作る
   - `server/session/core.py`
   - `server/session/__init__.py`
-- [ ] 現行 `server/session.py` の内容をまず `server/session/core.py` へそのまま移す
+- [x] 現行 `server/session.py` の内容をまず `server/session/core.py` へそのまま移す
   - 挙動変更を混ぜない
   - import path の機械的変更に限定する
-- [ ] `server/session/__init__.py` は外部向け public entry だけを export する
+- [x] `server/session/__init__.py` は外部向け public entry だけを export する
   - `TomoroSession`
   - 必要なら既存 test が参照する型だけ
-- [ ] `server/session.py` と `server/session/` は同時に存在できないため、一回の変更で package 化する
+- [x] `server/session.py` と `server/session/` は同時に存在できないため、一回の変更で package 化する
   - 互換 shim file は置かない
   - 全 import を `from server.session import TomoroSession` または package 内相対 import に更新する
-- [ ] package 化後も外部から new するのは `TomoroSession` だけにする
+- [x] package 化後も外部から new するのは `TomoroSession` だけにする
   - reducer / effects / carryover / reply helper は production 外部から直接組み立てない
   - reducer unit test など test からの direct import は許可する
-- [ ] package 化時点では責任分離を始めない
+- [x] package 化時点では責任分離を始めない
   - まず moved-only commit 相当の差分にする
   - `pytest -m unit` で挙動不変を確認する
 
@@ -4478,18 +4478,18 @@ TomoroSession を public facade + state holder として残す。
 
 ### Phase 10.12.1: package 内の責任を棚卸しする
 
-- [ ] `server/session/core.py` の private method を責任カテゴリに分類する
+- [x] `server/session/core.py` の private method を責任カテゴリに分類する
   - state core: state fields / `get_now_state()` / public facade
   - reducer: `SessionEvent + state -> TransitionResult`
   - effects: DB write/read / send_event / send_audio / context build / close session
   - reply orchestration: LLM stream / `ReplyPipeline` / TTS queue
   - session-local workbench: retrieved context carryover
-- [ ] 外部契約を変えてはいけない境界を明記する
+- [x] 外部契約を変えてはいけない境界を明記する
   - `/ws` adapter は事実を `SessionEvent` に変換するだけ
   - `ThinkingMode` は DB / session state を読まない
   - TTS backend は `TTSInput -> AudioChunkOut` のみ
   - conversation session lifecycle の final owner は TomoroSession
-- [ ] 先に分けるもの / 後回しにするものを決める
+- [x] 先に分けるもの / 後回しにするものを決める
   - 先に分ける: carryover helper、event reducer の一部
   - 後回し: transcript participation、reply orchestration 全体、state immutable 化
 
@@ -4499,19 +4499,19 @@ TomoroSession を public facade + state holder として残す。
 
 ### Phase 10.12.2: RetrievedContextCarryover を package 内 helper に分離する
 
-- [ ] `server/session/carryover.py` に `RetrievedContextCarryover` を追加する
+- [x] `server/session/carryover.py` に `RetrievedContextCarryover` を追加する
   - dedupe
   - source key 生成
   - entry count / text budget eviction
   - `carryover_added` / `carryover_used` / `carryover_evicted` / `carryover_cleared` logging
-- [ ] TomoroSession は利用タイミングだけを決める
+- [x] TomoroSession は利用タイミングだけを決める
   - fresh memory と merge する
   - deep retrieval 結果を remember する
   - session close / withdrawn / ambient 復帰で clear する
-- [ ] 外部 DTO は変えない
+- [x] 外部 DTO は変えない
   - `MemoryHit` / `ThinkingInput.long_term_memory` は現状維持
   - WebSocket event は増やさない
-- [ ] unit test を移す/追加する
+- [x] unit test を移す/追加する
   - duplicate source が重複しない
   - entry count / text budget で eviction される
   - clear reason がログに残る
@@ -4525,26 +4525,26 @@ TomoroSession を public facade + state holder として残す。
 
 ### Phase 10.12.3: event reducer を package 内へ切り出す
 
-- [ ] `server/session/reducer.py` に `TomoroSessionReducer` を追加する
+- [x] `server/session/reducer.py` に `TomoroSessionReducer` を追加する
   - `reduce(state, event) -> TransitionResult`
   - 原則 `await` しない
   - DB / LLM / TTS / WebSocket send を触らない
-- [ ] まず event-driven な既存 reducer だけを移す
+- [x] まず event-driven な既存 reducer だけを移す
   - `client_stop_requested`
   - `connected_output_state_changed`
   - `playback_started`
   - `playback_ended`
   - `idle_timer_elapsed`
   - `stop_intent_classified`
-- [ ] transcript / reply 系はまだ TomoroSession に残す
+- [x] transcript / reply 系はまだ TomoroSession に残す
   - participation 判定
   - `_reply_to()`
   - context build
   - TTS queue
-- [ ] mutable state で始めてよい
+- [x] mutable state で始めてよい
   - 最初から immutable state replacement へ飛ばない
   - `TomoroRuntimeState` への集約は別 Phase で検討する
-- [ ] reducer unit test を追加する
+- [x] reducer unit test を追加する
   - event と state から expected commands / emissions が返る
   - stale playback / duplicate stop など既存 gate が維持される
 
@@ -4557,17 +4557,17 @@ TomoroSession を public facade + state holder として残す。
 
 ### Phase 10.12.4: effects executor を package 内で明確化する
 
-- [ ] `server/session/effects.py` に `TomoroSessionEffects` または同等の内部 helper を追加する
+- [x] `server/session/effects.py` に `TomoroSessionEffects` または同等の内部 helper を追加する
   - `SessionCommand` を実行する
   - DB write/read
   - context build
   - send_event / send_audio
   - close conversation session
-- [ ] TomoroSession は command 実行の順序と結果 event の戻し方を管理する
+- [x] TomoroSession は command 実行の順序と結果 event の戻し方を管理する
   - final judgment は reducer / TomoroSession に残す
   - effects helper は「判断しない」
-- [ ] `/ws` adapter が DB store を直接触らない構造を維持する
-- [ ] effects の失敗を `SessionEvent` / degraded log に戻す方針を固定する
+- [x] `/ws` adapter が DB store を直接触らない構造を維持する
+- [x] effects の失敗を `SessionEvent` / degraded log に戻す方針を固定する
 
 **完了条件**:
 - 副作用実行の場所が読みやすくなる
@@ -4577,19 +4577,19 @@ TomoroSession を public facade + state holder として残す。
 
 ### Phase 10.12.5: reply orchestration の分離を検討する
 
-- [ ] `_reply_to()` を分解する
+- [x] `_reply_to()` を分解する
   - context request policy
   - thinking mode selection
   - LLM stream consumption
   - `ReplyPipeline`
   - TTS queue
   - Tomoko turn write
-- [ ] すぐに外へ出すのは TTS/reply output 周辺に限定する
+- [x] すぐに外へ出すのは TTS/reply output 周辺に限定する
   - session state と強く絡む participation / lifecycle は残す
-- [ ] `ReplyOrchestrator` を作る場合も判断を持たせない
+- [x] `ReplyOrchestrator` を作る場合も判断を持たせない
   - TomoroSession が作った `ThinkingInput` を実行するだけ
   - stop / stale / playback gate の final owner にはしない
-- [ ] latency log を維持する
+- [x] latency log を維持する
   - `reply_start`
   - `first_reply_text`
   - `tts_start`
@@ -4611,3 +4611,1143 @@ TomoroSession を public facade + state holder として残す。
 - `/ws` adapter / ThinkingMode / TTS backend に新しい責任を持たせない
 - 外部契約を変えずに `server/session/` package 内の見通しが良くなる
 - `pytest -m unit` が通る
+
+---
+
+## 2026-05-28 追記: Phase 10.13 TomoroSession state object and operation boundary
+
+Phase 10.12 で `server/session/` package へ分割し、carryover / reducer / effects /
+reply orchestration を package 内部 helper へ逃がした。
+ただし `core.py` はまだ runtime state fields と operation 呼び出し境界を同じ class body に持っている。
+この Phase では、TomoroSession を production 外部の唯一の public facade として維持しつつ、
+runtime state を `TomoroSessionState` に集約する。
+
+ここでいう「状態だけを持つ」とは、外部 helper が自由に state を書き換えることではない。
+状態の置き場を 1 つに明示し、判断入口を `TomoroSession` / package-internal operation に限定するという意味である。
+状態書き換えの final owner は引き続き TomoroSession であり、production 外部から
+`TomoroSessionState` や operation helper を直接 new しない。
+
+**目標**: 状態は `TomoroSessionState` に集約し、TomoroSession は public API / state holder /
+operation dispatcher として読む。
+既存 `/ws` event、`ThinkingInput`、`TTSInput`、DB store 契約、外部 import 契約は変えない。
+
+### Phase 10.13.0: runtime state inventory を型にする
+
+- [x] `server/session/state.py` に `TomoroSessionState` を追加する
+  - VAD / attention / latest segment
+  - attention idle / timeout
+  - reply task / TTS worker / TTS queue
+  - latency probe fields
+  - reply output defer / cancel status
+  - turn-taking temporary metrics
+  - active conversation session id
+  - context build id
+  - candidate request ids and sequence
+  - connected output state
+  - initiative feedback / precomputed reply context
+- [x] state object は判断ロジックを持たない
+  - computed property は snapshot 変換などの read-only 補助に限る
+  - DB / WebSocket / LLM / TTS を触らない
+- [x] 初期値は `TomoroSession.__init__()` から明示的に渡す
+  - `connected_output_state`
+  - `engaged_timeout_ms`
+  - `cooldown_timeout_ms`
+
+**完了条件**:
+- runtime state の一覧が `state.py` にまとまっている
+- state object が判断や副作用を持たない
+
+### Phase 10.13.1: TomoroSession から state fields を移す
+
+- [x] `TomoroSession` は `self.runtime_state` を持つ
+- [x] 既存内部コードの state access は挙動を変えずに `runtime_state` へ寄せる
+  - 移行中の互換 property / internal proxy は許可する
+  - production 外部 API は増やさない
+- [x] `get_now_state()` は `runtime_state` から snapshot を作る
+- [x] `TomoroSession` に残すのは dependency wiring / public facade / operation 呼び出しに限る
+
+**完了条件**:
+- `TomoroSession.__init__()` の runtime field 初期化が `TomoroSessionState` 生成に集約される
+- `pytest -m unit tests/unit/test_phase10_session_contract.py tests/unit/test_phase105_session_runtime.py` が通る
+
+### Phase 10.13.2: operation boundary を明文化する
+
+- [x] package 内 operation helper は `TomoroSession` 経由で state を読む
+  - reducer: synchronous decision
+  - effects: command execution only
+  - reply orchestrator: LLM/TTS execution only
+  - carryover: session-local workbench only
+- [x] operation helper は production 外部から組み立てない
+- [x] state を直接書き換える helper を増やさない
+  - 書き換えが必要な場合は TomoroSession method または reducer command 経由にする
+- [x] tests で public import 契約を固定する
+  - `from server.session import TomoroSession`
+  - `TomoroSessionState` は package-internal state 型として direct production use しない
+
+**完了条件**:
+- 状態の置き場と判断入口の違いがコード上で追える
+- production 外部の entry point は TomoroSession のまま
+- `pytest -m unit` が通る
+
+### Phase 10.13 全体の完了条件
+
+- runtime state は `TomoroSessionState` にまとまっている
+- TomoroSession は public facade / operation dispatcher として読める
+- 判断入口は reducer / TomoroSession method / package-internal operation に限定されている
+- helper が自由に state を mutate する構造になっていない
+- `/ws` adapter / ThinkingMode / TTS backend の責任は増えていない
+- 外部契約を変えずに `core.py` の状態定義ノイズが減っている
+- `pytest -m unit` が通る
+
+---
+
+## 2026-05-28 追記: Phase 10.14 Session operation plan prototype
+
+Phase 10.13 の `TomoroSessionState` 集約は否定しない。
+ただし、state を 1 箇所に置いただけでは `core.py` / reducer の読み物としての複雑さは十分に下がらない。
+次の段階では、session 内部の処理を read-only / write-only / read-write の性質で分け、
+dispatcher 層が「どの処理部品を、どの順序で実行するか」を組み立てられるようにする。
+
+**目標**: JavaScript 風の `parallel([readA, readB]).then().do(writeA)` に近い考え方を、
+Python では小さな `EventPlan` として実装する。
+read-only step は同じ phase 内で `asyncio.gather` 可能にし、write step は phase 順に直列実行する。
+TomoroSession は state owner / public API のまま、dispatcher / reducer が plan を組み立てる。
+
+### Phase 10.14.0: EventPlan の最小契約を作る
+
+- [x] `server/session/operation_plan.py` を追加する
+  - `EventPlan.create(name)` から始める
+  - `.parallel([...])` で同一 phase の read/write step を登録する
+  - `.then()` は読みやすさのための phase separator とする
+  - `.do(step)` は単一 step を登録する
+  - `.run(context)` は phase ごとに実行し、phase 内は `asyncio.gather` する
+- [x] step は `OperationContext` を受け取り、`OperationResult` を返す
+  - `OperationResult.commands`
+  - `OperationResult.emissions`
+  - `OperationResult.values`
+  - `OperationResult.next_events`
+- [x] plan 実行器は判断を持たない
+  - routing / operation の中身は dispatcher / reducer 側に残す
+  - plan は順序と並列実行だけを扱う
+
+**完了条件**:
+- read-only step が同一 phase で並列に動くことを unit test で確認できる
+- write step は phase 順序を守る
+- result merge の順序が deterministic である
+
+### Phase 10.14.1: reducer の単純 event で plan を実利用する
+
+- [x] playback telemetry event を `EventPlan` 経由で実行する
+  - transition emission を作る
+  - `record_playback_telemetry` command を返す
+- [x] connected output / client stop のような小さい event でも plan 化できる入口を用意する
+- [x] 既存 `SessionEvent` / `SessionCommand` / `TransitionResult` の外部契約は変えない
+
+**完了条件**:
+- `TomoroSessionReducer` の event routing が plan builder を使い始めている
+- 既存 reducer tests が通る
+- `pytest -m unit` が通る
+
+### Phase 10.14.2: read/write/both の命名規約を固定する
+
+- [x] `operation_plan.py` の docstring に read-only / write-only / both の扱いを書く
+- [x] read-only step は `state_view` を読むだけにする
+- [x] write step は dispatcher/drain の順序内で state を変更する
+- [x] both step は atomic transition に限り、増やしすぎない
+
+**完了条件**:
+- 「判断体が巨大化する」のではなく、operation の性質ごとに分ける方向性がコード上で読める
+- 次に `TranscriptFlow` / `LifecycleFlow` へ広げられる
+
+---
+
+## 2026-05-28 追記: Phase 10.15 Session signal boundary and gateway port split
+
+Phase 10.14 の `OperationPlan` は否定しない。
+ただし、直前の preview で `ExternalTranscriptInput` のような wrapper を先に増やすと、
+既存 `Transcript` DTO を二重包装しているように見え、読みやすさの効果が曖昧だった。
+このため、実装を広げる前に gateway / session の入出力分類を先に固定する。
+
+ここから先は、自発発話、turn-taking、記憶 retrieval、arrival、latency の相互作用を
+実ブラウザで調整し続ける局面である。
+家族版へ進む前に、`TomoroSession` が調整パラメータと判断分岐の置き場として息苦しくならないよう、
+gateway は物理層 adapter、session は signal owner / state owner として境界を明確にする。
+
+### Phase 10.15.0: gateway port の分類を固定する
+
+- [x] gateway input を分類する
+  - `audio input`: microphone / remote edge audio chunk。hot path なので primitive path を維持する
+  - `signal input`: client lifecycle / playback telemetry / timer / backend result / transcript finalized
+  - `vision input`: 将来の visual observation。Phase 10.15 では実装しない
+  - `mechanics input`: presence / device / room / family member lifecycle。semantic signal として扱う
+- [x] gateway output を分類する
+  - `audio output`: binary audio chunk。hot path / playback path として扱う
+  - `signal output`: state / transcript / reply text / candidate visibility / audio control / debug trace
+  - `display output`: client 表示用 JSON。実体は `signal output` として扱う
+- [x] gateway は signal の意味を判断しない
+  - physical protocol と DTO / signal の変換だけを行う
+  - participation / turn-taking / candidate gate / session lifecycle の最終判断はしない
+
+**完了条件**:
+- gateway が扱う入出力を audio path と signal path に分けて説明できる
+- vision / mechanics の将来追加時も、gateway に判断を置かない方針が明確である
+
+### Phase 10.15.1: SessionInputSignal / SessionOutputSignal の最小語彙を作る
+
+- [x] `SessionInputSignal` を追加する
+  - gateway / client / backend / timer から session に入る semantic fact
+  - 初期対象は transcript finalized、playback telemetry、client lifecycle、idle timer、candidate result
+- [x] `SessionOutputSignal` を追加する
+  - session から gateway / client に出る JSON 的な観測・表示・制御 signal
+  - state changed、transcript final、reply text delta、audio control、candidate visible、debug trace を含める
+- [x] `SessionCommand` は別概念として維持する
+  - DB / LLM / TTS / worker / candidate store への副作用命令
+  - client に直接出す signal と混ぜない
+- [x] audio binary は `SessionInputSignal` / `SessionOutputSignal` に包まない
+  - VAD / playback の hot path は primitive / bytes path を維持する
+
+**完了条件**:
+- session 境界を `audio path` / `signal path` / `command path` で説明できる
+- 家族版で speaker / presence / device / room context が増えても signal 側に載せる余地がある
+
+### Phase 10.15.2: dict payload と typed dataclass の使い分けを決める
+
+- [x] 既存 `SessionEvent(type: str, payload: dict)` はすぐに全廃しない
+- [x] dict payload を使う場合は、type 名と payload key を定数で固定してよい
+  - 低リスク / compatibility / debug event は定数 + dict を許可する
+  - 高リスク / state mutation / family-aware routing は dataclass signal を優先する
+- [x] `SessionInputSignal` / `SessionOutputSignal` は最初から全部を厳密 dataclass 化しない
+  - まず gateway 境界に出る主要 signal だけを型にする
+  - flow 内部の小さな decision / intermediate result まで signal 化しない
+- [x] 文字列 event を残す場合も、dispatcher の switch で一覧できる形にする
+
+**完了条件**:
+- dict 系を完全悪とせず、調整局面で変更しやすい余地を残す
+- 一方で、重要な session signal は型または定数で追跡できる
+
+### Phase 10.15.3: TomoroSession public surface を少数入口に寄せる
+
+- [x] audio 系入口を維持する
+  - `process_audio_chunk(...)` は hot path として無理に signal 化しない
+- [x] signal 系入口を追加する
+  - `accept_signal(signal: SessionInputSignal)`
+  - 既存 `post_event(...)` / `process_transcript(...)` は当面 compatibility sugar として残す
+- [x] signal 系出口を明確化する
+  - 既存 `send_event` callback は `SessionOutputSignal` へ寄せる
+  - 既存 JSON event contract はすぐ壊さず、gateway 側で compatibility conversion する
+- [x] audio 系出口を維持する
+  - `send_audio(bytes)` は hot path / TTS output として残す
+
+**完了条件**:
+- session 側の入出力が `audio input` / `signal input` / `signal output` / `audio output` として読める
+- gateway から見た session API が 1〜3 個程度の少数入口になる
+
+### Phase 10.15.4: dispatcher を signal switch の目次にする
+
+- [x] dispatcher は `SessionInputSignal` を受けて flow を選ぶ
+  - transcript flow
+  - playback flow
+  - lifecycle flow
+  - candidate flow
+  - timer / initiative flow
+- [x] dispatcher は巨大判断体にしない
+  - signal type の match / route だけを担当する
+  - 実処理は flow の `build_*_plan()` に置く
+- [x] `OperationPlan` は flow 内の処理順序を表す道具として使う
+  - read-only policy
+  - write transition
+  - command / output signal emission
+- [x] 最初は transcript / playback / lifecycle のどれか 1 つだけを signal switch に載せる
+
+**完了条件**:
+- dispatcher を見れば「session が受ける semantic signal と処理先」が一覧できる
+- flow を見れば「その signal が抽象的に何をするか」が読める
+- `pytest -m unit` が通る
+
+### Phase 10.15 全体の完了条件
+
+- gateway は physical adapter として、audio path と signal path を運ぶだけになっている
+- TomoroSession は state owner / signal owner として、少数 public API を持つ
+- DB / LLM / TTS / worker は `SessionCommand` として signal output と分離されている
+- audio hot path は過剰 DTO 化せず維持されている
+- semantic event は `SessionInputSignal` / `SessionOutputSignal` として整理する道筋がある
+- dict payload は定数で守る選択肢を残し、重要 signal だけ dataclass 化する
+- 家族版で speaker / presence / device / room context が増えても、gateway や core に判断が散らばらない
+- `pytest -m unit` が通る
+
+---
+
+## 2026-05-28 追記: Phase 10.15/10.16 implementation order correction
+
+上の Phase 10.15 の方向性は否定しない。
+ただし、現在の `TomoroSession` には Phase 10.13 の移行足場として
+`_RUNTIME_STATE_FIELDS` / `__getattr__` / `__setattr__` が残っている。
+この状態で `accept_signal` / dispatcher / flow 分離を積み上げると、
+flow 側から見える state access が暗黙 proxy 経由になり、読みやすさ改善の効果が弱くなる。
+
+このため、実装順序をいったん修正する。
+先に今回の 10.15 実装差分を戻し、Phase 10.16 で runtime state proxy を消してから、
+10.15 の signal boundary / dispatcher / flow を再実装する。
+
+### Phase 10.15.R: 現在の 10.15 実装差分を一度戻す
+
+- [x] 10.15 の設計判断は PLAN / MEMORY / LOG に残す
+  - gateway は physical adapter
+  - session は signal owner / state owner
+  - audio binary は signal に包まない
+  - `SessionCommand` は DB / LLM / TTS / worker command として signal output と分ける
+- [x] 実コード差分だけを戻す
+  - `SessionInputSignal` / `SessionOutputSignal` の実装
+  - `accept_signal()` / dispatcher / transcript flow の実装
+  - gateway / edge adapter / candidate runner の `accept_signal()` 呼び出し変更
+  - 10.15 実装用 unit test
+- [x] 戻した後も既存テストが通ることを確認する
+  - `.venv/bin/python -m pytest -m unit`
+  - `.venv/bin/python -m ruff check .`
+  - `git diff --check`
+
+**完了条件**:
+- コードは Phase 10.14 後の構造へ戻っている
+- 10.15 の設計方針はドキュメント上に残っている
+- 次に state proxy elimination へ進める
+
+### Phase 10.16: Runtime state proxy elimination
+
+Phase 10.13 の `TomoroSessionState` 集約は否定しない。
+ただし、`_RUNTIME_STATE_FIELDS` / `__getattr__` / `__setattr__` による文字列 proxy は
+移行用の足場であり、最終構造としては採用しない。
+
+**目標**: `TomoroSession` の state access を、暗黙の文字列転送ではなく
+`runtime_state.xxx` または意味のある method 経由にする。
+
+- [x] `_RUNTIME_STATE_FIELDS` / `__getattr__` / `__setattr__` を廃止対象として扱う
+  - 以後、新しい state field を文字列 map に追加しない
+  - proxy で読めていることを前提にした flow 分離をしない
+- [x] `core.py` 内の state read を明示化する
+  - `self.state` -> `self.runtime_state.state`
+  - `self.attention_mode` -> `self.runtime_state.attention_mode`
+  - `self.latest_segment` -> `self.runtime_state.latest_segment`
+  - `self._connected_output_state` -> `self.runtime_state.connected_output_state`
+- [x] state write は意味 method へ寄せる
+  - VAD state: `_transition(...)`
+  - attention state: `_transition_attention(...)`
+  - reply task: `_set_reply_task(...)` / `_clear_reply_task_if_current(...)`
+  - candidate request id: `_new_candidate_request_id(...)`
+  - latency probe: `_reset_latency_probe()` / `_mark_*`
+- [x] どうしても単純 field write が必要な場合だけ `self.runtime_state.xxx = ...` を明示する
+  - 文字列 proxy 経由の write は使わない
+  - helper / flow が state を mutate する場合は、先に意味 method を作る
+- [x] compatibility property を作る場合は read-only に限定する
+  - production 外部の public API を増やさない
+  - setter は原則作らない
+- [x] grep で旧 proxy 名が残っていないことを確認する
+  - `rg "self\\.(state|attention_mode|latest_segment|_reply_task|_connected_output_state)" server/session`
+  - 残す場合は理由を code comment ではなく PLAN / MEMORY に記録する
+- [x] proxy 削除後に tests を通す
+  - `.venv/bin/python -m pytest -m unit tests/unit/test_phase10_session_contract.py tests/unit/test_phase105_session_runtime.py tests/unit/test_session_reducer.py tests/unit/test_session_state.py -q`
+  - `.venv/bin/python -m pytest -m unit`
+  - `.venv/bin/python -m ruff check .`
+  - `git diff --check`
+
+**完了条件**:
+- `_RUNTIME_STATE_FIELDS` / `__getattr__` / `__setattr__` が消えている
+- state の置き場が `runtime_state` として grep / IDE / rename で追える
+- state mutation の主要入口が意味 method として読める
+- `TomoroSessionState` は状態置き場であり、判断や副作用を持たない
+- 既存 public API / WebSocket contract は変わっていない
+- `pytest -m unit` が通る
+
+### Phase 10.15.Re: signal boundary / dispatcher / flow を再実装する
+
+Phase 10.16 完了後、上の Phase 10.15 の設計方針に戻り、
+`accept_signal` / dispatcher / flow を再実装する。
+
+- [x] `SessionInputSignal` は既存 semantic DTO を活かす
+  - `Transcript`
+  - `PlaybackTelemetry`
+  - 必要なら typed lifecycle / candidate signal
+  - audio binary は含めない
+- [x] `SessionOutputSignal` は client JSON 的 output に限定する
+  - 既存 WebSocket JSON contract を壊さない
+  - audio binary は含めない
+- [x] `TomoroSession.accept_signal()` を追加する
+  - `post_event()` / `process_transcript()` は互換 sugar として残す
+  - sugar の中身は dispatcher へ渡す
+- [x] dispatcher は type switch の目次に限定する
+  - transcript flow
+  - playback flow
+  - lifecycle flow
+  - candidate flow
+  - timer / initiative flow
+- [x] flow は `runtime_state.xxx` または意味 method を使う
+  - 暗黙 proxy 前提の実装に戻さない
+  - write はできるだけ method 経由にする
+- [x] 最初に再実装する flow は transcript / playback / lifecycle のうち 1 つに絞る
+  - いきなり全 signal を typed dataclass 化しない
+  - 既存 `SessionEvent(type, payload)` は compatibility / debug / low-risk event として残してよい
+
+**完了条件**:
+- 10.15 の signal boundary が、runtime state proxy なしのコード上で読める
+- dispatcher が巨大判断体ではなく目次として機能している
+- flow から state access を追っても `runtime_state` / method が明示されている
+- `pytest -m unit` が通る
+
+---
+
+## 2026-05-28 追記: Phase 10.17 Session closed-loop convergence
+
+Phase 10.12 以降の package split、Phase 10.16 の runtime state proxy 廃止、
+Phase 10.15.Re の signal boundary は否定しない。
+ただし、現状の `server/session` 配下はまだ ARCHITECTURE.md の
+`input -> changer -> state -> demand -> watcher -> output -> new input` と
+ファイル・クラス責務が一対一に読める状態ではない。
+
+この Phase は短い整理タスクではなく、ARCHITECTURE.md の closed-loop 設計へ漸近する長時間タスクとする。
+一枚岩時代へ戻すのではなく、`old_session.py.txt` は比較標本として使い、
+現行 package split を closed-loop の責務名に寄せていく。
+
+**目標**: `TomoroSession` は final state owner / public facade として維持しつつ、
+session 内部を `input` / `changer` / `state` / `<demand>` / `watcher` / `output` /
+`new input` として追える状態にする。
+既存 `/ws` contract、audio hot path、会話品質、unit tests は壊さない。
+
+### Phase 10.17.0: closed-loop map を固定する
+
+- [x] 現行 `server/session` 配下を closed-loop 用語に対応づける
+  - `input`: `process_audio_chunk()` / `accept_signal()` / `SessionSignalDispatcher`
+  - `changer`: `TranscriptFlow` / `TomoroSessionReducer` / `SessionEventRunner`
+  - `state`: `TomoroSessionState` / `AudioTurnController`
+  - `<demand>`: `SessionCommand`
+  - `watcher`: `TomoroSessionEffects` / candidate command runner / reply orchestration output side
+  - `output`: client JSON signal / audio chunk / DB / LLM / TTS / worker / candidate store I/O
+  - `new input`: `SessionEvent` / semantic signal / backend result / playback telemetry
+- [x] `old_session.py.txt` は実装復帰元ではなく、責務比較の標本として扱う
+- [x] ARCHITECTURE.md の closed-loop 用語をこの Phase の source of truth とする
+- [x] 実装の最初の対象は output demand / watcher 境界にする
+
+**完了条件**:
+- 次の編集対象が「ファイル名」ではなく closed-loop 上の責務として説明できる
+- 一枚岩復帰ではなく、現行 package split を責務名に寄せる方針が PLAN 上で明確である
+
+### Phase 10.17.1: demand 語彙を固定する
+
+- [x] `SessionCommand` を closed-loop 上の `<demand>` として扱う
+- [x] command type を owner ごとに分類する
+  - `session_watcher`: session 内部で実現する demand
+  - `gateway_candidate_runner`: candidate store / policy / precomputed reply を扱う gateway 側 demand
+  - `external_worker`: 将来の worker / backend result へ出す demand
+- [x] command owner の分類を unit test で固定する
+- [x] unknown command は即座に session 内で実行せず、将来の `external_worker` として分類する
+- [x] `session_watcher` command の実装済み / 未実装一覧を test で固定する
+
+**完了条件**:
+- `SessionCommand` が単なる string bag ではなく、closed-loop の demand として読める
+- session-local demand と gateway/candidate demand が混ざらない
+
+### Phase 10.17.2: watcher 境界を作る
+
+- [x] `TomoroSessionEffects` を session-owned demand の watcher として扱う
+- [x] `record_playback_telemetry` のような event-local command も、`SessionEventRunner` ではなく watcher 経由で実行する
+- [x] event runner が自分で実行してよい command は event-local command に限定し、外部 API が実行する command を二重実行しない
+- [x] watcher は command owner が `session_watcher` のものだけを実行し、candidate runner 向け command は実行しない
+- [x] watcher は新しい会話判断を追加しない
+- [x] 未実装 `session_watcher` command は silent no-op にせず warning を出して no-op にする
+- [x] `_run_internal_commands()` から移す対象は一度に全部ではなく、実行済み command table に沿って 1 種類ずつ増やす
+
+**完了条件**:
+- `SessionEventRunner` は queue / drain / reduce / result wrapping を担当し、event-local output 実行を抱え込まない
+- `TomoroSessionEffects` が session-local demand watcher としてテストで固定されている
+- `pytest -m unit tests/unit/test_session_commands.py tests/unit/test_session_event_runner.py -q` が通る
+
+### Phase 10.17.3: output result を new input に戻す
+
+- [x] Phase 10.17.3 は lifecycle 境界だけを対象にする
+- [x] LLM token delta / TTS audio chunk を全部 `SessionEvent` 化しない
+- [x] `reply_done` / cancel / TTS finished / candidate result のような coarse-grained result だけを new input 候補として整理する
+- [x] 既存 `/ws` contract、audio hot path、`reply_text` delta の体感 latency を変えない
+- [x] hot path event と lifecycle new-input candidate が混ざらないことを unit test で固定する
+- [x] `lifecycle_result_from_event(event)` を `SessionEventRunner` の観測 trace で呼ぶ
+- [x] lifecycle result がある場合だけ trace/log に出す
+- [x] lifecycle result はまだ input queue に戻さない
+- [x] `SessionEventRunner` に入った `reply_done` / `reply_cancelled` / `tts_finished` / candidate result 系 event は trace されることを unit test で固定する
+- [x] hot path event は `SessionEventRunner` に入っても trace されないことを unit test で固定する
+- [x] 現状の実経路では candidate result 系は `SessionEventRunner` を通るが、通常 `reply_done` は client output として `_send_event()` 直送であり、まだ runner には接続されていないことを記録する
+
+**完了条件**:
+- lifecycle 境界だけが new input 候補として分類されている
+- `reply_text` / `audio_start` / `audio_end` / `audio_control` / `emotion` は対象外である
+- lifecycle result は観測ログにだけ出て、再投入されない
+- 現在 runner を通っていない lifecycle output は、配線変更せず未接続として記録されている
+- 実 runtime の送信順や audio binary path を変えずに `pytest -m unit` が通る
+
+### Phase 10.17.2b: session watcher pending command inventory
+
+- [x] `TomoroSessionEffects.run_commands()` がまだ実行していない `session_watcher` command を一覧化する
+  - `cancel_reply_generation`: pending。reply / TTS task の cancellation status と待ち合わせに触るため、今回は移さない
+  - `save_tomoko_turn`: pending。conversation log write と reply status の境界整理が必要なため、今回は移さない
+  - `start_reply_generation`: pending。LLM / TTS orchestration に入るため、今回は移さない
+  - `write_ambient_observer`: pending。ambient log と transcript observer path の整理が必要なため、今回は移さない
+- [x] 今回 Effects へ移す command は 1 種類だけにする
+- [x] 低リスクな `send_audio_control_stop` を `TomoroSessionEffects.run_commands()` 実行済みに移す
+  - 既存の `_send_reserved_audio_stop()` を呼ぶだけにし、audio stop event の形は変えない
+- [x] 新しい Demand / Watcher / OutputDemand 型は追加しない
+- [x] `reply_done` / lifecycle routing / hot path は触らない
+
+**完了条件**:
+- 実装済み / pending の `session_watcher` command table が unit test で固定されている
+- `send_audio_control_stop` だけが pending から implemented へ移っている
+- `cancel_reply_generation` は pending のまま残っている
+- 既存 `/ws` event 名と audio control payload は変わっていない
+
+### Phase 10.17.2c: ambient observer demand execution
+
+- [x] `write_ambient_observer` の現在の発生箇所を確認する
+  - `SessionEventRunner` の `transcript_finalized` reduce が、playback echo / continue speaking の observer command として返す
+- [x] ambient log write の実行位置を確認する
+  - `TranscriptFlow` / turn-taking observer の直接経路では `ambient_log_writer.write()` を await している
+  - audio chunk hot path ではなく、STT 確定後の transcript / event path に限られる
+- [x] 失敗時の扱いを確認する
+  - 既存 direct write は例外を握りつぶさない
+  - Effects 側も例外を catch せず、既存と同じく呼び出し側へ伝播させる
+- [x] `write_ambient_observer` だけを `TomoroSessionEffects` 実行済みに移す
+- [x] result input 化はしない
+- [x] 新しい Demand / Watcher / OutputDemand 型は追加しない
+- [x] `cancel_reply_generation` / `reply_done` / lifecycle routing / hot path は触らない
+
+**完了条件**:
+- `write_ambient_observer` が implemented table に入り、pending table から外れている
+- `TomoroSessionEffects` が既存 `ambient_log_writer.write()` と `transcript_final` 通知に委譲している
+- ambient write 失敗時の例外伝播が unit test で固定されている
+- event runner の `write_ambient_observer` command が result input 化されず、event-local Effects 実行だけに留まっている
+
+### Phase 10.17.2d: remaining session watcher command risk table
+
+`send_audio_control_stop` と `write_ambient_observer` を移した後の、未実装 `session_watcher`
+command 現在リストを再確認する。
+現時点の `PENDING_SESSION_WATCHER_COMMANDS` は `cancel_reply_generation` /
+`save_tomoko_turn` / `start_reply_generation` の 3 つだけである。
+
+| risk | command | 理由 | 次に触る条件 |
+|---|---|---|---|
+| low-risk | なし | 既存挙動をほぼ変えず Effects へ移せる pending command は現時点では残っていない。 | 新しい command を足す前に、既存 table と test を更新する。 |
+| medium-risk | なし | DB / audio / reply lifecycle に絡むが turn persistence / cancellation / reply task までは触らない pending command は現時点では残っていない。 | medium として扱うには、DB write や client notification の失敗伝播を既存挙動どおり test で固定してからにする。 |
+| high-risk | `cancel_reply_generation` | reply task / TTS worker の cancel、`reply_cancel_status`、await 中の `CancelledError` suppression に触る。 | cancellation status、running reply task、running TTS worker、current task 除外の unit test を先に固定する。 |
+| high-risk | `save_tomoko_turn` | Tomoko turn の persistence、`conversation_session_id`、`ConversationLogStatus`、embedding scheduling に絡む。 | interrupted / cancelled / completed の保存条件と embedding scheduling 有無を先に分けて test する。 |
+| high-risk | `start_reply_generation` | `_start_reply_task()` が既存 reply cancel、`reply_cancel_status` reset、新規 reply task 作成、LLM/TTS orchestration 開始に絡む。 | 既存 reply 差し替え、task lifecycle、reply output start 前後の挙動を先に test で固定する。 |
+
+**判断**:
+- 今回は分類表だけを追記し、実装はしない
+- result input 化はしない
+- 新しい Demand / Watcher / OutputDemand 型は追加しない
+- `cancel_reply_generation` / `reply_done` / lifecycle routing / hot path は触らない
+
+### Phase 10.17.3b: reply lifecycle send-point inventory
+
+- [x] reply lifecycle event の送信箇所を列挙する
+  - normal reply done: `ReplyOrchestrator.reply_to()` から client notification
+  - precomputed reply done: `TomoroSession.start_precomputed_reply()` から client notification
+  - stop ack reply done: `TomoroSessionEffects._apply_stop_intent_ack()` から client notification
+  - reply cancelled: 現状は lifecycle event として未送信
+  - TTS finished: 現状は lifecycle event として未送信
+  - candidate result: `CandidateCommandRunner` から `accept_signal()` 経由で `SessionEventRunner`
+- [x] どれを `SessionEventRunner` に戻すべきか、どれは gateway/client notification のままでよいかを分類する
+- [x] 既存 `/ws` contract と audio / reply hot path の配線変更はしない
+- [x] 分類表を unit test で固定する
+
+**完了条件**:
+- reply lifecycle send point ごとの current route と recommendation がテストで確認できる
+- `reply_done` client notification はまだ runner に戻さず、既存順序を維持している
+- `reply_cancelled` / `tts_finished` は future runner candidate だが、今回の実装では emission を追加していない
+- candidate result 系は既に runner input であることが明示されている
+
+### Phase 10.17 checkpoint: 10.17.0〜10.17.3b の到達点
+
+- closed-loop map を固定し、現行 `server/session` 配下を `input` / `changer` / `state` / `<demand>` / `watcher` / `output` / `new input` として読めるようにした
+- `SessionCommand` の owner 分類を追加し、`session_watcher` / `gateway_candidate_runner` / `external_worker` を分けた
+- low-risk な `session_watcher` command は `TomoroSessionEffects` へ移した
+  - `record_playback_telemetry`
+  - `send_audio_control_stop`
+  - `write_ambient_observer`
+- 残りの `session_watcher` command は high-risk として保留した
+  - `cancel_reply_generation`
+  - `save_tomoko_turn`
+  - `start_reply_generation`
+- lifecycle candidate と reply lifecycle send point は分類だけ行い、配線変更はしていない
+- `reply_done` は client notification のまま維持する
+- hot path / `/ws` contract / reply orchestration は壊していない
+
+### Phase 10.17.4: TranscriptFlow を changer として整理する
+
+- [ ] participation / turn-taking / barge-in / session lifecycle を changer として読めるようにする
+- [ ] direct output を減らし、state update と demand emission を分ける
+- [ ] 必要な箇所だけ `OperationPlan` を使う
+
+### Phase 10.17.4a: TranscriptFlow current map and characterization
+
+- [x] `TranscriptFlow` の現状を closed-loop map として固定する
+  - `transcript_filter` / `turn_taking_decision` / `barge_in_decision` /
+    `participation_decision` / `session_lifecycle` は changer として読む
+  - `reply_start_decision` は現時点では watcher boundary として読む
+  - `audio_input_reset` は input boundary として読む
+- [x] characterization test で、現状 direct output を移動していないことを固定する
+  - barge-in path は `client_barge_in_event` / `cancel_reply_generation` /
+    `send_audio_control_stop` / observer write / transcript final を現状 direct output として記録する
+  - participation path は ambient log write / stop-intent observation /
+    initiative feedback / transcript final / participation event を現状 direct output として記録する
+  - session lifecycle は conversation session / attention / start reason の state update と、
+    user turn persistence / embedding scheduling の現状 direct output を分けて記録する
+- [x] 今回は direct output の移動、command 追加、reply orchestration 変更をしない
+
+**完了条件**:
+- `TRANSCRIPT_FLOW_CLOSED_LOOP_MAP` が現状分類を表す
+- `tests/unit/test_session_transcript_flow_map.py` が map と direct output の現状を固定している
+- `reply_done` / `reply_text` delta / audio chunk / hot path は map の対象外として固定されている
+
+### Phase 10.17.4b: TranscriptFlow direct output classification
+
+- [x] `barge_in_decision` / `participation_decision` / `session_lifecycle` の direct output を分類する
+- [x] changer/state update として残すもの
+  - `participation_decision`: `initiative_feedback`
+- [x] demand emission に寄せられる可能性があるもの
+  - `barge_in_decision`: `insert_stop_intent_observation`
+  - `barge_in_decision`: `send_audio_control_stop`
+  - `barge_in_decision`: `write_ambient_observer`
+  - `participation_decision`: `ambient_log_write`
+  - `participation_decision`: `insert_stop_intent_observation`
+  - `session_lifecycle`: `conversation_log_write`
+  - `session_lifecycle`: `conversation_embedding_schedule`
+- [x] gateway/client notification のまま維持すべきもの
+  - `barge_in_decision`: `client_barge_in_event`
+  - `barge_in_decision`: `client_transcript_final_event`
+  - `participation_decision`: `client_transcript_final_event`
+  - `participation_decision`: `client_participation_event`
+- [x] reply orchestration 側に属するため `TranscriptFlow` では触らないもの
+  - `barge_in_decision`: `cancel_reply_generation`
+- [x] 今回は direct output の移動、command 追加、reply orchestration 変更、audio hot path 変更、`/ws` contract 変更をしない
+
+**完了条件**:
+- `TRANSCRIPT_FLOW_DIRECT_OUTPUT_CLASSIFICATIONS` が上記分類を表す
+- characterization test が分類と「新規 command なし」を固定している
+- runtime path は変更しない
+
+### Phase 10.17.4c: TranscriptFlow demand emission readiness inventory
+
+- [x] demand emission 候補が既存 `SessionCommand` / `TomoroSessionEffects` へ到達済みか分類する
+- [x] already-command-and-effects
+  - `barge_in_decision`: `insert_stop_intent_observation`
+  - `barge_in_decision`: `send_audio_control_stop`
+  - `barge_in_decision`: `write_ambient_observer`
+  - `participation_decision`: `insert_stop_intent_observation`
+- [x] command-but-effects-pending
+  - なし
+- [x] direct-output-not-command
+  - `participation_decision`: `ambient_log_write`
+- [x] should-not-move-yet
+  - `session_lifecycle`: `conversation_log_write`
+  - `session_lifecycle`: `conversation_embedding_schedule`
+- [x] 今回は実装移動、command 追加、reply orchestration 変更、audio hot path 変更、`/ws` contract 変更をしない
+
+**判断**:
+- 次に低リスクで移せそうな既存 command/effects 済み候補は、TranscriptFlow 側では既に direct output から command へ寄せる準備ができている
+- ただし `ambient_log_write` はまだ command ではないため、新規 command 設計が必要
+- conversation log write / embedding scheduling は turn identity と lifecycle persistence に絡むため、今は触らない
+
+**完了条件**:
+- `TRANSCRIPT_FLOW_DEMAND_EMISSION_READINESS` が上記分類を表す
+- characterization test が implemented / pending session watcher table と分類の整合を固定している
+
+### Phase 10.17 checkpoint: closed-loop map / TranscriptFlow までの到達点
+
+- closed-loop map は固定済み
+- `SessionCommand` owner 分類は固定済み
+- low-risk な `session_watcher` command は `TomoroSessionEffects` に移動済み
+  - `record_playback_telemetry`
+  - `send_audio_control_stop`
+  - `write_ambient_observer`
+- 残りの high-risk command は reply task / turn persistence / orchestration に絡むため保留する
+  - `cancel_reply_generation`
+  - `save_tomoko_turn`
+  - `start_reply_generation`
+- lifecycle result / reply lifecycle send point は分類済み
+- `reply_done` は client notification のまま維持する
+- `TranscriptFlow` は changer として map 済み
+- `TranscriptFlow` demand emission 候補のうち `command-but-effects-pending` は存在しない
+- 残りは `ambient_log_write` / `conversation_log_write` / `conversation_embedding_schedule` で、
+  DB write / memory pipeline 方針が必要
+- hot path / `/ws` contract / reply orchestration は変更していない
+
+**次に進む場合の候補**:
+- A. DB write demand 化を別 Phase として設計する
+- B. Candidate / initiative flow を closed-loop map する
+- C. Reply orchestration を map するだけで、実装変更しない
+
+### Phase 10.17.5: Candidate / initiative flow を closed-loop 化する
+
+- [ ] idle timer / candidate fetch / candidate loaded / gate / reply start を同じ loop に載せる
+- [ ] candidate final gate は引き続き TomoroSession 側に残す
+- [ ] candidate store I/O は watcher / output 側として扱う
+
+### Phase 10.17.5a: Candidate / initiative current map and characterization
+
+- [x] B として Candidate / initiative flow を closed-loop map する
+- [x] initiative path を map する
+  - `idle_timer_elapsed` -> gate -> `fetch_initiative_candidate`
+  - `CandidateCommandRunner` fetch -> `initiative_candidate_loaded`
+  - stale / candidate missing / invalid / final gate / maturity / policy / LLM judge / reply start を reducer 側 changer として読む
+  - candidate store mark / dismiss / reply start は watcher output として読む
+- [x] arrival path を map する
+  - `session_started` -> gate -> `fetch_arrival_candidate`
+  - `CandidateCommandRunner` fetch -> `arrival_candidate_loaded`
+  - stale / candidate missing / invalid / final gate / behavior / reply start を reducer 側 changer として読む
+  - arrival used mark / reply start は watcher output として読む
+- [x] candidate final gate は引き続き TomoroSession 側に残す
+- [x] candidate store I/O は watcher output 側として扱う
+- [x] 実行配線、candidate 処理、reply orchestration、hot path、`/ws` contract は変更しない
+
+**完了条件**:
+- `CANDIDATE_FLOW_CLOSED_LOOP_MAP` が current map を表す
+- characterization test が reducer 側 changer / gateway runner output / final gate ownership を固定している
+- 新しい command は追加しない
+
+### Phase 10.17.5b: Candidate demand/output readiness classification
+
+- [x] Candidate / initiative flow の demand/output readiness を分類する
+- [x] already-command-and-runner
+  - `fetch_arrival_candidate`
+  - `fetch_initiative_candidate`
+  - `judge_initiative_candidate`
+  - `mark_arrival_used`
+  - `mark_utterance_spoken`
+  - `dismiss_utterance_candidate`
+- [x] command-but-runner-pending
+  - なし
+- [x] session-final-gate
+  - `initiative_candidate_loaded_final_gate`
+  - `arrival_candidate_loaded_final_gate`
+- [x] gateway-runner-output
+  - `candidate_command_failed`
+- [x] reply-orchestration-owned
+  - `start_arrival_reply`
+  - `start_initiative_reply`
+- [x] should-not-move-yet
+  - なし
+- [x] candidate store I/O は gateway runner 側でよいことを固定する
+- [x] final gate は `TomoroSession` 側に残っていることを固定する
+- [x] reply start は reply orchestration と境界があることを固定する
+- [x] `candidate_command_failed` は `SessionEventRunner` へ戻る new input として読む
+- [x] hot path / `/ws` contract / reply text / audio chunk は触らない
+
+**完了条件**:
+- `CANDIDATE_FLOW_DEMAND_OUTPUT_READINESS` が上記 command / event の分類を表す
+- `CANDIDATE_FLOW_FINAL_GATE_READINESS` が final gate の session ownership を表す
+- characterization test が runner 実装済み / pending なし / reply boundary / new input を固定している
+- 実行配線、新規 command、OutputDemand / Watcher、reply orchestration、audio hot path は変更しない
+
+### Phase 10.17.6: Reply orchestration を分解する
+
+- [ ] `ReplyOrchestrator` は LLM/TTS の実行順序を持つが、session 判断を持たない
+- [ ] client output と audio output を demand / output として説明できるようにする
+- [ ] latency log は消さない
+
+### Phase 10.17.6a: Reply orchestration closed-loop map-only
+
+- [x] `ReplyOrchestrator.reply_to()` は TomoroSession が承認済みの reply input を実行する入口として分類する
+- [x] `start_precomputed_reply()` は candidate runner output を受ける TomoroSession 側の changer/state update として分類する
+- [x] stop ack reply path は cancellation / reserved audio / control `reply_done` が絡むため should-not-move-yet として分類する
+- [x] `reply_text` delta は hot-ish client notification として維持する
+- [x] `emotion` は client notification として維持する
+- [x] TTS flush / audio chunk は audio hot path として維持する
+- [x] `reply_done` は lifecycle boundary だが client notification のまま維持し、routing は変えない
+- [x] reply cancellation / interruption と TTS finished は future new-input candidate として読むが、今回は配線しない
+- [x] ReplyOrchestrator は session 判断を持たず、LLM/TTS 実行順序は現状維持する
+- [x] 実行配線、新規 command、new input queue 再投入、OutputDemand / Watcher 新設、audio hot path、`/ws` contract は変更しない
+
+**完了条件**:
+- `REPLY_FLOW_CLOSED_LOOP_MAP` が通常 reply / precomputed reply / stop ack / output notification / audio hot path / lifecycle boundary / future candidate を表す
+- characterization test が `reply_text` / audio chunk / `reply_done` / cancel / TTS finished の扱いを固定している
+- runtime code の挙動は変えない
+
+### Phase 10.17.6b: flow map consistency guard
+
+- [x] `candidate_flow.py` と `reply_flow.py` の分類語彙が混ざっていないことを unit test で固定する
+- [x] `already-command-and-runner` / `command-but-runner-pending` は candidate runner readiness の語彙として扱い、reply flow へ持ち込まない
+- [x] `reply-orchestration-owned` な `start_arrival_reply` / `start_initiative_reply` が、reply flow 側の `start_precomputed_reply()` 境界へ接続して読めることを固定する
+- [x] `should-not-move-yet` と `future new-input candidate` を別概念として固定する
+- [x] `candidate_command_failed` は gateway runner output の new input とし、reply flow の future candidate とは混ぜない
+- [x] `reply_text` delta / audio chunk / `reply_done` は reply flow 側の hot-ish notification / audio hot path / lifecycle boundary として維持する
+- [x] TomoroSession owned final gate と ReplyOrchestrator owned execution path を分けて固定する
+- [x] no-routing-change guard を横断確認する
+- [x] 今回は実行配線、新規 command、runner 実装、OutputDemand / Watcher 実装、reply orchestration 制御変更、audio hot path 変更はしない
+
+**完了条件**:
+- map 間の整合性 test が candidate/reply 境界の語彙と owner を固定している
+- `should-not-move-yet` / `future new-input candidate` / hot path / lifecycle boundary が routing change なしで分類されている
+- 既存 runtime code の挙動は変えない
+
+### Phase 10.17.6c: OutputDemand / output boundary map-only
+
+- [x] candidate demand / client notification / runner output / audio hot path / future OutputDemand / future Watcher の境界を map-only で固定する
+- [x] candidate demand は「何かを実行してほしい」という要求であり、client notification ではないことを固定する
+- [x] runner output は command 実行結果であり、reply future candidate とは混ぜないことを固定する
+- [x] `reply_text` / `reply_done` は client notification 側であり、candidate demand ではないことを固定する
+- [x] audio chunk は audio hot path であり、OutputDemand 側へ移動しないことを固定する
+- [x] `candidate_command_failed` は gateway runner output 由来の new input であり、reply cancel / TTS finished とは別扱いにする
+- [x] OutputDemand / Watcher は future work として分類するが、実装済み扱いしない
+- [x] no-routing-change / no-hot-path-change guard を維持する
+- [x] 今回は実行配線、新規 command、runner 実装、OutputDemand / Watcher 実装、reply orchestration 制御変更、audio hot path 変更はしない
+
+**完了条件**:
+- `OUTPUT_FLOW_BOUNDARY_MAP` が candidate demand / client notification / runner output / audio hot path / future abstraction を分類している
+- characterization test が candidate/reply/output 境界の混同を防いでいる
+- OutputDemand / Watcher の class や runtime path は追加しない
+
+### Phase 10.17.6d: reply lifecycle boundary map-only
+
+- [x] reply lifecycle / client notification / future new-input candidate / stop・cancel・interruption / TTS finished の境界を map-only で固定する
+- [x] `reply_done` は lifecycle boundary だが、現時点では client notification のまま維持する
+- [x] reply cancel は future new-input candidate だが、今回は未配線のままにする
+- [x] TTS finished は future new-input candidate だが、今回は未配線のままにする
+- [x] interruption / cancellation は lifecycle に関係するが、ReplyOrchestrator の制御変更はしない
+- [x] stop ack reply path は確認対象として固定するが、経路変更しない
+- [x] audio chunk は audio hot path のまま維持する
+- [x] LLM/TTS 実行順序は should-not-move-yet のまま維持する
+- [x] no-routing-change / no-hot-path-change guard を維持する
+- [x] 今回は `reply_done` 移管、cancel / TTS finished の new input 配線、stop ack 経路変更、audio chunk 経路変更、LLM/TTS 順序変更、OutputDemand / Watcher 実装はしない
+
+**完了条件**:
+- `LIFECYCLE_FLOW_BOUNDARY_MAP` が reply lifecycle boundary と client notification の未移管状態を表す
+- characterization test が cancel / TTS finished / stop ack / interruption / audio hot path / LLM-TTS ordering の境界を固定している
+- runtime code の挙動は変えない
+
+### Phase 10.17.6e: flow map vocabulary registry map-only
+
+- [x] candidate_flow / reply_flow / output_flow / lifecycle_flow の分類語彙を registry として一覧化する
+- [x] common guard と flow 固有語彙を分ける
+- [x] `candidate-demand` は client notification ではないことを固定する
+- [x] `client-notification` は candidate demand ではないことを固定する
+- [x] `runner-output` は reply future candidate ではないことを固定する
+- [x] `future-*` 系語彙は未実装候補であり、実装済み new input / OutputDemand / Watcher を意味しないことを固定する
+- [x] `should-not-move-yet` は future candidate とは別概念として固定する
+- [x] `audio-hot-path` / `audio hot path` は OutputDemand 側へ寄せないことを固定する
+- [x] `lifecycle-boundary` / `lifecycle boundary` は即座の lifecycle 移管を意味しないことを固定する
+- [x] `no-routing-change` / `no-hot-path-change` は共通 guard として扱う
+- [x] 今回は実行配線、新規 command、runner 実装、OutputDemand / Watcher 実装、reply orchestration 制御変更、reply_done 移管、cancel / TTS finished new input 配線、audio hot path 変更はしない
+
+**完了条件**:
+- `FLOW_VOCABULARY_REGISTRY` が candidate / reply / output / lifecycle の分類語彙を参照している
+- characterization test が共通語彙 / flow 固有語彙 / future 未実装候補 / do-not-move / hot path / guard の混同を防いでいる
+- runtime code の挙動は変えない
+
+### Phase 10.17.6f: forbidden transition map-only
+
+- [x] candidate_flow / reply_flow / output_flow / lifecycle_flow / flow_registry の語彙について、今のフェーズでは移動・統合・配線してはいけない関係を forbidden transition として固定する
+- [x] `client-notification` -> `candidate-demand` と `candidate-demand` -> `client-notification` を禁止する
+- [x] `runner-output` -> reply future candidate を禁止する
+- [x] `future-new-input-candidate` / `future-output-demand-candidate` / `future-watcher-candidate` -> `runtime-current` を禁止する
+- [x] `lifecycle-boundary` -> runtime lifecycle migration を禁止する
+- [x] `audio-hot-path` -> OutputDemand / client notification を禁止する
+- [x] `should-not-move-yet` -> `future-*` を禁止する
+- [x] `reply_done` -> lifecycle implementation を禁止し、client notification のまま維持する
+- [x] `reply_cancelled` / `tts_finished` -> new input implementation を禁止し、未配線のまま維持する
+- [x] stop ack path -> routing change を禁止する
+- [x] `no-routing-change` / `no-hot-path-change` guard を維持する
+- [x] 今回は実行配線、新規 command、runner 実装、OutputDemand / Watcher 実装、reply orchestration 制御変更、reply_done 移管、cancel / TTS finished new input 配線、stop ack 経路変更、audio hot path 変更、LLM/TTS 順序変更はしない
+
+**完了条件**:
+- `FLOW_FORBIDDEN_TRANSITIONS` が forbidden transition を map-only で表す
+- characterization test が registry 語彙との整合、future 未実装候補、do-not-move、audio hot path、reply lifecycle、stop ack guard を固定している
+- runtime code の挙動は変えない
+
+### Phase 10.17.6g: runtime touchpoint audit read-only / map-only
+
+- [x] TomoroSession の signal entry / `_send_event` / `_send_audio_chunk` / `start_precomputed_reply()` touchpoint を監査する
+- [x] ReplyOrchestrator の `reply_to()` / `reply_text` / emotion / TTS flush / audio chunk / `reply_done` / LLM-TTS ordering touchpoint を監査する
+- [x] CandidateCommandRunner の candidate loaded / `candidate_command_failed` runner output path を監査する
+- [x] websocket client notification path は `TomoroSession._send_event -> send_event -> websocket.send_json` のまま維持する
+- [x] audio chunk 送信経路は `ReplyOrchestrator.flush_tts_text -> TomoroSession._send_audio_chunk -> send_audio` のまま維持する
+- [x] stop ack reply path は `TomoroSessionEffects._apply_stop_intent_ack -> /ws reply_done control` のまま維持する
+- [x] cancellation / interruption は touchpoint として記録するが、new input 実装へは移管しない
+- [x] LLM/TTS ordering は `should-not-move-yet` に対応する touchpoint として固定する
+- [x] `must-remain-current` と `future-migration-candidate` を混ぜない
+- [x] `audio-hot-path` は migration candidate として扱わない
+- [x] `no-routing-change` / `no-hot-path-change` guard を維持する
+- [x] 今回は runtime code の制御変更、実行配線、新規 command、runner 実装、OutputDemand / Watcher 実装、ReplyOrchestrator 制御変更、reply_done 移管、cancel / TTS finished new input 配線、stop ack / websocket / audio chunk 経路変更、LLM/TTS 順序変更はしない
+
+**完了条件**:
+- `FLOW_RUNTIME_TOUCHPOINTS` が既存 runtime touchpoint を read-only / map-only で表す
+- characterization test が registry / forbidden transition との整合、must-remain-current、future migration candidate、audio hot path、reply lifecycle、stop ack、LLM/TTS ordering を固定している
+- runtime code の挙動は変えない
+
+### Phase 10.17.6h: migration readiness checklist map-only / docs-only
+
+- [x] 10.17.6a〜10.17.6g の flow map / registry / forbidden transition / runtime touchpoint をもとに、次フェーズで実装変更に入るための readiness checklist を定義する
+- [x] `future-*` は readiness を満たすまで `runtime-current` に昇格しないことを固定する
+- [x] `should-not-move-yet` は explicit phase が来るまで移動不可として固定する
+- [x] audio hot path は dedicated test と no-hot-path-change guard なしに触らないことを固定する
+- [x] `reply_done` は lifecycle boundary だが、migration readiness を満たすまで移管しない
+- [x] cancel / TTS finished は future new-input candidate だが、explicit phase なしに配線しない
+- [x] OutputDemand / Watcher は future candidate だが、実装フェーズを別に切るまで実装しない
+- [x] stop ack path は dedicated test なしに経路変更しない
+- [x] runtime touchpoint は記録済みでも、それだけでは実装許可を意味しない
+- [x] `ready-for-runtime-change` / `not-ready-runtime-change` / `requires-*` / `blocked-by-*` の readiness 分類を固定する
+- [x] 今回は runtime code の制御変更、実行配線、新規 command、runner 実装、OutputDemand / Watcher 実装、ReplyOrchestrator 制御変更、reply_done 移管、cancel / TTS finished new input 配線、stop ack / websocket / audio chunk 経路変更、LLM/TTS 順序変更はしない
+
+**完了条件**:
+- `FLOW_MIGRATION_READINESS_CHECKLIST` が実装に入ってよい条件 / まだ入ってはいけない条件を map-only で表す
+- characterization test が registry / forbidden transition / runtime touchpoint との整合、future 未実装候補、should-not-move-yet、audio hot path、reply lifecycle、OutputDemand / Watcher、stop ack guard を固定している
+- runtime code の挙動は変えない
+
+### Phase 10.17.6i: minimal runtime change candidate selection map-only / docs-only
+
+- [x] 10.17.6a〜10.17.6h の map / registry / forbidden transition / runtime touchpoint / migration readiness をもとに、次フェーズで実装可能な最小 runtime change 候補を選定する
+- [x] first runtime change candidate は `runtime_touchpoint_read_only_helper` だけに絞る
+- [x] 選定理由は「既存 runtime touchpoint map を読む helper であり、route / hot path / ReplyOrchestrator 制御 / lifecycle migration / future-* 昇格 / 実行順序変更を伴わない」こととする
+- [x] `candidate_runner_output_read_only_helper` は既に runtime-current の runner-output path であり、最初に触ると runner output と session input の境界を曖昧にするため保留する
+- [x] `reply_done_lifecycle_migration` は lifecycle migration と forbidden transition に抵触するため保留する
+- [x] `cancel_tts_finished_new_input` は future-new-input candidate の runtime-current 昇格になるため保留する
+- [x] `output_demand_abstraction` / `watcher_abstraction` は future unimplemented abstraction なので別 phase まで保留する
+- [x] `stop_ack_path_rewrite` は stop / cancellation / audio control / reply_done control を跨ぐため保留する
+- [x] `audio_hot_path_rewrite` は audio hot path に触るため保留する
+- [x] `llm_tts_ordering_rewrite` は ReplyOrchestrator 制御と LLM/TTS ordering に触るため保留する
+- [x] 今回は runtime code の制御変更、実行配線、新規 command、runner 実装、OutputDemand / Watcher 実装、ReplyOrchestrator 制御変更、reply_done 移管、cancel / TTS finished new input 配線、stop ack / websocket / audio chunk 経路変更、LLM/TTS 順序変更はしない
+
+**完了条件**:
+- `FLOW_RUNTIME_CHANGE_CANDIDATES` が selected / rejected candidates と拒否理由を map-only で表す
+- characterization test が selected candidate が 1 個だけであり、forbidden transition / readiness / hot path / lifecycle migration / ReplyOrchestrator 制御 / future-* 昇格に抵触しないことを固定している
+- runtime code の挙動は変えない
+
+### Phase 10.17.6i checkpoint: defer read-only helper implementation
+
+- [x] Phase 10.17.6i の候補選定は維持し、`runtime_touchpoint_read_only_helper` は「最初に実装してもよい候補」として残す
+- [x] ただし `runtime_touchpoint_read_only_helper` は production runtime change ではなく、既存 map を読む read-only helper / inspection helper として分類する
+- [x] 現時点では `FLOW_RUNTIME_TOUCHPOINTS` / `FLOW_RUNTIME_CHANGE_CANDIDATES` / 既存 characterization test / PLAN / MEMORY で判断材料は足りているため、helper 実装は延期する
+- [x] helper が必要になった場合でも、production runtime path からは呼ばない
+- [x] helper を入れる最小条件は、次 phase を `10.17.6j: runtime touchpoint read-only helper, not used by production path` として明示し、unit test / docs update / no-routing-change / no-hot-path-change を同時に固定すること
+- [x] helper は `FLOW_RUNTIME_TOUCHPOINTS` を読み取るだけにし、TomoroSession / ReplyOrchestrator / CandidateCommandRunner / websocket adapter / audio path から import または call しない
+- [x] helper は command / runner / OutputDemand / Watcher / lifecycle input / client notification / audio chunk の実装許可を意味しない
+- [x] 10.17.6i の reject 判断は維持する: reply_done lifecycle migration、cancel / TTS finished new input、OutputDemand / Watcher、stop ack path、audio hot path、LLM/TTS ordering はまだ禁止
+
+**推奨**:
+- A. 10.17.6i でいったん停止し、10.17 checkpoint / 実ブラウザ確認へ進む
+- B は、map を読む処理の重複が実際に増えた場合だけ `10.17.6j` として切る
+
+### Phase 10.17 checkpoint: runtime verification
+
+- [x] 22:31:44 起動後、22:32:05〜22:33:26 の実ブラウザ会話が最後まで通ったことを確認した
+- [x] `/ws` 接続、wake word、conversation session start、`ambient -> engaged`、reply / TTS / audio、follow-up、`cooldown -> ambient`、conversation session close まで確認した
+- [x] `arrival_candidate_loaded` が `lifecycle_new_input_candidate` として trace されたことを確認した
+- [x] `reply_text` / TTS / audio は hot-ish / hot path のままで、`lifecycle_new_input_candidate` に混ざっていない
+- [x] `reply_done` は lifecycle input に移管されておらず、client notification のまま維持する
+- [x] cancel / TTS finished new input 化の痕跡は直近 runtime には見当たらない
+- [x] `ERROR` / `Traceback` / 未実装 command warning は 22:31:44〜22:33:26 の直近 runtime には見当たらない
+- [x] NumPy writable warning は既存 PyTorch warning として扱い、今回の 10.17 closed-loop map 変更由来の破損ではなさそうと判断する
+- [x] 10.17.6 系の map / registry / forbidden / readiness / touchpoint / candidate selection は runtime を壊していない
+- [x] 10.17.6i は checkpoint として維持し、`runtime_touchpoint_read_only_helper` 実装は延期する
+
+**次に進む場合**:
+- runtime 実装ではなく、次フェーズ設計または実ブラウザ追加確認から始める
+- `reply_done` lifecycle migration、cancel / TTS finished new input 化、OutputDemand / Watcher、stop ack path、audio hot path、LLM/TTS ordering は引き続き別 explicit phase まで触らない
+
+### Phase 10.17 final checkpoint
+
+- [x] closed-loop map は固定済み
+- [x] `SessionCommand` は demand として owner 分類済み
+- [x] low-risk `session_watcher` command は Effects 側へ移動済み
+- [x] high-risk command は reply task / turn persistence / orchestration に絡むため保留
+- [x] `TranscriptFlow` / `CandidateFlow` / `ReplyFlow` / `OutputFlow` / `LifecycleFlow` は map-only で整理済み
+- [x] flow registry / forbidden transitions / runtime touchpoints / migration readiness / runtime change candidates は固定済み
+- [x] `reply_done` は lifecycle boundary だが client notification のまま維持する
+- [x] cancel / TTS finished は future new-input candidate だが未配線のまま維持する
+- [x] OutputDemand / Watcher は future candidate だが未実装のまま維持する
+- [x] audio hot path / LLM-TTS ordering / stop ack path は触らない
+- [x] `runtime_touchpoint_read_only_helper` は候補として維持するが実装延期する
+- [x] 実ブラウザ確認で wake word、conversation session start、`ambient -> engaged`、`reply_text` / TTS / audio、follow-up、`cooldown -> ambient`、conversation session close まで通った
+- [x] `arrival_candidate_loaded` は lifecycle trace として読める
+- [x] `reply_text` / TTS / audio hot path に lifecycle trace は混ざっていない
+- [x] 10.17.6 系の map-only governance は runtime を壊していない
+
+**禁止事項（次 phase へ持ち越し）**:
+- runtime code の制御変更、新規 command / runner、OutputDemand / Watcher 実装、ReplyOrchestrator 制御変更はしない
+- `reply_done` 移管、cancel / TTS finished new input 化、stop ack 経路変更、audio hot path 変更、LLM-TTS ordering 変更は explicit phase と dedicated test なしに行わない
+- `runtime_touchpoint_read_only_helper` は必要性が再確認されるまで実装しない
+
+**次フェーズ候補**:
+- A. 実ブラウザ追加確認
+- B. DB write demand 化の設計だけ
+- C. high-risk reply command の個別設計だけ
+
+**次フェーズ開始条件**:
+- どの候補でも、最初は docs / map / characterization test から始める
+
+### Phase 10.18.0: DB write demand boundary design map-only / docs-only
+
+- [x] `server/session/db_write_flow.py` を追加し、DB write 系 touchpoint を closed-loop 用語で分類した
+- [x] `ambient_log_write` は `direct-db-write-current` かつ `future-db-demand-candidate` だが、SessionCommand 化や Effects 移動はしない
+- [x] `conversation_log_write` / `tomoko_turn_save` / `interrupted_turn_save` は turn persistence に関わるため `should-not-move-yet` として固定した
+- [x] `conversation_session_start` / `conversation_session_close` は session lifecycle owned として固定し、TomoroSession ownership を維持する
+- [x] `conversation_embedding_schedule` は memory pipeline / background task に関わるため `background-worker-owned` かつ `should-not-move-yet` として固定した
+- [x] `stop_intent_observation_insert` は既存の `already-command-and-effects` として扱い、新しい command は追加しない
+- [x] `candidate_store_mark_spoken` / `candidate_store_mark_dismissed` / `candidate_store_mark_arrival_used` は gateway candidate runner owned として扱い、session-owned DB write demand と混ぜない
+- [x] failure policy を `exception-propagates-current` / `warning-only-current` / `runner-warning-and-candidate-command-failed-current` / `requires-failure-policy-decision` として分類した
+- [x] DB write flow map 追加は runtime route、DB write 実行経路、`/ws` contract、ReplyOrchestrator、audio hot path、LLM-TTS ordering、`reply_done` routing を変えない
+
+**完了条件**:
+- DB write 系の現状が closed-loop map として読める
+- session-owned / gateway-runner / background-worker の DB write 境界が分かる
+- `ambient_log_write` は候補だが未実装として固定されている
+- turn persistence / embedding schedule / candidate store writes を動かさないことが test と docs から読める
+- runtime 実装は変えない
+
+### Phase 10.18.1: ambient_log_write characterization only
+
+- [x] `ambient_log_write` は participation decision 後に direct await される現状を characterization test で固定した
+- [x] participating utterance では `ambient_log_write -> user_turn_write -> reply_start` の順序であり、reply start より前に await されることを固定した
+- [x] observer / non-participating transcript でも ambient log が書かれることを固定した
+- [x] payload は transcript、previous attention、attended、participation mode、should participate 相当の `tomoko_participated` を反映することを固定した
+- [x] `ambient_log_writer.write()` が例外を投げた場合、既存通り例外伝播し、reply start へ進まないことを固定した
+- [x] `ambient_log_write` は `write_ambient_observer` command/effects 済み path とは別系統として扱う
+- [x] SessionCommand 化、TomoroSessionEffects への移動、非同期化、result input 化、failure policy / ordering / payload 変更はしない
+
+**判断**:
+- `ambient_log_write` を SessionCommand 化する価値はまだ低い
+- 現時点の価値は境界整理であり、同期実行のまま command 化しても latency は改善しない
+- command 化する場合は、failure policy と reply start ordering を変えない dedicated phase が必要
+
+### Phase 10.19: Session package simplification / monolith checkpoint
+
+- [x] `server/session/` の小ファイルを一覧化し、runtime essential / map-test-only / docs-like guard / could-inline-to-core / should-remain-separated の観点で分類した
+- [x] runtime essential は `core.py` / `state.py` / `reducer.py` / `effects.py` / `event_runner.py` / `dispatcher.py` / `reply_orchestrator.py` / `commands.py` / `carryover.py` / `lifecycle.py` / `operation_plan.py` とする
+- [x] `transcript_flow.py` は runtime path と map constants が同居しており、理解しづらさのある `could-inline-to-core` / later split candidate とする
+- [x] `candidate_flow.py` / `reply_flow.py` / `output_flow.py` / `lifecycle_flow.py` / `db_write_flow.py` は map/test-only とし、最初に統合・移動するならここから始める
+- [x] `flow_registry.py` / `flow_forbidden_transitions.py` / `flow_runtime_touchpoints.py` / `flow_migration_readiness.py` / `flow_runtime_change_candidates.py` は docs-like guard とし、runtime wiring ではないことを固定する
+- [x] 人間にとって読みづらい点は、runtime essential と map-only guard が同じ package 直下に並び、map constants が実行配線に見えやすいこと
+- [x] rollback / simplification plan は、いきなり runtime essential を動かさず、まず map/test-only ファイルを `server/session/maps/` か単一 `flow_maps.py` に寄せる案とする
+- [x] `ReplyOrchestrator` / reducer / effects / state / audio hot path はすぐには動かさない
+- [x] 一枚ファイルに戻す場合も、lifecycle / transcript / candidate gates / reply boundary / DB write boundary / command-effects boundary / flow-map appendix の section map を先に置く
+- [x] `server/session/README.md` に closed-loop 読み方と file classification を追加した
+
+**禁止事項**:
+- runtime behavior、public API、`/ws` contract、audio hot path、ReplyOrchestrator ordering、DB write ordering は変えない
+- 新規 SessionCommand、OutputDemand / Watcher、lifecycle migration、cancel / TTS finished new input 化はしない
+
+**判断**:
+- 10.17 / 10.18 の知見は保持する
+- 実装分割は必要なら戻してよいが、最初に戻す対象は map/test-only か docs-like guard に限定する
+- runtime essential の統合は、読みやすさの効果が map整理だけでは足りないと分かった後に別 phase で検討する
+
+### Phase 10.19.1: session map-only guard relocation plan docs-only
+
+- [x] map-only / docs-like guard 群の runtime import を確認し、対象10ファイルは `server/` runtime code から import されていないことを確認した
+- [x] import 変更が必要になるのは unit test 側だけであることを確認した
+- [x] `candidate_flow.py` / `reply_flow.py` / `output_flow.py` / `lifecycle_flow.py` / `db_write_flow.py` は map-only guard / test-only support と分類した
+- [x] `flow_registry.py` / `flow_forbidden_transitions.py` / `flow_runtime_touchpoints.py` / `flow_migration_readiness.py` / `flow_runtime_change_candidates.py` は docs-like source of truth / docs-like guard と分類した
+- [x] 最小移動案は A: `server/session/maps/` に移すことを推奨する
+- [x] B: `_docs/session_closed_loop/` は人間には読みやすいが、unit test から import しづらく Python の characterization test と距離が出るため第一候補にはしない
+- [x] C: ARCHITECTURE.md / PLAN.md に圧縮してコードファイルを削る案は、testable guard が失われるため今は避ける
+- [x] D: 当面そのまま README で明示する案は最小だが、root 混在の読みづらさは残るため temporary checkpoint とする
+- [x] 次に実施する場合は、runtime essential には触れず、map-only guard 群だけを `server/session/maps/` へ移し、test import を更新する
+
+**候補別メモ**:
+- A. `server/session/maps/`: Python import と unit test を維持しつつ runtime root から視覚的に退避できる。デメリットは import 更新が多いこと
+- B. `_docs/session_closed_loop/`: docs としては読みやすい。デメリットは executable characterization ではなくなること
+- C. ARCHITECTURE.md / PLAN.md に圧縮: 情報量は減る。デメリットは future LLM が guard を test で検知できなくなること
+- D. そのまま README 明示: 変更量は最小。デメリットは session root の混在が残ること
+
+**test import 変更対象**:
+- `tests/unit/test_session_candidate_flow_map.py`
+- `tests/unit/test_session_reply_flow_map.py`
+- `tests/unit/test_session_output_flow_map.py`
+- `tests/unit/test_session_lifecycle_flow_map.py`
+- `tests/unit/test_session_db_write_flow_map.py`
+- `tests/unit/test_session_flow_registry.py`
+- `tests/unit/test_session_flow_forbidden_transitions.py`
+- `tests/unit/test_session_flow_runtime_touchpoints.py`
+- `tests/unit/test_session_flow_migration_readiness.py`
+- `tests/unit/test_session_flow_runtime_change_candidates.py`
+- `tests/unit/test_session_flow_map_consistency.py`
+
+**禁止事項**:
+- runtime behavior、TomoroSession / ReplyOrchestrator / reducer / effects / state、audio hot path、reply lifecycle routing、OutputDemand / Watcher、DB write demand 化は変更しない
+
+### Phase 10.19.2: move session map-only guard files under server/session/maps
+
+- [x] `server/session/maps/` package を作成した
+- [x] map-only / guard-only の 10 ファイルを `server/session/maps/` へ移動した
+- [x] `candidate_flow.py` / `reply_flow.py` / `output_flow.py` / `lifecycle_flow.py` / `db_write_flow.py` を session root から退避した
+- [x] `flow_registry.py` / `flow_forbidden_transitions.py` / `flow_runtime_touchpoints.py` / `flow_migration_readiness.py` / `flow_runtime_change_candidates.py` を session root から退避した
+- [x] unit test import を `server.session.maps.*` に更新した
+- [x] runtime code が `server.session.maps` に依存していないことを確認する
+- [x] `server/session/README.md` に、map-only guard は `server/session/maps/` へ退避済みで runtime essential ではないことを追記した
+- [x] deterministic test guard は削除しない
+
+**禁止事項**:
+- runtime behavior、TomoroSession / ReplyOrchestrator / reducer / effects / state / audio hot path、command / runner、OutputDemand / Watcher、reply_done 移管、cancel / TTS finished new input 化、DB write demand 化は変更しない
+
+**完了条件**:
+- `server/session/` root から map-only guard 10ファイルが消えている
+- `server/session/maps/` に map-only guard 10ファイルが存在する
+- unit test が新 import path で deterministic guard を維持する
+- runtime code は maps package に依存しない
+
+### Phase 10.19.x: pre-split functional baseline audit
+
+- [x] Phase 10.12 package split 直前の commit は `960be36` と特定した
+  - 直後の split commit は `b254d32 refactor(phase-10.12): split TomoroSession package`
+  - `b254d32` は `server/session.py` を `server/session/core.py` へ rename し、`carryover.py` / `reducer.py` / `effects.py` / `reply_orchestrator.py` を追加した
+- [x] `960be36` 時点では `server/session.py` 一枚構成で、直前 LOG の検証は `.venv/bin/python -m pytest -m unit` = `377 passed, 17 deselected`
+- [x] `960be36` 時点の `PORT=8018 make server-debug` は startup complete / `GET /` 200 の smoke まで確認済み
+- [x] `960be36` 時点では実マイク browser quality tuning は未完了
+  - Phase 8.8.8.4 の `著作権の話覚えてる` / `詳しくはどんな話やったっけ` / `どういう風に考えてたっけ` は未チェック
+  - Phase 10.10.4 の自発発話実ブラウザ評価は未チェック
+  - Phase 10.11.4 の turn-taking 実ブラウザ評価は未チェック
+- [x] `960be36` 時点の runtime baseline は、README / config / LOG から次の状態と読む
+  - STT: active は `local_apple_speech_ja`、fallback / 比較候補に `local_whisper_mlx_large_turbo_q4` と `local_whisperkit_serve_large_turbo_632m_cpu_ne`
+  - participation: wake word / attention / follow-up / low-confidence filter / playback echo gate は実装済み
+  - reply: `lmstudio_gemma4_26b_a4b` が会話主系で、fallback は `local_gemma4_e2b_mlx`
+  - TTS: active は `voicevox_tsumugi`、比較候補に `kokoro_mlx`
+  - playback: `playback_started` / `playback_ended` telemetry、active playback chunk、echo grace、再生中 attention timeout 停止は実装済み
+  - turn-taking: rule-first judge / worker client / `make turn-taking-worker` / playback interrupt candidate は実装済み、実ブラウザ 4 ケース評価は未完了
+  - candidate: Phase 10.10 までで自発発話 candidate / arrival / UI 表示 / follow-up context は実装済み、自然さの実ブラウザ評価は未完了
+  - memory: Phase 8.8.8 までで carryover、fast prompt 接続、source quota / weight、summary hit から user turn snippet 復元、query embedding reuse は実装済み、実ブラウザ tuning は未完了
+- [x] Phase 10.12 以降の変更を分類した
+  - pure refactor: `b254d32` の package split、`035ec24` の state container / reducer 整理、`5c92a6c` の signal boundary / dispatcher / transcript flow、`d9044b6` の event runner 分離
+  - behavior-preserving extraction: `04d3df6` の `send_audio_control_stop` effects 移動
+  - docs/map/test-only: `caa0ca9` / `8b6ec50` の lifecycle map、`71ae715` の flow maps / forbidden / readiness / touchpoint tests、`7d6f870` の maps relocation / DB write flow / ambient log characterization / README
+  - actual runtime behavior change: `1fea015` の lifecycle candidate trace logging、`870db77` の `write_ambient_observer` effects 実装
+  - unknown / needs verification: `b254d32`〜`d9044b6` の large extraction chain は unit pass だが、stop / playback interrupt / initiative follow-up / memory recall の実ブラウザ確認が split 直後に残っていた
+- [x] `server/session.py` 一枚時代に戻すと失われる可能性がある実機能を整理した
+  - `write_ambient_observer` command が effects で実行される path
+  - `send_audio_control_stop` command の effects watcher 経由実行
+  - `accept_signal()` / `SessionInputSignal` / `SessionOutputSignal` / dispatcher / event runner の signal boundary
+  - lifecycle new-input candidate trace log
+  - map/test-only guard 群による forbidden transition / readiness / touchpoint の regression protection
+  - `old_session.py.txt` 比較標本と `server/session/README.md` の読み方
+- [x] PLAN / LOG / MEMORY に知見として残せば実装からは消してよいものを整理した
+  - flow maps / registry / forbidden transitions / migration readiness / runtime touchpoints / runtime change candidates
+  - DB write flow map と ambient log characterization の判断文
+  - reply lifecycle send point inventory
+  - monolith に戻す場合の section map と closed-loop vocabulary
+  - `old_session.py.txt` は実装復帰元ではなく、必要なら docs / appendix 化できる比較標本
+- [x] もし戻すなら baseline は `960be36` を推奨する
+  - 理由: package split 直前で、`server/session.py` 一枚構成かつ unit は `377 passed, 17 deselected`
+  - ただし戻す前に、`870db77` の `write_ambient_observer` 実行 path と `04d3df6` の audio stop effects path を cherry-pick 可能な機能差分として扱う
+  - `b254d32` 以降の map/test-only 知見は、実装へ戻さず PLAN / MEMORY / README / test appendix に残す
+- [x] 今回は実装変更、revert、file move、import path 変更、runtime code 変更、test 削除、OutputDemand / Watcher 実装、reply_done / cancel / TTS finished 配線変更、audio hot path 変更を行っていない
+
+**結論**:
+- `960be36` の一枚 `server/session.py` は、現在の runtime 機能の多くを既に持つ functional baseline として再評価に値する
+- ただし `960be36` は実ブラウザ quality tuning 済み baseline ではなく、unit + startup smoke 済み baseline として扱う
+- split 後の大半は extraction / map / test guard だが、`write_ambient_observer` effects 実装と audio stop effects path は戻す時に失う可能性があるため別途保持候補にする
+
+### Phase 10.17.7: contract hardening
+
+- [ ] `accept_signal()` / `process_audio_chunk()` / `post_event()` の public surface を固定する
+- [ ] package 外から触ってよい object を test で固定する
+- [ ] `TomoroSessionState` の直接 mutate が増えていないことを grep / test で確認する
+
+### Phase 10.17.8: runtime verification
+
+- [ ] `.venv/bin/python -m pytest -m unit`
+- [ ] `.venv/bin/python -m ruff check .`
+- [ ] 実ブラウザで stop / playback interrupt / initiative / memory recall の最小確認
+- [ ] `logs/server-debug.log` で closed-loop の trace が読めるか確認する

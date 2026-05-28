@@ -4,9 +4,57 @@
 
 ## 設計の一言サマリ
 
+TomoroSession is the final owner of conversational state.
+Gateway converts physical protocol events into session signals.
+Reducer decides state transitions.
+Effects execute commands emitted by reducers/session.
+Audio bytes stay on primitive hot path.
+Do not add wrappers unless they clarify ownership or ordering.
+
 **「内面の時間が流れている存在」としての Tomoko を、ノード分散 + PostgreSQL 中央集約で実現する。**
 
 コアロジックは起動後に変わらない。環境（バックエンド・ノード構成）だけが変わる。
+
+## Session closed-loop architecture
+
+TomoroSession の内部は、外部入力と内部副作用の結果を区別しすぎず、同じ閉じたループへ戻す状態機械として読む。
+
+```
+input
+  -> changer
+     <info>
+  -> state
+     <demand>
+  -> watcher
+  -> output
+  -> new input
+```
+
+### 用語
+
+- `input`: gateway / client / timer / backend / output result から来る事実。ユーザー音声、semantic signal、playback telemetry、LLM 結果、TTS 結果、DB 結果、worker 結果などを含む。
+- `changer`: input を解釈し、state に情報を書き込む責務。LLM / TTS / DB / WebSocket send などの外部副作用を直接実行しない。
+- `<info>`: changer から state へ書かれる状態更新情報。これは demand ではない。
+- `state`: 現在の事実と、未実現の output need / demand を保持する場所。state 自体は外部副作用を実行しない。
+- `<demand>`: state に現れた「外へ何かを実現してほしい」という必要性。watcher はこれを読んで output を起こす。
+- `watcher`: state / demand を見て output intent を実現する責務。会話判断の中心になる state mutation は changer 側に寄せる。
+- `output`: 外部副作用。client JSON signal、audio chunk、DB read/write、LLM call、TTS call、worker request、candidate store update、log/trace などを含む。
+- `new input`: output の結果として戻ってくる事実。LLM token / final response、TTS audio chunk、DB read result、DB write completion、playback result、worker result などは再び input として扱う。
+
+### 原則
+
+1. changer は state を変えるだけで、外部副作用を直接実行しない。
+2. state は現在の事実と demand を持つだけで、外へ何かを送らない。
+3. watcher / output が外部副作用を担当し、その結果は必ず input として戻す。
+4. gateway 由来の input と、session 内 output 由来の input を構造上は同じ loop に戻す。
+5. 将来、温度・湿度・presence・vision・mechanics などの入力が増えても、特別な例外 path を増やさず input 種別を足す。
+6. 非同期処理は例外 path ではなく、`output -> new input` の一種として扱う。
+7. watcher は賢くしすぎず、判断の中心は changer/state 側に置く。
+8. input は同じ loop に戻すが、origin / causation / correlation id / turn id などの由来と対応関係は失わない。
+
+現行コードの `SessionCommand` は、この設計では demand / output intent に近い。
+`StateEmission` / `SessionOutputSignal` / audio chunk は output path の表現である。
+今後の package split では、既存の public API を壊さず、TomoroSession を final owner としたまま、内部責務をこの loop に寄せていく。
 
 ## LLMによる推論結果の取得
 
