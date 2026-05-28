@@ -3014,3 +3014,24 @@ candidate gate、conversation session lifecycle は変更しない。
 OutputDemand / Watcher / dispatcher / effects / event_runner / maps、汎用 `state.py` も作らない。
 commit は行わず、人間の実ブラウザで「智子、〇〇のこと覚えてる？」、
 「もっと詳しく」、同一会話内 follow-up、memory recall / carryover log、返答品質を確認してから判断する。
+
+### 確定した判断: Phase 10.20.6 は pure session payload helper 抽出に限定する
+2026-05-29 の Phase 10.20.6 では、`server/session_payloads.py` を追加し、
+`server/session.py` 末尾にあった payload helper だけを抽出した。
+
+抽出対象は `json_safe_payload()` / `json_safe_value()` /
+`optional_str_payload()` / `optional_int_payload()` / `optional_float_payload()` /
+`playback_payload()` / `playback_telemetry_from_event()` である。
+
+これらは状態を持たず、I/O せず、DB / LLM / TTS / audio / task / queue に触らない。
+`server/session.py` 側は import と呼び出し名の置き換えだけにし、playback payload 形式、
+telemetry coercion、transition emission payload の意味は維持する。
+
+`_candidate_policy_payload()` は `CandidateSpeakDecision` に依存し、今回の pure payload helper
+抽出から広げる必要がないため `server/session.py` に残す。
+
+この phase では `server/session/` package、汎用 `state.py`、dispatcher / effects /
+event_runner / maps、OutputDemand / Watcher は作らない。
+audio hot path、reply orchestration、reply task / TTS queue、`reply_done` routing、
+cancel / TTS finished new input 化、DB write ordering、conversation session lifecycle、
+memory retrieval policy、prompt format は変更しない。

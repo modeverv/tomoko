@@ -43,6 +43,13 @@ from server.session_carryover import (
     retrieved_context_key,
 )
 from server.session_latency import LatencyProbeState, elapsed_ms
+from server.session_payloads import (
+    json_safe_payload,
+    optional_float_payload,
+    optional_str_payload,
+    playback_payload,
+    playback_telemetry_from_event,
+)
 from server.shared.candidate import ArrivalCandidate, UtteranceCandidate
 from server.shared.db import AmbientLogWriter, ConversationLogWriter, ConversationSessionStore
 from server.shared.inference.embedding.base import EmbeddingBackend
@@ -251,17 +258,17 @@ class TomoroSession:
         if event.type in {"playback_started", "playback_ended"}:
             return self._transition_result(
                 event.type,
-                payload=_playback_payload(event),
+                payload=playback_payload(event),
                 commands=result.commands,
             )
         return result
 
     def _reduce(self, event: SessionEvent) -> TransitionResult:
         if event.type in {"playback_started", "playback_ended"}:
-            telemetry = _playback_telemetry_from_event(event)
+            telemetry = playback_telemetry_from_event(event)
             return self._transition_result(
                 event.type,
-                payload=_playback_payload(event),
+                payload=playback_payload(event),
                 commands=[
                     SessionCommand(
                         type="record_playback_telemetry",
@@ -724,7 +731,7 @@ class TomoroSession:
         )
 
     def _reduce_stop_intent_classified(self, event: SessionEvent) -> TransitionResult:
-        turn_id = _optional_str_payload(event.payload.get("turn_id"))
+        turn_id = optional_str_payload(event.payload.get("turn_id"))
         active_turn_id = self.audio_turns.active_turn_id
         if turn_id is None or turn_id != active_turn_id:
             return self._transition_result(
@@ -737,7 +744,7 @@ class TomoroSession:
                 },
             )
         predicted_kind = str(event.payload.get("predicted_kind", "none"))
-        confidence = _optional_float_payload(event.payload.get("confidence")) or 0.0
+        confidence = optional_float_payload(event.payload.get("confidence")) or 0.0
         if not should_adopt_stop_signal(predicted_kind, confidence):
             return self._transition_result(
                 "stop_intent_observed",
@@ -1669,7 +1676,7 @@ class TomoroSession:
             await self._send_event(
                 {
                     "type": emission.type,
-                    **_json_safe_payload(emission.payload),
+                    **json_safe_payload(emission.payload),
                 }
             )
 
@@ -2174,72 +2181,11 @@ def _start_reason_from_participation_mode(mode: ParticipationMode) -> StartReaso
     raise ValueError(f"participation mode does not start a reply: {mode}")
 
 
-def _playback_telemetry_from_event(event: SessionEvent) -> PlaybackTelemetry:
-    if event.type not in {"playback_started", "playback_ended"}:
-        raise ValueError(f"not a playback event: {event.type}")
-    return PlaybackTelemetry(
-        type=event.type,  # type: ignore[arg-type]
-        turn_id=_optional_str_payload(event.payload.get("turn_id")),
-        chunk_id=_optional_int_payload(event.payload.get("chunk_id")),
-        scheduled_audio_time=_optional_float_payload(
-            event.payload.get("scheduled_audio_time")
-        ),
-        sent_audio_time=_optional_float_payload(event.payload.get("sent_audio_time")),
-        audio_context_time=_optional_float_payload(
-            event.payload.get("audio_context_time")
-        ),
-        performance_now_ms=_optional_float_payload(
-            event.payload.get("performance_now_ms")
-        ),
-    )
-
-
-def _playback_payload(event: SessionEvent) -> dict[str, Any]:
-    return {
-        "turn_id": event.payload.get("turn_id"),
-        "chunk_id": event.payload.get("chunk_id"),
-    }
-
-
 def _candidate_policy_payload(event: SessionEvent) -> dict[str, Any] | None:
     policy = event.payload.get("policy_decision")
     if isinstance(policy, CandidateSpeakDecision):
         return policy.to_json()
     return None
-
-
-def _json_safe_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    return {key: _json_safe_value(value) for key, value in payload.items()}
-
-
-def _json_safe_value(value: Any) -> Any:
-    if isinstance(value, UUID):
-        return str(value)
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, dict):
-        return {str(key): _json_safe_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_safe_value(item) for item in value]
-    return value
-
-
-def _optional_str_payload(value: object) -> str | None:
-    if value is None:
-        return None
-    return str(value)
-
-
-def _optional_int_payload(value: object) -> int | None:
-    if value is None:
-        return None
-    return int(value)
-
-
-def _optional_float_payload(value: object) -> float | None:
-    if value is None:
-        return None
-    return float(value)
 
 
 def _elapsed_ms(started_at: float | None) -> float:

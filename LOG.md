@@ -1,3 +1,32 @@
+## 2026-05-29 セッション8
+
+### やること（開始時に書く）
+- Phase 10.20.6 として、monolithic `server/session.py` から pure session payload helper だけを小さく抽出する
+- 対象は `_json_safe_payload` / `_optional_str_payload` / `_optional_float_payload` / `_optional_int_payload` / `_playback_payload` / `_playback_telemetry_from_event` など、状態を持たず I/O しない payload helper に限定する
+- `server/session/` package、汎用 `state.py`、dispatcher / effects / event_runner / maps、OutputDemand / Watcher は作らない
+- runtime 制御フロー、audio hot path、reply orchestration、DB write ordering、conversation lifecycle、memory retrieval policy、prompt format、task / queue lifecycle は変更しない
+
+### やったこと
+- AGENTS.md 指示どおり MEMORY.md / LOG.md / PLAN.md / README.md / ARCHITECTURE.md / `_reference/` を確認した
+- `server/session_payloads.py` を追加し、pure payload helper だけを抽出した
+- 抽出対象は `json_safe_payload()` / `json_safe_value()` / `optional_str_payload()` / `optional_int_payload()` / `optional_float_payload()` / `playback_payload()` / `playback_telemetry_from_event()` に限定した
+- `server/session.py` は import と呼び出し名の置き換えだけにし、playback payload 形式、telemetry coercion、transition emission payload は維持した
+- `_candidate_policy_payload()` は `CandidateSpeakDecision` に依存するため、今回の pure payload helper 抽出対象に含めず `server/session.py` に残した
+- `tests/unit/test_session_payloads.py` を追加し、JSON safe 変換、playback payload / telemetry coercion、optional payload coercion を固定した
+- PLAN.md / MEMORY.md に Phase 10.20.6 の判断を追記した
+- `server/session/` package、汎用 `state.py`、dispatcher / effects / event_runner / maps、OutputDemand / Watcher は作っていない
+- audio hot path、reply orchestration、reply task / TTS queue、DB write ordering、conversation session lifecycle、memory retrieval policy、prompt format は変更していない
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_session_payloads.py -q`
+  - 4 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 395 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+
 ## 2026-05-29 セッション1
 
 ### やること（開始時に書く）

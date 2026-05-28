@@ -6112,3 +6112,46 @@ reply orchestration は変更しない。
 - unit / ruff / diff check が通っている
 - runtime code は commit されていない
 - 人間の実ブラウザ確認待ちになっている
+
+### Phase 10.20.6: extract pure session payload helpers only
+
+この Phase では `server/session.py` 末尾に残っていた pure payload helper だけを小さく抽出する。
+runtime 制御フロー、音声 hot path、reply orchestration、DB ordering、conversation lifecycle は変更しない。
+
+#### 抽出対象
+
+- `server/session_payloads.py`
+  - `json_safe_payload()`
+  - `json_safe_value()`
+  - `optional_str_payload()`
+  - `optional_int_payload()`
+  - `optional_float_payload()`
+  - `playback_payload()`
+  - `playback_telemetry_from_event()`
+- `server/session.py`
+  - 上記 helper の import だけを追加する
+  - playback event の payload 形式、telemetry coercion、transition emission payload は維持する
+
+#### 維持する挙動
+
+- playback event payload は `turn_id` / `chunk_id` だけを返す
+- playback telemetry は `playback_started` / `playback_ended` だけを受け付ける
+- optional payload coercion は `None` を `None` のまま扱い、それ以外を `str` / `int` / `float` に変換する
+- JSON safe payload は `UUID` を文字列、`datetime` を ISO 文字列、dict key を文字列、tuple/list を list に変換する
+- `send_transition_emissions()` の client payload 形式は変えない
+
+#### 今回触らないもの
+
+- `server/session/` package は作らない
+- 汎用 `state.py` は作らない
+- dispatcher / effects / event_runner / maps、OutputDemand / Watcher は復活させない
+- `reply_done` routing、cancel / TTS finished new input 化、task / queue lifecycle は触らない
+- audio hot path、TTS flush / audio chunk / playback timing、LLM/TTS ordering は触らない
+- DB write ordering、conversation session lifecycle、memory retrieval policy、prompt format は触らない
+- `_candidate_policy_payload()` は `CandidateSpeakDecision` に依存するため今回は残す
+
+**完了条件**:
+- pure helper / payload helper だけが `server/session_payloads.py` に抽出されている
+- `server/session.py` の制御フローは変わっていない
+- helper unit test、full unit、ruff、diff check が通っている
+- runtime code の意味は変わっていない
