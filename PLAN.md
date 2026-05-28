@@ -5794,3 +5794,206 @@ closed-loop architecture を再開する場合も、まず一枚の `server/sess
 - `ambient_log_write` を非同期化しない
 - `conversation_log_write` / embedding schedule を動かさない
 - audio hot path、TTS flush、audio chunk、playback timing、LLM/TTS ordering、stop ack path を触らない
+
+### Phase 10.20.0: cautious split restart from monolithic session baseline
+
+この Phase は、未来の Phase 10.12〜10.19 系を再実装するものではない。
+現在の runtime は `experiment/restore-session-monolith-960be36` の一枚 `server/session.py` baseline として扱い、
+closed-loop 用語に合わせて最小責務を 1 つだけ固定するための再出発である。
+
+#### 今回選ぶ候補
+
+- [x] 最初の候補は `state container` とする
+  - 理由: 現在 `server/session.py` には `server/session/state.py` が存在せず、`__init__` に `self.state` / `self.attention_mode` / reply task / TTS worker / latency probe / candidate request id / connected output state / carryover などの runtime state field がまとまっている
+  - ARCHITECTURE.md の closed-loop 用語では `state` に対応し、`input_router` や helper より命名と責務が明確である
+  - 実際に切り出す場合も、まず `TomoroSession` が final owner のまま `state.py` に置き場を作る pure extraction だけを検討できる
+- [x] 今回は runtime code を変更しない
+  - `state.py` はまだ作らない
+  - `TomoroSessionState` class もまだ作らない
+  - characterization test は、runtime code を動かす前の次 phase で `get_now_state()` / state field ownership を固定する候補として残す
+
+#### 今回選ばない候補
+
+- `input_router` 相当の薄い入口整理は今回は触らない
+  - `process_audio_chunk()` / `process_transcript()` / `post_event()` / playback telemetry / stop intent の入口は、audio hot path、reply lifecycle、candidate result、client lifecycle にまたがる
+  - 入口整理から始めると、前回の dispatcher / event_runner 的な名前と責務へ戻りやすい
+  - closed-loop 用語では `input` だが、現時点では routing よりも state ownership の固定を先にした方が小さい
+- `pure helper / value object` は今回は触らない
+  - `_RetrievedContextCarryoverEntry` などの小さな pure object はあるが、最初に切っても closed-loop の主要語彙に対する理解があまり進まない
+  - helper 抽出は読みやすく見えても、責務境界ではなく便利関数の増殖になりやすい
+  - carryover や context 周辺は memory prompt / ContextSnapshotBuilder / long-term retrieval と関係し、今回の 1 責務には広すぎる
+
+#### 次 phase へ進む場合の固定条件
+
+- `state container` だけを対象にする
+- ファイル名は closed-loop 用語に合わせ、候補名は `server/session/state.py` とする
+- public construction path は引き続き `from server.session import TomoroSession` または現行の `server/session.py` の `TomoroSession` に保つ
+- `TomoroSession` が final owner であり、state container は判断体にしない
+- 先に characterization test で `get_now_state()`、attention / VAD / playback / active session / context build id / output state の snapshot 契約を固定する
+- 実装する場合も pure extraction に限定し、runtime behavior、public API、`/ws` contract、logs、DB write ordering、reply / TTS ordering を変えない
+
+**禁止事項**:
+- dispatcher.py / effects.py / event_runner.py / maps package を復活させない
+- ReplyOrchestrator 相当の LLM/TTS ordering を触らない
+- audio hot path、TTS flush、audio chunk、playback timing を触らない
+- `reply_text` / `reply_done` routing を変えない
+- cancel / TTS finished を new input 化しない
+- OutputDemand / Watcher を作らない
+- DB write を SessionCommand 化しない
+- `ambient_log_write` を非同期化しない
+- 複数ファイルを一気に切り出さない
+
+**完了条件**:
+- split 再開方針が未来 PLAN の再実装ではなく、monolith baseline からの慎重な再出発として記録されている
+- 今回触る候補が `state container` 1 つに絞られている
+- 選ばなかった候補について、今回触らない理由が記録されている
+- hot path / reply / DB write / lifecycle migration は触っていない
+
+### Phase 10.20.1: state container extraction readiness docs-only
+
+この Phase では `server/session.py` の `TomoroSession.__init__` 内 field を棚卸しする。
+`state.py` はまだ作らず、field 移動、property/proxy、import path 変更、runtime behavior 変更は行わない。
+
+#### `TomoroSession.__init__` field classification
+
+| 分類 | fields | state container readiness |
+|---|---|---|
+| dependency / injected collaborator | `vad_processor`, `send_event`, `send_audio`, `transcriber`, `participation_judge`, `ambient_log_writer`, `conversation_log_writer`, `conversation_session_store`, `router`, `thinking_mode`, `deep_thinking_mode`, `tts_backend`, `embedding_backend`, `memory_store`, `session_summary_store`, `persona_store`, `context_snapshot_builder`, `speech_normalizer`, `barge_in_detector`, `turn_taking_judge`, `transcript_filter`, `stt_audio_frontend`, `candidate_feedback_store`, `stop_intent_store`, `stop_ack_audio_provider` | state container には入れない。これらは runtime state ではなく collaborator wiring であり、container 化すると依存境界が曖昧になる |
+| hot path adjacent state | `state`, `latest_segment`, `audio_turns` | まだ core に残す。`process_audio_chunk()`、VAD transition、partial transcript、playback telemetry、audio reserve path に近く、最初の抽出対象にしない |
+| pure runtime state | `attention_mode`, `_attention_idle_ms`, `_engaged_timeout_ms`, `_cooldown_timeout_ms`, `_last_start_reason`, `_context_build_id`, `_connected_output_state` | 将来の state container 候補。ただし attention transition / candidate final gate / connection close / context snapshot に関わるため、最初の抽出対象にはしない |
+| task / queue lifecycle state | `_reply_task`, `_tts_worker_task`, `_tts_queue`, `_reply_output_started`, `_reply_output_defer_until`, `_reply_cancel_status`, `_turn_taking_control_lock`, `_send_lock`, `_event_queue`, `_event_drain_lock` | まだ core に残す。reply task / TTS queue / send lock / event drain は ordering と cancellation に直結する |
+| latency probe state | `_latency_speech_end_at`, `_latency_reply_start_at`, `_latency_first_reply_text_at`, `_latency_tts_start_at`, `_latency_first_audio_chunk_at` | 次に実装するならこの 1 グループだけを候補にする。ログ計測用で cohesive、DB write / routing / audio chunk ordering を変えずに pure container 化しやすい |
+| candidate request state | `_candidate_request_sequence`, `_active_initiative_request_id`, `_active_arrival_request_id`, `_active_initiative_feedback_scope` | まだ core に残す。initiative / arrival の stale result と final gate に関わるため、candidate gate 専用 phase まで触らない |
+| conversation session state | `active_conversation_session_id` | まだ core に残す。conversation session start/close、turn persistence、summary pending、context build active session に直結する |
+| memory carryover state | `_retrieved_context_carryover`, `_retrieved_context_carryover_seq` | まだ core に残す。memory prompt / ContextSnapshotBuilder / query reuse / session close clear と関係し、state container 初回には広すぎる |
+| precomputed reply context state | `_last_precomputed_reply_text`, `_last_precomputed_reply_reason`, `_last_precomputed_reply_source`, `_last_precomputed_reply_candidate_id`, `_last_precomputed_reply_at` | まだ core に残す。initiative / arrival reply と context injection に関わり、candidate request state と同時に扱うべき |
+| turn-taking transient state | `_turn_taking_stop_suppress_until`, `_last_turn_taking_audio_metrics` | まだ core に残す。stop/restart quality と playback interrupt 判定に近く、Phase 10.11 の体感品質に触りやすい |
+
+#### 次に実装する場合の 1 グループ
+
+- [x] 次の実装候補は `latency probe state` だけに絞る
+  - `_latency_speech_end_at`
+  - `_latency_reply_start_at`
+  - `_latency_first_reply_text_at`
+  - `_latency_tts_start_at`
+  - `_latency_first_audio_chunk_at`
+- [x] 理由
+  - `latency probe state` は runtime の観測値であり、authoritative conversation state ではない
+  - `get_now_state()` の public snapshot には直接出ていない
+  - DB write ordering、candidate gate、conversation lifecycle、reply routing を変えずに `reset` / `mark_*` / `elapsed_*` の pure container として characterization しやすい
+  - audio hot path に近い `_send_audio_chunk()` ではなく、計測時刻の保存と elapsed 計算に限定できる
+
+#### まだ core に残すべき state
+
+- `state` / `attention_mode` / `audio_turns` は、VAD hot path、attention lifecycle、playback telemetry、candidate final gate の中心なので残す
+- `_reply_task` / `_tts_worker_task` / `_tts_queue` / `_reply_cancel_status` は、reply/TTS ordering と cancellation に直結するので残す
+- `_candidate_request_sequence` / `_active_*_request_id` は stale candidate result の安全性に関わるので残す
+- `active_conversation_session_id` は DB write ordering と session close ownership に関わるので残す
+- carryover / precomputed reply / turn-taking transient state は、それぞれ memory quality、initiative context、stop/restart 体感に関わるので残す
+
+**禁止事項**:
+- `state.py` を作らない
+- field を移動しない
+- property/proxy を追加しない
+- import path を変えない
+- runtime behavior、audio hot path、reply task / TTS queue、candidate gate、DB write ordering を変えない
+- OutputDemand / Watcher / dispatcher / effects / maps を作らない
+
+**完了条件**:
+- state container に移してよい候補と、まだ core に残すべき state が分かる
+- 次に実装する場合でも対象が `latency probe state` 1 グループに絞られている
+- 今回は docs-only で runtime code に触っていない
+
+### Phase 10.20.2: latency probe state characterization only
+
+この Phase では `latency probe state` の現状挙動だけを test で固定する。
+`state.py` はまだ作らず、field 移動、property/proxy、import path 変更、runtime behavior 変更は行わない。
+
+#### characterization 対象
+
+- `_latency_speech_end_at`
+- `_latency_reply_start_at`
+- `_latency_first_reply_text_at`
+- `_latency_tts_start_at`
+- `_latency_first_audio_chunk_at`
+- `_reply_output_started`
+- `_reply_output_defer_until`
+
+#### 固定する現状挙動
+
+- `_reset_latency_probe()` は 5 つの latency timestamp を `None` に戻し、`_reply_output_started` を `False` に戻す
+- `_reset_latency_probe()` は現状 `_reply_output_defer_until` を reset しない。この Phase では変更せず、characterization として固定する
+- elapsed 計算は `None` の場合 `0.0`、mark 済みの場合は `time.perf_counter()` との差分 ms を返す
+- `reply_text` output path は `_latency_reply_start_at` / `_latency_first_reply_text_at` を mark し、`_reply_output_started` を `True` にする
+- TTS chunk output path は `_latency_tts_start_at` / `_latency_first_audio_chunk_at` を mark し、audio send で `_reply_output_started` を `True` にする
+- `_send_audio_chunk()` 単体は `_reply_output_started` を `True` にするが、`_reply_task` / `_tts_queue` / `_tts_worker_task` の lifecycle owner には触らない
+- `_defer_reply_output()` は既存 deadline と新しい deadline のうち遅い方を保持し、`_maybe_wait_reply_output_defer()` は 1 回だけ最大 250ms まで sleep して defer を clear する
+
+#### 今回抽出しない理由
+
+- 今回の目的は field move ではなく、抽出前に reset / mark / elapsed / defer の current behavior を固定すること
+- `_reply_output_started` と `_reply_output_defer_until` は latency probe と output ordering の境界にまたがるため、抽出前に test で ownership を明文化する必要がある
+- TTS queue / reply task / audio chunk timing に近い path は、test で読むだけに留め、runtime code は変更しない
+
+#### 次に実装する場合の 1 グループ
+
+- [x] 次の抽出候補は `latency probe state` だけに限定する
+  - `_latency_speech_end_at`
+  - `_latency_reply_start_at`
+  - `_latency_first_reply_text_at`
+  - `_latency_tts_start_at`
+  - `_latency_first_audio_chunk_at`
+  - `_reply_output_started`
+  - `_reply_output_defer_until`
+- [x] 実装へ進む場合も、`reset` / `mark` / `elapsed` / `defer wait` の pure extraction に限定する
+- [x] hot path、reply task lifecycle、TTS queue ownership、DB write ordering、candidate gate、conversation session lifecycle は対象外にする
+
+**禁止事項**:
+- `state.py` を作らない
+- field を移動しない
+- property/proxy を追加しない
+- import path を変えない
+- `_reply_task` / `_tts_worker_task` / `_tts_queue` を変更しない
+- audio hot path、ReplyOrchestrator 相当の LLM-TTS ordering、DB write ordering を変更しない
+- OutputDemand / Watcher / dispatcher / effects / maps を作らない
+
+**完了条件**:
+- latency probe state の reset / mark / elapsed / output started / defer wait semantics が characterization test で固定されている
+- 次に抽出する場合の対象 field が明確になっている
+- runtime behavior は変わっていない
+
+### Phase 10.20.3: extract LatencyProbeState only
+
+この Phase では Phase 10.20.2 で characterization 済みの latency probe state だけを小さく抽出する。
+`server/session/` package や汎用 `state.py` は作らず、monolithic `server/session.py` の大枠は維持する。
+
+#### 抽出対象
+
+- `server/session_latency.py`
+  - `LatencyProbeState`
+  - `elapsed_ms()`
+- `server/session.py`
+  - `_reset_latency_probe()` は残し、`LatencyProbeState.reset()` に委譲する
+  - `_elapsed_since_*_ms()` は残し、`LatencyProbeState.elapsed_since_*_ms()` に委譲する
+  - mark / defer は既存呼び出し位置で `LatencyProbeState` に委譲する
+
+#### 維持する挙動
+
+- `_reset_latency_probe()` は timestamp と `reply_output_started` を reset するが、`reply_output_defer_until` は reset しない
+- `reply_start` / `first_reply_text` / `tts_start` / `first_audio_chunk` の mark 位置は変えない
+- latency log の文言、値の算出元、ms 計算は変えない
+- `_defer_reply_output()` / `_maybe_wait_reply_output_defer()` の deadline merge、最大 250ms wait、1 回 clear は変えない
+- `_send_audio_chunk()` は audio send 前に output started を mark するが、audio hot path と send lock は変えない
+
+#### 今回触らないもの
+
+- `TomoroSession` の authoritative state は移さない
+- `state` / `attention_mode` / `audio_turns` は移さない
+- `_reply_task` / `_tts_worker_task` / `_tts_queue` は移さない
+- ReplyOrchestrator 相当の LLM/TTS ordering、`reply_done` / cancel / TTS finished routing、DB write ordering は変えない
+- OutputDemand / Watcher / dispatcher / effects / event_runner / maps は作らない
+
+**完了条件**:
+- latency probe state だけが `LatencyProbeState` に抽出されている
+- monolithic `server/session.py` の大枠は維持されている
+- Phase 10.20.2 の characterization test と full unit が通り、runtime behavior が変わっていない

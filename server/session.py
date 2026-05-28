@@ -39,6 +39,7 @@ from server.gateway.thinking.base import ThinkingMode
 from server.gateway.thinking.selector import has_deep_memory_cue, should_use_deep_memory
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.gateway.turn_taking.judge import RuleFirstTurnTakingJudge, TurnTakingJudge
+from server.session_latency import LatencyProbeState, elapsed_ms
 from server.shared.candidate import ArrivalCandidate, UtteranceCandidate
 from server.shared.db import AmbientLogWriter, ConversationLogWriter, ConversationSessionStore
 from server.shared.inference.embedding.base import EmbeddingBackend
@@ -171,13 +172,7 @@ class TomoroSession:
         self._reply_task: asyncio.Task[None] | None = None
         self._tts_worker_task: asyncio.Task[None] | None = None
         self._tts_queue: asyncio.Queue[tuple[str, str] | None] | None = None
-        self._latency_speech_end_at: float | None = None
-        self._latency_reply_start_at: float | None = None
-        self._latency_first_reply_text_at: float | None = None
-        self._latency_tts_start_at: float | None = None
-        self._latency_first_audio_chunk_at: float | None = None
-        self._reply_output_started = False
-        self._reply_output_defer_until: float | None = None
+        self._latency_probe = LatencyProbeState()
         self._turn_taking_stop_suppress_until: float | None = None
         self._reply_cancel_status: ConversationLogStatus | None = None
         self._last_turn_taking_audio_metrics: TurnTakingAudioMetrics | None = None
@@ -809,7 +804,7 @@ class TomoroSession:
             return
 
         self._reset_latency_probe()
-        self._latency_speech_end_at = time.perf_counter()
+        self._latency_probe.mark_speech_end()
         frontend_decision = self.stt_audio_frontend.process_segment(segment)
         logger.info(
             "TomoroSession latency speech_end segment_ms=%.1f attention_mode=%s state=%s "
@@ -1253,11 +1248,14 @@ class TomoroSession:
         if not self._is_reply_generation_active() and self.audio_turns.playback_state == "idle":
             return "none"
         if (
-            self._latency_first_audio_chunk_at is not None
+            self._latency_probe.first_audio_chunk_at is not None
             or self.audio_turns.playback_state != "idle"
         ):
             return "audio_started"
-        if self._latency_first_reply_text_at is not None or self._reply_output_started:
+        if (
+            self._latency_probe.first_reply_text_at is not None
+            or self._latency_probe.reply_output_started
+        ):
             return "text_started"
         return "generating_not_started"
 
@@ -1286,19 +1284,12 @@ class TomoroSession:
         logger.info("TomoroSession turn-taking observer reason=%s", reason)
 
     def _defer_reply_output(self, *, max_ms: int) -> None:
-        self._reply_output_defer_until = max(
-            self._reply_output_defer_until or 0.0,
-            time.perf_counter() + max_ms / 1000,
-        )
+        self._latency_probe.defer_reply_output(max_ms=max_ms)
 
     async def _maybe_wait_reply_output_defer(self) -> None:
-        defer_until = self._reply_output_defer_until
-        if defer_until is None:
-            return
-        remaining = defer_until - time.perf_counter()
-        self._reply_output_defer_until = None
-        if remaining > 0:
-            await asyncio.sleep(min(remaining, 0.25))
+        delay = self._latency_probe.consume_reply_output_defer_delay()
+        if delay is not None:
+            await asyncio.sleep(delay)
 
     def _merge_carried_long_term_memory(
         self,
@@ -1421,7 +1412,7 @@ class TomoroSession:
             return
 
         backend = await self.router.select("conversation", "privacy")
-        self._latency_reply_start_at = time.perf_counter()
+        self._latency_probe.mark_reply_start()
         logger.info(
             "TomoroSession latency reply_start backend=%s speech_end_to_reply_start_ms=%.1f",
             backend.name,
@@ -1476,7 +1467,7 @@ class TomoroSession:
                     if command.action == "emotion":
                         assert command.image is not None
                         await self._maybe_wait_reply_output_defer()
-                        self._reply_output_started = True
+                        self._latency_probe.mark_reply_output_started()
                         await self._send_event(
                             {
                                 "type": "emotion",
@@ -1486,8 +1477,7 @@ class TomoroSession:
                         )
                     elif command.action == "text_delta":
                         await self._maybe_wait_reply_output_defer()
-                        if self._latency_first_reply_text_at is None:
-                            self._latency_first_reply_text_at = time.perf_counter()
+                        if self._latency_probe.mark_first_reply_text_if_unmarked():
                             logger.info(
                                 "TomoroSession latency first_reply_text "
                                 "backend=%s speech_end_to_first_reply_text_ms=%.1f "
@@ -1496,7 +1486,7 @@ class TomoroSession:
                                 self._elapsed_since_speech_end_ms(),
                                 self._elapsed_since_reply_start_ms(),
                             )
-                        self._reply_output_started = True
+                        self._latency_probe.mark_reply_output_started()
                         logger.info("TomoroSession reply_text delta=%r", command.value)
                         await self._send_event({"type": "reply_text", "delta": command.value})
                     elif command.action == "tts_text":
@@ -1605,11 +1595,11 @@ class TomoroSession:
         )
         self._last_precomputed_reply_at = datetime.now(UTC)
         self._reset_latency_probe()
-        self._latency_reply_start_at = time.perf_counter()
+        self._latency_probe.mark_reply_start()
         # Initiative/arrival speech opens attention, but the conversation session
         # starts only when a human replies through the normal participation path.
         await self._transition_attention("engaged")
-        self._reply_output_started = True
+        self._latency_probe.mark_reply_output_started()
         await self._send_event({"type": "reply_text", "delta": stripped_text})
         self.audio_turns.begin_turn()
         try:
@@ -1740,7 +1730,7 @@ class TomoroSession:
     async def _send_audio_chunk(self, chunk: AudioChunkOut) -> None:
         if self.send_audio is None:
             return
-        self._reply_output_started = True
+        self._latency_probe.mark_reply_output_started()
         async with self._send_lock:
             maybe_awaitable = self.send_audio(chunk.data)
             if inspect.isawaitable(maybe_awaitable):
@@ -1782,7 +1772,10 @@ class TomoroSession:
                 await task
 
     async def _cancel_unstarted_reply_for_resumed_user_speech(self) -> None:
-        if not self._is_reply_generation_active() or self._reply_output_started:
+        if (
+            not self._is_reply_generation_active()
+            or self._latency_probe.reply_output_started
+        ):
             return
         logger.info(
             "TomoroSession stale reply cancelled reason=resumed_user_speech_before_output"
@@ -1856,8 +1849,7 @@ class TomoroSession:
         if self.speech_normalizer is not None:
             speech_text = await self.speech_normalizer.normalize(speech_text)
 
-        if self._latency_tts_start_at is None:
-            self._latency_tts_start_at = time.perf_counter()
+        if self._latency_probe.mark_tts_start_if_unmarked():
             logger.info(
                 "TomoroSession latency tts_start "
                 "speech_end_to_tts_start_ms=%.1f first_reply_text_to_tts_start_ms=%.1f "
@@ -1869,8 +1861,7 @@ class TomoroSession:
 
         tts_input = TTSInput(text=speech_text, style=style)
         async for chunk in self.tts_backend.synthesize(tts_input):
-            if self._latency_first_audio_chunk_at is None:
-                self._latency_first_audio_chunk_at = time.perf_counter()
+            if self._latency_probe.mark_first_audio_chunk_if_unmarked():
                 logger.info(
                     "TomoroSession latency first_audio_chunk "
                     "speech_end_to_first_audio_ms=%.1f "
@@ -1911,9 +1902,9 @@ class TomoroSession:
             },
             reply_state_json={
                 "reply_active": self._is_reply_generation_active(),
-                "first_reply_text_emitted": self._latency_first_reply_text_at
+                "first_reply_text_emitted": self._latency_probe.first_reply_text_at
                 is not None,
-                "first_audio_chunk_emitted": self._latency_first_audio_chunk_at
+                "first_audio_chunk_emitted": self._latency_probe.first_audio_chunk_at
                 is not None,
             },
         )
@@ -2005,12 +1996,7 @@ class TomoroSession:
         await self._send_event(event)
 
     def _reset_latency_probe(self) -> None:
-        self._latency_speech_end_at = None
-        self._latency_reply_start_at = None
-        self._latency_first_reply_text_at = None
-        self._latency_tts_start_at = None
-        self._latency_first_audio_chunk_at = None
-        self._reply_output_started = False
+        self._latency_probe.reset()
 
     async def _load_recent_context(self, transcript: Transcript) -> list[ConversationTurn]:
         snapshot = await self._build_context_snapshot(transcript, depth="fast")
@@ -2202,16 +2188,16 @@ class TomoroSession:
             )
 
     def _elapsed_since_speech_end_ms(self) -> float:
-        return _elapsed_ms(self._latency_speech_end_at)
+        return self._latency_probe.elapsed_since_speech_end_ms()
 
     def _elapsed_since_reply_start_ms(self) -> float:
-        return _elapsed_ms(self._latency_reply_start_at)
+        return self._latency_probe.elapsed_since_reply_start_ms()
 
     def _elapsed_since_first_reply_text_ms(self) -> float:
-        return _elapsed_ms(self._latency_first_reply_text_at)
+        return self._latency_probe.elapsed_since_first_reply_text_ms()
 
     def _elapsed_since_tts_start_ms(self) -> float:
-        return _elapsed_ms(self._latency_tts_start_at)
+        return self._latency_probe.elapsed_since_tts_start_ms()
 
 
 def _withdraw_decision(transcript: Transcript):
@@ -2311,9 +2297,7 @@ def _optional_float_payload(value: object) -> float | None:
 
 
 def _elapsed_ms(started_at: float | None) -> float:
-    if started_at is None:
-        return 0.0
-    return (time.perf_counter() - started_at) * 1000
+    return elapsed_ms(started_at)
 
 
 def _session_summary_hit_to_memory(hit: SessionSummaryHit) -> MemoryHit:
