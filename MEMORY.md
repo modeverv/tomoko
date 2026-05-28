@@ -2223,3 +2223,16 @@ WebSocket disconnect は connection registry の snapshot を `connected_output_
 connected client が 0 になった場合だけ `end_reason='client_disconnect'` で閉じる。
 これにより既存 `PostgresConversationSessionStore.close_session()` 契約で `summary_status='pending'` へ進み、
 background summarizer が拾える。
+
+### 確定した判断: fast follow-up でも渡された long_term_memory は prompt に入れる
+2026-05-28 の実ログ確認で、`詳しくはどんな話やったっけ` の turn は
+`TomoroSession carryover_used count=6` まで到達していたが、実際の `ThinkFastMode llm_prompt` には
+長期記憶ブロックが入っていなかった。
+
+原因は retrieval / carryover ではなく、長期記憶 prompt formatting が `ThinkDeepMode` に閉じており、
+`ThinkFastMode` が `ThinkingInput.long_term_memory` を読んでいなかったことだった。
+以後、fast / deep のどちらでも `ThinkingInput.long_term_memory` が空でない時は同じ formatter で
+「長期記憶として関連しそうな過去会話」を system prompt に追加する。
+
+これは fast mode に新しい DB 検索や embedding search を増やす判断ではない。
+`TomoroSession` / `ContextSnapshotBuilder` がすでに選んだ memory を、会話生成 prompt へ正しく接続するだけの判断である。

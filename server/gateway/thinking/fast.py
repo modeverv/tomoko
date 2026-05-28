@@ -6,6 +6,7 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from server.gateway.thinking.base import ThinkingMode
+from server.gateway.thinking.memory_prompt import format_long_term_memory_prompt
 from server.shared.inference.backends.base import InferenceBackend
 from server.shared.inference.trace import chat_stream_with_trace_role
 from server.shared.models import ThinkingEvent, ThinkingInput
@@ -35,10 +36,17 @@ class ThinkFastMode(ThinkingMode):
         return "あなたはトモコです。短く答えてください。"
 
     def _build_system_prompt(self, thinking_input: ThinkingInput) -> str:
-        context_prompt = _format_context_snapshot_prompt(thinking_input)
-        if not context_prompt:
+        prompt_parts = [
+            part
+            for part in (
+                _format_context_snapshot_prompt(thinking_input),
+                format_long_term_memory_prompt(thinking_input.long_term_memory),
+            )
+            if part
+        ]
+        if not prompt_parts:
             return self.system_prompt
-        return f"{self.system_prompt}\n\n{context_prompt}"
+        return f"{self.system_prompt}\n\n" + "\n\n".join(prompt_parts)
 
     async def think(
         self, backend: InferenceBackend, thinking_input: ThinkingInput

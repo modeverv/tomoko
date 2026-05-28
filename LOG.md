@@ -1,3 +1,36 @@
+## 2026-05-28 セッション7
+
+### やること（開始時に書く）
+- Phase 8.8.7 として、carryover された長期記憶が fast follow-up の実 prompt に入らない問題を修正する
+- `ThinkDeepMode` 専用だった長期記憶 prompt formatter を共通化し、`ThinkFastMode` でも `ThinkingInput.long_term_memory` を読む
+- deep retrieval の検索回数は増やさず、TomoroSession が渡した記憶だけを prompt に反映する
+- 先に unit test で、fast mode の system prompt に carryover memory が含まれることを固定する
+
+### やったこと
+- PLAN.md に Phase 8.8.7 fast follow-up memory prompt を追記し、完了チェックを更新した
+- `server/gateway/thinking/memory_prompt.py` を追加し、長期記憶 prompt formatter を共通化した
+- `ThinkFastMode` が `ThinkingInput.long_term_memory` を受け取った時だけ system prompt に長期記憶ブロックを追加するようにした
+- `ThinkDeepMode` は同じ formatter を使う薄い subclass に整理し、既存 deep memory prompt 契約を維持した
+- fast mode の system prompt に carryover memory が含まれる regression test と、memory が空なら prompt を増やさない test を追加した
+- MEMORY.md に、今回の原因が retrieval / carryover ではなく prompt 接続漏れだった判断を追記した
+
+### 詰まったこと・解決したこと
+- 実ログでは `carryover_used count=6` が出ていたため TomoroSession 側は memory を渡せていた
+  - 解決: `ThinkFastMode` と `ThinkDeepMode` の prompt assembly を揃え、fast follow-up でも渡された memory を読むようにした
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase8_memory.py tests/unit/test_phase88_context_snapshot.py -q`
+  - 22 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 374 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- `make server-debug` の実ブラウザで、`carryover_used` が出る fast follow-up の `ThinkFastMode llm_prompt` に会話セッション要約が入ることを確認する
+
 ## 2026-05-28 セッション2
 
 ### やること（開始時に書く）

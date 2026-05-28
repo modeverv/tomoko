@@ -4203,3 +4203,40 @@ WebSocket は transport の事実を観測する層であり、conversation sess
 - `TomoroSession` が session lifecycle の final owner である構造を維持する
 - `pytest -m unit tests/unit/test_phase85_conversation_sessions.py tests/unit/test_phase1_echo.py` が通る
 - `pytest -m unit` が通る
+
+---
+
+## 2026-05-28 追記: Phase 8.8.7 fast follow-up memory prompt
+
+Phase 8.8.6 の session retrieval carryover は、`TomoroSession` が deep retrieval の結果を
+次 turn の `ThinkingInput.long_term_memory` へ渡すところまでは実現した。
+上の「short follow-up が `fast` のままでも long-term memory prompt に入る」という完了条件は、
+実ログにより不十分だったと否定する。
+
+2026-05-28 の実ブラウザログでは、`詳しくはどんな話やったっけ` の turn で
+`carryover_used count=6` が出ていたにもかかわらず、実際の `ThinkFastMode llm_prompt` には
+長期記憶ブロックが入っていなかった。
+原因は、長期記憶 prompt formatting が `ThinkDeepMode` に閉じており、
+`ThinkFastMode` が `ThinkingInput.long_term_memory` を読んでいないことだった。
+
+**目標**: deep retrieval を再実行せず、TomoroSession が渡した carryover memory を
+fast follow-up の実 prompt にも自然に反映する。
+
+- [x] 長期記憶 prompt formatter を `ThinkDeepMode` から共通 helper へ移す
+  - `MemoryHit` の timestamp / speaker / similarity / emotion 表記は維持する
+  - prompt 文言は「必要な時だけ自然に思い出し、断定しすぎない」方向を維持する
+- [x] `ThinkFastMode` は `ThinkingInput.long_term_memory` が空でない時だけ共通 formatter を system prompt に追加する
+  - fast mode は DB 検索を増やさない
+  - carryover されていない通常 fast turn では prompt を膨らませない
+- [x] `ThinkDeepMode` は同じ formatter を使い、既存の deep memory prompt 契約を維持する
+- [x] unit test を追加する
+  - fast mode の system prompt に `long_term_memory` が含まれる
+  - `long_term_memory` が空なら fast prompt は従来どおり増えない
+  - deep mode でも同じ formatter により既存 memory prompt が含まれる
+- [x] 実ログ調査の判断を `MEMORY.md` / `LOG.md` に追記する
+
+**完了条件**:
+- `carryover_used` が出た fast follow-up の `ThinkFastMode llm_prompt` に、前 turn の会話セッション要約や turn memory が入る
+- 追加の embedding search なしで、自然な聞き返しにだけ memory prompt が持ち越される
+- `pytest -m unit tests/unit/test_phase8_memory.py tests/unit/test_phase88_context_snapshot.py` が通る
+- `pytest -m unit` が通る

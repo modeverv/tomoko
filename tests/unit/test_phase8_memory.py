@@ -8,6 +8,7 @@ import pytest
 
 from server.gateway.thinking.base import ThinkingMode
 from server.gateway.thinking.deep import ThinkDeepMode
+from server.gateway.thinking.fast import ThinkFastMode
 from server.gateway.thinking.selector import should_use_deep_memory
 from server.session import TomoroSession
 from server.shared.inference.backends.base import InferenceBackend
@@ -156,6 +157,75 @@ def test_deep_memory_selector_keeps_short_utterances_fast() -> None:
     assert should_use_deep_memory(
         "仕事の進め方について、最近ずっと引っかかっていることを少し整理したい"
     ) is True
+
+
+@pytest.mark.unit
+async def test_think_fast_includes_carried_long_term_memory_in_system_prompt(
+    tmp_path,
+) -> None:
+    persona = tmp_path / "persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend()
+    mode = ThinkFastMode(persona_path=persona)
+
+    events = [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="詳しくはどんな話やったっけ",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+                long_term_memory=[
+                    MemoryHit(
+                        speaker="tomoko",
+                        text=(
+                            "会話セッション要約: 生成AIと著作権の関係について、"
+                            "技術開発者も一種の著作者である可能性を議論した。"
+                        ),
+                        timestamp=datetime(2026, 5, 27, 0, 8, tzinfo=UTC),
+                        similarity=0.84,
+                    )
+                ],
+            ),
+        )
+    ]
+
+    assert events == [
+        ThinkingEvent(type="emotion", value="gentle"),
+        ThinkingEvent(type="text_delta", value="覚えてるよ。"),
+        ThinkingEvent(type="done", value=""),
+    ]
+    assert backend.system_prompt is not None
+    assert "長期記憶" in backend.system_prompt
+    assert "生成AIと著作権の関係" in backend.system_prompt
+    assert backend.messages == [{"role": "user", "content": "詳しくはどんな話やったっけ"}]
+
+
+@pytest.mark.unit
+async def test_think_fast_omits_long_term_memory_block_when_empty(tmp_path) -> None:
+    persona = tmp_path / "persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend()
+    mode = ThinkFastMode(persona_path=persona)
+
+    [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="うん",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+            ),
+        )
+    ]
+
+    assert backend.system_prompt == "あなたはトモコです。"
 
 
 @pytest.mark.unit
