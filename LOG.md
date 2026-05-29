@@ -24,6 +24,14 @@
   - 14 passed
 - `.venv/bin/python -m ruff check server/session_short_memory.py server/session_short_memory_llm.py server/shared/models.py tests/unit/test_short_memory.py`
   - pass
+- `.venv/bin/python -m pytest -m unit`
+  - 424 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `node --check client/main.js`
+  - pass
+- `git diff --check`
+  - pass
 
 ## 2026-05-29 セッション19
 
