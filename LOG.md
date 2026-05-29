@@ -1,3 +1,52 @@
+## 2026-05-30 セッション4
+
+### やること（開始時に書く）
+- Google Calendar 画面に見えない予定が Tomoko prompt に入った原因を切り分ける
+- `make gcal` の ICS 取得・parse・DB 保存・deep context 選別のどこが怪しいか実データで確認する
+- private iCal URL は出力しない
+
+### やったこと
+- DB の `calendar_events` を確認し、年次の記念日・誕生日系 all-day event が毎日展開されていることを特定した
+- 原因として、未対応 RRULE frequency が daily fallback されていたことを確認した
+- `_advance_time()` に `MONTHLY` / `YEARLY` を追加し、未対応 frequency は daily 展開せず base event だけにした
+- overlap 判定を半開区間に直し、`event_end == window_start` の前日終日予定を含めないようにした
+- PostgreSQL context query も `COALESCE(end_time, start_time) > window_start` に揃えた
+- 修正版で `make gcal` を再実行し、DB の calendar event が 508 件から 37 件へ減ったことを確認した
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_gcal_import.py tests/unit/test_phase88_context_snapshot.py tests/unit/test_phase4_thinking.py -q`
+  - 36 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 437 passed, 17 deselected
+- `.venv/bin/python -m ruff check server/shared/calendar.py tests/unit/test_gcal_import.py`
+  - pass
+- `git diff --check`
+  - pass
+- 修正版の TomoroSession prompt では、誤増殖していた記念日系 all-day 予定は消えた
+
+### 次のセッションでやること
+- 必要なら calendar context の `days_before=1` を用途別に調整し、「これからの予定」で過去予定を優先しないようにする
+
+## 2026-05-30 セッション3
+
+### やること（開始時に書く）
+- 実取り込み済みの Google Calendar データを使い、TomoroSession 経由で deep context の prompt を生成する
+- LLM 本体には投げず、capture backend で実際に渡される system prompt / messages を確認する
+- repo の runtime code は変更しない
+
+### やったこと
+- `TomoroSession._reply_to()` を capture backend 付きで実行し、deep context の実 prompt を生成した
+- `PostgresCalendarEventStore` から `calendar_events` が 8 件 prompt に入ることを確認した
+- LLM 本体には投げず、`trace_role="conversation"` で渡される system prompt / messages を捕捉した
+
+### 検証メモ
+- context snapshot は `depth="deep"` / `calendar_events=8` / `timed_out=false`
+- 実データでは 2026-05-28 の終日予定 8 件が window 内の先頭として採用された
+- 「これからの予定」を聞く用途では、過去1日を含める現在の並びと limit の扱いを次に調整する余地がある
+
+### 次のセッションでやること
+- calendar context の選別を「過去の終日予定で limit が埋まらない」ようにするか検討する
+
 ## 2026-05-30 セッション2
 
 ### やること（開始時に書く）

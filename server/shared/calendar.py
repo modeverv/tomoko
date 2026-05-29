@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 import hashlib
 import urllib.request
 from collections.abc import Iterable
@@ -122,7 +123,7 @@ class PostgresCalendarEventStore:
                     FROM calendar_events
                     WHERE status <> 'cancelled'
                       AND start_time < %s
-                      AND COALESCE(end_time, start_time) >= %s
+                      AND COALESCE(end_time, start_time) > %s
                     ORDER BY start_time ASC
                     LIMIT %s
                     """,
@@ -306,6 +307,8 @@ def _expand_raw_event(
 def _expand_rrule(base: CalendarEvent, rrule: str, *, range_end: datetime) -> list[CalendarEvent]:
     rule = _parse_rrule(rrule)
     freq = rule.get("FREQ", "DAILY")
+    if freq not in {"DAILY", "WEEKLY", "MONTHLY", "YEARLY"}:
+        return [base]
     interval = max(1, int(rule.get("INTERVAL", "1")))
     count = int(rule["COUNT"]) if "COUNT" in rule else None
     until = _parse_optional_ics_time(rule.get("UNTIL"), {}) if "UNTIL" in rule else None
@@ -357,7 +360,19 @@ def _advance_time(cursor: datetime, *, freq: str, interval: int) -> datetime:
         return cursor + timedelta(days=7 * interval)
     if freq == "DAILY":
         return cursor + timedelta(days=interval)
+    if freq == "MONTHLY":
+        return _add_months(cursor, interval)
+    if freq == "YEARLY":
+        return _add_months(cursor, 12 * interval)
     return cursor + timedelta(days=interval)
+
+
+def _add_months(value: datetime, months: int) -> datetime:
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return value.replace(year=year, month=month, day=day)
 
 
 def _context_window(
@@ -377,7 +392,7 @@ def _context_window(
 
 def _event_overlaps(event: CalendarEvent, *, start: datetime, end: datetime) -> bool:
     event_end = event.end_time or event.start_time
-    return event.start_time < end and event_end >= start
+    return event.start_time < end and event_end > start
 
 
 def _unfold_ics_lines(text: str) -> list[str]:
