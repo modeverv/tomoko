@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +24,11 @@ from server.shared.models import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
+JST = timezone(timedelta(hours=9), "JST")
+
+
+def fixed_now() -> datetime:
+    return datetime(2026, 5, 30, 12, 34, 56, tzinfo=JST)
 
 
 class SequenceVAD:
@@ -152,7 +157,7 @@ async def test_think_fast_wraps_streamed_tokens_in_thinking_events(tmp_path) -> 
     persona = tmp_path / "persona.md"
     persona.write_text("あなたはトモコです。", encoding="utf-8")
     backend = FakeBackend(["うん", "、聞こえるよ"])
-    mode = ThinkFastMode(persona_path=persona)
+    mode = ThinkFastMode(persona_path=persona, now_provider=fixed_now)
 
     events = [
         event
@@ -173,7 +178,10 @@ async def test_think_fast_wraps_streamed_tokens_in_thinking_events(tmp_path) -> 
         ThinkingEvent(type="text_delta", value="、聞こえるよ"),
         ThinkingEvent(type="done", value=""),
     ]
-    assert backend.system_prompt == "あなたはトモコです。"
+    assert backend.system_prompt is not None
+    assert backend.system_prompt.startswith("あなたはトモコです。")
+    assert "現在日時: 2026-05-30 12:34:56 JST" in backend.system_prompt
+    assert "曜日: 土曜日" in backend.system_prompt
     assert backend.messages == [{"role": "user", "content": "トモコ、聞こえる？"}]
 
 
@@ -182,7 +190,7 @@ async def test_think_fast_includes_recent_conversation_context(tmp_path) -> None
     persona = tmp_path / "persona.md"
     persona.write_text("あなたはトモコです。", encoding="utf-8")
     backend = FakeBackend(["うん"])
-    mode = ThinkFastMode(persona_path=persona)
+    mode = ThinkFastMode(persona_path=persona, now_provider=fixed_now)
 
     events = [
         event
@@ -225,7 +233,12 @@ async def test_think_fast_logs_llm_prompt_payload(
     persona = tmp_path / "persona.md"
     persona.write_text("あなたはトモコです。", encoding="utf-8")
     backend = FakeBackend(["うん"])
-    mode = ThinkFastMode(persona_path=persona)
+    prompt_log_path = tmp_path / "conversation-prompts.jsonl"
+    mode = ThinkFastMode(
+        persona_path=persona,
+        prompt_log_path=prompt_log_path,
+        now_provider=fixed_now,
+    )
     log_calls: list[tuple[str, tuple[object, ...]]] = []
 
     def fake_info(message: str, *args: object) -> None:
@@ -259,10 +272,19 @@ async def test_think_fast_logs_llm_prompt_payload(
     assert message == "ThinkFastMode llm_prompt backend=%s payload=%s"
     assert args[0] == "fake"
     payload = str(args[1])
-    assert '"system_prompt": "あなたはトモコです。"' in payload
+    assert '"system_prompt": "あなたはトモコです。\\n\\n## CURRENT LOCAL TIME' in payload
+    assert "現在日時: 2026-05-30 12:34:56 JST" in payload
+    assert "曜日: 土曜日" in payload
     assert '"role": "assistant", "content": "うん、準備できてるよ。"' in payload
     assert '"role": "user", "content": "トモコ、今のプロンプト見せて"' in payload
     assert '"device_id": "browser"' in payload
+
+    prompt_log_lines = prompt_log_path.read_text(encoding="utf-8").splitlines()
+    assert len(prompt_log_lines) == 1
+    prompt_log_payload = prompt_log_lines[0]
+    assert '"backend": "fake"' in prompt_log_payload
+    assert '"system_prompt": "あなたはトモコです。\\n\\n## CURRENT LOCAL TIME' in prompt_log_payload
+    assert '"role": "user", "content": "トモコ、今のプロンプト見せて"' in prompt_log_payload
 
 
 @pytest.mark.unit

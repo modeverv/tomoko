@@ -1,3 +1,35 @@
+## 2026-05-30 セッション1
+
+### やること（開始時に書く）
+- 応答推論 prompt に現在日時と曜日を追加する
+- 会話 LLM に渡す prompt だけを別ログファイルへ append 出力する
+- 既存の `ThinkFastMode llm_prompt` ログ検索キーは壊さない
+- runtime behavior / audio hot path / reply routing / DB ordering / TTS playback timing は変更しない
+
+### やったこと
+- `ThinkFastMode` の system prompt に `CURRENT LOCAL TIME` セクションを追加し、現在ローカル日時と曜日を渡すようにした
+- `logs/conversation-prompts.jsonl` へ、会話 LLM に渡す `system_prompt` / `messages` / backend / device / speaker を 1 行 1 JSON で append するようにした
+- 既存の `ThinkFastMode llm_prompt` / `conversation_system_prompt` / `conversation_messages` INFO ログは残した
+- test 用に `now_provider` と `prompt_log_path` を注入できるようにし、日時と prompt file log を deterministic に検証した
+- runtime behavior / audio hot path / reply routing / DB ordering / TTS playback timing は変更していない
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase4_thinking.py::test_think_fast_wraps_streamed_tokens_in_thinking_events tests/unit/test_phase4_thinking.py::test_think_fast_logs_llm_prompt_payload tests/unit/test_phase8_memory.py::test_think_fast_omits_long_term_memory_block_when_empty -q`
+  - 3 passed
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase4_thinking.py tests/unit/test_phase8_memory.py -q`
+  - 18 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 428 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+- prompt log append microbench
+  - 100 append total 4.493ms / avg 0.045ms
+
+### 次のセッションでやること
+- 実ブラウザ会話で `logs/conversation-prompts.jsonl` の見やすさと、日時参照の返答品質を確認する
+
 ## 2026-05-29 セッション20
 
 ### やること（開始時に書く）

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
+from datetime import datetime
 from pathlib import Path
 
 from server.gateway.thinking.base import ThinkingMode
@@ -15,6 +16,7 @@ from server.shared.persona_prompt import format_persona_prompt_slice_for_prompt
 
 EMOTION_PREFIX = "EMOTION:"
 logger = logging.getLogger(__name__)
+DEFAULT_PROMPT_LOG_PATH = Path("logs/conversation-prompts.jsonl")
 EMOTIONS = {
     "neutral",
     "happy",
@@ -24,11 +26,22 @@ EMOTIONS = {
     "gentle",
     "excited",
 }
+WEEKDAYS_JA = ("月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日")
 
 
 class ThinkFastMode(ThinkingMode):
-    def __init__(self, persona_path: str | Path = "prompts/base_persona.md"):
+    def __init__(
+        self,
+        persona_path: str | Path = "prompts/base_persona.md",
+        *,
+        prompt_log_path: str | Path | None = DEFAULT_PROMPT_LOG_PATH,
+        now_provider: Callable[[], datetime] | None = None,
+    ):
         self.persona_path = Path(persona_path)
+        self.prompt_log_path = (
+            Path(prompt_log_path) if prompt_log_path is not None else None
+        )
+        self.now_provider = now_provider or (lambda: datetime.now().astimezone())
         self.system_prompt = self._load_persona()
 
     def _load_persona(self) -> str:
@@ -37,18 +50,47 @@ class ThinkFastMode(ThinkingMode):
         return "あなたはトモコです。短く答えてください。"
 
     def _build_system_prompt(self, thinking_input: ThinkingInput) -> str:
+        current_time_prompt = _format_current_time_prompt(self.now_provider())
         prompt_parts = [
             part
             for part in (
+                current_time_prompt,
                 _format_context_snapshot_prompt(thinking_input),
                 format_short_memory_prompt(thinking_input.short_memory_notes),
                 format_long_term_memory_prompt(thinking_input.long_term_memory),
             )
             if part
         ]
-        if not prompt_parts:
-            return self.system_prompt
         return f"{self.system_prompt}\n\n" + "\n\n".join(prompt_parts)
+
+    def _append_prompt_log(
+        self,
+        *,
+        backend_name: str,
+        system_prompt: str,
+        messages: list[dict[str, str]],
+        thinking_input: ThinkingInput,
+    ) -> None:
+        if self.prompt_log_path is None:
+            return
+
+        payload = {
+            "logged_at": datetime.now().astimezone().isoformat(timespec="milliseconds"),
+            "backend": backend_name,
+            "system_prompt": system_prompt,
+            "messages": messages,
+            "device_id": thinking_input.device_id,
+            "speaker": thinking_input.speaker,
+        }
+        try:
+            self.prompt_log_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.prompt_log_path.open("a", encoding="utf-8") as file:
+                file.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        except OSError:
+            logger.exception(
+                "ThinkFastMode prompt file log failed path=%s",
+                self.prompt_log_path,
+            )
 
     async def think(
         self, backend: InferenceBackend, thinking_input: ThinkingInput
@@ -62,6 +104,12 @@ class ThinkFastMode(ThinkingMode):
         ]
         messages.append({"role": "user", "content": thinking_input.text})
         system_prompt = self._build_system_prompt(thinking_input)
+        self._append_prompt_log(
+            backend_name=backend.name,
+            system_prompt=system_prompt,
+            messages=messages,
+            thinking_input=thinking_input,
+        )
         logger.info(
             "ThinkFastMode llm_prompt backend=%s payload=%s",
             backend.name,
@@ -165,6 +213,22 @@ def _parse_inline_emotion_header(text: str) -> tuple[str, str] | None:
     if emotion not in EMOTIONS:
         return None
     return emotion, remainder
+
+
+def _format_current_time_prompt(now: datetime) -> str:
+    local_now = now.astimezone() if now.tzinfo is not None else now
+    timezone = local_now.tzname() or "local"
+    return "\n".join(
+        [
+            "## CURRENT LOCAL TIME",
+            (
+                "現在日時: "
+                f"{local_now.strftime('%Y-%m-%d %H:%M:%S')} {timezone}"
+            ),
+            f"曜日: {WEEKDAYS_JA[local_now.weekday()]}",
+            "この日時と曜日を、今日・明日・昨日などの相対表現を解釈する基準にする。",
+        ]
+    )
 
 
 def _format_context_snapshot_prompt(thinking_input: ThinkingInput) -> str:

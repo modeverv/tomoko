@@ -1938,6 +1938,16 @@ Tomoko の動作・遅延・モデルについての発話には開発中のTomo
 これにより `logs/server-debug.log` 上で transcript filter / participation / context build / LLM prompt / reply_text を
 同じ時系列で追えるようにする。
 
+### 確定した判断: 応答推論 prompt は日時つきで専用 JSONL にも追記する
+上の `ThinkFastMode llm_prompt` INFO ログを残す判断は否定しない。
+追加で、会話 LLM に渡す system prompt には現在ローカル日時と曜日を `CURRENT LOCAL TIME` として含める。
+これは「今日」「明日」「昨日」などの相対表現を Tomoko が解釈する基準を明示するためである。
+
+また、通常の server debug log とは別に、応答推論へ渡した prompt payload だけを
+`logs/conversation-prompts.jsonl` へ append する。
+1 行 1 JSON payload とし、`system_prompt` / `messages` / `backend` / `device_id` / `speaker` を含める。
+通常ログと prompt 専用ログを分けることで、会話品質調整時に prompt だけを時系列で追えるようにする。
+
 ### 確定した判断: stop-intent LLM classifier は optional degraded signal として扱う
 stop-intent worker では、rule / embedding の shadow signal を先に保存し、LLM classifier の失敗だけで
 observation 全体を `error` にしない。

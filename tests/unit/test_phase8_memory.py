@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -20,6 +20,12 @@ from server.shared.models import (
     ThinkingInput,
     Transcript,
 )
+
+JST = timezone(timedelta(hours=9), "JST")
+
+
+def fixed_now() -> datetime:
+    return datetime(2026, 5, 30, 12, 34, 56, tzinfo=JST)
 
 
 class FakeBackend(InferenceBackend):
@@ -166,7 +172,7 @@ async def test_think_fast_includes_carried_long_term_memory_in_system_prompt(
     persona = tmp_path / "persona.md"
     persona.write_text("あなたはトモコです。", encoding="utf-8")
     backend = FakeBackend()
-    mode = ThinkFastMode(persona_path=persona)
+    mode = ThinkFastMode(persona_path=persona, now_provider=fixed_now)
 
     events = [
         event
@@ -209,7 +215,7 @@ async def test_think_fast_omits_long_term_memory_block_when_empty(tmp_path) -> N
     persona = tmp_path / "persona.md"
     persona.write_text("あなたはトモコです。", encoding="utf-8")
     backend = FakeBackend()
-    mode = ThinkFastMode(persona_path=persona)
+    mode = ThinkFastMode(persona_path=persona, now_provider=fixed_now)
 
     [
         event
@@ -225,7 +231,10 @@ async def test_think_fast_omits_long_term_memory_block_when_empty(tmp_path) -> N
         )
     ]
 
-    assert backend.system_prompt == "あなたはトモコです。"
+    assert backend.system_prompt is not None
+    assert backend.system_prompt.startswith("あなたはトモコです。")
+    assert "現在日時: 2026-05-30 12:34:56 JST" in backend.system_prompt
+    assert "曜日: 土曜日" in backend.system_prompt
 
 
 @pytest.mark.unit
