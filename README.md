@@ -95,6 +95,43 @@ background-process/
 設計上の制約として、新しい機能も原則 `/ws` の message type として増やします。REST endpoint を増やす前に
 必ず [ARCHITECTURE.md](ARCHITECTURE.md) を確認してください。
 
+## 現在固定する構造
+
+2026-05-29 時点の runtime 構造は、`server/session.py` の `TomoroSession` を
+一枚の stateful control core として維持する形で固定します。
+`server/session.py` は現在約 2200 行あり、すぐに `server/session/` package へ戻す対象ではありません。
+
+`TomoroSession` が引き続き所有するもの:
+
+- `/ws` から入る audio / transcript / playback telemetry / client lifecycle の受け口
+- `attention_mode`、VAD state、playback state、turn id、active conversation session id
+- conversation session の開始・終了と user / tomoko turn の保存順序
+- candidate / arrival / turn-taking / barge-in / stop-intent の最終 gate
+- context build、LLM reply、TTS、WebSocket send を起動する順序
+- stale result discard、reply task、TTS queue、playback timing
+
+`server/session.py` の外へ出してよいものは、現時点では副作用を持たない dedicated helper と
+小さな state holder だけです。
+
+- `server/session_latency.py`: latency probe state
+- `server/session_carryover.py`: retrieved context carryover state / key / merge / eviction
+- `server/session_payloads.py`: JSON-safe payload / playback payload coercion
+- `server/session_candidate_policy_helpers.py`: candidate policy の payload shaping と副作用なし route 判定
+- `server/session_key_helpers.py`: candidate request id の文字列 formatter
+- `server/session_memory_helpers.py`: session summary / context snapshot の memory 整形
+
+当面やらないこと:
+
+- `server/session.py` を `server/session/core.py` へ移す package split
+- dispatcher / effects / event_runner / maps / OutputDemand / Watcher の復活
+- method の大規模な並び替え
+- DB write ordering、reply orchestration、TTS / audio hot path、candidate final gate、
+  conversation lifecycle、ContextSnapshotBuilder policy を巻き込む抽出
+
+この固定は、将来の分割を禁止するものではありません。
+ただし次に分割する場合は、PLAN.md に専用 Phase を立て、characterization test で現状挙動を固定し、
+1 Phase 1 責務で進めます。
+
 ## 現行 default backend
 
 `config/central_realtime.toml` の現在の default は次の構成です。

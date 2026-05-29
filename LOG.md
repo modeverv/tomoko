@@ -1,3 +1,27 @@
+## 2026-05-29 セッション18
+
+### やること（開始時に書く）
+- README.md / PLAN.md / MEMORY.md に、2026-05-29 時点の `server/session.py` monolith baseline を現在構造として固定する
+- `TomoroSession` が stateful control core / final owner であり、外へ出してよいのは dedicated helper / small state holder だけであることを明記する
+- package split、dispatcher / effects / event_runner / maps、OutputDemand / Watcher、method 大規模 reorder、DB write ordering、reply orchestration、TTS / audio hot path、candidate final gate、ContextSnapshotBuilder policy の外部化は凍結する
+- runtime code は変更しない
+- docs-only として full unit / ruff / diff check を通し、git commit まで行う
+
+### やったこと
+- README.md に「現在固定する構造」を追加し、`server/session.py` / `TomoroSession` の所有範囲、外へ出してよい dedicated helper、当面やらないことを明記した
+- PLAN.md の冒頭に「2026-05-29 現在の構造固定」を追加し、今後の Phase 境界として固定する責務、凍結対象、次に進む条件を明記した
+- MEMORY.md の確定した判断に、`server/session.py` monolith baseline を維持する判断を追記した
+- `MEMORY.d` という依頼表記は文脈上 `MEMORY.md` として扱った
+- runtime code は変更していない
+
+### 検証
+- `.venv/bin/python -m pytest -m unit`
+  - 408 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+
 ## 2026-05-29 セッション17
 
 ### やること（開始時に書く）

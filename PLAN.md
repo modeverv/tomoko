@@ -21,6 +21,66 @@ M2以降はM1の感触を見てから設計を見直す余地がある。
 
 ---
 
+## 2026-05-29 現在の構造固定
+
+Phase 10.20.x の復旧後 baseline として、現在の `server/session.py` 一枚構成を固定する。
+この固定は「巨大なまま放置する」ためではなく、動いている closed-loop を壊さず、
+次の分割単位を迷わないようにするための作業境界である。
+
+### 固定すること
+
+- public runtime entry は `server/session.py` の `TomoroSession` とする
+- `from server.session import TomoroSession` の import contract を維持する
+- `TomoroSession` は引き続き stateful control core / final owner として扱う
+- gateway / client / worker / backend 由来の事実は `TomoroSession` へ戻し、session 外で最終判断しない
+- `server/session.py` は section comment つきの monolith baseline として読む
+- 低リスクな抽出は、既存の dedicated helper module に限定する
+
+### 現在の `server/session.py` が持つ責務
+
+- audio input / VAD state / speech segment の入口
+- `post_event()` queue / reducer / `TransitionResult`
+- transcript processing、participation、attention mode、withdrawn behavior
+- conversation session lifecycle と conversation log write ordering
+- candidate / arrival / turn-taking / barge-in / stop-intent の final gate
+- context build 呼び出しと reply context 組み立て
+- LLM reply streaming、TTS queue、audio chunk send、`reply_done`
+- playback telemetry、stale result discard、reply cancellation
+- client JSON event send と WebSocket binary audio send
+
+### 外へ出してよい現在の小領域
+
+| module | 固定する責務 | 境界 |
+|---|---|---|
+| `server/session_latency.py` | latency probe state | 計測 state だけ。reply ordering は持たない |
+| `server/session_carryover.py` | retrieved context carryover | memory retrieval policy / prompt format は持たない |
+| `server/session_payloads.py` | JSON-safe payload / playback payload coercion | WebSocket send timing は持たない |
+| `server/session_candidate_policy_helpers.py` | candidate policy payload / 副作用なし route 判定 | final gate / command generation は持たない |
+| `server/session_key_helpers.py` | candidate request id formatter | sequence 更新 / active id / stale 判定は持たない |
+| `server/session_memory_helpers.py` | session summary / context snapshot memory 整形 | ContextSnapshotBuilder policy は持たない |
+
+### 凍結すること
+
+- `server/session.py` -> `server/session/core.py` の package split
+- dispatcher / effects / event_runner / maps package の復活
+- OutputDemand / Watcher の導入
+- method の大規模 reorder
+- DB write SessionCommand 化
+- `reply_done` / cancel / TTS finished routing の移管
+- ambient log write の非同期化
+- audio hot path、TTS queue、LLM/TTS ordering、playback timing の再設計
+- candidate final gate、stale result discard、conversation lifecycle、ContextSnapshotBuilder policy の外部化
+
+### 次に進む条件
+
+- 次の Phase は 1 責務だけに絞る
+- 実装前に characterization test で現状挙動を固定する
+- `server/session.py` 側の差分は import / 呼び出し置換 / 小さな見出しに近い形へ抑える
+- full unit / ruff / diff check を通す
+- 実ブラウザ会話に影響しうる場合は、commit 前または次 commit 前に人間の runtime 確認を待つ
+
+---
+
 # M1: 話せるTomoko
 
 **ゴール**: 「トモコ」と呼ぶと声で返事が返ってくる。感情が文字で表示される。
