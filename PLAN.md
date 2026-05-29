@@ -6324,3 +6324,63 @@ id の意味、生成タイミング、ordering、stale 判定、DB 保存順序
   - pass
 - `git diff --check`
   - pass
+
+### Phase 10.20.9: remaining small helper read-only audit checkpoint
+
+この Phase は次の抽出へ進む前の read-only checkpoint とする。
+runtime code / test code / import / `server/session.py` の整形は変更しない。
+helper 抽出、`server/session/` package split、dispatcher / effects / event_runner / maps、
+OutputDemand / Watcher、汎用 `helpers.py` / `utils.py` / `state.py` は作らない。
+
+#### 抽出済み範囲の確認
+
+| module | 抽出済みの範囲 | Phase 10.20.9 での扱い |
+|---|---|---|
+| `server/session_payloads.py` | `json_safe_payload()` / `json_safe_value()` / `optional_str_payload()` / `optional_int_payload()` / `optional_float_payload()` / `playback_payload()` / `playback_telemetry_from_event()` | pure payload / coercion helper として抽出済み。追加変更しない |
+| `server/session_memory_helpers.py` | `session_summary_hit_to_memory()` | `SessionSummaryHit -> MemoryHit` DTO conversion として抽出済み。memory retrieval policy / prompt format へ広げない |
+| `server/session_key_helpers.py` | `candidate_request_id(kind, sequence)` | candidate request id の文字列 formatter だけ抽出済み。sequence 更新 / active id 更新 / stale 判定は `TomoroSession` に残す |
+| `server/session_carryover.py` | `RetrievedContextCarryoverState` / `RetrievedContextCarryoverEntry` / `retrieved_context_key()` / merge / remember / evict / clear result DTO | carryover 専用 state/helper として抽出済み。memory retrieval policy / ContextSnapshotBuilder へ広げない |
+
+#### 残候補の棚卸し
+
+| 候補名 | 現在の場所 | 現在の責務 | 種別 | pure / stateful | I/O 有無 | 依存している state | 変更すると壊れうるもの | 危険度 | 抽出先候補 | 今回は抽出しない理由 | 次回候補にするか |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `_elapsed_ms()` | `server/session.py` module helper | `server/session_latency.elapsed_ms()` への wrapper | formatter / elapsed coercion | pure | なし | なし | latency characterization test の直接参照 | low | なし、または caller の direct import | 既に実体は抽出済みで、残っているのは cleanup wrapper。新しい extraction ではない | しない |
+| `_retrieved_context_key()` | `server/session.py` module helper | `server/session_carryover.retrieved_context_key()` への wrapper | key generation wrapper | pure | なし | なし | carryover key test / memory dedup の読み方 | low | なし、または caller の direct import | 既に実体は抽出済みで、現状は wrapper。cleanup は別 phase にする | しない |
+| `_candidate_policy_payload()` | `server/session.py` module helper | `CandidateSpeakDecision` を skip payload 用 JSON に変換する | payload helper / policy-adjacent | pure に近い | なし | `SessionEvent.payload["policy_decision"]` | candidate skip payload、initiative policy observability | medium | 将来なら `server/session_candidate_payloads.py` | candidate policy 型に依存し、candidate gate の観測 payload に近い。今日は実装しない | 0 個方針のため保留 |
+| `_start_reason_from_participation_mode()` | `server/session.py` module helper | `ParticipationMode` を `StartReason` に mapping する | enum / string mapping | pure | なし | なし | conversation session start reason、conversation lifecycle | medium | 将来なら `server/session_lifecycle_mappings.py` | pure だが lifecycle の意味に直結する。小さすぎる上に、start reason の意味を触りたくない | しない |
+| `_withdraw_decision()` | `server/session.py` module helper | 明示 withdrawal phrase を `ParticipationDecision` に変換する | policy-adjacent DTO conversion | pure に近い | なし | transcript text | withdrawal policy、参加判断、体感 | high | 当面なし | small helper だが runtime participation policy。phrase / decision shape を動かす危険がある | しない |
+| `_accepts_keyword()` | `server/session.py` module helper | writer callable が `conversation_session_id` keyword を受け取るか introspection する | compatibility coercion | pure | なし | callable signature | DB writer compatibility、conversation log write path | medium | 将来なら `server/session_db_compat.py` | pure だが DB write path に密接。DB ordering / writer compatibility に触れたくない | しない |
+| `_candidate_reply_gate_payload()` | `TomoroSession` method | candidate final gate の state snapshot payload を作る | payload helper / policy-adjacent | stateful read | なし | `attention_mode` / `state` / `audio_turns.playback_state` / `_connected_output_state` | candidate final gate observability、initiative / arrival skip payload | high | 当面なし | candidate gate そのものの state を読む。抽出すると policy boundary を曖昧にする | しない |
+| `_candidate_reply_gate_reason()` / `_can_start_candidate_reply()` | `TomoroSession` methods | candidate final gate の speakability 判定 | policy-adjacent | stateful read | なし | attention / VAD / playback / output target | candidate final gate | do-not-touch | なし | final gate は今回の対象外。小さくても helper extraction しない | しない |
+| `_new_candidate_request_id()` / `_is_stale_candidate_result()` | `TomoroSession` methods | request id sequence / active id 更新 / stale result 判定 | key generation + stale policy | stateful write / read | なし | `_candidate_request_sequence` / active request ids | stale result discard policy、candidate gate | do-not-touch | なし | Phase 10.20.8 で formatter だけ抽出済み。state mutation / stale 判定は残す | しない |
+| `_turn_taking_skip_reason*()` / `_is_turn_taking_interrupt_candidate()` / `_pending_reply_state()` | `TomoroSession` methods | turn-taking 用 reason / pending reply state / interrupt candidate 判定 | formatter / policy-adjacent | stateful read | なし | reply task / TTS worker / playback / latency probe / judge fallback | reply lifecycle、turn-taking policy、playback timing | high | 当面なし | reply_text / reply_done routing、LLM/TTS ordering、playback timing に近い | しない |
+| `_send_transcript_final_event()` | `TomoroSession` method | transcript final の client payload shaping and send | payload helper + WebSocket send | stateful / I/O | WebSocket send | send lock / event sender / optional session id | client JSON contract、conversation lifecycle visibility | do-not-touch | なし | payload shaping だけではなく send I/O を含む。runtime code 変更禁止 | しない |
+| `_record_stop_intent_observation()` 内 `playback_state_json` / `reply_state_json` | `TomoroSession` method inline dict | stop-intent observation 用 metadata shaping | metadata shaping / DB-adjacent | stateful read | DB command 経由 | audio_turns / reply task / latency probe | stop-intent observation payload、playback/reply state semantics | high | 当面なし | small dict だが stop / playback / DB write に近い | しない |
+| `_recent_turns_with_precomputed_topic()` | `TomoroSession` method | precomputed reply を recent turns に合成する | DTO conversion / prompt-adjacent | stateful read + logging | なし | `_last_precomputed_reply_*` | prompt context quality、initiative context | do-not-touch | なし | memory retrieval policy / prompt format に近い | しない |
+| `_build_context_snapshot()` / `_load_recent_context()` | `TomoroSession` methods | ContextSnapshotBuilder 呼び出しと policy adjustment | mapping / lifecycle-adjacent | stateful read + DB I/O through builder | DB read through builder | context builder / memory stores / active session id | memory retrieval policy、prompt quality、timeout behavior | do-not-touch | なし | ContextSnapshotBuilder 境界に近く、今回の対象外 | しない |
+| `_classify_barge_in()` | `TomoroSession` method | playback / echo grace / hard interrupt の分類 | policy-adjacent | stateful read | なし | audio_turns / reply task / detector | audio hot path adjacent、playback timing、barge-in behavior | do-not-touch | なし | playback telemetry ordering / reply interruption に近い | しない |
+| `_playback_echo_grace_ms()` | `TomoroSession` method | `audio_turns.playback_echo_grace_ms` を返す small read | formatter ではない state read | stateful read | なし | audio_turns | playback echo grace timing | do-not-touch | なし | 小さいが playback timing に近い | しない |
+
+#### next-extractable-candidate
+
+- [ ] next-extractable-candidate は **0 個** とする
+  - 理由: low-risk に見える候補は `_elapsed_ms()` / `_retrieved_context_key()` の wrapper cleanup であり、新しい helper extraction ではない
+  - `_candidate_policy_payload()` は pure に近いが candidate policy / gate observability に依存する
+  - `_accepts_keyword()` は pure だが DB writer compatibility path にあり、DB write ordering に近い
+  - `_start_reason_from_participation_mode()` は pure だが conversation lifecycle の意味に直結する
+  - したがって次に進む場合も、まず別 Phase で目的を狭く定義し、characterization test から始める
+
+#### 今は触らない候補
+
+- candidate gate / stale result discard / candidate final gate に関わる helper
+- conversation session lifecycle / start reason / DB writer compatibility に関わる helper
+- turn-taking / pending reply state / reply task / TTS queue / playback state に関わる helper
+- memory retrieval policy / ContextSnapshotBuilder / prompt format / precomputed reply context に関わる helper
+- WebSocket send / client payload I/O を含む helper
+- audio hot path / playback telemetry ordering / barge-in / echo grace に近い helper
+
+#### 検証
+
+- docs-only のため unit / ruff は原則不要
+- `git diff --check` を実行する

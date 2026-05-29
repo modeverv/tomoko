@@ -3074,3 +3074,22 @@ LLM/TTS ordering、DB ordering、conversation lifecycle、memory retrieval polic
 ContextSnapshotBuilder、prompt format、candidate gate、stale result discard policy は変更しない。
 OutputDemand / Watcher、dispatcher / effects / event_runner / maps、`server/session/` package split、
 汎用 `state.py` も作らない。
+
+### 確定した判断: Phase 10.20.9 では次の helper extraction 候補を選ばない
+2026-05-29 の Phase 10.20.9 では、`server/session.py` に残る small helper /
+value object / formatter / coercion / mapping 的な候補を read-only で棚卸しした。
+
+Phase 10.20.6 の `server/session_payloads.py`、Phase 10.20.7a の
+`server/session_memory_helpers.py`、Phase 10.20.8 の `server/session_key_helpers.py`、
+および `server/session_carryover.py` の抽出範囲は、いずれも narrow helper / state に限定されている。
+
+残っている low-risk 候補は `_elapsed_ms()` と `_retrieved_context_key()` の薄い wrapper だが、
+これは新しい helper extraction ではなく cleanup 対象である。
+`_candidate_policy_payload()` は pure に近いが candidate policy / gate observability に依存する。
+`_accepts_keyword()` は pure だが DB writer compatibility path にあり、DB write ordering に近い。
+`_start_reason_from_participation_mode()` は pure だが conversation lifecycle の start reason に直結する。
+
+そのため Phase 10.20.9 の next-extractable-candidate は 0 個とする。
+次に進む場合も、候補を別 Phase で 1 つに絞り、characterization test から始める。
+candidate gate、stale result discard、reply lifecycle、turn-taking、playback timing、
+memory retrieval policy、ContextSnapshotBuilder、prompt format、DB write ordering には踏み込まない。
