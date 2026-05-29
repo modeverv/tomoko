@@ -1434,6 +1434,8 @@ class ContextBuildPolicy:
     allow_persona_slice: bool
     max_parallel_sources: int = 6
     prioritize_session_summaries: bool = True
+    max_calendar_events: int = 0
+    allow_calendar_context: bool = False
 
     @classmethod
     def for_depth(cls, depth: ContextDepth) -> ContextBuildPolicy:
@@ -1476,6 +1478,8 @@ class ContextBuildPolicy:
                     max_lexicon_terms=8,
                     allow_turn_memory_search=True,
                     allow_persona_slice=True,
+                    max_calendar_events=8,
+                    allow_calendar_context=True,
                 )
             case "reflective":
                 return cls(
@@ -1489,6 +1493,8 @@ class ContextBuildPolicy:
                     max_lexicon_terms=20,
                     allow_turn_memory_search=True,
                     allow_persona_slice=True,
+                    max_calendar_events=16,
+                    allow_calendar_context=True,
                 )
 
 
@@ -1545,6 +1551,24 @@ class TomokoContextSnapshot:
     build_elapsed_ms: float
     source_counts: dict[str, int]
     trace: ContextBuildTrace
+    calendar_events: list[CalendarEvent] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class CalendarEvent:
+    source_id: str
+    uid: str
+    summary: str
+    start_time: datetime
+    end_time: datetime | None
+    all_day: bool
+    description: str = ""
+    location: str = ""
+    status: str = "confirmed"
+
+    @property
+    def source_key(self) -> str:
+        return f"{self.source_id}:{self.uid}:{self.start_time.isoformat()}"
 
 
 @dataclass

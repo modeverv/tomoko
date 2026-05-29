@@ -11,6 +11,7 @@ logs/
 artifacts/
 models/
 work/
+config/gcal_urls.txt
 informations/work/
 informations/archived/
 informations/failed/

@@ -8,7 +8,9 @@ import pytest
 
 from server.gateway.context import ContextSnapshotBuilder
 from server.session import TomoroSession
+from server.shared.calendar import InMemoryCalendarEventStore
 from server.shared.models import (
+    CalendarEvent,
     ContextBuildPolicy,
     ConversationTurn,
     MemoryHit,
@@ -256,6 +258,18 @@ class SlowPersonaStore(FakePersonaStore):
         return await super().read_latest_state()
 
 
+def _calendar_event(summary: str) -> CalendarEvent:
+    return CalendarEvent(
+        source_id="gcal",
+        uid=f"{summary}@example.com",
+        summary=summary,
+        start_time=datetime(2026, 5, 30, 4, 0, tzinfo=UTC),
+        end_time=datetime(2026, 5, 30, 5, 0, tzinfo=UTC),
+        all_day=False,
+        location="Kitchen",
+    )
+
+
 @pytest.mark.unit
 async def test_fast_snapshot_prefers_same_session_then_supplements_recent() -> None:
     old_turn = ConversationTurn(
@@ -323,6 +337,49 @@ async def test_deep_snapshot_reads_summaries_and_turn_memory() -> None:
     assert snapshot.trace.included_counts["session_summaries"] == 1
     assert snapshot.trace.included_counts["memory_hits"] == 1
     assert snapshot.trace.stage_timings_ms["query_embedding"] >= 0
+
+
+@pytest.mark.unit
+async def test_deep_snapshot_reads_calendar_context() -> None:
+    calendar_store = InMemoryCalendarEventStore()
+    await calendar_store.replace_source_events(
+        source_id="gcal",
+        events=[_calendar_event("家族の予定")],
+    )
+    builder = ContextSnapshotBuilder(calendar_store=calendar_store)
+
+    snapshot = await builder.build(
+        text="トモコ、今日の予定ある？",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=ContextBuildPolicy.for_depth("deep"),
+    )
+
+    assert [event.summary for event in snapshot.calendar_events] == ["家族の予定"]
+    assert snapshot.trace.included_counts["calendar_events"] == 1
+    assert "calendar_events" in snapshot.trace.stage_timings_ms
+
+
+@pytest.mark.unit
+async def test_fast_snapshot_does_not_read_calendar_context() -> None:
+    calendar_store = InMemoryCalendarEventStore()
+    await calendar_store.replace_source_events(
+        source_id="gcal",
+        events=[_calendar_event("家族の予定")],
+    )
+    builder = ContextSnapshotBuilder(calendar_store=calendar_store)
+
+    snapshot = await builder.build(
+        text="トモコ、聞こえる？",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=ContextBuildPolicy.for_depth("fast"),
+    )
+
+    assert snapshot.calendar_events == []
+    assert snapshot.trace.included_counts["calendar_events"] == 0
 
 
 @pytest.mark.unit

@@ -240,7 +240,13 @@ make turn-taking-worker      # local turn-taking judge worker
 make turn-taking-worker-once # rule sample を 1 回実行
 make information-ingest-once # informations/work の raw markdown ingest
 make information-interpret   # world observation interpretation worker
+make gcal                    # private iCal URL の予定を calendar_events に取り込む
 ```
+
+Google Calendar 取り込みでは private iCal URL を git に入れません。
+`config/gcal_urls.example.txt` を `config/gcal_urls.txt` にコピーし、1 行 1 URL で private iCal URL を置きます。
+`config/gcal_urls.txt` は gitignore 済みです。`make gcal` は予定を PostgreSQL の `calendar_events` に保存し、
+会話中の deep context だけが DB から予定を読みます。
 
 ## 開発状況
 

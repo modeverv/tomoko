@@ -1,3 +1,37 @@
+## 2026-05-30 セッション2
+
+### やること（開始時に書く）
+- Google Calendar private iCal URL を git 管理外の URL file から読み、`make gcal` で PostgreSQL に取り込む
+- 取り込んだ予定は `calendar_events` を source of truth とし、会話 hot path では外部ネットワーク取得しない
+- `ContextSnapshotBuilder` の deep context だけが DB から予定を読み、Tomoko prompt に calendar context として入れる
+- `TomoroSession` の final owner / audio hot path / reply routing / DB write ordering / TTS playback timing は変更しない
+
+### やったこと
+- `calendar_events` DDL と `PostgresCalendarEventStore` / `InMemoryCalendarEventStore` を追加した
+- private iCal URL を `config/gcal_urls.txt` から読む `background-process/import_gcal.py` と `make gcal` を追加した
+- `config/gcal_urls.txt` は gitignore し、例だけ `config/gcal_urls.example.txt` に置いた
+- ICS parser は DTSTART / DTEND / SUMMARY / DESCRIPTION / LOCATION / UID / STATUS と、初段の DAILY / WEEKLY RRULE を扱う
+- `ContextSnapshotBuilder` に `calendar_store` を追加し、`deep` / `reflective` policy の時だけ `calendar_events` を読むようにした
+- `TomokoContextSnapshot.calendar_events` を追加し、`ThinkFastMode` / `ThinkDeepMode` の system prompt に `CALENDAR CONTEXT` を入れるようにした
+- 会話 hot path では外部 URL を取得せず、DB read のみにした
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_gcal_import.py tests/unit/test_phase88_context_snapshot.py tests/unit/test_phase4_thinking.py tests/unit/test_makefile_process_entries.py -q`
+  - 37 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 434 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `make -n gcal`
+  - command shape OK
+- `.venv/bin/python background-process/import_gcal.py --config config/central_realtime.toml --urls-file /tmp/tomoko-missing-gcal-urls.txt`
+  - URL file missing/empty の場合は skip
+- `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- `config/gcal_urls.txt` に実 private iCal URL を置いて `make gcal` を実行し、実ブラウザ会話で予定の答え方を確認する
+
 ## 2026-05-30 セッション1
 
 ### やること（開始時に書く）

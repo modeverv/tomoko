@@ -31,6 +31,7 @@ def test_makefile_exposes_config_and_log_vars_for_separate_processes() -> None:
         "THINKER_LOG_FILE ?= logs/thinker.log",
         "JOURNALIST_LOG_FILE ?= logs/journalist.log",
         "WORLD_OBSERVATION_LOG_FILE ?= logs/world-observations.log",
+        "GCAL_URLS_FILE ?= config/gcal_urls.txt",
     ]
 
     for expected in expected_vars:
@@ -55,6 +56,7 @@ def test_background_process_targets_pass_the_central_config_explicitly() -> None
         "information-ingest-dry-run",
         "information-interpret-once",
         "information-interpret",
+        "gcal",
     ]:
         assert "--config $(CENTRAL_CONFIG)" in _target_body(target)
 
@@ -83,6 +85,7 @@ def test_makefile_has_grouped_background_maintenance_entries() -> None:
         "information-ingest-once",
         "information-interpret-once",
         "information-interpret",
+        "gcal",
     ]:
         assert target in dry_run_body
 

@@ -13,6 +13,7 @@ from server.gateway.context_assembly import (
     assemble_recent_turns,
     filter_current_memory_hits,
 )
+from server.shared.calendar import CalendarEventStore
 from server.shared.db import ConversationLogWriter
 from server.shared.inference.embedding.base import EmbeddingBackend
 from server.shared.memory import ConversationMemoryStore, ConversationSessionSummaryStore
@@ -115,6 +116,7 @@ class ContextSnapshotBuilder:
         "query_embedding": 5000,
         "lexicon_terms": 30000,
         "persona_slice": 10000,
+        "calendar_events": 60000,
     }
 
     def __init__(
@@ -125,6 +127,7 @@ class ContextSnapshotBuilder:
         memory_store: ConversationMemoryStore | None = None,
         session_summary_store: ConversationSessionSummaryStore | None = None,
         persona_store: PersonaSnapshotStore | None = None,
+        calendar_store: CalendarEventStore | None = None,
         cache_ttl_ms: dict[str, int] | None = None,
     ) -> None:
         self.conversation_log_reader = conversation_log_reader
@@ -132,6 +135,7 @@ class ContextSnapshotBuilder:
         self.memory_store = memory_store
         self.session_summary_store = session_summary_store
         self.persona_store = persona_store
+        self.calendar_store = calendar_store
         self._cache_ttl_ms = {
             **self.DEFAULT_CACHE_TTL_MS,
             **(cache_ttl_ms or {}),
@@ -326,6 +330,41 @@ class ContextSnapshotBuilder:
                 skipped_sources.append("lexicon_terms")
                 skipped_reasons["lexicon_terms"] = "missing_persona_store"
 
+        if (
+            policy.allow_calendar_context
+            and policy.max_calendar_events > 0
+            and self.calendar_store is not None
+        ):
+            tasks["calendar_events"] = asyncio.create_task(
+                self._timed(
+                    "calendar_events",
+                    stage_timings_ms,
+                    source_errors,
+                    source_semaphore,
+                    lambda: self._cached_source(
+                        source="calendar_events",
+                        key=(
+                            "calendar_events",
+                            policy.depth,
+                            policy.max_calendar_events,
+                            datetime.now(UTC).date().isoformat(),
+                        ),
+                        cache_entries=cache_entries,
+                        loader=lambda: self.calendar_store.read_context_events(
+                            now=datetime.now(UTC),
+                            days_before=1,
+                            days_ahead=14
+                            if policy.depth == "deep"
+                            else 30,
+                            limit=policy.max_calendar_events,
+                        ),
+                    ),
+                )
+            )
+        elif policy.allow_calendar_context and policy.max_calendar_events > 0:
+            skipped_sources.append("calendar_events")
+            skipped_reasons["calendar_events"] = "missing_calendar_store"
+
         if tasks:
             done, pending = await asyncio.wait(
                 set(tasks.values()),
@@ -401,6 +440,7 @@ class ContextSnapshotBuilder:
             traces=source_score_traces,
         )
         persona_slice = results.get("persona_slice")
+        calendar_events = results.get("calendar_events", [])
         elapsed_ms = (time.perf_counter() - started_at) * 1000
         source_counts = {
             "recent_turns": len(recent_turns),
@@ -409,6 +449,7 @@ class ContextSnapshotBuilder:
             "restored_turn_snippets": len(restored_turns),
             "lexicon_terms": len(lexicon_terms),
             "persona_slice": 1 if persona_slice is not None else 0,
+            "calendar_events": len(calendar_events),
         }
         trace = ContextBuildTrace(
             budget_ms=policy.max_build_ms,
@@ -431,7 +472,7 @@ class ContextSnapshotBuilder:
             "ContextSnapshotBuilder depth=%s elapsed_ms=%.1f budget_ms=%s "
             "timed_out=%s recent_turns=%s session_summaries=%s memory_hits=%s "
             "restored_turn_snippets=%s lexicon_terms=%s cue_type=%s "
-            "max_parallel_sources=%s cache_hits=%s stage_timings_ms=%s "
+            "calendar_events=%s max_parallel_sources=%s cache_hits=%s stage_timings_ms=%s "
             "skipped_reasons=%s source_errors=%s source_scores=%s",
             policy.depth,
             elapsed_ms,
@@ -443,6 +484,7 @@ class ContextSnapshotBuilder:
             source_counts["restored_turn_snippets"],
             source_counts["lexicon_terms"],
             cue_type,
+            source_counts["calendar_events"],
             policy.max_parallel_sources,
             trace.cache_hits,
             trace.stage_timings_ms,
@@ -471,6 +513,7 @@ class ContextSnapshotBuilder:
             build_elapsed_ms=elapsed_ms,
             source_counts=source_counts,
             trace=trace,
+            calendar_events=calendar_events,
         )
 
     async def _cached_source(

@@ -23,6 +23,9 @@ WORLD_OBSERVATION_ARCHIVED ?= informations/archived
 WORLD_OBSERVATION_FAILED ?= informations/failed
 WORLD_OBSERVATION_INTERPRET_LIMIT ?= 10
 WORLD_OBSERVATION_INTERPRET_INTERVAL_SEC ?= 300
+GCAL_URLS_FILE ?= config/gcal_urls.txt
+GCAL_DAYS_BEFORE ?= 1
+GCAL_DAYS_AHEAD ?= 30
 COMPOSE ?= docker compose --project-directory . -f docker/docker-compose.yml
 DB_DUMP_DIR ?= logs/db-dumps
 DB_DUMP_FILE ?= $(DB_DUMP_DIR)/tomoko-$(shell date +%Y%m%d-%H%M%S).sql
@@ -42,7 +45,7 @@ SCREEN_SHELL ?= zsh
 .PHONY: deps prepare download-models download-optional-models server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
 .PHONY: session-summarizer session-summarizer-once turn-embedder turn-embedder-once
 .PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
-.PHONY: information-ingest-once information-ingest-dry-run information-interpret-once information-interpret
+.PHONY: information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
 .PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list
 .PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack lint check
 
@@ -169,7 +172,14 @@ information-interpret:
 		--limit $(WORLD_OBSERVATION_INTERPRET_LIMIT) \
 		--interval-sec $(WORLD_OBSERVATION_INTERPRET_INTERVAL_SEC)
 
-background-once: persona-seed-initial session-summarizer-once turn-embedder-once persona-updater-once information-ingest-once information-interpret-once thinker-once journalist-once
+gcal:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) mise exec -- uv run python background-process/import_gcal.py \
+		--config $(CENTRAL_CONFIG) \
+		--urls-file $(GCAL_URLS_FILE) \
+		--days-before $(GCAL_DAYS_BEFORE) \
+		--days-ahead $(GCAL_DAYS_AHEAD)
+
+background-once: persona-seed-initial session-summarizer-once turn-embedder-once persona-updater-once information-ingest-once information-interpret-once gcal thinker-once journalist-once
 
 background-watch:
 	@echo "Run long-lived processes in separate terminals:"
@@ -181,9 +191,10 @@ background-watch:
 	@echo "  make journalist"
 	@echo "  make turn-taking-worker"
 	@echo "  make information-interpret"
+	@echo "  make gcal"
 
 background-dry-run:
-	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once turn-embedder turn-embedder-once persona-seed-initial persona-updater persona-updater-once information-ingest-dry-run information-ingest-once information-interpret-once information-interpret thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
+	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once turn-embedder turn-embedder-once persona-seed-initial persona-updater persona-updater-once information-ingest-dry-run information-ingest-once information-interpret-once information-interpret gcal thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
 
 screen-runtime:
 	@command -v screen >/dev/null || { echo "screen is required"; exit 1; }

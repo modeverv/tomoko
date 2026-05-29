@@ -1948,6 +1948,16 @@ Tomoko の動作・遅延・モデルについての発話には開発中のTomo
 1 行 1 JSON payload とし、`system_prompt` / `messages` / `backend` / `device_id` / `speaker` を含める。
 通常ログと prompt 専用ログを分けることで、会話品質調整時に prompt だけを時系列で追えるようにする。
 
+### 確定した判断: Google Calendar は background import 後に deep context で読む
+private iCal URL を `prompts/`、config tracked file、または会話 hot path に直書きする方針は否定する。
+Google Calendar は `config/gcal_urls.txt` のような git 管理外ファイルから `make gcal` で取得し、
+PostgreSQL の `calendar_events` に保存する。
+
+online 会話では外部 URL を叩かず、`ContextSnapshotBuilder` が `deep` / `reflective` policy の時だけ
+`calendar_events` から近い予定を読み取り、`TomokoContextSnapshot.calendar_events` として渡す。
+`ThinkFastMode` / `ThinkDeepMode` は snapshot 内の予定を `CALENDAR CONTEXT` として system prompt に入れる。
+この calendar context はユーザー発話ではなく、予定の有無や時刻を答える時だけ参照する補助情報として扱う。
+
 ### 確定した判断: stop-intent LLM classifier は optional degraded signal として扱う
 stop-intent worker では、rule / embedding の shadow signal を先に保存し、LLM classifier の失敗だけで
 observation 全体を `error` にしない。

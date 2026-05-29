@@ -59,6 +59,7 @@ from server.session_payloads import (
 )
 from server.session_short_memory import ShortMemoryBuffer, propose_short_memory_notes
 from server.session_short_memory_llm import extract_short_memory_notes
+from server.shared.calendar import CalendarEventStore
 from server.shared.candidate import ArrivalCandidate, UtteranceCandidate
 from server.shared.db import AmbientLogWriter, ConversationLogWriter, ConversationSessionStore
 from server.shared.inference.embedding.base import EmbeddingBackend
@@ -121,6 +122,7 @@ class TomoroSession:
         memory_store: ConversationMemoryStore | None = None,
         session_summary_store: ConversationSessionSummaryStore | None = None,
         persona_store: PersonaSnapshotStore | None = None,
+        calendar_store: CalendarEventStore | None = None,
         context_snapshot_builder: ContextSnapshotBuilder | None = None,
         speech_normalizer: ReplySpeechNormalizer | None = None,
         barge_in_detector: BargeInDetector | None = None,
@@ -152,6 +154,7 @@ class TomoroSession:
         self.memory_store = memory_store
         self.session_summary_store = session_summary_store
         self.persona_store = persona_store
+        self.calendar_store = calendar_store
         self.context_snapshot_builder = context_snapshot_builder
         self.speech_normalizer = speech_normalizer
         self.barge_in_detector = barge_in_detector
@@ -2189,6 +2192,7 @@ class TomoroSession:
             memory_store=self.memory_store,
             session_summary_store=self.session_summary_store,
             persona_store=self.persona_store,
+            calendar_store=self.calendar_store,
         )
         return await builder.build(
             text=transcript.text,

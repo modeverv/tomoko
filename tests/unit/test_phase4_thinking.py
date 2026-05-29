@@ -15,11 +15,14 @@ from server.session import TomoroSession
 from server.shared.inference.backends.base import InferenceBackend
 from server.shared.models import (
     AttentionMode,
+    CalendarEvent,
+    ContextBuildTrace,
     ConversationTurn,
     ParticipationMode,
     SpeechSegment,
     ThinkingEvent,
     ThinkingInput,
+    TomokoContextSnapshot,
     Transcript,
 )
 
@@ -285,6 +288,71 @@ async def test_think_fast_logs_llm_prompt_payload(
     assert '"backend": "fake"' in prompt_log_payload
     assert '"system_prompt": "あなたはトモコです。\\n\\n## CURRENT LOCAL TIME' in prompt_log_payload
     assert '"role": "user", "content": "トモコ、今のプロンプト見せて"' in prompt_log_payload
+
+
+@pytest.mark.unit
+async def test_think_fast_includes_calendar_context_from_snapshot(tmp_path) -> None:
+    persona = tmp_path / "persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend(["うん"])
+    mode = ThinkFastMode(
+        persona_path=persona,
+        prompt_log_path=None,
+        now_provider=fixed_now,
+    )
+    trace = ContextBuildTrace(
+        budget_ms=100,
+        elapsed_ms=1.0,
+        timed_out=False,
+        depth="deep",
+        included_counts={"calendar_events": 1},
+        skipped_sources=[],
+        stage_timings_ms={},
+        cache_hits={},
+        source_errors={},
+    )
+    snapshot = TomokoContextSnapshot(
+        depth="deep",
+        recent_turns=[],
+        session_summaries=[],
+        memory_hits=[],
+        lexicon_terms=[],
+        persona_slice=None,
+        token_budget_hint=2600,
+        build_elapsed_ms=1.0,
+        source_counts={"calendar_events": 1},
+        trace=trace,
+        calendar_events=[
+            CalendarEvent(
+                source_id="gcal",
+                uid="meeting@example.com",
+                summary="家族の予定",
+                start_time=datetime(2026, 5, 30, 4, 0, tzinfo=UTC),
+                end_time=datetime(2026, 5, 30, 5, 0, tzinfo=UTC),
+                all_day=False,
+                location="Kitchen",
+            )
+        ],
+    )
+
+    [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="今日の予定ある？",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+                context_snapshot=snapshot,
+            ),
+        )
+    ]
+
+    assert backend.system_prompt is not None
+    assert "CALENDAR CONTEXT" in backend.system_prompt
+    assert "2026-05-30 13:00-14:00: 家族の予定 @ Kitchen" in backend.system_prompt
 
 
 @pytest.mark.unit
