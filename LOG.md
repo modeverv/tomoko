@@ -1,3 +1,57 @@
+## 2026-05-29 セッション19
+
+### やること（開始時に書く）
+- 短期作業メモリと内部状態可視化 UI の最小実験を行う
+- DB migration / PostgreSQL 永続化は行わず、process-local / session-local な `ShortMemoryBuffer` に限定する
+- memory extraction は reply hot path を待たせず、reply 完了後の非同期 task として次ターン以降だけ prompt に反映する
+- `ContextSnapshotBuilder` に副作用を持たせず、prompt assembly 直前で `SHORT WORKING MEMORY` として読み取り専用で混ぜる
+- UI はサーバーから来た STT / state / context / short memory event を表示するだけにし、判断ロジックを置かない
+- audio hot path、reply routing、DB ordering、conversation lifecycle、TTS / playback timing、`server/session/` package split、OutputDemand / Watcher は触らない
+
+### やったこと
+- `ShortMemoryNote` / `ShortMemoryProposalResult` DTO と `ShortMemoryBuffer` を追加した
+- short memory buffer は最大 5 件、デフォルト 4 turn TTL、`append` / `expire_by_turn` / `read_for_prompt` / `snapshot_for_ui` を持つ揮発 buffer とした
+- 初期 extraction は LLM ではなく simple heuristic にし、「作業文脈」「短期意図」「次に試したいこと」だけを proposal 化するようにした
+- `TomoroSession._reply_to()` の prompt assembly 直前で short memory notes を読み取り、`ThinkingInput.short_memory_notes` として渡すようにした
+- `ThinkFastMode` の system prompt に `SHORT WORKING MEMORY` セクションを追加し、確定事実ではなく最近の作業メモとして必要な時だけ使うよう明示した
+- reply 完了後、`reply_done` 送信後に short memory extraction task を `asyncio.create_task()` で起動するようにした
+- extraction requested / succeeded / failed、note added、note expired、prompt notes count のログを追加した
+- `/ws` event として `context_snapshot`、`short_memory_extraction`、`short_memory_snapshot` を追加した
+- UI に Monitor panel を追加し、STT partial/final、reply stream、ContextSnapshot summary、short memory status/notes を表示するようにした
+- UI は server event を表示するだけで、状態判断ロジックは置いていない
+- `_docs/latency.md` に unit regression と static browser UI check の記録を追記した
+
+### 変更していないもの
+- audio hot path
+- reply routing
+- DB ordering
+- conversation lifecycle
+- TTS / audio chunk / playback timing
+- `server/session/` package split
+- OutputDemand / Watcher
+- DB migration / PostgreSQL 永続化
+- embedding / dedupe / tombstone / persona snapshot 昇格 / task scheduling
+
+### 検証
+- targeted test: `.venv/bin/python -m pytest -m unit tests/unit/test_short_memory.py tests/unit/test_phase88_context_snapshot.py::test_tomoro_session_passes_context_snapshot_to_thinking_input -q`
+  - 9 passed
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 416 passed, 17 deselected
+- ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- JS syntax / diff check: `node --check client/main.js && git diff --check`
+  - pass
+- browser check:
+  - `http://127.0.0.1:8766/client/index.html` で Monitor panel の表示と dark mode contrast を確認
+
+### 人間確認が必要なこと
+- short memory が体感上効いているか
+- UI の情報量が実用的か
+- DB 永続化へ進む価値があるか
+- 実マイク / 実バックエンドで応答初速が悪化していないか
+- 1ターン遅れで short memory notes が live prompt に入るか
+- ノイズ memory が prompt を汚していないか
+
 ## 2026-05-29 セッション18
 
 ### やること（開始時に書く）

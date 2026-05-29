@@ -994,6 +994,23 @@ class MemoryHit:
 
 
 @dataclass(frozen=True)
+class ShortMemoryNote:
+    kind: Literal["working_context", "short_intent", "next_trial"]
+    text: str
+    confidence: float
+    importance: float
+    created_turn: int
+    expires_after_turns: int
+    created_at: datetime
+    note_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ShortMemoryProposalResult:
+    proposals: list[ShortMemoryNote]
+
+
+@dataclass(frozen=True)
 class SessionSummaryHit:
     session_id: UUID
     summary_text: str
@@ -1534,6 +1551,7 @@ class ThinkingInput:
     emotion: str
     device_id: str
     long_term_memory: list[MemoryHit] = field(default_factory=list)
+    short_memory_notes: list[ShortMemoryNote] = field(default_factory=list)
     context_snapshot: TomokoContextSnapshot | None = None
 
 

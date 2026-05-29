@@ -3221,3 +3221,24 @@ reply orchestration、TTS / audio / WebSocket send は変更しない。
 `session.py` は method 並び替えをせず、section comment だけを追加する。
 大きな reorder は挙動差分が埋もれるため、closed-loop の読みやすさ改善は
 見出し追加までに限定する。
+
+### 確定した判断: 短期作業メモリは揮発 buffer で prompt hint として試す
+2026-05-29 の最小実験では、短期作業メモリを PostgreSQL や long-term memory へ保存しない。
+`server/session_short_memory.py` の `ShortMemoryBuffer` を process-local / session-local な
+揮発 buffer として扱い、最大 5 件、デフォルト 4 turn TTL で expire する。
+
+この buffer は source of truth ではなく、次ターン以降の prompt hint である。
+`ContextSnapshotBuilder` は引き続き読み取り専用の DB/context builder とし、
+short memory への書き込み責務を持たせない。
+`TomoroSession` が reply 完了後に非同期 extraction task を起動し、
+現在ターンの応答 hot path は待たせない。
+
+初期 extraction は LLM structured output ではなく rule/heuristic にする。
+保存対象は「作業文脈」「ユーザーの短期意図」「次に試したいこと」程度に絞り、
+embedding / dedupe / tombstone / persona snapshot 昇格 / task scheduling は行わない。
+prompt では `SHORT WORKING MEMORY` と明示し、確定事実ではなく最近の作業メモとして
+必要な時だけ使うように渡す。
+
+UI は `/ws` の server event を表示する monitor panel に限定する。
+STT partial/final、reply stream、ContextSnapshot summary、short memory snapshot/extraction status を
+表示するが、client 側で状態判断や retry 判断はしない。

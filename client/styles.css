@@ -22,7 +22,7 @@ button {
 .app-shell {
   display: grid;
   min-height: 100svh;
-  grid-template-columns: minmax(360px, 440px) minmax(380px, 560px);
+  grid-template-columns: minmax(360px, 440px) minmax(360px, 520px) minmax(320px, 420px);
   align-items: stretch;
   justify-content: center;
   gap: 16px;
@@ -30,7 +30,8 @@ button {
 }
 
 .panel,
-.stt-panel {
+.stt-panel,
+.monitor-panel {
   display: grid;
   max-height: calc(100svh - 32px);
   min-height: 0;
@@ -50,6 +51,11 @@ button {
 .stt-panel {
   grid-template-rows: auto minmax(0, 1fr);
   width: min(100%, 560px);
+}
+
+.monitor-panel {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: min(100%, 420px);
 }
 
 .stt-panel-header {
@@ -209,6 +215,47 @@ p {
   padding-right: 2px;
 }
 
+.monitor-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.monitor-item,
+.short-memory-note {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #e3ded6;
+  border-radius: 8px;
+  background: #fbf7ef;
+}
+
+.monitor-item span,
+.short-memory-note span {
+  color: #67717b;
+  font-size: 11px;
+}
+
+.monitor-item p,
+.short-memory-note p {
+  display: -webkit-box;
+  max-height: 4.2em;
+  margin: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.short-memory-notes {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
 .transcript-entry {
   display: grid;
   gap: 4px;
@@ -260,7 +307,8 @@ p {
   }
 
   .panel,
-  .stt-panel {
+  .stt-panel,
+  .monitor-panel {
     border-color: #353b42;
     background: #22262c;
   }
@@ -285,6 +333,12 @@ p {
 
   .transcript-entry {
     background: rgb(255 255 255 / 5%);
+  }
+
+  .monitor-item,
+  .short-memory-note {
+    border-color: #353b42;
+    background: #1d2126;
   }
 
   .portrait {
@@ -335,7 +389,8 @@ p {
     max-height: none;
   }
 
-  .stt-panel {
+  .stt-panel,
+  .monitor-panel {
     min-height: 320px;
   }
 }

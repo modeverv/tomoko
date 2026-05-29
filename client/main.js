@@ -15,6 +15,12 @@ const readPromptTextEl = document.querySelector("#read-prompt-text");
 const debugResultTextEl = document.querySelector("#debug-result-text");
 const candidateResultTextEl = document.querySelector("#candidate-result-text");
 const transcriptLogEntriesEl = document.querySelector("#transcript-log-entries");
+const partialTranscriptEl = document.querySelector("#partial-transcript");
+const finalTranscriptEl = document.querySelector("#final-transcript");
+const replyStreamEl = document.querySelector("#reply-stream");
+const contextSummaryEl = document.querySelector("#context-summary");
+const shortMemoryStatusEl = document.querySelector("#short-memory-status");
+const shortMemoryNotesEl = document.querySelector("#short-memory-notes");
 
 let audioContext = null;
 let micStream = null;
@@ -140,6 +146,51 @@ function appendTranscriptEntry(event) {
   prependLogEntry(event.participation_mode || "observer", parts, event.text || "");
 }
 
+function formatContextSummary(event) {
+  const counts = event.included_counts || event.source_counts || {};
+  const countText = Object.entries(counts)
+    .map(([key, value]) => `${key}:${value}`)
+    .join(", ");
+  const skipped = Array.isArray(event.skipped_sources)
+    ? event.skipped_sources.join(",")
+    : "";
+  const elapsed =
+    typeof event.build_elapsed_ms === "number"
+      ? `${event.build_elapsed_ms.toFixed(1)}ms`
+      : "--";
+  return [
+    `depth=${event.depth || "--"}`,
+    `counts=${countText || "-"}`,
+    `skipped=${skipped || "-"}`,
+    `short=${event.short_memory_notes_count ?? 0}`,
+    `elapsed=${elapsed}`,
+  ].join(" / ");
+}
+
+function renderShortMemorySnapshot(event) {
+  const notes = Array.isArray(event.notes) ? event.notes : [];
+  shortMemoryStatusEl.textContent = `turn=${event.current_turn ?? "-"} / notes=${notes.length}`;
+  shortMemoryNotesEl.replaceChildren(
+    ...notes.map((note) => {
+      const item = document.createElement("div");
+      item.className = "short-memory-note";
+
+      const meta = document.createElement("span");
+      meta.textContent = [
+        note.status || "accepted",
+        note.kind || "working_context",
+        `ttl=${note.remaining_turns ?? "-"}`,
+      ].join(" / ");
+
+      const text = document.createElement("p");
+      text.textContent = note.text || "";
+
+      item.append(meta, text);
+      return item;
+    }),
+  );
+}
+
 function appendTomokoReplyDelta(delta) {
   if (!delta) {
     return;
@@ -159,8 +210,29 @@ function handleJsonEvent(data) {
   if (CANDIDATE_EVENT_TYPES.has(event.type)) {
     candidateResultTextEl.textContent = formatCandidateEvent(event);
   }
+  if (event.type === "transcript_partial") {
+    partialTranscriptEl.textContent = event.text || "--";
+    return;
+  }
   if (event.type === "transcript_final") {
+    finalTranscriptEl.textContent = event.text || "--";
     appendTranscriptEntry(event);
+    return;
+  }
+  if (event.type === "context_snapshot") {
+    contextSummaryEl.textContent = formatContextSummary(event);
+    return;
+  }
+  if (event.type === "short_memory_extraction") {
+    shortMemoryStatusEl.textContent = [
+      event.status || "--",
+      `turn=${event.turn ?? "-"}`,
+      `proposals=${event.proposal_count ?? "-"}`,
+    ].join(" / ");
+    return;
+  }
+  if (event.type === "short_memory_snapshot") {
+    renderShortMemorySnapshot(event);
     return;
   }
   if (event.type === "debug_recording_started") {
@@ -219,6 +291,7 @@ function handleJsonEvent(data) {
     setStatus(`participation:${event.mode}`);
     // Clear reply text when new speech starts
     replyTextEl.textContent = "";
+    replyStreamEl.textContent = "";
     activeTomokoLogEntry = null;
   }
   if (event.type === "emotion") {
@@ -229,6 +302,10 @@ function handleJsonEvent(data) {
   }
   if (event.type === "reply_text") {
     replyTextEl.textContent += event.delta;
+    replyStreamEl.textContent =
+      replyStreamEl.textContent === "--"
+        ? event.delta
+        : replyStreamEl.textContent + event.delta;
     appendTomokoReplyDelta(event.delta);
   }
   if (event.type === "reply_done") {

@@ -79,6 +79,35 @@
         </div>
         <div id="transcript-log-entries" class="transcript-log-entries"></div>
       </section>
+      <section class="monitor-panel" aria-labelledby="monitor-title">
+        <div class="stt-panel-header">
+          <h2 id="monitor-title">Monitor</h2>
+          <span>server events only</span>
+        </div>
+        <div class="monitor-grid" aria-label="Internal state monitor">
+          <div class="monitor-item">
+            <span>STT partial</span>
+            <p id="partial-transcript">--</p>
+          </div>
+          <div class="monitor-item">
+            <span>STT final</span>
+            <p id="final-transcript">--</p>
+          </div>
+          <div class="monitor-item">
+            <span>Reply stream</span>
+            <p id="reply-stream">--</p>
+          </div>
+          <div class="monitor-item">
+            <span>ContextSnapshot</span>
+            <p id="context-summary">--</p>
+          </div>
+          <div class="monitor-item">
+            <span>Short memory</span>
+            <p id="short-memory-status">--</p>
+          </div>
+        </div>
+        <div id="short-memory-notes" class="short-memory-notes"></div>
+      </section>
     </main>
     <script type="module" src="/client/main.js"></script>
   </body>

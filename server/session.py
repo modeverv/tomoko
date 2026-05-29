@@ -57,6 +57,10 @@ from server.session_payloads import (
     playback_payload,
     playback_telemetry_from_event,
 )
+from server.session_short_memory import (
+    ShortMemoryBuffer,
+    propose_short_memory_notes,
+)
 from server.shared.candidate import ArrivalCandidate, UtteranceCandidate
 from server.shared.db import AmbientLogWriter, ConversationLogWriter, ConversationSessionStore
 from server.shared.inference.embedding.base import EmbeddingBackend
@@ -198,6 +202,9 @@ class TomoroSession:
         self._last_precomputed_reply_candidate_id: str | None = None
         self._last_precomputed_reply_at: datetime | None = None
         self._retrieved_context_carryover = RetrievedContextCarryoverState()
+        self._short_memory_buffer = ShortMemoryBuffer()
+        self._short_memory_turn = 0
+        self._short_memory_extraction_tasks: set[asyncio.Task[None]] = set()
 
     # Audio input and state snapshots.
 
@@ -1383,6 +1390,20 @@ class TomoroSession:
         if self.router is None or self.thinking_mode is None:
             return
 
+        self._short_memory_turn += 1
+        expired_short_memory = self._short_memory_buffer.expire_by_turn(
+            current_turn=self._short_memory_turn
+        )
+        if expired_short_memory:
+            logger.info(
+                "TomoroSession short memory note expired count=%s turn=%s",
+                len(expired_short_memory),
+                self._short_memory_turn,
+            )
+            await self._send_short_memory_snapshot()
+        short_memory_notes = self._short_memory_buffer.read_for_prompt(
+            current_turn=self._short_memory_turn
+        )
         backend = await self.router.select("conversation", "privacy")
         self._latency_probe.mark_reply_start()
         logger.info(
@@ -1397,6 +1418,15 @@ class TomoroSession:
             transcript,
             depth=depth,
             explicit_memory_cue=explicit_memory_cue,
+        )
+        logger.info(
+            "TomoroSession prompt short memory notes count=%s turn=%s",
+            len(short_memory_notes),
+            self._short_memory_turn,
+        )
+        await self._send_context_snapshot_summary(
+            context_snapshot,
+            short_memory_notes_count=len(short_memory_notes),
         )
         recent_turns = self._recent_turns_with_precomputed_topic(
             context_snapshot.recent_turns
@@ -1421,6 +1451,7 @@ class TomoroSession:
             emotion="neutral",
             device_id=transcript.device_id,
             long_term_memory=long_term_memory,
+            short_memory_notes=short_memory_notes,
             context_snapshot=context_snapshot,
         )
         reply = ReplyPipeline(initial_emotion=thinking_input.emotion)
@@ -1473,6 +1504,10 @@ class TomoroSession:
                             )
                         await self._send_reserved_audio_end()
                         await self._send_event({"type": "reply_done"})
+                        self._schedule_short_memory_extraction(
+                            transcript=transcript,
+                            reply_text=reply_text,
+                        )
                         self._note_attention_activity()
         except asyncio.CancelledError:
             tts_worker.cancel()
@@ -1689,6 +1724,129 @@ class TomoroSession:
         if conversation_session_id is not None:
             event["conversation_session_id"] = str(conversation_session_id)
         await self._send_event(event)
+
+    async def _send_context_snapshot_summary(
+        self,
+        snapshot: TomokoContextSnapshot,
+        *,
+        short_memory_notes_count: int,
+    ) -> None:
+        await self._send_event(
+            {
+                "type": "context_snapshot",
+                "depth": snapshot.depth,
+                "included_counts": dict(snapshot.trace.included_counts),
+                "source_counts": dict(snapshot.source_counts),
+                "skipped_sources": list(snapshot.trace.skipped_sources),
+                "skipped_reasons": dict(snapshot.trace.skipped_reasons),
+                "build_elapsed_ms": snapshot.build_elapsed_ms,
+                "timed_out": snapshot.trace.timed_out,
+                "short_memory_notes_count": short_memory_notes_count,
+            }
+        )
+
+    async def _send_short_memory_snapshot(self) -> None:
+        await self._send_event(
+            {
+                "type": "short_memory_snapshot",
+                **self._short_memory_buffer.snapshot_for_ui(
+                    current_turn=self._short_memory_turn
+                ),
+            }
+        )
+
+    def _schedule_short_memory_extraction(
+        self,
+        *,
+        transcript: Transcript,
+        reply_text: str,
+    ) -> None:
+        logger.info(
+            "TomoroSession short memory extraction requested turn=%s text=%r "
+            "hot_path_wait=false",
+            self._short_memory_turn,
+            transcript.text,
+        )
+        task = asyncio.create_task(
+            self._run_short_memory_extraction(
+                user_text=transcript.text,
+                reply_text=reply_text,
+                turn=self._short_memory_turn,
+            )
+        )
+        self._short_memory_extraction_tasks.add(task)
+        task.add_done_callback(self._short_memory_extraction_tasks.discard)
+
+    async def _run_short_memory_extraction(
+        self,
+        *,
+        user_text: str,
+        reply_text: str,
+        turn: int,
+    ) -> None:
+        await self._send_event(
+            {
+                "type": "short_memory_extraction",
+                "status": "pending",
+                "turn": turn,
+            }
+        )
+        try:
+            result = propose_short_memory_notes(
+                user_text=user_text,
+                reply_text=reply_text,
+                current_turn=turn,
+                default_ttl_turns=self._short_memory_buffer.default_ttl_turns,
+            )
+            for note in result.proposals:
+                added = self._short_memory_buffer.append(note)
+                logger.info(
+                    "TomoroSession short memory note added id=%s kind=%s "
+                    "confidence=%.2f importance=%.2f expires_after_turns=%s "
+                    "turn=%s text=%r",
+                    added.note_id,
+                    added.kind,
+                    added.confidence,
+                    added.importance,
+                    added.expires_after_turns,
+                    turn,
+                    added.text,
+                )
+            logger.info(
+                "TomoroSession short memory extraction succeeded turn=%s proposals=%s",
+                turn,
+                len(result.proposals),
+            )
+            await self._send_event(
+                {
+                    "type": "short_memory_extraction",
+                    "status": "succeeded",
+                    "turn": turn,
+                    "proposal_count": len(result.proposals),
+                }
+            )
+            await self._send_short_memory_snapshot()
+        except Exception as exc:
+            logger.warning(
+                "TomoroSession short memory extraction failed turn=%s error=%s",
+                turn,
+                exc,
+                exc_info=True,
+            )
+            await self._send_event(
+                {
+                    "type": "short_memory_extraction",
+                    "status": "failed",
+                    "turn": turn,
+                    "error": str(exc),
+                }
+            )
+
+    async def _wait_for_short_memory_extraction_tasks(self) -> None:
+        tasks = list(self._short_memory_extraction_tasks)
+        if not tasks:
+            return
+        await asyncio.gather(*tasks)
 
     async def send_transition_emissions(self, result: TransitionResult) -> None:
         for emission in result.emissions:

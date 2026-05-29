@@ -7,6 +7,7 @@ from pathlib import Path
 
 from server.gateway.thinking.base import ThinkingMode
 from server.gateway.thinking.memory_prompt import format_long_term_memory_prompt
+from server.gateway.thinking.short_memory_prompt import format_short_memory_prompt
 from server.shared.inference.backends.base import InferenceBackend
 from server.shared.inference.trace import chat_stream_with_trace_role
 from server.shared.models import ThinkingEvent, ThinkingInput
@@ -40,6 +41,7 @@ class ThinkFastMode(ThinkingMode):
             part
             for part in (
                 _format_context_snapshot_prompt(thinking_input),
+                format_short_memory_prompt(thinking_input.short_memory_notes),
                 format_long_term_memory_prompt(thinking_input.long_term_memory),
             )
             if part
