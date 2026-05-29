@@ -68,14 +68,16 @@
           <p id="candidate-result-text">--</p>
         </div>
 
-        <div class="transcript-log" aria-label="Transcript log">
-          <span>Transcript</span>
-          <div id="transcript-log-entries" class="transcript-log-entries"></div>
-        </div>
-
         <div class="reply-container" aria-label="Reply text">
           <p id="reply-text"></p>
         </div>
+      </section>
+      <section class="stt-panel" aria-labelledby="stt-log-title">
+        <div class="stt-panel-header">
+          <h2 id="stt-log-title">Log</h2>
+          <span>transcript_final / reply_text</span>
+        </div>
+        <div id="transcript-log-entries" class="transcript-log-entries"></div>
       </section>
     </main>
     <script type="module" src="/client/main.js"></script>

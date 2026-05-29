@@ -6432,3 +6432,149 @@ candidate final gate ownership、stale 判定、playback / withdrawn / output ta
   - pass
 - `git diff --check`
   - pass
+
+### Phase 10.20.8: read-only audit for remaining session.py helper candidates
+
+この Phase は monolithic `server/session.py` baseline を維持したまま、
+残っている private helper / small method / payload shaping / coercion /
+read-only formatting / pure normalization を read-only で棚卸しする。
+runtime code、test code、`server/session.py`、helper 抽出、SessionCommand 追加、
+OutputDemand / Watcher、`server/session/` package split、dispatcher / effects /
+event_runner / maps は変更しない。
+
+#### 抽出済み範囲の確認
+
+| module | 分類 | 抽出済みの範囲 | 今回の扱い |
+|---|---|---|---|
+| `server/session_payloads.py` | already-extracted | `json_safe_payload()` / `json_safe_value()` / `optional_str_payload()` / `optional_int_payload()` / `optional_float_payload()` / `playback_payload()` / `playback_telemetry_from_event()` | pure payload / coercion / playback telemetry coercion として抽出済み。追加変更しない |
+| `server/session_candidate_policy_helpers.py` | already-extracted | `candidate_policy_payload(event)` | `CandidateSpeakDecision` 由来の skip payload shaping として抽出済み。candidate final gate へ広げない |
+| `server/session_key_helpers.py` | already-extracted | `candidate_request_id(kind, sequence)` | request id の文字列 formatter だけ抽出済み。sequence 更新 / active id 更新 / stale 判定は `TomoroSession` に残す |
+| `server/session_memory_helpers.py` | already-extracted | `session_summary_hit_to_memory()` | `SessionSummaryHit -> MemoryHit` conversion として抽出済み。memory retrieval policy / prompt format へ広げない |
+| `server/session_carryover.py` | already-extracted | `RetrievedContextCarryoverState` / `retrieved_context_key()` / merge / remember / evict / clear | carryover 専用 state/helper として抽出済み。ContextSnapshotBuilder へ広げない |
+
+#### 残候補 audit table
+
+| 候補名 | 現在の場所 | 現在の責務 | 分類 | pure / stateful | I/O 有無 | 危険度 | 抽出しない理由 |
+|---|---|---|---|---|---|---|---|
+| `_elapsed_ms()` | `server/session.py` module helper | `server.session_latency.elapsed_ms()` への thin wrapper | wrapper-cleanup-only | pure | なし | low | 実体は既に `server/session_latency.py` 側。新しい helper extraction ではなく将来の cleanup 対象 |
+| `_retrieved_context_key()` | `server/session.py` module helper | `server.session_carryover.retrieved_context_key()` への thin wrapper | wrapper-cleanup-only | pure | なし | low | 実体は既に carryover module 側。cleanup するなら別 Phase で direct import 化だけを見る |
+| `_can_start_candidate_reply()` | `TomoroSession` method | candidate final gate が通るかを読む | should-not-move-yet | stateful read | なし | high | final gate ownership に近い。session が attention / VAD / playback / output target を最終判断する境界を崩さない |
+| `_candidate_reply_gate_reason()` | `TomoroSession` method | attention / VAD / playback / output target から gate reason を返す | dangerous-do-not-extract | stateful read | なし | do-not-touch | candidate final gate そのもの。stale / playback / output target 判定の移動禁止に該当 |
+| `_candidate_reply_gate_payload()` | `TomoroSession` method | candidate final gate skip payload を shape する | should-not-move-yet | stateful read | なし | high | payload helper に見えるが final gate state を読む。observability だけを外へ出すと gate ownership が曖昧になる |
+| `_new_candidate_request_id()` | `TomoroSession` method | sequence increment、request id format、active request id 更新 | dangerous-do-not-extract | stateful write | なし | do-not-touch | formatter は抽出済み。残りは stale result discard ownership と ordering に関わる |
+| `_is_stale_candidate_result()` | `TomoroSession` method | active request id と result request id を照合 | dangerous-do-not-extract | stateful read | なし | do-not-touch | stale result discard policy の本体。移動しない |
+| `_reduce_connected_output_state_changed()` payload | `TomoroSession` method inline payload | output target state の transition payload | should-not-move-yet | stateful write/read | なし | high | output target / client disconnect / conversation close command に近い |
+| `_reduce_client_stop_requested()` payload | `TomoroSession` method inline payload | UI stop reason と active session id の payload | should-not-move-yet | stateful read | なし | high | client stop と conversation lifecycle close command に近い |
+| `_turn_taking_skip_reason()` / `_turn_taking_skip_reason_for_state()` | `TomoroSession` methods | turn-taking 判定を skip する reason を返す | should-not-move-yet | stateful read | なし | high | reply lifecycle / playback state / turn-taking policy に近い |
+| `_is_turn_taking_interrupt_candidate()` | `TomoroSession` method | rule / fallback で interrupt candidate を判定 | should-not-move-yet | stateful read | なし | high | stop / interrupt policy に近い。純粋化できても今回の payload/coercion 棚卸し対象ではない |
+| `_should_suppress_duplicate_turn_taking_stop()` | `TomoroSession` method | duplicate stop suppression window を判定 | should-not-move-yet | stateful read | なし | high | stop timing / suppression policy に近い |
+| `_pending_reply_state()` | `TomoroSession` method | reply / TTS / playback / latency probe から pending state を返す | should-not-move-yet | stateful read | なし | high | reply lifecycle、TTS ordering、playback state に近い |
+| `_merge_carried_long_term_memory()` 系 wrapper | `TomoroSession` methods | carryover object へ委譲し log を残す | wrapper-cleanup-only | stateful via carryover | なし | medium | 実体は抽出済みだが log 文言は session 側に残す方針。cleanup だけで扱う |
+| `_record_stop_intent_observation()` metadata dict | `TomoroSession` method inline dict | stop observation 用 playback / reply state metadata を shape | should-not-move-yet | stateful read | DB command 経由 | high | stop-intent / playback / reply state / DB command に近い |
+| `_classify_barge_in()` | `TomoroSession` method | playback / echo grace / reply active から barge-in を分類 | dangerous-do-not-extract | stateful read | なし | do-not-touch | audio hot path adjacent、playback timing、reply interruption に関わる |
+| `_reset_latency_probe()` / `_elapsed_since_*_ms()` | `TomoroSession` methods | latency probe への thin delegation | wrapper-cleanup-only | stateful read/write | なし | medium | cleanup に見えるが latency instrumentation と reply timing に近い。今回の抽出候補にしない |
+| `_build_context_snapshot()` / `_load_recent_context()` | `TomoroSession` methods | ContextSnapshotBuilder 呼び出しと policy adjustment | dangerous-do-not-extract | stateful read + DB read through builder | DB read through builder | do-not-touch | memory retrieval policy / ContextSnapshotBuilder / prompt quality に近い |
+| `_recent_turns_with_precomputed_topic()` | `TomoroSession` method | precomputed reply を context recent turns に合成 | dangerous-do-not-extract | stateful read | なし | do-not-touch | prompt context quality / initiative follow-up context に近い |
+| `_ensure_conversation_session()` / `_close_conversation_session()` | `TomoroSession` methods | conversation session lifecycle を開始 / 終了 | dangerous-do-not-extract | stateful write | DB write | do-not-touch | conversation lifecycle と DB write ordering の本体 |
+| `_write_user_turn()` / `_write_tomoko_turn()` / `_accepts_keyword()` | `TomoroSession` methods + module helper | conversation log writer compatibility と turn write | should-not-move-yet | stateful read + pure introspection | DB write | high | `_accepts_keyword()` は pure だが DB writer compatibility path にあり、DB write ordering 周辺で扱うべき |
+| `_withdraw_decision()` | `server/session.py` module helper | explicit withdrawal phrase を participation decision に変換 | should-not-move-yet | pure に近い | なし | high | small helper だが runtime participation policy / withdrawn behavior に直結する |
+| `_start_reason_from_participation_mode()` | `server/session.py` module helper | `ParticipationMode` から `StartReason` へ mapping | should-not-move-yet | pure | なし | medium | pure mapping だが conversation session lifecycle の意味に直結する |
+| `_send_event()` / `_send_transcript_final_event()` / `_send_audio_chunk()` | `TomoroSession` methods | client JSON / audio send | dangerous-do-not-extract | stateful | WebSocket send | do-not-touch | WebSocket send、reply routing、audio chunk path に触れる |
+| `_run_reply_task()` / `_run_tts_queue()` / `_flush_tts_text()` / `_cancel_reply_generation()` | `TomoroSession` methods | reply / TTS orchestration | dangerous-do-not-extract | stateful | LLM / TTS / WebSocket send | do-not-touch | reply_text / reply_done routing、LLM-TTS ordering、audio timing の本体 |
+
+#### low-risk-pure-helper-candidate
+
+- 0 個
+- 理由: pure に見える残候補は薄い wrapper か、conversation lifecycle / DB writer compatibility /
+  candidate final gate / prompt quality に近いものだけである。
+
+#### next-extractable-candidate
+
+- [ ] next-extractable-candidate は **0 個** とする
+  - `_elapsed_ms()` / `_retrieved_context_key()` は wrapper-cleanup-only で、helper extraction ではない
+  - `_start_reason_from_participation_mode()` / `_accepts_keyword()` は pure だが lifecycle / DB writer compatibility に近い
+  - candidate gate / stale / playback / withdrawn / output target / reply orchestration / memory retrieval policy に近い helper は触らない
+  - 低リスクに見えても、次に進むなら別 Phase で目的をさらに絞り、characterization test から始める
+
+#### 検証
+
+- docs-only のため unit / ruff は原則不要
+- `git diff --check` を実行する
+
+### Phase 10.20.10: client-only 2-pane STT log UI
+
+この Phase では、現行 UI と STT 結果ログを左右 2 ペインで表示する。
+STT ログは ambient / 人間 / Tomoko 回り込みを分類せず、既存 `/ws` の
+`transcript_final` event を時系列ログとしてそのまま表示する。
+
+#### 目的
+
+- 左ペインに現行の Tomoko UI を維持する
+- 右ペインに STT 結果ログを広めに表示し、会話中の認識結果を読みやすくする
+- UI だけが既に受け取っている情報で実装できる範囲に限定する
+
+#### 変更対象
+
+- `client/index.html`
+  - 現行 UI section と STT log section を兄弟ペインにする
+- `client/styles.css`
+  - desktop では 2 column、mobile では 1 column にする
+  - STT log を scrollable にし、長い transcript でも layout が崩れないようにする
+- `client/main.js`
+  - 既存 `transcript_final` handling を維持し、表示件数を右ペイン向けに増やす
+
+#### 今回触らないもの
+
+- `server/session.py` / `TomoroSession`
+- `transcript_final` payload shape
+- ambient / 人間 / Tomoko 回り込みの分類 logic
+- participation / turn-taking / barge-in / candidate gate
+- conversation session lifecycle / DB write ordering
+- TTS / playback ordering
+- 新しい `/ws` message type や REST endpoint
+
+#### 完了条件
+
+- desktop で左が現行 UI、右が STT 結果ログとして表示される
+- mobile では縦積みで表示が破綻しない
+- `transcript_final` が右ペインに追加され、既存 meta
+  (`attention_mode` / `participation_mode` / `conversation_session_id`) を確認できる
+- `TomoroSession` と server runtime code の差分がない
+- `git diff --check` が通る
+
+### Phase 10.20.11: client-only Tomoko reply log in right pane
+
+この Phase では、Phase 10.20.10 の右ペインに Tomoko の返答テキストも表示する。
+実際に TTS backend へ渡された `TTSInput.text` は現行 WebSocket payload には含まれないため、
+既にブラウザへ届いて左ペインに表示されている `reply_text` delta を集約して
+Tomoko 発話ログとして扱う。
+
+#### 目的
+
+- 右ペインで STT 結果と Tomoko の返答を同じ時系列で見られるようにする
+- サーバー payload や `TomoroSession` を変更せず、UI が既に受け取っている情報だけを使う
+
+#### 変更対象
+
+- `client/index.html`
+  - 右ペインの見出しを STT 専用ではなく会話ログとして読める表示にする
+- `client/main.js`
+  - `reply_text` delta を 1 つの Tomoko log entry に追記する
+  - `reply_done` で現在の Tomoko log entry を閉じる
+- `client/styles.css`
+  - `data-mode="tomoko"` の見た目を追加する
+
+#### 今回触らないもの
+
+- `server/session.py` / `TomoroSession`
+- `reply_text` / `reply_done` / `audio_start` / `audio_end` payload shape
+- TTS chunk text を新規 payload として出す変更
+- reply orchestration / TTS ordering / audio hot path
+
+#### 完了条件
+
+- `reply_text` が左ペインに従来どおり表示される
+- 同じ `reply_text` が右ペインでは Tomoko entry として追記される
+- streaming delta が複数来ても、1 返答は 1 entry にまとまる
+- `TomoroSession` と server runtime code の差分がない
+- `git diff --check` が通る

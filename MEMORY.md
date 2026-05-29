@@ -3108,3 +3108,46 @@ candidate final gate ownership は移動しない。
 `_new_candidate_request_id()`、`_is_stale_candidate_result()` は `TomoroSession` に残す。
 candidate store mark、DB read/write、reply start、TTS / audio、WebSocket send、
 SessionCommand 追加、OutputDemand / Watcher、`server/session/` package split は行わない。
+
+### 確定した判断: Phase 10.20.8 remaining helper audit では次候補を選ばない
+2026-05-29 の Phase 10.20.8 read-only audit では、monolithic `server/session.py`
+baseline を維持したまま remaining helper candidates を棚卸しした。
+
+`server/session_payloads.py` と `server/session_candidate_policy_helpers.py` は抽出済みであり、
+それぞれ pure payload / coercion helper と `CandidateSpeakDecision` payload shaping に限定されている。
+関連する `server/session_key_helpers.py`、`server/session_memory_helpers.py`、
+`server/session_carryover.py` も narrow extraction のまま維持する。
+
+残っている low-risk に見える候補は `_elapsed_ms()`、`_retrieved_context_key()`、
+carryover wrapper、latency probe wrapper などの cleanup-only である。
+`_start_reason_from_participation_mode()` と `_accepts_keyword()` は pure だが、
+conversation lifecycle / DB writer compatibility に近い。
+candidate gate、stale result discard、playback / output target、withdrawn behavior、
+turn-taking、reply orchestration、memory retrieval policy、ContextSnapshotBuilder、
+prompt context、DB write ordering に近い helper は抽出対象にしない。
+
+そのため、この read-only audit の next-extractable-candidate は 0 個とする。
+次に進む場合も、候補を別 Phase で 1 つに絞り、characterization test から始める。
+
+### 確定した判断: Phase 10.20.10 の 2 ペイン STT ログ UI は client-only に限定する
+2026-05-29 の Phase 10.20.10 では、現行 UI と STT 結果ログを左右 2 ペインで表示するが、
+ambient / 人間 / Tomoko 回り込みの分類は行わない。
+
+既存 `/ws` の `transcript_final` event を UI 側で一覧表示するだけにし、
+`TomoroSession`、`server/session.py`、WebSocket payload shape、参加判断、
+conversation session lifecycle、DB write ordering、TTS / playback ordering は変更しない。
+
+正確な ambient / human / tomoko echo 分類が必要になった場合は、UI が推測せず、
+server 側から分類済み field を出す別 Phase として扱う。
+
+### 確定した判断: Phase 10.20.11 の Tomoko 返答ログは reply_text 集約に限定する
+2026-05-29 の Phase 10.20.11 では、右ペインに Tomoko の返答も表示するが、
+実際の `TTSInput.text` を新しい WebSocket payload として出す変更は行わない。
+
+ブラウザが既に受け取っている `reply_text` delta を 1 つの Tomoko log entry に集約し、
+`reply_done` で entry を閉じる client-only 実装に限定する。
+これにより `TomoroSession`、`server/session.py`、reply orchestration、
+TTS ordering、audio hot path、WebSocket payload shape は変更しない。
+
+文単位で実際に TTS backend へ渡された文字列を見たい場合は、server 側から
+TTS chunk text を観測用 payload として出す別 Phase として扱う。

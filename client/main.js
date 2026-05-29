@@ -30,7 +30,8 @@ let nextPlaybackChunkId = 1;
 let recordingTimer = null;
 let activeDebugRecording = null;
 let readPromptIndex = 0;
-const MAX_TRANSCRIPT_LOG_ENTRIES = 8;
+let activeTomokoLogEntry = null;
+const MAX_TRANSCRIPT_LOG_ENTRIES = 80;
 
 const READ_PROMPTS = [
   "正直ログを見ながら喋る感じ、ウィスパーがまともに拾えている感じが全くないのですが。",
@@ -103,30 +104,54 @@ function shortId(value) {
   return String(value).slice(0, 8);
 }
 
-function appendTranscriptEntry(event) {
+function trimTranscriptEntries() {
+  while (transcriptLogEntriesEl.children.length > MAX_TRANSCRIPT_LOG_ENTRIES) {
+    transcriptLogEntriesEl.lastElementChild.remove();
+  }
+}
+
+function prependLogEntry(mode, metaParts, textValue = "") {
   const entry = document.createElement("div");
   entry.className = "transcript-entry";
-  entry.dataset.mode = event.participation_mode || "observer";
+  entry.dataset.mode = mode;
 
   const meta = document.createElement("span");
+  meta.textContent = metaParts.join(" / ");
+
+  const text = document.createElement("p");
+  text.textContent = textValue;
+
+  entry.append(meta, text);
+  transcriptLogEntriesEl.prepend(entry);
+  trimTranscriptEntries();
+
+  return { entry, text };
+}
+
+function appendTranscriptEntry(event) {
   const parts = [
+    new Date().toLocaleTimeString("ja-JP", { hour12: false }),
     event.attention_mode || "ambient",
     event.participation_mode || "observer",
   ];
   if (event.conversation_session_id) {
     parts.push(`session=${shortId(event.conversation_session_id)}`);
   }
-  meta.textContent = parts.join(" / ");
+  prependLogEntry(event.participation_mode || "observer", parts, event.text || "");
+}
 
-  const text = document.createElement("p");
-  text.textContent = event.text || "";
-
-  entry.append(meta, text);
-  transcriptLogEntriesEl.prepend(entry);
-
-  while (transcriptLogEntriesEl.children.length > MAX_TRANSCRIPT_LOG_ENTRIES) {
-    transcriptLogEntriesEl.lastElementChild.remove();
+function appendTomokoReplyDelta(delta) {
+  if (!delta) {
+    return;
   }
+  if (activeTomokoLogEntry === null) {
+    activeTomokoLogEntry = prependLogEntry("tomoko", [
+      new Date().toLocaleTimeString("ja-JP", { hour12: false }),
+      "tomoko",
+      "reply_text",
+    ]);
+  }
+  activeTomokoLogEntry.text.textContent += delta;
 }
 
 function handleJsonEvent(data) {
@@ -194,6 +219,7 @@ function handleJsonEvent(data) {
     setStatus(`participation:${event.mode}`);
     // Clear reply text when new speech starts
     replyTextEl.textContent = "";
+    activeTomokoLogEntry = null;
   }
   if (event.type === "emotion") {
     emotionEl.textContent = event.value;
@@ -203,6 +229,10 @@ function handleJsonEvent(data) {
   }
   if (event.type === "reply_text") {
     replyTextEl.textContent += event.delta;
+    appendTomokoReplyDelta(event.delta);
+  }
+  if (event.type === "reply_done") {
+    activeTomokoLogEntry = null;
   }
 }
 
