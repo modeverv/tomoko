@@ -1,3 +1,34 @@
+## 2026-05-29 セッション16
+
+### やること（開始時に書く）
+- Phase 10.20.12 として、candidate policy 周辺の「判断はするが副作用しない」小領域を 2 つだけ抽出する
+- 対象は initiative candidate の text-ready 判定と `CandidateSpeakDecision` の route 分類に限定する
+- `TomoroSession` 側の candidate final gate、stale 判定、active request id 更新、command 生成、DB read/write、reply start、TTS / audio、WebSocket send は移動しない
+- 先に characterization test を追加し、`server/session_candidate_policy_helpers.py` へ narrow helper を追加してから呼び出し置換する
+- PLAN.md に取り組めそう / 取り組めなさそうの分類を append-only で追記する
+
+### やったこと
+- PLAN.md に Phase 10.20.12 として、取り組めそう / 取り組めなさそうの分類を append-only で追記した
+- `tests/unit/test_session_candidate_policy_helpers.py` に characterization test を追加した
+- `server/session_candidate_policy_helpers.py` に `initiative_candidate_text_ready(candidate)` と `candidate_policy_route(policy_decision)` を追加した
+- `server/session.py` の initiative candidate loaded path で、text-ready 判定と policy decision 分岐だけを helper 呼び出しへ置換した
+- active request id clear、dismiss / judge / reply command 生成、candidate final gate、stale result discard、DB read/write、reply start、TTS / audio、WebSocket send は移動していない
+- MEMORY.md に Phase 10.20.12 の境界判断を追記した
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_session_candidate_policy_helpers.py -q`
+  - 7 passed
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase10_session_contract.py tests/unit/test_phase106_initiative_policy.py tests/unit/test_phase105_session_runtime.py -q`
+  - 41 passed
+- `.venv/bin/python -m ruff check server/session_candidate_policy_helpers.py tests/unit/test_session_candidate_policy_helpers.py server/session.py`
+  - pass
+- `.venv/bin/python -m pytest -m unit`
+  - 406 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+
 ## 2026-05-29 セッション8
 
 ### やること（開始時に書く）

@@ -3151,3 +3151,23 @@ TTS ordering、audio hot path、WebSocket payload shape は変更しない。
 
 文単位で実際に TTS backend へ渡された文字列を見たい場合は、server 側から
 TTS chunk text を観測用 payload として出す別 Phase として扱う。
+
+### 確定した判断: Phase 10.20.12 は candidate policy の副作用なし判断 helper 2 個だけを抽出する
+2026-05-29 の Phase 10.20.12 では、candidate policy 周辺のうち
+副作用なしで判定できる小領域だけを `server/session_candidate_policy_helpers.py` に追加した。
+
+抽出対象は `initiative_candidate_text_ready(candidate)` と
+`candidate_policy_route(policy_decision)` の 2 つである。
+前者は initiative candidate が text-ready かを `maturity >= 1` かつ
+`generated_text is not None` で判定するだけにする。
+後者は `CandidateSpeakDecision` を `wait` / `needs_llm_judge` / `speak` の route に分類するだけにする。
+
+`TomoroSession` 側の active request id clear、dismiss / judge / reply command 生成、
+candidate final gate、stale result discard、DB read/write、reply start、TTS / audio、
+WebSocket send は移動しない。
+
+`_candidate_reply_gate_reason()` / `_candidate_reply_gate_payload()` は引き続き
+TomoroSession final gate として残す。
+`_new_candidate_request_id()` / `_is_stale_candidate_result()` も request sequence / active id /
+stale policy に近いため移動しない。
+arrival candidate behavior 分岐も `mark_arrival_used` と command ordering に近いため今回の対象外にする。

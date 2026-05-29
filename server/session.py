@@ -38,7 +38,11 @@ from server.gateway.thinking.base import ThinkingMode
 from server.gateway.thinking.selector import has_deep_memory_cue, should_use_deep_memory
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.gateway.turn_taking.judge import RuleFirstTurnTakingJudge, TurnTakingJudge
-from server.session_candidate_policy_helpers import candidate_policy_payload
+from server.session_candidate_policy_helpers import (
+    candidate_policy_payload,
+    candidate_policy_route,
+    initiative_candidate_text_ready,
+)
 from server.session_carryover import (
     RetrievedContextCarryoverState,
     retrieved_context_key,
@@ -401,7 +405,7 @@ class TomoroSession:
                     **self._candidate_reply_gate_payload(gate_reason),
                 },
             )
-        if candidate.maturity < 1 or candidate.generated_text is None:
+        if not initiative_candidate_text_ready(candidate):
             self._active_initiative_request_id = None
             return self._transition_result(
                 "initiative_skipped",
@@ -421,35 +425,38 @@ class TomoroSession:
                 ],
             )
         policy_decision = event.payload.get("policy_decision")
-        if isinstance(policy_decision, CandidateSpeakDecision):
-            if policy_decision.decision == "wait":
-                self._active_initiative_request_id = None
-                return self._transition_result(
-                    "initiative_skipped",
-                    payload={
-                        "reason": "policy_wait",
-                        "candidate_id": candidate.id,
-                        "policy": policy_decision.to_json(),
-                    },
-                )
-            if policy_decision.decision == "needs_llm_judge":
-                return self._transition_result(
-                    "initiative_llm_judge_requested",
-                    payload={
-                        "candidate_id": candidate.id,
-                        "policy": policy_decision.to_json(),
-                    },
-                    commands=[
-                        SessionCommand(
-                            type="judge_initiative_candidate",
-                            payload={
-                                "candidate": candidate,
-                                "request_id": event.payload.get("request_id"),
-                                "policy_decision": policy_decision,
-                            },
-                        )
-                    ],
-                )
+        policy_route = candidate_policy_route(policy_decision)
+        if policy_route == "wait" and isinstance(policy_decision, CandidateSpeakDecision):
+            self._active_initiative_request_id = None
+            return self._transition_result(
+                "initiative_skipped",
+                payload={
+                    "reason": "policy_wait",
+                    "candidate_id": candidate.id,
+                    "policy": policy_decision.to_json(),
+                },
+            )
+        if policy_route == "needs_llm_judge" and isinstance(
+            policy_decision,
+            CandidateSpeakDecision,
+        ):
+            return self._transition_result(
+                "initiative_llm_judge_requested",
+                payload={
+                    "candidate_id": candidate.id,
+                    "policy": policy_decision.to_json(),
+                },
+                commands=[
+                    SessionCommand(
+                        type="judge_initiative_candidate",
+                        payload={
+                            "candidate": candidate,
+                            "request_id": event.payload.get("request_id"),
+                            "policy_decision": policy_decision,
+                        },
+                    )
+                ],
+            )
 
         self._active_initiative_request_id = None
         self._set_start_reason("initiative")

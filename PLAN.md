@@ -6578,3 +6578,56 @@ Tomoko 発話ログとして扱う。
 - streaming delta が複数来ても、1 返答は 1 entry にまとまる
 - `TomoroSession` と server runtime code の差分がない
 - `git diff --check` が通る
+
+### Phase 10.20.12: candidate policy side-effect-free judgment helpers only
+
+この Phase では、candidate policy 周辺のうち「判断はするが副作用しない」小領域だけを扱う。
+`TomoroSession` の final gate / stale 判定 / command 生成 / request state 更新は移動しない。
+
+#### 取り組めそう
+
+- initiative candidate の text-ready 判定
+  - 現在の `candidate.maturity < 1 or candidate.generated_text is None` を、
+    `initiative_candidate_text_ready(candidate)` のような pure helper に切り出す
+  - 判定だけであり、dismiss command 生成や active request id clear は `TomoroSession` に残す
+- `CandidateSpeakDecision` の route 分類
+  - `wait` / `needs_llm_judge` / speak 継続を返す pure helper に切り出す
+  - payload shaping、LLM judge command 生成、reply start command 生成は `TomoroSession` に残す
+
+#### 取り組めなさそう
+
+- `_candidate_reply_gate_reason()` / `_candidate_reply_gate_payload()`
+  - attention / VAD / playback / audio target を読む final gate なので移動しない
+- `_new_candidate_request_id()` / `_is_stale_candidate_result()`
+  - request sequence / active request id / stale result discard policy に関わるため移動しない
+- arrival candidate の behavior 分岐
+  - `mark_arrival_used` と reply start command ordering に近いため、今回の判断 helper 抽出には含めない
+- turn-taking / barge-in / pending reply state
+  - playback timing、reply task、TTS queue、stop-intent に近いため今回は扱わない
+
+#### 変更対象
+
+- `server/session_candidate_policy_helpers.py`
+  - `initiative_candidate_text_ready(candidate)`
+  - `candidate_policy_route(policy_decision)`
+- `server/session.py`
+  - initiative candidate loaded path の条件式と policy decision 分岐だけを helper 呼び出しへ置換する
+- `tests/unit/test_session_candidate_policy_helpers.py`
+  - helper の characterization test を追加する
+
+#### 今回触らないもの
+
+- candidate final gate ownership
+- stale result discard
+- request id sequence / active request id 更新
+- candidate store mark / dismiss command の意味
+- DB read/write
+- reply start / TTS / audio / WebSocket send
+- `server/session/` package split
+- OutputDemand / Watcher / dispatcher / effects / event_runner / maps
+
+#### 完了条件
+
+- helper tests が通る
+- candidate session contract tests が通る
+- full unit / ruff / diff check が通る
