@@ -20,6 +20,26 @@ DEEP_MEMORY_CUES = (
     "どうなった",
 )
 
+CALENDAR_CUES = (
+    "予定",
+    "スケジュール",
+    "カレンダー",
+    "今日",
+    "明日",
+    "あした",
+    "明後日",
+    "あさって",
+    "今週",
+    "来週",
+    "何時",
+    "空いてる",
+    "空き",
+    "会議",
+    "ミーティング",
+    "mtg",
+    "MTG",
+)
+
 SHORT_FAST_LIMIT = 18
 DEEP_LENGTH_THRESHOLD = 30
 
@@ -38,3 +58,8 @@ def should_use_deep_memory(text: str) -> bool:
 def has_deep_memory_cue(text: str) -> bool:
     normalized = text.strip()
     return any(cue in normalized for cue in DEEP_MEMORY_CUES)
+
+
+def has_calendar_cue(text: str) -> bool:
+    normalized = text.strip()
+    return any(cue in normalized for cue in CALENDAR_CUES)

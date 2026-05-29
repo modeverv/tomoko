@@ -1,3 +1,43 @@
+## 2026-05-30 セッション5
+
+### やること（開始時に書く）
+- schedule / calendar 系の短い発話を deep context に入れるため、memory cue とは別に calendar cue を追加する
+- calendar cue で読んだ予定を、同一会話 session 内で carryover される long-term context に変換する
+- `TomoroSession` の final owner / audio hot path / reply routing / DB write ordering / TTS playback timing は変更しない
+
+### やったこと
+- `CALENDAR_CUES` / `has_calendar_cue()` を追加し、予定・スケジュール・今日・明日・何時などの発話で deep context を読むようにした
+- calendar cue は memory cue とは分け、`should_use_deep_memory()` の意味を過去会話 memory cue のまま維持した
+- `TomokoContextSnapshot.calendar_events` を `MemoryHit` に変換する helper を追加し、同一会話 session 内の follow-up で long-term context として carryover されるようにした
+- calendar 由来の long-term context は prompt 表示上 `参照情報` とし、過去会話と同じ `長期コンテキスト` ブロックで扱うようにした
+
+### 変更していないもの
+- calendar source of truth は `calendar_events` DB のまま
+- 会話 hot path での外部 Google Calendar / iCal fetch
+- ContextSnapshotBuilder の副作用
+- audio hot path
+- reply routing
+- DB write ordering
+- conversation lifecycle
+- TTS / audio chunk / playback timing
+- `server/session/` package split
+
+### 検証
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_phase8_memory.py tests/unit/test_session_memory_helpers.py tests/unit/test_phase88_context_snapshot.py -q`
+  - 35 passed
+- thinking prompt unit: `.venv/bin/python -m pytest -m unit tests/unit/test_phase4_thinking.py -q`
+  - 11 passed
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 441 passed, 17 deselected
+- ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- git diff --check: `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- 実ブラウザ会話で「今日の予定ある？」から短い follow-up へ calendar long-term context が効くか確認する
+- 必要なら calendar context の window / limit が過去予定で埋まらないように調整する
+
 ## 2026-05-30 セッション4
 
 ### やること（開始時に書く）

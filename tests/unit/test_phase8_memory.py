@@ -9,7 +9,7 @@ import pytest
 from server.gateway.thinking.base import ThinkingMode
 from server.gateway.thinking.deep import ThinkDeepMode
 from server.gateway.thinking.fast import ThinkFastMode
-from server.gateway.thinking.selector import should_use_deep_memory
+from server.gateway.thinking.selector import has_calendar_cue, should_use_deep_memory
 from server.session import TomoroSession
 from server.shared.inference.backends.base import InferenceBackend
 from server.shared.memory import NullConversationMemoryStore, _to_vector_literal
@@ -166,6 +166,13 @@ def test_deep_memory_selector_keeps_short_utterances_fast() -> None:
 
 
 @pytest.mark.unit
+def test_calendar_cue_is_separate_from_deep_memory_cue() -> None:
+    assert has_calendar_cue("今日の予定ある？") is True
+    assert has_calendar_cue("明日のスケジュール教えて") is True
+    assert should_use_deep_memory("今日の予定ある？") is False
+
+
+@pytest.mark.unit
 async def test_think_fast_includes_carried_long_term_memory_in_system_prompt(
     tmp_path,
 ) -> None:
@@ -205,7 +212,7 @@ async def test_think_fast_includes_carried_long_term_memory_in_system_prompt(
         ThinkingEvent(type="done", value=""),
     ]
     assert backend.system_prompt is not None
-    assert "長期記憶" in backend.system_prompt
+    assert "長期コンテキスト" in backend.system_prompt
     assert "生成AIと著作権の関係" in backend.system_prompt
     assert backend.messages == [{"role": "user", "content": "詳しくはどんな話やったっけ"}]
 
@@ -272,7 +279,7 @@ async def test_think_deep_includes_long_term_memory_in_system_prompt(tmp_path) -
         ThinkingEvent(type="done", value=""),
     ]
     assert backend.system_prompt is not None
-    assert "長期記憶" in backend.system_prompt
+    assert "長期コンテキスト" in backend.system_prompt
     assert "金曜にスパイスカレーを作った" in backend.system_prompt
     assert backend.messages == [{"role": "user", "content": "この前のカレーの続きだけど"}]
 

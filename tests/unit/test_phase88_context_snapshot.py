@@ -837,6 +837,66 @@ async def test_tomoro_session_carries_deep_memory_into_short_followup() -> None:
 
 
 @pytest.mark.unit
+async def test_tomoro_session_carries_calendar_context_into_short_followup() -> None:
+    calendar_store = InMemoryCalendarEventStore()
+    await calendar_store.replace_source_events(
+        source_id="gcal",
+        events=[_calendar_event("家族の予定")],
+    )
+    mode = RecordingThinkingMode()
+    session = TomoroSession(
+        vad_processor=FakeVADProcessor(),  # type: ignore[arg-type]
+        send_event=lambda event: None,
+        router=FakeRouter(),  # type: ignore[arg-type]
+        thinking_mode=mode,
+        context_snapshot_builder=ContextSnapshotBuilder(
+            conversation_log_reader=InMemoryConversationReader(),
+            calendar_store=calendar_store,
+        ),
+    )
+    session.active_conversation_session_id = uuid4()
+
+    await session._reply_to(
+        Transcript(
+            text="今日の予定ある？",
+            device_id="local",
+            speaker=None,
+            audio_level_db=-20.0,
+            recorded_at=datetime(2026, 5, 30, 0, 0, tzinfo=UTC),
+            is_final=True,
+        )
+    )
+    await session._wait_for_reply_task()
+
+    await session._reply_to(
+        Transcript(
+            text="それ詳しく",
+            device_id="local",
+            speaker=None,
+            audio_level_db=-20.0,
+            recorded_at=datetime(2026, 5, 30, 0, 1, tzinfo=UTC),
+            is_final=True,
+        )
+    )
+    await session._wait_for_reply_task()
+
+    assert len(mode.inputs) == 2
+    first_input = mode.inputs[0]
+    assert first_input.context_snapshot is not None
+    assert first_input.context_snapshot.depth == "deep"
+    assert [event.summary for event in first_input.context_snapshot.calendar_events] == [
+        "家族の予定"
+    ]
+
+    followup_input = mode.inputs[1]
+    assert followup_input.context_snapshot is not None
+    assert followup_input.context_snapshot.depth == "fast"
+    assert [hit.text for hit in followup_input.long_term_memory] == [
+        "カレンダー予定: 2026-05-30 13:00-14:00: 家族の予定 @ Kitchen"
+    ]
+
+
+@pytest.mark.unit
 async def test_tomoro_session_deduplicates_carryover_against_fresh_retrieval() -> None:
     mode = RecordingThinkingMode()
     session = TomoroSession(

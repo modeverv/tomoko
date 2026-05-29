@@ -6,6 +6,21 @@ Tomoko 音声対話システムの段階的実装計画。
 
 ---
 
+## 2026-05-30 Calendar cue long-term context
+
+calendar cue を過去会話 memory cue と分けて扱い、予定・スケジュール系の短い発話から
+calendar context を deep depth で読み込めるようにする。
+さらに、そこで読んだ予定を同一会話 session 内の follow-up でも参照できる long-term context として carryover する。
+
+### 完了条件
+
+- [x] `has_calendar_cue()` を追加し、`should_use_deep_memory()` の過去会話 cue と分離する
+- [x] calendar cue で `TomoroSession` が `deep` context を読む
+- [x] `TomokoContextSnapshot.calendar_events` を session 内 carryover 用の long-term context に変換する
+- [x] calendar 由来 context は prompt 上で参照情報として表示する
+- [x] focused unit / full unit / ruff / diff check が通る
+- [x] git commit まで完了する
+
 ## マイルストーン一覧
 
 | マイルストーン | 内容 | 目安 |

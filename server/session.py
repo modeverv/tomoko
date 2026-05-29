@@ -35,7 +35,11 @@ from server.gateway.stop_intent import (
     should_record_stop_intent_candidate,
 )
 from server.gateway.thinking.base import ThinkingMode
-from server.gateway.thinking.selector import has_deep_memory_cue, should_use_deep_memory
+from server.gateway.thinking.selector import (
+    has_calendar_cue,
+    has_deep_memory_cue,
+    should_use_deep_memory,
+)
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.gateway.turn_taking.judge import RuleFirstTurnTakingJudge, TurnTakingJudge
 from server.session_candidate_policy_helpers import (
@@ -49,7 +53,10 @@ from server.session_carryover import (
 )
 from server.session_key_helpers import candidate_request_id
 from server.session_latency import LatencyProbeState, elapsed_ms
-from server.session_memory_helpers import context_snapshot_long_term_memory
+from server.session_memory_helpers import (
+    context_snapshot_calendar_memory,
+    context_snapshot_long_term_memory,
+)
 from server.session_payloads import (
     json_safe_payload,
     optional_float_payload,
@@ -1414,7 +1421,12 @@ class TomoroSession:
         )
         thinking_mode = self.thinking_mode
         explicit_memory_cue = has_deep_memory_cue(transcript.text)
-        depth = "deep" if should_use_deep_memory(transcript.text) else "fast"
+        calendar_cue = has_calendar_cue(transcript.text)
+        depth = (
+            "deep"
+            if should_use_deep_memory(transcript.text) or calendar_cue
+            else "fast"
+        )
         context_snapshot = await self._build_context_snapshot(
             transcript,
             depth=depth,
@@ -1433,9 +1445,18 @@ class TomoroSession:
             context_snapshot.recent_turns
         )
         fresh_long_term_memory = context_snapshot_long_term_memory(context_snapshot)
+        fresh_calendar_memory = context_snapshot_calendar_memory(context_snapshot)
         long_term_memory = self._merge_carried_long_term_memory(fresh_long_term_memory)
         if fresh_long_term_memory:
             self._remember_retrieved_context(fresh_long_term_memory)
+        if fresh_calendar_memory:
+            self._remember_retrieved_context(fresh_calendar_memory)
+            logger.info(
+                "TomoroSession calendar context carried count=%s cue=%s text=%r",
+                len(fresh_calendar_memory),
+                calendar_cue,
+                transcript.text,
+            )
         if self.deep_thinking_mode is not None and depth == "deep" and long_term_memory:
             thinking_mode = self.deep_thinking_mode
             logger.info(

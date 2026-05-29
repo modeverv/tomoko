@@ -6,10 +6,13 @@ from uuid import UUID
 import pytest
 
 from server.session_memory_helpers import (
+    calendar_event_to_memory,
+    context_snapshot_calendar_memory,
     context_snapshot_long_term_memory,
     session_summary_hit_to_memory,
 )
 from server.shared.models import (
+    CalendarEvent,
     ContextBuildTrace,
     MemoryHit,
     SessionSummaryHit,
@@ -31,6 +34,7 @@ def _context_snapshot(
     *,
     session_summaries: list[SessionSummaryHit] | None = None,
     memory_hits: list[MemoryHit] | None = None,
+    calendar_events: list[CalendarEvent] | None = None,
 ) -> TomokoContextSnapshot:
     return TomokoContextSnapshot(
         depth="fast",
@@ -42,6 +46,7 @@ def _context_snapshot(
         token_budget_hint=0,
         build_elapsed_ms=0.0,
         source_counts={},
+        calendar_events=calendar_events or [],
         trace=ContextBuildTrace(
             budget_ms=0,
             elapsed_ms=0.0,
@@ -63,6 +68,23 @@ def _memory_hit(text: str) -> MemoryHit:
         timestamp=datetime(2026, 5, 29, 10, 0, tzinfo=UTC),
         similarity=0.7,
         source_id=f"turn:{text}",
+    )
+
+
+def _calendar_event(
+    summary: str,
+    *,
+    status: str = "confirmed",
+) -> CalendarEvent:
+    return CalendarEvent(
+        source_id="gcal",
+        uid=f"{summary}@example.com",
+        summary=summary,
+        start_time=datetime(2026, 5, 30, 4, 0, tzinfo=UTC),
+        end_time=datetime(2026, 5, 30, 5, 0, tzinfo=UTC),
+        all_day=False,
+        location="Kitchen",
+        status=status,
     )
 
 
@@ -116,3 +138,32 @@ def test_context_snapshot_long_term_memory_keeps_session_summaries_first() -> No
 @pytest.mark.unit
 def test_context_snapshot_long_term_memory_returns_empty_when_sources_are_empty() -> None:
     assert context_snapshot_long_term_memory(_context_snapshot()) == []
+
+
+@pytest.mark.unit
+def test_calendar_event_to_memory_preserves_reference_payload_shape() -> None:
+    memory = calendar_event_to_memory(_calendar_event("家族の予定"))
+
+    assert memory.speaker == "tomoko"
+    assert memory.text == "カレンダー予定: 2026-05-30 13:00-14:00: 家族の予定 @ Kitchen"
+    assert memory.timestamp == datetime(2026, 5, 30, 4, 0, tzinfo=UTC)
+    assert memory.similarity == 1.0
+    assert memory.source_id == (
+        "calendar:gcal:家族の予定@example.com:2026-05-30T04:00:00+00:00"
+    )
+
+
+@pytest.mark.unit
+def test_context_snapshot_calendar_memory_skips_cancelled_events() -> None:
+    memories = context_snapshot_calendar_memory(
+        _context_snapshot(
+            calendar_events=[
+                _calendar_event("家族の予定"),
+                _calendar_event("キャンセルされた予定", status="cancelled"),
+            ]
+        )
+    )
+
+    assert [memory.text for memory in memories] == [
+        "カレンダー予定: 2026-05-30 13:00-14:00: 家族の予定 @ Kitchen"
+    ]
