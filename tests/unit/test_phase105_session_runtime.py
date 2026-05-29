@@ -129,9 +129,22 @@ async def test_candidate_fetch_command_carries_request_id_for_stale_results() ->
     first = await session.post_event(SessionEvent(type="idle_timer_elapsed"))
     second = await session.post_event(SessionEvent(type="idle_timer_elapsed"))
 
+    assert first.commands[0].payload["request_id"] == "initiative-1"
+    assert second.commands[0].payload["request_id"] == "initiative-2"
     assert first.commands[0].payload["request_id"] != second.commands[0].payload[
         "request_id"
     ]
+
+
+@pytest.mark.unit
+async def test_arrival_candidate_fetch_command_carries_request_id_format() -> None:
+    session = _session()
+
+    result = await session.post_event(
+        SessionEvent(type="session_started", payload={"device_id": "desk"})
+    )
+
+    assert result.commands[0].payload["request_id"] == "arrival-1"
 
 
 @pytest.mark.unit

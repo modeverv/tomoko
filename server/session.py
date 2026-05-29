@@ -42,6 +42,7 @@ from server.session_carryover import (
     RetrievedContextCarryoverState,
     retrieved_context_key,
 )
+from server.session_key_helpers import candidate_request_id
 from server.session_latency import LatencyProbeState, elapsed_ms
 from server.session_memory_helpers import session_summary_hit_to_memory
 from server.session_payloads import (
@@ -657,7 +658,7 @@ class TomoroSession:
 
     def _new_candidate_request_id(self, kind: Literal["initiative", "arrival"]) -> str:
         self._candidate_request_sequence += 1
-        request_id = f"{kind}-{self._candidate_request_sequence}"
+        request_id = candidate_request_id(kind, self._candidate_request_sequence)
         if kind == "initiative":
             self._active_initiative_request_id = request_id
         else:

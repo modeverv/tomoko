@@ -6263,3 +6263,64 @@ session summary の取得件数、取得タイミング、ranking、prompt forma
 - helper が `server/session_memory_helpers.py` に 1 個だけ抽出されている
 - `server/session.py` の差分は import と呼び出し置換に近い最小差分である
 - targeted test / full unit / ruff / git diff check が通っている
+
+### Phase 10.20.8: key generation helper audit and narrow extraction
+
+この Phase では `server/session.py` に残っている key generation 系の helper / inline expression だけを対象にする。
+closed-loop / OutputDemand / Watcher / dispatcher / effects / event_runner / maps / `server/session/` package split は再開しない。
+id の意味、生成タイミング、ordering、stale 判定、DB 保存順序、reply lifecycle は変更しない。
+
+#### read-only audit
+
+| helper / inline expression 名 | 現在の場所 | 生成している key / id | pure か stateful か | ordering / lifecycle / stale 判定への関与 | 危険度 | 抽出する / しない理由 |
+|---|---|---|---|---|---|---|
+| `_new_candidate_request_id()` | `server/session.py` `TomoroSession` method | initiative / arrival candidate fetch の `request_id` | stateful。sequence increment と active request id 更新を行う | candidate stale result discard に直接関与 | 高 | method 全体は抽出しない。active id 更新と stale 判定 policy に触れるため |
+| `f"{kind}-{self._candidate_request_sequence}"` | `_new_candidate_request_id()` 内 inline expression | `initiative-1` / `arrival-2` 形式の request id string | pure formatter としては引数 `kind` / `sequence` のみ | 生成値は stale 判定に使われるが、sequence 更新と active id 更新を `TomoroSession` に残せば ordering は変わらない | 低 | 今回抽出する候補。文字列形式だけを `candidate_request_id(kind, sequence)` に切り出し、生成タイミングと state mutation は残す |
+| `_is_stale_candidate_result()` | `server/session.py` `TomoroSession` method | 生成ではなく active request id と incoming request id の照合 | stateful read | stale result discard policy そのもの | 高 | 抽出しない。candidate gate / stale discard policy に近い |
+| `_retrieved_context_key()` | `server/session.py` module private wrapper | `MemoryHit` carryover key | pure wrapper | memory carryover dedup key に関与するが実体は `server/session_carryover.py` に抽出済み | 低 | 抽出しない。既に `retrieved_context_key()` が narrow module にあり、今回は key generation の新規 extraction 対象として扱わない |
+| `retrieved_context_key()` | `server/session_carryover.py` | `source_id` 優先、fallback は `speaker:timestamp:digest` | pure | retrieved context carryover dedup / eviction に関与 | 対象外 | 既に Phase 10.20.5 で抽出済み。今回 `server/session.py` から追加移動しない |
+| `session_summary_hit_to_memory()` 内 `source_id=f"session_summary:{hit.session_id}"` | `server/session_memory_helpers.py` | session summary memory `source_id` | pure | memory retrieval prompt payload の source 表現に関与 | 対象外 | Phase 10.20.7a で抽出済み。今回の `server/session.py` key audit 対象外 |
+| `active_conversation_session_id` / conversation session id | `_ensure_conversation_session()` / store | conversation session UUID | I/O + stateful | conversation lifecycle / DB write ordering に直接関与 | 高 | 抽出しない。lifecycle ownership を変える可能性がある |
+| turn / chunk / playback telemetry id | audio turns / telemetry handling | `turn_id` / `chunk_id` | stateful | audio playback ordering / telemetry correlation に関与 | 高 | 抽出しない。audio hot path と playback telemetry ordering に近い |
+| `_context_build_id` | runtime snapshot | context build correlation id | stateful | ContextSnapshotBuilder / stale result に近い | 高 | 抽出しない。memory retrieval / degraded context / prompt quality に近い |
+
+#### 今回抽出する候補
+
+- [ ] `candidate_request_id(kind, sequence)` を `server/session_key_helpers.py` に 1 個だけ抽出する
+  - 抽出するのは文字列 formatter のみ
+  - `_candidate_request_sequence += 1`、`_active_initiative_request_id` / `_active_arrival_request_id` 更新、stale 判定は `TomoroSession` に残す
+  - characterization test では `initiative-1`、`arrival-2` の形式と既存 session path から返る値を固定する
+
+#### 今回変更しないもの
+
+- `_new_candidate_request_id()` の生成タイミング
+- candidate request sequence の increment timing
+- active request id の保持先
+- `_is_stale_candidate_result()` の判定
+- candidate final gate
+- conversation session lifecycle
+- audio hot path / playback telemetry ordering
+- reply routing / reply orchestration / LLM-TTS ordering
+- DB write ordering
+- memory retrieval policy / ContextSnapshotBuilder / prompt format
+- OutputDemand / Watcher / dispatcher / effects / event_runner / maps
+
+#### 実装結果
+
+- `candidate_request_id(kind, sequence)` を `server/session_key_helpers.py` に 1 個だけ抽出した
+- `server/session.py` は `candidate_request_id` import と `_new_candidate_request_id()` 内の呼び出し置換だけにした
+- `_candidate_request_sequence += 1`、active request id 更新、`_is_stale_candidate_result()`、candidate final gate は `TomoroSession` に残した
+- characterization test では pure helper の `initiative-1` / `arrival-2` と、既存 session path の `initiative-1` / `initiative-2` / `arrival-1` を固定した
+
+#### 検証結果
+
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase105_session_runtime.py -q`
+  - 14 passed（抽出前 characterization）
+- `.venv/bin/python -m pytest -m unit tests/unit/test_session_key_helpers.py tests/unit/test_phase105_session_runtime.py -q`
+  - 15 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 399 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
