@@ -49,7 +49,7 @@ from server.session_carryover import (
 )
 from server.session_key_helpers import candidate_request_id
 from server.session_latency import LatencyProbeState, elapsed_ms
-from server.session_memory_helpers import session_summary_hit_to_memory
+from server.session_memory_helpers import context_snapshot_long_term_memory
 from server.session_payloads import (
     json_safe_payload,
     optional_float_payload,
@@ -199,6 +199,8 @@ class TomoroSession:
         self._last_precomputed_reply_at: datetime | None = None
         self._retrieved_context_carryover = RetrievedContextCarryoverState()
 
+    # Audio input and state snapshots.
+
     @property
     def _playback_echo_grace_ms(self) -> int:
         return self.audio_turns.playback_echo_grace_ms
@@ -234,6 +236,8 @@ class TomoroSession:
             last_start_reason=self._last_start_reason,
             output_state=self._connected_output_state,
         )
+
+    # Event queue and reducers.
 
     async def post_event(self, event: SessionEvent) -> TransitionResult:
         """Queue a session event and apply queued events in TomoroSession order."""
@@ -805,6 +809,8 @@ class TomoroSession:
             commands=commands or [],
         )
 
+    # Transcript processing and turn-taking control.
+
     async def _handle_finished_speech(self, segment: SpeechSegment) -> None:
         if self.transcriber is None:
             return
@@ -1297,6 +1303,8 @@ class TomoroSession:
         if delay is not None:
             await asyncio.sleep(delay)
 
+    # Memory carryover and reply context.
+
     def _merge_carried_long_term_memory(
         self,
         fresh_memory: list[MemoryHit],
@@ -1369,6 +1377,8 @@ class TomoroSession:
                 count,
             )
 
+    # Reply generation and output.
+
     async def _reply_to(self, transcript: Transcript) -> None:
         if self.router is None or self.thinking_mode is None:
             return
@@ -1391,11 +1401,7 @@ class TomoroSession:
         recent_turns = self._recent_turns_with_precomputed_topic(
             context_snapshot.recent_turns
         )
-        fresh_long_term_memory = [
-            session_summary_hit_to_memory(hit)
-            for hit in context_snapshot.session_summaries
-        ]
-        fresh_long_term_memory.extend(context_snapshot.memory_hits)
+        fresh_long_term_memory = context_snapshot_long_term_memory(context_snapshot)
         long_term_memory = self._merge_carried_long_term_memory(fresh_long_term_memory)
         if fresh_long_term_memory:
             self._remember_retrieved_context(fresh_long_term_memory)
@@ -1486,6 +1492,8 @@ class TomoroSession:
                 self._tts_worker_task = None
             if self._tts_queue is tts_queue:
                 self._tts_queue = None
+
+    # Playback, lifecycle, and precomputed speech entrypoints.
 
     async def handle_playback_telemetry(self, telemetry: PlaybackTelemetry) -> None:
         await self.post_event(
@@ -1649,6 +1657,8 @@ class TomoroSession:
             and self._attention_idle_ms >= self._cooldown_timeout_ms
         ):
             await self._transition_attention("ambient")
+
+    # Client output, reply tasks, and command execution.
 
     async def _send_event(self, event: dict[str, Any]) -> None:
         async with self._send_lock:
@@ -1901,6 +1911,8 @@ class TomoroSession:
                     else "observer"
                 ),
             )
+
+    # Barge-in, context building, and persistence helpers.
 
     def _classify_barge_in(self, transcript: Transcript):
         in_active_playback = self.audio_turns.is_client_playback_active()

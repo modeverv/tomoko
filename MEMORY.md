@@ -3171,3 +3171,21 @@ TomoroSession final gate として残す。
 `_new_candidate_request_id()` / `_is_stale_candidate_result()` も request sequence / active id /
 stale policy に近いため移動しない。
 arrival candidate behavior 分岐も `mark_arrival_used` と command ordering に近いため今回の対象外にする。
+
+### 確定した判断: Phase 10.20.13 は context snapshot の long-term memory 整形だけを抽出する
+2026-05-29 の Phase 10.20.13 では、context / memory 周辺のうち純粋な整形処理だけを
+`server/session_memory_helpers.py` に追加した。
+
+抽出対象は `context_snapshot_long_term_memory(snapshot)` だけである。
+これは `TomokoContextSnapshot.session_summaries` を既存の
+`session_summary_hit_to_memory()` で `MemoryHit` に変換し、
+その後ろに `TomokoContextSnapshot.memory_hits` を連結するだけにする。
+順序は session summary memory が先、turn-level memory hits が後である。
+
+`ContextSnapshotBuilder` の policy / DB read / timeout / degraded context、
+memory retrieval policy、prompt format、carryover merge / remember / evict / clear、
+reply orchestration、TTS / audio / WebSocket send は変更しない。
+
+`session.py` は method 並び替えをせず、section comment だけを追加する。
+大きな reorder は挙動差分が埋もれるため、closed-loop の読みやすさ改善は
+見出し追加までに限定する。

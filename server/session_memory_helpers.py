@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from server.shared.models import MemoryHit, SessionSummaryHit
+from server.shared.models import MemoryHit, SessionSummaryHit, TomokoContextSnapshot
 
 
 def session_summary_hit_to_memory(hit: SessionSummaryHit) -> MemoryHit:
@@ -11,3 +11,14 @@ def session_summary_hit_to_memory(hit: SessionSummaryHit) -> MemoryHit:
         similarity=hit.similarity,
         source_id=f"session_summary:{hit.session_id}",
     )
+
+
+def context_snapshot_long_term_memory(
+    snapshot: TomokoContextSnapshot,
+) -> list[MemoryHit]:
+    memories = [
+        session_summary_hit_to_memory(hit)
+        for hit in snapshot.session_summaries
+    ]
+    memories.extend(snapshot.memory_hits)
+    return memories

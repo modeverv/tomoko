@@ -6631,3 +6631,58 @@ Tomoko 発話ログとして扱う。
 - helper tests が通る
 - candidate session contract tests が通る
 - full unit / ruff / diff check が通る
+
+### Phase 10.20.13: context/memory pure formatting helper and session.py section comments
+
+この Phase では、context / memory 周辺の純粋な整形処理だけを扱う。
+`ContextSnapshotBuilder` の読み取り方、retrieval policy、prompt format、DB read、
+timeout / degraded context、carryover state は変更しない。
+
+#### 取り組めそう
+
+- context snapshot の long-term memory 整形
+  - `TomokoContextSnapshot.session_summaries` を `MemoryHit` に変換し、
+    `TomokoContextSnapshot.memory_hits` と連結する処理を pure helper に切り出す
+  - 既存順序は session summary memory を先、turn-level memory hits を後にする
+  - `session_summary_hit_to_memory()` の既存変換を再利用する
+- `session.py` の section comment 追加
+  - method の並び替えはせず、読み方のための見出しだけを追加する
+  - runtime behavior、import path、public API、test expectation は変えない
+
+#### 取り組めなさそう
+
+- `_build_context_snapshot()` の policy 調整や builder 構築
+  - explicit memory cue の `max_build_ms=300`、DB read、timeout 境界に近いため移動しない
+- memory retrieval / scoring / quota / ContextSnapshotBuilder 内部
+  - retrieval quality と latency に直結するため今回の pure formatting 対象外
+- `server/gateway/thinking/memory_prompt.py` の prompt wording
+  - fast follow-up memory regression の本丸だったため、軽い整理では触らない
+- `session.py` の大きな並び替え
+  - diff が大きくなり、挙動差分が埋もれるため今回は section comment に限定する
+
+#### 変更対象
+
+- `server/session_memory_helpers.py`
+  - `context_snapshot_long_term_memory(snapshot)`
+- `server/session.py`
+  - `_reply_to()` 内の long-term memory 整形を helper 呼び出しへ置換する
+  - section comment を追加する
+- `tests/unit/test_session_memory_helpers.py`
+  - summary-first merge と empty case の characterization test を追加する
+
+#### 今回触らないもの
+
+- `ContextSnapshotBuilder`
+- memory retrieval policy / prompt format
+- carryover merge / remember / evict / clear semantics
+- DB read/write
+- reply orchestration / TTS / audio / WebSocket send
+- `server/session/` package split
+- method 並び替え
+
+#### 完了条件
+
+- helper tests が通る
+- context snapshot / phase8 memory 周辺 tests が通る
+- full unit / ruff / diff check が通る
+- git commit まで完了する

@@ -1,3 +1,36 @@
+## 2026-05-29 セッション17
+
+### やること（開始時に書く）
+- Phase 10.20.13 として、context / memory 周辺の純粋な整形処理だけを小さく抽出する
+- 対象は `TomokoContextSnapshot.session_summaries` を `MemoryHit` に変換して `memory_hits` と連結する helper に限定する
+- `ContextSnapshotBuilder` の policy / DB read / timeout / retrieval / prompt formatting は変更しない
+- `session.py` は並び替えず、section comment だけを追加して読みやすさを改善する
+- PLAN.md に取り組めそう / 取り組めなさそうの分類を append-only で追記する
+- full unit / ruff / diff check を通してから git commit する
+
+### やったこと
+- PLAN.md に Phase 10.20.13 として、取り組めそう / 取り組めなさそうの分類を append-only で追記した
+- `tests/unit/test_session_memory_helpers.py` に `context_snapshot_long_term_memory()` の characterization test を追加した
+- `server/session_memory_helpers.py` に `context_snapshot_long_term_memory(snapshot)` を追加した
+- `server/session.py` の `_reply_to()` 内で、session summaries と memory hits の long-term memory 整形だけを helper 呼び出しへ置換した
+- `session.py` に section comment を追加したが、method 並び替えはしていない
+- `ContextSnapshotBuilder`、memory retrieval policy、prompt format、carryover state、DB read/write、reply orchestration、TTS / audio / WebSocket send は変更していない
+- MEMORY.md に Phase 10.20.13 の境界判断を追記した
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_session_memory_helpers.py -q`
+  - 4 passed
+- `.venv/bin/python -m pytest -m unit tests/unit/test_phase8_memory.py tests/unit/test_phase88_context_snapshot.py -q`
+  - 25 passed
+- `.venv/bin/python -m ruff check server/session.py server/session_memory_helpers.py tests/unit/test_session_memory_helpers.py`
+  - pass
+- `.venv/bin/python -m pytest -m unit`
+  - 408 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+
 ## 2026-05-29 セッション16
 
 ### やること（開始時に書く）
