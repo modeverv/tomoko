@@ -995,7 +995,7 @@ class MemoryHit:
 
 @dataclass(frozen=True)
 class ShortMemoryNote:
-    kind: Literal["working_context", "short_intent", "next_trial"]
+    kind: Literal["working_context", "short_intent", "next_trial", "verbatim"]
     text: str
     confidence: float
     importance: float

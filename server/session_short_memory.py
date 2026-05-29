@@ -8,7 +8,8 @@ from uuid import uuid4
 from server.shared.models import ShortMemoryNote, ShortMemoryProposalResult
 
 DEFAULT_SHORT_MEMORY_MAX_NOTES = 5
-DEFAULT_SHORT_MEMORY_TTL_TURNS = 4
+DEFAULT_SHORT_MEMORY_TTL_TURNS = 5
+ShortMemoryKind = Literal["working_context", "short_intent", "next_trial", "verbatim"]
 
 _WORKING_CONTEXT_CUES = (
     "したい",
@@ -21,11 +22,17 @@ _WORKING_CONTEXT_CUES = (
     "まず",
     "次",
     "あとで",
+    "タスク",
+    "終わった",
+    "完了",
+    "追加",
     "hot path",
     "DB",
     "UI",
     "memory",
     "メモ",
+    "記憶",
+    "覚えて",
     "永続化",
 )
 
@@ -45,6 +52,12 @@ class ShortMemoryBuffer:
         stored = note
         if stored.note_id is None:
             stored = _replace_note_id(stored, str(uuid4()))
+        for index, existing in enumerate(self._notes):
+            if _dedupe_key(existing) != _dedupe_key(stored):
+                continue
+            merged = _merge_note(existing, stored)
+            self._notes[index] = merged
+            return merged
         self._notes.append(stored)
         if len(self._notes) > self.max_notes:
             self._notes = self._notes[-self.max_notes :]
@@ -94,11 +107,18 @@ def format_short_memory_prompt(notes: list[ShortMemoryNote]) -> str:
     if not notes:
         return ""
 
-    lines = "\n".join(f"- {note.text}" for note in notes)
+    unique_notes: dict[tuple[str, str], ShortMemoryNote] = {}
+    for note in notes:
+        unique_notes[_dedupe_key(note)] = note
+    lines = "\n".join(_format_note_for_prompt(note) for note in unique_notes.values())
     return (
         "SHORT WORKING MEMORY\n"
         "These are recent working notes extracted from previous turns.\n"
         "They are not permanent facts. Use them only when relevant.\n\n"
+        "When a note says Remember verbatim, reproduce that text exactly if the "
+        "user asks for it.\n\n"
+        "When the notes describe task lists, completed tasks, and added tasks, "
+        "infer the remaining tasks from those recent notes when the user asks.\n\n"
         f"{lines}"
     )
 
@@ -153,6 +173,22 @@ def _replace_note_id(note: ShortMemoryNote, note_id: str) -> ShortMemoryNote:
     )
 
 
+def _merge_note(existing: ShortMemoryNote, incoming: ShortMemoryNote) -> ShortMemoryNote:
+    return ShortMemoryNote(
+        kind=existing.kind,
+        text=existing.text,
+        confidence=max(existing.confidence, incoming.confidence),
+        importance=max(existing.importance, incoming.importance),
+        created_turn=max(existing.created_turn, incoming.created_turn),
+        expires_after_turns=max(
+            existing.expires_after_turns,
+            incoming.expires_after_turns,
+        ),
+        created_at=incoming.created_at,
+        note_id=existing.note_id,
+    )
+
+
 def _remaining_turns(note: ShortMemoryNote, *, current_turn: int) -> int:
     used_turns = max(0, current_turn - note.created_turn)
     return max(0, note.expires_after_turns - used_turns)
@@ -170,11 +206,23 @@ def _should_capture(text: str) -> bool:
 
 def _classify_note_kind(
     text: str,
-) -> Literal["working_context", "short_intent", "next_trial"]:
+) -> ShortMemoryKind:
     if "DB" in text or "永続化" in text or "memory" in text or "メモ" in text:
         return "working_context"
+    if "覚えて" in text or "記憶" in text:
+        return "verbatim"
     if "次" in text or "あとで" in text or "試したい" in text:
         return "next_trial"
     if "したい" in text or "してほしい" in text or "優先" in text:
         return "short_intent"
     return "working_context"
+
+
+def _dedupe_key(note: ShortMemoryNote) -> tuple[str, str]:
+    return (note.kind, _normalize_text(note.text).casefold())
+
+
+def _format_note_for_prompt(note: ShortMemoryNote) -> str:
+    if note.kind == "verbatim":
+        return f"- Remember verbatim: {note.text}"
+    return f"- {note.text}"

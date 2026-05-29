@@ -103,6 +103,19 @@ method の大規模 reorder、package split、DB write SessionCommand 化、
 audio hot path / TTS queue / LLM-TTS ordering / playback timing の再設計は、
 明示 Phase なしに進めない。
 
+### short memory extraction は remember_items 抽出に限定する
+2026-05-29 の short memory 実験では、E2B extraction に自然文要約まで任せると
+`CD E 5つ覚えた` のような誤った正規化が起きた。
+
+今後の short memory extraction LLM の責務は、`remember_items` 配列として
+「次の数ターンで覚えるべき対象」だけを抽出することに限定する。
+明示的な「ABCを覚えて」のような発話は `mode="verbatim"` として対象文字列だけを返させる。
+言い換え、個数補完、意味づけ、Tomoko 返答からの創作は行わせない。
+
+重複除去、TTL / max 件数、prompt 展開文の生成は Tomoko 側の deterministic code が担当する。
+会話 prompt では `verbatim` note を `Remember verbatim: ...` として展開し、
+LLM extraction 側には文章化の責務を持たせない。
+
 ---
 
 ## 未解決の疑問（人間への確認待ち）
@@ -3253,3 +3266,53 @@ STT partial/final、reply stream、ContextSnapshot summary、short memory snapsh
 明らかな挨拶・聞こえる確認・短すぎる発話は heuristic prefilter で LLM に投げず skip し、LLM structured output が失敗した場合は heuristic fallback に戻す。
 LLM result は `decision=store|skip`、`reason`、`proposals`、`raw_text` を持ち、保存する場合だけ `ShortMemoryBuffer` に揮発 note として追加する。
 DB 永続化、long-term memory 昇格、embedding、dedupe、tombstone、task scheduling は引き続き行わない。
+
+### 確定した判断: short memory LLM extraction 失敗時は raw fallback store しない
+2026-05-29 の実サーバー確認で、`gemma-4-e2b` の structured output が JSON parse に失敗した場合、
+heuristic fallback がユーザー発話全体を `verbatim` note として保存し、次ターン prompt に
+`123って言う数字を覚えてください` のような raw 指示文が載ることを確認した。
+
+これは「LLM は覚えるべき item だけを返し、プログラム側で merge / dedupe / prompt 展開する」という
+方針に反するため、LLM extraction backend がある場合の parse / backend failure では
+`source=heuristic_fallback` かつ `decision=skip` とし、raw 発話を保存しない。
+
+また conversation prompt で使う formatter は `server/gateway/thinking/short_memory_prompt.py` 側である。
+`server/session_short_memory.py` だけを更新しても実際の会話 prompt には反映されないため、
+gateway 側 formatter でも `verbatim` note を `Remember verbatim: ...` として展開し、重複を除去する。
+
+### 確定した判断: short memory extraction schema は text/mode だけを LLM に出させる
+2026-05-29 の LM Studio 実測では、`remember_items[].confidence` と
+`remember_items[].expires_after_turns` を required にした JSON schema は E2B / E4B / 26B のいずれでも
+途中で空白を吐き続けるなど不安定だった。
+一方、schema を `text` と `mode` だけに簡略化すると、E2B/E4B でも structured output が安定した。
+
+そのため short memory extraction は structured output を維持しつつ、LLM の責務を
+「覚えるべき item の text と mode だけを返す」ことに限定する。
+`confidence` はサーバー側で 0.85 に補完し、TTL は `ShortMemoryBuffer` の default を使う。
+merge / dedupe / prompt 展開も引き続きプログラム側で行う。
+
+また extraction input に Tomoko reply を含めると、recall 質問への回答から新規 memory を作る誤 store が起きた。
+そのため LLM extraction には latest user transcript だけを渡し、recall / answer request / hearing check は
+deterministic guard で LLM に渡す前に skip する。
+
+現行 config では memory extraction backend を `lmstudio_gemma4_e4b` にする。
+TomoroSession の音声なし simulation では、数字 `123` と作業文脈では short memory 有効時だけ回答できた。
+ただし英字 `ABC` は `Remember verbatim: ABC` が prompt に入っても 26B reply が空文字になったため、
+英字 verbatim 再現は追加調整が必要である。
+
+### 気づき: short memory hint だけでは task ledger としては不安定
+2026-05-29 の音声なし TomoroSession simulation で、口頭タスク更新シナリオを試した。
+シナリオは `ログ確認、UI確認、テスト実行` の 3 タスクを登録し、
+`ログ確認は終わった`、`UI確認も終わった`、`ブラウザ確認を追加して` と続け、
+最後に `今残っているタスクを短く教えて` と聞くもの。
+
+short memory cue に `タスク` / `終わった` / `完了` / `追加` を足し、
+TTL default を 5 turn にすると、初期リスト、完了2件、追加1件はすべて memory note として prompt に入った。
+しかし 26B の最終回答は `ブラウザ確認だけ` となり、未完了の `テスト実行` を落とした。
+途中 turn では `残るはテスト実行だけかな？` と言えていたため、複数の自然文 working_context note を
+prompt hint として渡すだけでは、task ledger の再構成が安定しない。
+
+この結果から、short memory は秘書感の hint には効くが、完了/追加/残タスクを正確に扱うには
+task-specific structured note か deterministic reducer が必要である。
+これは reminder / scheduler 実装ではなく、揮発 short memory 内の task-like working context 整形として
+別途小さく扱うのがよい。

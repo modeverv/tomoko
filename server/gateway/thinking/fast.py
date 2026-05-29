@@ -75,6 +75,16 @@ class ThinkFastMode(ThinkingMode):
                 ensure_ascii=False,
             ),
         )
+        logger.info(
+            "ThinkFastMode conversation_system_prompt backend=%s\n%s",
+            backend.name,
+            system_prompt,
+        )
+        logger.info(
+            "ThinkFastMode conversation_messages backend=%s payload=%s",
+            backend.name,
+            json.dumps(messages, ensure_ascii=False),
+        )
         header_buffer = ""
         header_parsed = False
         async for chunk in chat_stream_with_trace_role(
