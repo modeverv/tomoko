@@ -38,6 +38,7 @@ from server.gateway.thinking.base import ThinkingMode
 from server.gateway.thinking.selector import has_deep_memory_cue, should_use_deep_memory
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.gateway.turn_taking.judge import RuleFirstTurnTakingJudge, TurnTakingJudge
+from server.session_candidate_policy_helpers import candidate_policy_payload
 from server.session_carryover import (
     RetrievedContextCarryoverState,
     retrieved_context_key,
@@ -396,7 +397,7 @@ class TomoroSession:
                 payload={
                     "reason": "not_speakable",
                     "candidate_id": candidate.id,
-                    "policy": _candidate_policy_payload(event),
+                    "policy": candidate_policy_payload(event),
                     **self._candidate_reply_gate_payload(gate_reason),
                 },
             )
@@ -2180,13 +2181,6 @@ def _start_reason_from_participation_mode(mode: ParticipationMode) -> StartReaso
     if mode == "invited":
         return "followup"
     raise ValueError(f"participation mode does not start a reply: {mode}")
-
-
-def _candidate_policy_payload(event: SessionEvent) -> dict[str, Any] | None:
-    policy = event.payload.get("policy_decision")
-    if isinstance(policy, CandidateSpeakDecision):
-        return policy.to_json()
-    return None
 
 
 def _elapsed_ms(started_at: float | None) -> float:

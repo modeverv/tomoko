@@ -3093,3 +3093,18 @@ Phase 10.20.6 の `server/session_payloads.py`、Phase 10.20.7a の
 次に進む場合も、候補を別 Phase で 1 つに絞り、characterization test から始める。
 candidate gate、stale result discard、reply lifecycle、turn-taking、playback timing、
 memory retrieval policy、ContextSnapshotBuilder、prompt format、DB write ordering には踏み込まない。
+
+### 確定した判断: candidate policy helper extraction は payload shaping だけに限定する
+2026-05-29 の Phase 10.20.7 candidate policy helper extraction では、
+`_candidate_policy_payload()` だけを `server/session_candidate_policy_helpers.py` の
+`candidate_policy_payload(event)` に抽出した。
+
+この helper は `event.payload["policy_decision"]` が `CandidateSpeakDecision` の場合だけ
+`to_json()` を返し、それ以外は `None` を返す pure payload shaping である。
+`schema_version` / `decision` / `score` / `threshold` / `reason` / `signals` の JSON shape は維持する。
+
+candidate final gate ownership は移動しない。
+`_candidate_reply_gate_reason()`、`_candidate_reply_gate_payload()`、
+`_new_candidate_request_id()`、`_is_stale_candidate_result()` は `TomoroSession` に残す。
+candidate store mark、DB read/write、reply start、TTS / audio、WebSocket send、
+SessionCommand 追加、OutputDemand / Watcher、`server/session/` package split は行わない。

@@ -6384,3 +6384,51 @@ OutputDemand / Watcher、汎用 `helpers.py` / `utils.py` / `state.py` は作ら
 
 - docs-only のため unit / ruff は原則不要
 - `git diff --check` を実行する
+
+### Phase 10.20.7 candidate policy helper extraction
+
+この Phase では、Phase 10.20.9 で medium-risk とした `_candidate_policy_payload()` だけを、
+candidate policy payload 専用 helper として抽出する。
+candidate final gate ownership、stale 判定、playback / withdrawn / output target 判定は `TomoroSession` に残す。
+
+#### 抽出対象
+
+- `server/session_candidate_policy_helpers.py`
+  - `candidate_policy_payload(event)`
+- `server/session.py`
+  - `candidate_policy_payload` import
+  - `_reduce_initiative_candidate_loaded()` の `policy` payload 呼び出し置換
+  - private `_candidate_policy_payload()` の削除
+
+#### 固定する挙動
+
+- `event.payload["policy_decision"]` が `CandidateSpeakDecision` の場合だけ `to_json()` を返す
+- `CandidateSpeakDecision` ではない payload は `None` を返す
+- `schema_version` / `decision` / `score` / `threshold` / `reason` / `signals` の shape を変えない
+
+#### 今回触らないもの
+
+- `_candidate_reply_gate_reason()` / `_candidate_reply_gate_payload()`
+- `_new_candidate_request_id()` / `_is_stale_candidate_result()`
+- candidate store mark
+- DB read/write
+- reply start
+- TTS / audio
+- WebSocket send
+- SessionCommand 追加
+- OutputDemand / Watcher
+- final gate ownership の移動
+- `server/session/` package split
+
+#### 検証結果
+
+- `.venv/bin/python -m pytest -m unit tests/unit/test_session_candidate_policy_helpers.py -q`
+  - 2 passed（抽出前 characterization）
+- `.venv/bin/python -m pytest -m unit tests/unit/test_session_candidate_policy_helpers.py tests/unit/test_phase105_session_runtime.py tests/unit/test_phase10_session_contract.py -q`
+  - 29 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 401 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass

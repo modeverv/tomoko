@@ -88,6 +88,33 @@
 - `git diff --check`
   - pass
 
+## 2026-05-29 セッション13
+
+### やること（開始時に書く）
+- Phase 10.20.7 candidate policy helper extraction として、candidate policy 周辺の pure helper だけを抽出する
+- 対象は `CandidateSpeakDecision` 由来の payload / reason / metadata 整形に限定する
+- stale / playback / withdrawn / output target などの判定材料は final gate ownership を移さず、今回は読取 helper へ広げない
+- candidate store mark、DB read/write、reply start、TTS / audio、WebSocket send、SessionCommand 追加、OutputDemand / Watcher、`server/session/` package split は変更しない
+
+### やったこと
+- `_candidate_policy_payload()` の現状挙動を `tests/unit/test_session_candidate_policy_helpers.py` で characterization した
+- `CandidateSpeakDecision` の `schema_version` / `decision` / `score` / `threshold` / `reason` / `signals` JSON shape と、非 decision payload では `None` を返す挙動を固定した
+- `server/session_candidate_policy_helpers.py` を追加し、`candidate_policy_payload(event)` だけを抽出した
+- `server/session.py` は import と `_reduce_initiative_candidate_loaded()` の `policy` payload 呼び出し置換、private helper 削除だけに限定した
+- `_candidate_reply_gate_reason()` / `_candidate_reply_gate_payload()`、candidate request id、stale 判定、candidate store mark、DB read/write、reply start、TTS / audio、WebSocket send、SessionCommand、OutputDemand / Watcher、`server/session/` package split は変更していない
+
+### 検証
+- `.venv/bin/python -m pytest -m unit tests/unit/test_session_candidate_policy_helpers.py -q`
+  - 2 passed（抽出前 characterization）
+- `.venv/bin/python -m pytest -m unit tests/unit/test_session_candidate_policy_helpers.py tests/unit/test_phase105_session_runtime.py tests/unit/test_phase10_session_contract.py -q`
+  - 29 passed
+- `.venv/bin/python -m pytest -m unit`
+  - 401 passed, 17 deselected
+- `.venv/bin/python -m ruff check .`
+  - pass
+- `git diff --check`
+  - pass
+
 ## 2026-05-29 セッション10 末尾追記
 
 ### やったこと
