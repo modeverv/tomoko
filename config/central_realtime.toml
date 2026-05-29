@@ -14,7 +14,7 @@ conversation_backend = "lmstudio_gemma4_26b_a4b"
 conversation_fallback = "local_gemma4_e2b_mlx"
 session_summary_backend = "lmstudio_gemma4_26b_a4b"
 session_summary_fallback = "local_gemma4_e2b_mlx"
-memory_extraction_backend = "lmstudio_gemma4_e4b"
+memory_extraction_backend = "lmstudio_gemma4_31b"
 memory_extraction_fallback = "local_gemma4_e2b_mlx"
 candidate_gen_backend = "lmstudio_gemma4_26b_a4b"
 candidate_gen_fallback = "local_gemma4_e2b_mlx"
@@ -63,6 +63,13 @@ type = "lm_studio"
 url = "http://192.168.11.66:1234"
 model = "gemma-4-e4b-it-mlx"
 max_latency_ms = 800
+privacy_allowed = true
+
+[backends.lmstudio_gemma4_31b]
+type = "lm_studio"
+url = "http://192.168.11.66:1234"
+model = "gemma-4-31b-it-mlx"
+max_latency_ms = 60000
 privacy_allowed = true
 
 [backends.lmstudio_gemma4_26b_a4b]

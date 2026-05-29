@@ -18,7 +18,7 @@ def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation(
     assert config.node.role == "central_realtime"
     assert config.inference.conversation_backend == "lmstudio_gemma4_26b_a4b"
     assert config.inference.conversation_fallback == "local_gemma4_e2b_mlx"
-    assert config.inference.memory_extraction_backend == "lmstudio_gemma4_e4b"
+    assert config.inference.memory_extraction_backend == "lmstudio_gemma4_31b"
     assert config.inference.memory_extraction_fallback == "local_gemma4_e2b_mlx"
     assert config.audio.vad_silence_ms == 800
     assert config.inference.stt_backend == "local_apple_speech_ja"
@@ -38,6 +38,13 @@ def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation(
     assert e4b_backend.url == "http://192.168.11.66:1234"
     assert e4b_backend.model == "gemma-4-e4b-it-mlx"
     assert e4b_backend.privacy_allowed is True
+
+    memory_backend = config.backends["lmstudio_gemma4_31b"]
+    assert memory_backend.type == "lm_studio"
+    assert memory_backend.url == "http://192.168.11.66:1234"
+    assert memory_backend.model == "gemma-4-31b-it-mlx"
+    assert memory_backend.max_latency_ms == 60000
+    assert memory_backend.privacy_allowed is True
 
     lm_studio_backend = config.backends["lmstudio_gemma4_e2b"]
     assert lm_studio_backend.type == "lm_studio"
