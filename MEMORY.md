@@ -3035,3 +3035,22 @@ event_runner / maps、OutputDemand / Watcher は作らない。
 audio hot path、reply orchestration、reply task / TTS queue、`reply_done` routing、
 cancel / TTS finished new input 化、DB write ordering、conversation session lifecycle、
 memory retrieval policy、prompt format は変更しない。
+
+### 確定した判断: Phase 10.20.7a は session summary memory helper 1 個だけを抽出する
+2026-05-29 の Phase 10.20.7a では、Phase 10.20.7 の read-only audit で選定した
+`_session_summary_hit_to_memory()` だけを `server/session_memory_helpers.py` に抽出した。
+
+抽出後の public-ish helper 名は `session_summary_hit_to_memory()` とする。
+これは `SessionSummaryHit -> MemoryHit` の pure value conversion であり、I/O せず、
+DB / LLM / TTS / WebSocket send / audio hot path / task / queue に触らない。
+
+固定した変換は、`speaker="tomoko"`、`text="会話セッション要約: {summary_text}"`、
+`timestamp=ended_at or started_at`、`similarity=hit.similarity`、
+`emotion=None`、`source_id="session_summary:{session_id}"` である。
+
+この phase では memory retrieval policy、ContextSnapshotBuilder、prompt format、
+session summary の取得タイミング / 件数 / ranking、turn memory との優先順位、
+timeout / degraded context / fallback、reply orchestration、DB write ordering、
+conversation session lifecycle、candidate gate は変更しない。
+`server/session/` package、汎用 `state.py`、dispatcher / effects / event_runner / maps、
+OutputDemand / Watcher も作らない。

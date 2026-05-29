@@ -6155,3 +6155,111 @@ runtime 制御フロー、音声 hot path、reply orchestration、DB ordering、
 - `server/session.py` の制御フローは変わっていない
 - helper unit test、full unit、ruff、diff check が通っている
 - runtime code の意味は変わっていない
+
+### Phase 10.20.7: small helper candidate audit
+
+この Phase では `TomoroSession` 周辺に残っている small value object / key generation /
+JSON payload helper 候補を read-only で棚卸しする。
+runtime code、test code、import、routing、ordering は変更しない。
+
+#### すでに抽出済みのもの
+
+| module | 抽出済みの範囲 | 今回の扱い |
+|---|---|---|
+| `server/session_payloads.py` | `json_safe_payload()` / `json_safe_value()` / `optional_str_payload()` / `optional_int_payload()` / `optional_float_payload()` / `playback_payload()` / `playback_telemetry_from_event()` | pure payload helper として抽出済み。今回は追加変更しない |
+| `server/session_carryover.py` | `RetrievedContextCarryoverState` / `RetrievedContextCarryoverEntry` / `retrieved_context_key()` / merge / remember / evict / clear result DTO | carryover 専用 state/helper として抽出済み。memory retrieval policy、ContextSnapshotBuilder、prompt format へ広げない |
+
+#### 残候補の棚卸し
+
+| helper / object 名 | 現在の場所 | 責務 | pure か stateful か | I/O 有無 | 抽出先候補 | 危険度 | 今回選ぶ / 選ばない理由 |
+|---|---|---|---|---|---|---|---|
+| `_session_summary_hit_to_memory()` | `server/session.py` 末尾 | `SessionSummaryHit` を prompt 用 `MemoryHit` に変換する | pure | なし | `server/session_memory_payloads.py` または `server/session_payloads.py` から分離した dedicated module | 低〜中 | **次に実装してよい候補**。小さい value conversion で DB / LLM / TTS / WebSocket send に触れない。ただし memory prompt quality に見えるため、characterization test で `speaker` / text prefix / timestamp fallback / similarity / `source_id` を固定してから抽出する |
+| `_retrieved_context_key()` | `server/session.py` 末尾 | `server/session_carryover.py` の `retrieved_context_key()` への wrapper | pure | なし | 削除または `session_carryover.retrieved_context_key` 直参照 | 低 | すでに実体は抽出済みで、現状は残骸に近い。ただし「抽出」ではなく cleanup なので、次の dedicated extraction 候補にはしない |
+| `_candidate_policy_payload()` | `server/session.py` 末尾 | `CandidateSpeakDecision` を candidate skip payload 用 JSON に変換する | pure に近いが runtime policy 型依存 | なし | 当面なし。将来やるなら candidate 専用 module | 中 | `CandidateSpeakDecision` / initiative policy に依存し、candidate gate の観測 payload に関わる。Phase 10.20.7 では選ばない |
+| `_candidate_reply_gate_payload()` | `TomoroSession` method | candidate final gate の状態 snapshot payload を作る | stateful read | なし | 当面なし | 中〜高 | attention / VAD / playback / output availability を読む。candidate final gate と runtime policy に近いため選ばない |
+| `_new_candidate_request_id()` | `TomoroSession` method | initiative / arrival request id を生成し active request state を更新する | stateful write | なし | 当面なし | 高 | key generation に見えるが stale result gate の authoritative state を mutate する。candidate gate 専用 phase まで触らない |
+| `_is_stale_candidate_result()` | `TomoroSession` method | candidate result の request id を active state と照合する | stateful read | なし | 当面なし | 高 | stale result 破棄は initiative / arrival final gate そのものなので選ばない |
+| `_start_reason_from_participation_mode()` | `server/session.py` 末尾 | `ParticipationMode` から conversation start reason へ変換する | pure | なし | 小さすぎるため当面なし | 中 | pure だが conversation session lifecycle の start reason に直結する。単独抽出の価値が低く、lifecycle 周辺には触れない |
+| `_withdraw_decision()` | `server/session.py` 末尾 | 明示 withdrawal phrase を `ParticipationDecision` に変換する | pure に近いが policy | なし | 当面なし | 中〜高 | runtime participation policy と prompt/体感に関わる。small helper だが抽出対象にしない |
+| `_accepts_keyword()` | `server/session.py` 末尾 | writer callable が `conversation_session_id` keyword を受け取れるか introspection する | pure | なし | `server/session_compat.py` など | 中 | pure helper だが DB write compatibility / ordering path で使われる。DB write ordering を触らない今回の次候補にはしない |
+| `_elapsed_ms()` | `server/session.py` 末尾 | `server/session_latency.py` の `elapsed_ms()` wrapper | pure | なし | 削除または latency module 直参照 | 低 | すでに latency helper は抽出済み。cleanup 対象であって、新しい small value object 抽出候補ではない |
+| `_pending_reply_state()` | `TomoroSession` method | reply / playback の進行状態を文字列に畳む | stateful read | なし | 当面なし | 高 | turn-taking input payload に使うが reply task / TTS queue / playback state に近い。reply orchestration と playback timing を触らないため選ばない |
+| `_recent_turns_with_precomputed_topic()` | `TomoroSession` method | precomputed reply を recent turns に合成する | stateful read + logging | なし | 当面なし | 高 | prompt context quality / initiative context に関わる。memory retrieval policy と prompt format に見えるため選ばない |
+
+#### 抽出してはいけない候補
+
+- `CandidateSpeakDecision` や initiative / arrival policy に依存する helper
+- candidate request id / stale result / final gate に関わる helper
+- DB writer compatibility、conversation session start / close、turn persistence に関わる helper
+- reply task / TTS worker / TTS queue / playback state を読む helper
+- ContextSnapshotBuilder、memory retrieval policy、prompt format、precomputed reply context に影響する helper
+- OutputDemand / Watcher、dispatcher / effects / event_runner / maps package、汎用 `state.py` につながる helper
+
+#### 次に実装してよい候補
+
+- [ ] 次に実装してよい候補は `_session_summary_hit_to_memory()` 1 個だけにする
+  - 理由: `SessionSummaryHit -> MemoryHit` の pure value conversion であり、I/O しない
+  - 実装前 characterization test 候補:
+    - `speaker` が `tomoko` になる
+    - `text` が `会話セッション要約: {summary_text}` になる
+    - `timestamp` は `ended_at` 優先、なければ `started_at` になる
+    - `similarity` は `SessionSummaryHit.similarity` を維持する
+    - `source_id` は `session_summary:{session_id}` になる
+  - 実装する場合も、memory retrieval policy、ContextSnapshotBuilder、prompt format、DB query、reply orchestration、audio hot path、DB write ordering、conversation session lifecycle は変更しない
+
+**完了条件**:
+- `server/session_payloads.py` と `server/session_carryover.py` の抽出済み範囲が確認されている
+- `server/session.py` に残る small helper 候補が危険度つきで整理されている
+- 次に実装してよい候補が `_session_summary_hit_to_memory()` 1 個だけに絞られている
+- 今回は runtime code / test code を変更していない
+
+### Phase 10.20.7a: extract session summary memory helper only
+
+この Phase では Phase 10.20.7 で選定した `_session_summary_hit_to_memory()` だけを
+`server/session_memory_helpers.py` へ抽出する。
+session summary の取得件数、取得タイミング、ranking、prompt format は変更しない。
+
+#### characterization で固定した挙動
+
+- `SessionSummaryHit` から `MemoryHit` を 1 件生成する
+- `speaker` は常に `tomoko`
+- `text` は `会話セッション要約: {summary_text}`
+- `timestamp` は `ended_at` 優先、`ended_at is None` の場合だけ `started_at`
+- `similarity` は `SessionSummaryHit.similarity` をそのまま使う
+- `emotion` は `None`
+- `source_id` は `session_summary:{session_id}`
+
+#### 抽出対象
+
+- `server/session_memory_helpers.py`
+  - `session_summary_hit_to_memory()`
+- `server/session.py`
+  - helper import
+  - `_reply_to()` 内の呼び出し置換
+  - private `_session_summary_hit_to_memory()` の削除
+
+#### 今回触らないもの
+
+- runtime behavior
+- audio hot path
+- TTS flush / audio chunk / playback timing
+- `reply_text` / `reply_done` routing
+- reply orchestration / LLM-TTS ordering
+- DB write ordering
+- conversation session lifecycle
+- memory retrieval policy
+- ContextSnapshotBuilder
+- ThinkFastMode / ThinkDeepMode の prompt format
+- session summary の読み方、件数、優先順位、score ranking
+- timeout / degraded context / fallback behavior
+- candidate gate
+- OutputDemand / Watcher
+- dispatcher / effects / event_runner / maps package
+- `server/session/` package split
+- 汎用 `state.py`
+
+**完了条件**:
+- `_session_summary_hit_to_memory()` の既存挙動が characterization test で固定されている
+- helper が `server/session_memory_helpers.py` に 1 個だけ抽出されている
+- `server/session.py` の差分は import と呼び出し置換に近い最小差分である
+- targeted test / full unit / ruff / git diff check が通っている

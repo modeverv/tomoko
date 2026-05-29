@@ -43,6 +43,7 @@ from server.session_carryover import (
     retrieved_context_key,
 )
 from server.session_latency import LatencyProbeState, elapsed_ms
+from server.session_memory_helpers import session_summary_hit_to_memory
 from server.session_payloads import (
     json_safe_payload,
     optional_float_payload,
@@ -74,7 +75,6 @@ from server.shared.models import (
     PlaybackTelemetry,
     SessionCommand,
     SessionEvent,
-    SessionSummaryHit,
     SpeechSegment,
     StartReason,
     StateEmission,
@@ -1383,7 +1383,7 @@ class TomoroSession:
             context_snapshot.recent_turns
         )
         fresh_long_term_memory = [
-            _session_summary_hit_to_memory(hit)
+            session_summary_hit_to_memory(hit)
             for hit in context_snapshot.session_summaries
         ]
         fresh_long_term_memory.extend(context_snapshot.memory_hits)
@@ -2190,16 +2190,6 @@ def _candidate_policy_payload(event: SessionEvent) -> dict[str, Any] | None:
 
 def _elapsed_ms(started_at: float | None) -> float:
     return elapsed_ms(started_at)
-
-
-def _session_summary_hit_to_memory(hit: SessionSummaryHit) -> MemoryHit:
-    return MemoryHit(
-        speaker="tomoko",
-        text=f"会話セッション要約: {hit.summary_text}",
-        timestamp=hit.ended_at or hit.started_at,
-        similarity=hit.similarity,
-        source_id=f"session_summary:{hit.session_id}",
-    )
 
 
 def _retrieved_context_key(hit: MemoryHit) -> str:
