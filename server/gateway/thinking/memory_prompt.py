@@ -18,6 +18,9 @@ def format_long_term_memory_prompt(memories: list[MemoryHit]) -> str:
 
 
 def _format_memory(memory: MemoryHit) -> str:
+    if _is_calendar_memory(memory):
+        return f"- {_format_calendar_memory_text(memory.text)}"
+
     timestamp = _format_timestamp(memory.timestamp)
     speaker = _format_speaker(memory)
     emotion = f", emotion={memory.emotion}" if memory.emotion else ""
@@ -28,9 +31,15 @@ def _format_memory(memory: MemoryHit) -> str:
 
 
 def _format_speaker(memory: MemoryHit) -> str:
-    if memory.source_id and memory.source_id.startswith("calendar:"):
-        return "参照情報"
     return "ユーザー" if memory.speaker == "user" else "トモコ"
+
+
+def _is_calendar_memory(memory: MemoryHit) -> bool:
+    return bool(memory.source_id and memory.source_id.startswith("calendar:"))
+
+
+def _format_calendar_memory_text(text: str) -> str:
+    return text.removeprefix("カレンダー予定: ").strip()
 
 
 def _format_timestamp(timestamp: datetime) -> str:

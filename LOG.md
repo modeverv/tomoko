@@ -1,3 +1,30 @@
+## 2026-05-30 セッション6
+
+### やること（開始時に書く）
+- calendar 由来 long-term context の prompt 行から timestamp / `参照情報` / similarity 表示を削り、コンテキストを小さくする
+- 実 DB の `calendar_events` と capture backend で TomoroSession simulation を再実行し、予定が維持されることを確認する
+
+### やったこと
+- `server/gateway/thinking/memory_prompt.py` で calendar source の `MemoryHit` だけ compact 表示にした
+- calendar carryover 行は `- 2026-05-30 13:00-14:15: ...` のように、予定本文だけを出すようにした
+- 過去会話 memory の timestamp / speaker / similarity 表示は変更していない
+- `ThinkFastMode` の unit test に calendar long-term context が compact 表示される regression を追加した
+- 実 DB + capture backend で 4 turn simulation を再実行し、follow-up でも compact な予定 6 件が維持されることを確認した
+
+### 検証
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_phase8_memory.py tests/unit/test_phase88_context_snapshot.py tests/unit/test_session_memory_helpers.py -q`
+  - 36 passed
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 442 passed, 17 deselected
+- ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- git diff --check: `git diff --check`
+  - pass
+- simulation:
+  - 1 turn 目は `CALENDAR CONTEXT` に予定 8 件
+  - 2-4 turn 目は `長期コンテキスト` に compact な予定 6 件
+  - `参照情報: カレンダー` / `similarity=` / `カレンダー予定:` は follow-up prompt から消えた
+
 ## 2026-05-30 セッション5
 
 ### やること（開始時に書く）

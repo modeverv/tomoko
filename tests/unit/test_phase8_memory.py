@@ -218,6 +218,46 @@ async def test_think_fast_includes_carried_long_term_memory_in_system_prompt(
 
 
 @pytest.mark.unit
+async def test_think_fast_keeps_calendar_long_term_memory_compact(tmp_path) -> None:
+    persona = tmp_path / "persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend()
+    mode = ThinkFastMode(persona_path=persona, now_provider=fixed_now)
+
+    [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="それ詳しく",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+                long_term_memory=[
+                    MemoryHit(
+                        speaker="tomoko",
+                        text=(
+                            "カレンダー予定: "
+                            "2026-05-30 13:00-14:15: 光莉 水泳wear"
+                        ),
+                        timestamp=datetime(2026, 5, 30, 4, 0, tzinfo=UTC),
+                        similarity=1.0,
+                        source_id="calendar:gcal:event:2026-05-30T04:00:00+00:00",
+                    )
+                ],
+            ),
+        )
+    ]
+
+    assert backend.system_prompt is not None
+    assert "- 2026-05-30 13:00-14:15: 光莉 水泳wear" in backend.system_prompt
+    assert "参照情報: カレンダー" not in backend.system_prompt
+    assert "similarity=1.000" not in backend.system_prompt
+    assert "[2026-05-30T04:00:00+00:00]" not in backend.system_prompt
+
+
+@pytest.mark.unit
 async def test_think_fast_omits_long_term_memory_block_when_empty(tmp_path) -> None:
     persona = tmp_path / "persona.md"
     persona.write_text("あなたはトモコです。", encoding="utf-8")
