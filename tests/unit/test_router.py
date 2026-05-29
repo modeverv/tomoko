@@ -20,6 +20,8 @@ def make_config(
     conversation_fallback: str | None = "cloud",
     session_summary_backend: str | None = None,
     session_summary_fallback: str | None = None,
+    memory_extraction_backend: str | None = None,
+    memory_extraction_fallback: str | None = None,
     diary_backend: str | None = None,
     diary_fallback: str | None = None,
 ) -> NodeConfig:
@@ -30,6 +32,8 @@ def make_config(
             conversation_fallback=conversation_fallback,
             session_summary_backend=session_summary_backend,
             session_summary_fallback=session_summary_fallback,
+            memory_extraction_backend=memory_extraction_backend,
+            memory_extraction_fallback=memory_extraction_fallback,
             diary_backend=diary_backend,
             diary_fallback=diary_fallback,
             stt_backend=None,
@@ -158,6 +162,22 @@ async def test_session_summary_role_uses_configured_backend_and_fallback() -> No
     )
 
     backend = await router.select("session_summary", "privacy")
+
+    assert backend.name == "local_fallback"
+
+
+@pytest.mark.unit
+async def test_memory_extraction_role_uses_configured_backend_and_fallback() -> None:
+    config = make_config(
+        memory_extraction_backend="local",
+        memory_extraction_fallback="local_fallback",
+    )
+    router = InferenceRouter(
+        config=config,
+        monitor=MockMonitor({"local": InferenceMetrics(latency_ms=600)}),
+    )
+
+    backend = await router.select("memory_extraction", "privacy")
 
     assert backend.name == "local_fallback"
 

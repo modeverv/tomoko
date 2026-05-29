@@ -8,6 +8,7 @@ import pytest
 from server.shared.inference.backends.lm_studio import (
     LMStudioBackend,
     chat_completions_url,
+    lmstudio_queue_key,
     parse_sse_content,
 )
 
@@ -65,6 +66,21 @@ def test_parse_sse_content_extracts_openai_delta_content() -> None:
     assert parse_sse_content(line) == "こんにちは"
     assert parse_sse_content("data: [DONE]") is None
     assert parse_sse_content('data: {"choices":[{"delta":{"role":"assistant"}}]}') is None
+
+
+@pytest.mark.unit
+def test_lm_studio_queue_key_allows_different_models_to_run_independently() -> None:
+    assert (
+        lmstudio_queue_key("http://192.168.11.66:1234", "gemma-4-26b-a4b-it-mlx")
+        == "lmstudio:http://192.168.11.66:1234:gemma-4-26b-a4b-it-mlx"
+    )
+    assert lmstudio_queue_key(
+        "http://192.168.11.66:1234",
+        "gemma-4-26b-a4b-it-mlx",
+    ) != lmstudio_queue_key(
+        "http://192.168.11.66:1234",
+        "gemma-4-e2b-it-mlx",
+    )
 
 
 @pytest.mark.unit
@@ -192,7 +208,10 @@ async def test_lm_studio_backend_writes_jsonl_lifecycle_trace(tmp_path, monkeypa
     assert {row["role"] for row in rows} == {"conversation"}
     assert {row["backend"] for row in rows} == {"lmstudio_gemma4_e4b"}
     assert {row["model"] for row in rows} == {"gemma-4-e4b-it-mlx"}
-    assert rows[1]["queue_key"] == "lmstudio:http://192.168.11.66:1234"
+    assert (
+        rows[1]["queue_key"]
+        == "lmstudio:http://192.168.11.66:1234:gemma-4-e4b-it-mlx"
+    )
     assert rows[-1]["chunk_count"] == 2
     assert len({row["request_id"] for row in rows}) == 1
 

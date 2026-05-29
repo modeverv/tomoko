@@ -12,6 +12,7 @@ from server.session_short_memory import (
     format_short_memory_prompt,
     propose_short_memory_notes,
 )
+from server.session_short_memory_llm import extract_short_memory_notes
 from server.shared.models import ShortMemoryNote, ThinkingEvent, ThinkingInput, Transcript
 
 
@@ -25,9 +26,48 @@ class FakeBackend:
 
 
 class FakeRouter:
+    def __init__(self, memory_backend: Any | None = None) -> None:
+        self.memory_backend = memory_backend
+        self.select_calls: list[tuple[str, str]] = []
+
     async def select(self, role: str, preference: str) -> FakeBackend:
-        del role, preference
+        self.select_calls.append((role, preference))
+        if role == "memory_extraction" and self.memory_backend is not None:
+            return self.memory_backend  # type: ignore[return-value]
         return FakeBackend()
+
+
+class StructuredMemoryBackend:
+    name = "lmstudio_gemma4_e2b"
+    privacy_allowed = True
+
+    def __init__(self, chunks: list[str] | None = None, *, fail: bool = False) -> None:
+        self.chunks = chunks or []
+        self.fail = fail
+        self.calls: list[dict[str, Any]] = []
+
+    async def chat_stream_structured(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, str]],
+        *,
+        json_schema: dict[str, Any],
+        max_tokens: int | None = None,
+        trace_role: str | None = None,
+    ):
+        self.calls.append(
+            {
+                "system_prompt": system_prompt,
+                "messages": messages,
+                "json_schema": json_schema,
+                "max_tokens": max_tokens,
+                "trace_role": trace_role,
+            }
+        )
+        if self.fail:
+            raise RuntimeError("structured output failed")
+        for chunk in self.chunks:
+            yield chunk
 
 
 class TextReplyThinkingMode:
@@ -150,6 +190,54 @@ def test_heuristic_proposal_keeps_working_context_only() -> None:
 
 
 @pytest.mark.unit
+async def test_llm_short_memory_extraction_uses_structured_output() -> None:
+    backend = StructuredMemoryBackend(
+        [
+            '{"decision":"store","reason":"作業方針","proposals":[{"kind":"working_context",',
+            '"text":"DB 永続化前に short memory buffer で効果確認する",',
+            '"confidence":0.91,"importance":0.82,"expires_after_turns":3}],',
+            '"raw_text":"智子、DB 永続化はまだしないで"}',
+        ]
+    )
+
+    result = await extract_short_memory_notes(
+        user_text="智子、DB 永続化はまだしないで",
+        reply_text="了解、まず buffer だけで試すね。",
+        current_turn=7,
+        default_ttl_turns=4,
+        backend=backend,
+    )
+
+    assert result.decision == "store"
+    assert result.source == "llm"
+    assert result.reason == "作業方針"
+    assert len(result.proposals) == 1
+    assert result.proposals[0].text == "DB 永続化前に short memory buffer で効果確認する"
+    assert result.proposals[0].created_turn == 7
+    assert result.proposals[0].expires_after_turns == 3
+    assert backend.calls[0]["trace_role"] == "memory_extraction"
+    assert backend.calls[0]["max_tokens"] == 320
+
+
+@pytest.mark.unit
+async def test_llm_short_memory_extraction_falls_back_to_heuristic() -> None:
+    backend = StructuredMemoryBackend(fail=True)
+
+    result = await extract_short_memory_notes(
+        user_text="トモコ、DB 永続化はまだしないで short memory buffer だけで試したい",
+        reply_text="了解。",
+        current_turn=2,
+        default_ttl_turns=4,
+        backend=backend,
+    )
+
+    assert result.decision == "store"
+    assert result.source == "heuristic_fallback"
+    assert len(result.proposals) == 1
+    assert "short memory buffer" in result.proposals[0].text
+
+
+@pytest.mark.unit
 async def test_session_runs_short_memory_extraction_after_reply_done() -> None:
     events: list[dict[str, object]] = []
     mode = TextReplyThinkingMode()
@@ -197,3 +285,31 @@ async def test_session_passes_short_memory_to_next_turn_only() -> None:
     assert mode.inputs[0].short_memory_notes == []
     assert len(mode.inputs[1].short_memory_notes) == 1
     assert "DB 永続化" in mode.inputs[1].short_memory_notes[0].text
+
+
+@pytest.mark.unit
+async def test_session_uses_memory_extraction_backend_when_available() -> None:
+    backend = StructuredMemoryBackend(
+        [
+            '{"decision":"store","reason":"短期作業文脈",',
+            '"proposals":[{"kind":"working_context","text":"STT と作業メモ表示を優先する",',
+            '"confidence":0.8,"importance":0.75,"expires_after_turns":4}],',
+            '"raw_text":"智子 STT と作業メモを優先したい"}',
+        ]
+    )
+    router = FakeRouter(memory_backend=backend)
+    mode = TextReplyThinkingMode()
+    session = TomoroSession(
+        vad_processor=FakeVADProcessor(),  # type: ignore[arg-type]
+        send_event=lambda event: None,
+        router=router,  # type: ignore[arg-type]
+        thinking_mode=mode,  # type: ignore[arg-type]
+        context_snapshot_builder=ContextSnapshotBuilder(),
+    )
+
+    await session._reply_to(_transcript("智子 STT と作業メモを優先したい"))
+    await session._wait_for_short_memory_extraction_tasks()
+
+    assert ("memory_extraction", "privacy") in router.select_calls
+    await session._reply_to(_transcript("さっきの続き"))
+    assert mode.inputs[1].short_memory_notes[0].text == "STT と作業メモ表示を優先する"

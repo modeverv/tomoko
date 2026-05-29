@@ -113,7 +113,13 @@ def propose_short_memory_notes(
     del reply_text
     normalized = _normalize_text(user_text)
     if not _should_capture(normalized):
-        return ShortMemoryProposalResult(proposals=[])
+        return ShortMemoryProposalResult(
+            proposals=[],
+            decision="skip",
+            reason="heuristic did not find a working-context cue",
+            raw_text=user_text,
+            source="heuristic",
+        )
 
     return ShortMemoryProposalResult(
         proposals=[
@@ -126,7 +132,11 @@ def propose_short_memory_notes(
                 expires_after_turns=default_ttl_turns,
                 created_at=datetime.now(UTC),
             )
-        ]
+        ],
+        decision="store",
+        reason="heuristic found a working-context cue",
+        raw_text=user_text,
+        source="heuristic",
     )
 
 

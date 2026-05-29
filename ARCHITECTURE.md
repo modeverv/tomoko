@@ -2806,3 +2806,15 @@ recent_turns=8 session_summaries=2 memory_hits=0 lexicon_terms=3
 ```
 
 この値が悪化した時点で、記憶や人格の追加がオンライン会話レイテンシーを侵食していると判断できる。
+
+## Short memory extraction lane
+
+短期作業メモリは、会話原本や長期記憶ではなく、数ターンだけ使う揮発的な prompt hint として扱う。
+`TomoroSession` が reply 完了後に background task として extraction を起動し、現在ターンの reply / TTS / playback hot path は待たせない。
+
+extraction は `InferenceRouter` の `memory_extraction` role を経由して、可能な場合は LLM structured output を使う。
+出力は store / skip decision、reason、raw_text、proposal list を持つ JSON とし、store の proposal だけを `ShortMemoryBuffer` に追加する。
+LLM structured output が失敗した場合、または明らかなノイズ発話の場合は heuristic fallback / prefilter を使う。
+
+この lane は DB 永続化、long-term memory、persona snapshot、embedding retrieval、task scheduling へ昇格しない。
+ContextSnapshotBuilder は引き続き読み取り専用で、short memory buffer への書き込み責務を持たない。

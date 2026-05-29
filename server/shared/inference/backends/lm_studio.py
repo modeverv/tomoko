@@ -26,6 +26,10 @@ def chat_completions_url(base_url: str) -> str:
     return f"{normalized}/v1/chat/completions"
 
 
+def lmstudio_queue_key(base_url: str, model: str) -> str:
+    return f"lmstudio:{base_url.rstrip('/')}:{model}"
+
+
 def parse_sse_content(line: str) -> str | None:
     stripped = line.strip()
     if not stripped.startswith("data:"):
@@ -130,7 +134,7 @@ class LMStudioBackend(InferenceBackend):
     ) -> AsyncGenerator[str, None]:
         request_id = str(uuid4())
         started_at = time.perf_counter()
-        queue_key = f"lmstudio:{self.url}"
+        queue_key = lmstudio_queue_key(self.url, self.model)
         trace_backend_call(
             event="start",
             kind="llm",

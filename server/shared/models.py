@@ -1008,6 +1008,10 @@ class ShortMemoryNote:
 @dataclass(frozen=True)
 class ShortMemoryProposalResult:
     proposals: list[ShortMemoryNote]
+    decision: Literal["store", "skip"] = "store"
+    reason: str | None = None
+    raw_text: str | None = None
+    source: Literal["heuristic", "llm", "heuristic_fallback"] = "heuristic"
 
 
 @dataclass(frozen=True)

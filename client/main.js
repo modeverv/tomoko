@@ -224,10 +224,16 @@ function handleJsonEvent(data) {
     return;
   }
   if (event.type === "short_memory_extraction") {
+    const elapsed =
+      typeof event.elapsed_ms === "number" ? `${event.elapsed_ms.toFixed(1)}ms` : "--";
     shortMemoryStatusEl.textContent = [
       event.status || "--",
       `turn=${event.turn ?? "-"}`,
+      `backend=${event.backend || "-"}`,
+      `source=${event.source || "-"}`,
+      `decision=${event.decision || "-"}`,
       `proposals=${event.proposal_count ?? "-"}`,
+      `elapsed=${elapsed}`,
     ].join(" / ");
     return;
   }

@@ -57,10 +57,8 @@ from server.session_payloads import (
     playback_payload,
     playback_telemetry_from_event,
 )
-from server.session_short_memory import (
-    ShortMemoryBuffer,
-    propose_short_memory_notes,
-)
+from server.session_short_memory import ShortMemoryBuffer, propose_short_memory_notes
+from server.session_short_memory_llm import extract_short_memory_notes
 from server.shared.candidate import ArrivalCandidate, UtteranceCandidate
 from server.shared.db import AmbientLogWriter, ConversationLogWriter, ConversationSessionStore
 from server.shared.inference.embedding.base import EmbeddingBackend
@@ -1784,6 +1782,7 @@ class TomoroSession:
         reply_text: str,
         turn: int,
     ) -> None:
+        started_at = time.perf_counter()
         await self._send_event(
             {
                 "type": "short_memory_extraction",
@@ -1791,13 +1790,38 @@ class TomoroSession:
                 "turn": turn,
             }
         )
+        backend: object | None = None
+        backend_name = "heuristic"
         try:
-            result = propose_short_memory_notes(
+            prefilter_result = propose_short_memory_notes(
                 user_text=user_text,
                 reply_text=reply_text,
                 current_turn=turn,
                 default_ttl_turns=self._short_memory_buffer.default_ttl_turns,
             )
+            if prefilter_result.decision == "skip":
+                result = prefilter_result
+            elif self.router is not None:
+                try:
+                    backend = await self.router.select("memory_extraction", "privacy")
+                    backend_name = getattr(backend, "name", "unknown")
+                except Exception as exc:
+                    logger.warning(
+                        "TomoroSession short memory backend selection failed "
+                        "turn=%s error=%s",
+                        turn,
+                        exc,
+                        exc_info=True,
+                    )
+                result = await extract_short_memory_notes(
+                    user_text=user_text,
+                    reply_text=reply_text,
+                    current_turn=turn,
+                    default_ttl_turns=self._short_memory_buffer.default_ttl_turns,
+                    backend=backend,
+                )
+            else:
+                result = prefilter_result
             for note in result.proposals:
                 added = self._short_memory_buffer.append(note)
                 logger.info(
@@ -1813,9 +1837,14 @@ class TomoroSession:
                     added.text,
                 )
             logger.info(
-                "TomoroSession short memory extraction succeeded turn=%s proposals=%s",
+                "TomoroSession short memory extraction succeeded turn=%s "
+                "backend=%s source=%s decision=%s proposals=%s elapsed_ms=%.1f",
                 turn,
+                backend_name,
+                result.source,
+                result.decision,
                 len(result.proposals),
+                elapsed_ms(started_at),
             )
             await self._send_event(
                 {
@@ -1823,13 +1852,21 @@ class TomoroSession:
                     "status": "succeeded",
                     "turn": turn,
                     "proposal_count": len(result.proposals),
+                    "decision": result.decision,
+                    "reason": result.reason,
+                    "source": result.source,
+                    "backend": backend_name,
+                    "elapsed_ms": elapsed_ms(started_at),
                 }
             )
             await self._send_short_memory_snapshot()
         except Exception as exc:
             logger.warning(
-                "TomoroSession short memory extraction failed turn=%s error=%s",
+                "TomoroSession short memory extraction failed turn=%s backend=%s "
+                "elapsed_ms=%.1f error=%s",
                 turn,
+                backend_name,
+                elapsed_ms(started_at),
                 exc,
                 exc_info=True,
             )
@@ -1839,6 +1876,8 @@ class TomoroSession:
                     "status": "failed",
                     "turn": turn,
                     "error": str(exc),
+                    "backend": backend_name,
+                    "elapsed_ms": elapsed_ms(started_at),
                 }
             )
 
