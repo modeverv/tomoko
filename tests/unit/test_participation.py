@@ -103,6 +103,24 @@ async def test_engaged_followup_filters_quiet_short_phrase() -> None:
 
 
 @pytest.mark.unit
+async def test_engaged_followup_filters_short_unfinished_fragment() -> None:
+    judge = WakeWordJudge()
+
+    for fragment in ("相槌の", "相槌のタイミングで"):
+        result = await judge.judge(
+            ParticipationContext(
+                transcript=fragment,
+                attention_mode="engaged",
+                audio_level_db=-20.0,
+            )
+        )
+
+        assert result.should_participate is False
+        assert result.mode == "observer"
+        assert result.reason == "low_confidence_followup"
+
+
+@pytest.mark.unit
 async def test_engaged_followup_keeps_normal_phrase() -> None:
     judge = WakeWordJudge()
 

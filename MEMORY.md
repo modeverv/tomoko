@@ -3632,3 +3632,17 @@ MaAI 相槌は、Tomoko が既に会話に参加している `engaged` / `cooldo
 
 この gate は wake word / ParticipationJudge の前段を MaAI が横取りしないためのもの。
 `state=listening`、Tomoko idle、segment 1 回制限、cooldown だけでは足りない。
+
+### 確定した判断: engaged 中の短い未完 follow-up fragment は通常 reply を開始しない
+2026-05-31 の実サーバー確認では、MaAI 相槌を挟んだ会話中に
+`相槌の` / `相槌のタイミングで` のような短い STT 断片が
+`attention_engaged_followup` として invite され、通常 LLM reply が開始されていた。
+
+これは MaAI 相槌の release gate ではなく、engaged follow-up の参加判定が
+「未完の短い断片」を通常 turn として強く扱いすぎていた問題である。
+Wake word がない engaged / cooldown follow-up でも、12 文字以下で
+`の` / `で` / `を` / `が` / `に` / `と` / `は` / `も` のような助詞で終わるものは
+`low_confidence_followup` として observer に落とし、conversation log や通常 reply を開始しない。
+
+`さっきの続きなんだけど` のような短いが意図として成立する follow-up は維持するため、
+`けど` / `から` / `って` / `とか` は今回の fragment 終端には含めない。

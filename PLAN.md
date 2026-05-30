@@ -7045,3 +7045,37 @@ timeout / degraded context、carryover state は変更しない。
 - [x] MaAI focused unit / smoke unit / ruff が通る
 - [x] full unit / global ruff / diff check が通る
 - [x] git commit まで完了する
+
+### Phase 10.20.16: engaged follow-up fragment must not start normal reply
+
+この Phase では、MaAI 相槌そのものではなく、相槌を挟んだ会話中に
+短い未完の STT 断片が `attention_engaged_followup` として通常 LLM reply を開始する挙動を否定する。
+
+実ログでは `相槌の` や `相槌のタイミングで` が単独 turn として invite され、
+Tomoko が「相槌のタイミングについて、もっと詳しく教えてくれる？」を返し始めていた。
+これは user がまだ文を継続している途中の断片であり、通常 reply の開始条件としては弱すぎる。
+
+#### 変更対象
+
+- `server/edge/participation/wake_word.py`
+  - `engaged` / `cooldown` follow-up でも、短く助詞・接続で終わる未完 fragment は `low_confidence_followup` にする
+- `tests/unit/test_participation.py`
+  - `相槌の` / `相槌のタイミングで` が invited にならないことを固定する
+- `tests/unit/test_attention_mode.py`
+  - engaged 中の短い未完 fragment が conversation log / reply_text を発生させないことを固定する
+
+#### 今回触らないもの
+
+- MaAI react threshold 0.45
+- MaAI backchannel release gate
+- VAD silence threshold
+- STT backend / Apple Speech contextual strings
+- LLM prompt / TTS pipeline
+
+#### 完了条件
+
+- [x] 短い未完 fragment が invited になる赤テストを確認する
+- [x] `low_confidence_followup` として observer に落ちる
+- [x] focused unit / ruff が通る
+- [x] full unit / global ruff / diff check が通る
+- [x] git commit まで完了する

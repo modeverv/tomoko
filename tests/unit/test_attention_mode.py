@@ -181,6 +181,32 @@ async def test_engaged_allows_followup_without_wake_word() -> None:
 
 
 @pytest.mark.unit
+async def test_engaged_short_unfinished_fragment_does_not_start_reply() -> None:
+    events: list[dict[str, str]] = []
+    ambient_logs = InMemoryAmbientLogWriter()
+    conversation_logs = InMemoryConversationLogWriter()
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.9] + [0.1] * 13), silence_ms=400),
+        send_event=events.append,
+        transcriber=QueueTranscriber(["相槌のタイミングで"]),
+        participation_judge=WakeWordJudge(),
+        ambient_log_writer=ambient_logs,
+        conversation_log_writer=conversation_logs,
+        router=FakeRouter(),  # type: ignore[arg-type]
+        thinking_mode=ThinkFastMode(),
+        tts_backend=FakeTTSBackend(),  # type: ignore[arg-type]
+    )
+    await session._transition_attention("engaged")
+
+    await run_one_finished_speech(session)
+
+    assert [row[3] for row in ambient_logs.rows] == ["observer"]
+    assert conversation_logs.user_turns == []
+    assert {"type": "participation", "mode": "invited"} not in events
+    assert not any(event["type"] == "reply_text" for event in events)
+
+
+@pytest.mark.unit
 async def test_engaged_filters_low_confidence_followup_without_extending_attention() -> None:
     ambient_logs = InMemoryAmbientLogWriter()
     conversation_logs = InMemoryConversationLogWriter()

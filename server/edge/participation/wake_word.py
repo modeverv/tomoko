@@ -76,6 +76,25 @@ def _looks_like_low_confidence_followup(ctx: ParticipationContext) -> bool:
         return True
     if any(phrase in text for phrase in WakeWordJudge.NOISE_HALLUCINATION_PHRASES):
         return True
+    if _looks_like_short_unfinished_fragment(text):
+        return True
     if ctx.audio_level_db is not None and ctx.audio_level_db <= -30.0 and len(text) <= 20:
         return True
     return False
+
+
+def _looks_like_short_unfinished_fragment(text: str) -> bool:
+    normalized = "".join(text.split()).rstrip("、。？！!?")
+    if len(normalized) > 12:
+        return False
+    unfinished_endings = (
+        "の",
+        "で",
+        "を",
+        "が",
+        "に",
+        "と",
+        "は",
+        "も",
+    )
+    return normalized.endswith(unfinished_endings)
