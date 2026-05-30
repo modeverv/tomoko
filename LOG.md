@@ -1,3 +1,52 @@
+## 2026-05-30 セッション31
+
+### やること（開始時に書く）
+- `_tools/materials/maai.wav` を MaAI 本体へ流し、相槌 suggestion と TomoroSession release / skip を JSON で確認する
+- 48kHz stereo WAV を 16kHz 2ch timeline に変換し、ch1=user / ch2=tomoko として MaAI `bc_2type` に流す
+- turn 情報がないため、左右 channel の RMS から user speaking / Tomoko speaking を推定して session release gate へ渡す
+- 実ブラウザ runtime / hot path は変更しない
+
+### やったこと
+- `_tools/smoke_maai_material.py` を追加し、stereo WAV を 16kHz ch1/ch2 timeline として MaAI へ投入できるようにした
+- `session_releases[]` に raw score 由来 suggestion、RMS から推定した speaking flags、TomoroSession emission、TTS/audio/reply_done を出すようにした
+- `--start-sec` / `--duration-sec` / `--swap-channels` を追加し、長い素材を区間ごとに等速確認できるようにした
+- `make smoke-maai-material` を追加した。default は `_tools/materials/maai.wav` の先頭 30 秒を等速確認する
+
+### 詰まったこと・解決したこと
+- `_tools/materials/maai.wav` は約 155 秒あり、全体等速確認は長い
+  - Makefile default は 30 秒窓にし、`MAAI_MATERIAL_START_SEC` / `MAAI_MATERIAL_DURATION_SEC` で窓をずらす形にした
+- `realtime_scale=0` で高速投入すると MaAI の audio queue overflow が起き、raw score が 1 件しか返らなかった
+  - 実確認は等速投入に戻した
+- ch1/ch2 の役割が逆の可能性があるため、`--swap-channels` も追加した
+
+### 検証
+- red test: `.venv/bin/python -m pytest -m unit tests/unit/test_smoke_maai_material.py -q`
+  - `_tools.smoke_maai_material` 未実装で import error
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_smoke_maai_material.py tests/unit/test_makefile_process_entries.py -q`
+  - 11 passed
+- ruff focused: `.venv/bin/python -m ruff check _tools/smoke_maai_material.py tests/unit/test_smoke_maai_material.py tests/unit/test_makefile_process_entries.py`
+  - pass
+- 実 smoke: `make smoke-maai-material`
+  - 0-30 秒: `raw_score_count=300`, `max_p_bc_react=0.3638071119785309`, `max_p_bc_emo=0.12390013784170151`, `suggestions=[]`, `session_releases=[]`
+- 全体 30 秒窓 scan:
+  - 0-30 秒: suggestion 0
+  - 30-60 秒: suggestion 2, release は 2 件とも `backchannel_skipped`
+  - 60-90 秒: suggestion 7, release は 7 件とも `backchannel_skipped`
+  - 90-120 秒: suggestion 3, release は 3 件とも `backchannel_skipped`
+  - 120-150 秒: suggestion 2, release は 2 件とも `backchannel_skipped`
+  - 150-155 秒: suggestion 0
+- skip reason 確認:
+  - 多くは `kind=emo` 由来の `unsupported_kind`
+  - `react` suggestion もあったが `score=0.37` 程度で `below_threshold`
+  - 現行 gate の `p_bc_react >= 0.68` では `backchannel_released` は出なかった
+- swap channel check:
+  - 60-90 秒を `swap_channels=True` で確認
+  - `max_p_bc_react=0.5122982859611511`, `max_p_bc_emo=0.5429264307022095`, release はすべて `unsupported_kind`
+
+### 次のセッションでやること
+- `p_bc_emo` を実際の感情相槌として release 対象にするかは別判断にする
+- 現行 react gate のままなら、この素材では相槌音声は入らない
+
 ## 2026-05-30 セッション30
 
 ### やること（開始時に書く）

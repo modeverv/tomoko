@@ -121,7 +121,16 @@ def test_makefile_exposes_maai_tap_smoke_tool() -> None:
     smoke_body = _target_body("smoke-maai-tap")
     real_body = _target_body("smoke-maai-real")
     dialogue_body = _target_body("smoke-maai-dialogue")
+    material_body = _target_body("smoke-maai-material")
 
     assert "_tools/smoke_maai_tap_session.py" in smoke_body
     assert "_tools/smoke_maai_tap_session.py --use-maai" in real_body
     assert "_tools/smoke_maai_dialogue.py" in dialogue_body
+    assert "MAAI_MATERIAL_WAV ?= _tools/materials/maai.wav" in MAKEFILE_TEXT
+    assert "MAAI_MATERIAL_START_SEC ?= 0" in MAKEFILE_TEXT
+    assert "MAAI_MATERIAL_DURATION_SEC ?= 30" in MAKEFILE_TEXT
+    assert "MAAI_MATERIAL_SWAP_CHANNELS ?=" in MAKEFILE_TEXT
+    assert "_tools/smoke_maai_material.py --input $(MAAI_MATERIAL_WAV)" in material_body
+    assert "--start-sec $(MAAI_MATERIAL_START_SEC)" in material_body
+    assert "--duration-sec $(MAAI_MATERIAL_DURATION_SEC)" in material_body
+    assert "$(MAAI_MATERIAL_SWAP_CHANNELS)" in material_body

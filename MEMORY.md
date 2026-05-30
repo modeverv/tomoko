@@ -67,6 +67,14 @@ TTS input、audio chunk/bytes、`reply_done_controls` を含める。
 `observed_sec=8.521801` で発生し、user speaking / Tomoko idle のため
 `backchannel_released`、`reply_done_controls=["backchannel"]`、`audio_chunks=1` が確認できた。
 
+`_tools/materials/maai.wav` のような stereo material WAV は `make smoke-maai-material` で確認する。
+default は ch1=user / ch2=tomoko、先頭 30 秒、等速投入である。
+長い素材は `MAAI_MATERIAL_START_SEC` / `MAAI_MATERIAL_DURATION_SEC` で窓をずらし、
+ch1/ch2 が逆に見える場合は `MAAI_MATERIAL_SWAP_CHANNELS=--swap-channels` を指定する。
+2026-05-30 に MaAI 公開サンプル由来の `_tools/materials/maai.wav` 全体を 30 秒窓で scan したところ、
+MaAI suggestion は複数出たが、ほぼ `kind=emo` であり TomoroSession の現行 gate では `unsupported_kind` skip になった。
+react suggestion も最大 0.512 程度で、現行 release 条件 `p_bc_react >= 0.68` では `backchannel_released` は出なかった。
+
 ### MemoryGate で Retrieve と Use を分ける
 2026-05-30 時点では、context snapshot で取得できた記憶をそのまま prompt に渡さない。
 `TomoroSession` は `MemoryGate` を通して、deep memory / calendar memory を読むかどうかと、

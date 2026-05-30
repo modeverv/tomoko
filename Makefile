@@ -17,6 +17,10 @@ TURN_TAKING_LOG_FILE ?= logs/turn-taking-worker.log
 TURN_TAKING_HOST ?= 127.0.0.1
 TURN_TAKING_PORT ?= 8765
 TURN_TAKING_MODEL ?= mlx-community/gemma-4-e2b-it-4bit
+MAAI_MATERIAL_WAV ?= _tools/materials/maai.wav
+MAAI_MATERIAL_START_SEC ?= 0
+MAAI_MATERIAL_DURATION_SEC ?= 30
+MAAI_MATERIAL_SWAP_CHANNELS ?=
 MONITOR_HOST ?= 127.0.0.1
 MONITOR_PORT ?= 8770
 BACKEND_TRACE_LOG_FILE ?= logs/backend-trace.jsonl
@@ -50,7 +54,7 @@ SCREEN_SHELL ?= zsh
 .PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
 .PHONY: information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
 .PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list
-.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue log-report monitor lint check
+.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material log-report monitor lint check
 
 deps:
 	mise exec -- uv sync
@@ -266,6 +270,9 @@ smoke-maai-real:
 
 smoke-maai-dialogue:
 	mise exec -- uv run python _tools/smoke_maai_dialogue.py
+
+smoke-maai-material:
+	mise exec -- uv run python _tools/smoke_maai_material.py --input $(MAAI_MATERIAL_WAV) --start-sec $(MAAI_MATERIAL_START_SEC) --duration-sec $(MAAI_MATERIAL_DURATION_SEC) $(MAAI_MATERIAL_SWAP_CHANNELS)
 
 log-report:
 	mise exec -- uv run python _tools/analyze_server_debug_log.py --input $(TOMOKO_DEBUG_LOG_FILE) --output logs/server-debug-report.html
