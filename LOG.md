@@ -1,3 +1,40 @@
+## 2026-05-30 セッション7
+
+### やること（開始時に書く）
+- `prompts/persona_overlay.md` に一色いろは風の人格 overlay を追加する
+- overlay file が存在する場合だけ、会話 LLM の system prompt に差し込む
+- unit test と音声なし prompt simulation で overlay が prompt に乗ることを確認する
+- `TomoroSession` / audio hot path / DB write ordering / TTS playback timing は変更しない
+- 検証後に commit する
+
+### やったこと
+- `prompts/persona_overlay.md` を追加し、Tomoko core を保ったまま小悪魔的で人なつっこい後輩風の反応を薄く重ねる方針を書いた
+- `ThinkFastMode` が `base_persona.md` の sibling `persona_overlay.md` を起動時に読み、存在する場合だけ system prompt へ差し込むようにした
+- tmp persona の sibling overlay 有無で prompt への追加/非追加を unit test で固定した
+- 実 `prompts/base_persona.md` + `prompts/persona_overlay.md` を使う capture backend simulation で overlay が prompt に乗ることを確認した
+
+### 詰まったこと・解決したこと
+- default overlay path を repo 固定にすると tmp persona test へ影響するため、`persona_path.with_name("persona_overlay.md")` を default にした
+- runtime の `server/edge/main.py` は absolute `prompts/base_persona.md` を渡しているので、実運用では `prompts/persona_overlay.md` が自然に選ばれる
+
+### 検証
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_phase4_thinking.py::test_persona_overlay_describes_inspired_style_without_original_lines tests/unit/test_phase4_thinking.py::test_think_fast_includes_persona_overlay_when_sibling_file_exists tests/unit/test_phase4_thinking.py::test_think_fast_omits_persona_overlay_when_sibling_file_is_missing tests/unit/test_phase4_thinking.py::test_think_fast_logs_llm_prompt_payload -q`
+  - 4 passed
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 445 passed, 17 deselected
+- ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- git diff check: `git diff --check`
+  - pass
+- prompt build microbench: 1000 builds total 2.978ms / avg 0.0030ms
+- prompt simulation:
+  - `overlay_in_prompt=True`
+  - `contains_style=True`
+  - `contains_original_name=False`
+
+### 次のセッションでやること
+- 実ブラウザ会話で overlay の体感を確認し、強すぎる場合は `prompts/persona_overlay.md` の文量・指示強度を調整する
+
 ## 2026-05-30 セッション6
 
 ### やること（開始時に書く）

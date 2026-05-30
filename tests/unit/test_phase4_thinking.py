@@ -156,6 +156,87 @@ def test_base_persona_contains_voice_conversation_rules() -> None:
 
 
 @pytest.mark.unit
+def test_persona_overlay_describes_inspired_style_without_original_lines() -> None:
+    prompt = (ROOT / "prompts" / "persona_overlay.md").read_text(encoding="utf-8")
+
+    assert "PERSONA OVERLAY" in prompt
+    assert "小悪魔的" in prompt
+    assert "後輩" in prompt
+    assert "原作台詞" in prompt
+    assert "一色いろは" not in prompt
+
+
+@pytest.mark.unit
+async def test_think_fast_includes_persona_overlay_when_sibling_file_exists(
+    tmp_path,
+) -> None:
+    persona = tmp_path / "base_persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    overlay = tmp_path / "persona_overlay.md"
+    overlay.write_text(
+        "## PERSONA OVERLAY\n少し茶目っ気のある後輩として短く助ける。",
+        encoding="utf-8",
+    )
+    backend = FakeBackend(["うん"])
+    mode = ThinkFastMode(
+        persona_path=persona,
+        prompt_log_path=None,
+        now_provider=fixed_now,
+    )
+
+    [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="トモコ、軽く相談に乗って",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+            ),
+        )
+    ]
+
+    assert backend.system_prompt is not None
+    assert backend.system_prompt.startswith("あなたはトモコです。")
+    assert "## PERSONA OVERLAY" in backend.system_prompt
+    assert "少し茶目っ気のある後輩として短く助ける。" in backend.system_prompt
+    assert "現在日時: 2026-05-30 12:34:56 JST" in backend.system_prompt
+
+
+@pytest.mark.unit
+async def test_think_fast_omits_persona_overlay_when_sibling_file_is_missing(
+    tmp_path,
+) -> None:
+    persona = tmp_path / "base_persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend(["うん"])
+    mode = ThinkFastMode(
+        persona_path=persona,
+        prompt_log_path=None,
+        now_provider=fixed_now,
+    )
+
+    [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="トモコ、聞こえる？",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+            ),
+        )
+    ]
+
+    assert backend.system_prompt is not None
+    assert "PERSONA OVERLAY" not in backend.system_prompt
+
+
+@pytest.mark.unit
 async def test_think_fast_wraps_streamed_tokens_in_thinking_events(tmp_path) -> None:
     persona = tmp_path / "persona.md"
     persona.write_text("あなたはトモコです。", encoding="utf-8")

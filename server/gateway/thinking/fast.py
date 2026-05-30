@@ -36,20 +36,38 @@ class ThinkFastMode(ThinkingMode):
         self,
         persona_path: str | Path = "prompts/base_persona.md",
         *,
+        persona_overlay_path: str | Path | None = None,
         prompt_log_path: str | Path | None = DEFAULT_PROMPT_LOG_PATH,
         now_provider: Callable[[], datetime] | None = None,
     ):
         self.persona_path = Path(persona_path)
+        self.persona_overlay_path = (
+            Path(persona_overlay_path)
+            if persona_overlay_path is not None
+            else self.persona_path.with_name("persona_overlay.md")
+        )
         self.prompt_log_path = (
             Path(prompt_log_path) if prompt_log_path is not None else None
         )
         self.now_provider = now_provider or (lambda: datetime.now().astimezone())
-        self.system_prompt = self._load_persona()
+        self.system_prompt = self._load_system_prompt()
 
     def _load_persona(self) -> str:
         if self.persona_path.exists():
             return self.persona_path.read_text(encoding="utf-8")
         return "あなたはトモコです。短く答えてください。"
+
+    def _load_persona_overlay(self) -> str:
+        if self.persona_overlay_path.exists():
+            return self.persona_overlay_path.read_text(encoding="utf-8").strip()
+        return ""
+
+    def _load_system_prompt(self) -> str:
+        persona = self._load_persona().rstrip()
+        overlay = self._load_persona_overlay()
+        if not overlay:
+            return persona
+        return f"{persona}\n\n{overlay}"
 
     def _build_system_prompt(self, thinking_input: ThinkingInput) -> str:
         current_time_prompt = _format_current_time_prompt(self.now_provider())
