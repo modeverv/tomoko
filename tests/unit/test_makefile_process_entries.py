@@ -30,6 +30,9 @@ def test_makefile_exposes_config_and_log_vars_for_separate_processes() -> None:
         "PERSONA_UPDATE_LOG_FILE ?= logs/persona-updater.log",
         "THINKER_LOG_FILE ?= logs/thinker.log",
         "JOURNALIST_LOG_FILE ?= logs/journalist.log",
+        "MONITOR_HOST ?= 127.0.0.1",
+        "MONITOR_PORT ?= 8770",
+        "BACKEND_TRACE_LOG_FILE ?= logs/backend-trace.jsonl",
         "WORLD_OBSERVATION_LOG_FILE ?= logs/world-observations.log",
         "GCAL_URLS_FILE ?= config/gcal_urls.txt",
     ]
@@ -96,3 +99,13 @@ def test_makefile_prepare_uses_current_central_config() -> None:
 
     assert "_tools/prepare_runtime.py" in prepare_body
     assert "--config $(CENTRAL_CONFIG)" in prepare_body
+
+
+@pytest.mark.unit
+def test_makefile_monitor_stays_read_only_and_uses_current_logs() -> None:
+    monitor_body = _target_body("monitor")
+
+    assert "_tools/monitor_dashboard.py" in monitor_body
+    assert "--server-log $(TOMOKO_DEBUG_LOG_FILE)" in monitor_body
+    assert "--backend-trace $(BACKEND_TRACE_LOG_FILE)" in monitor_body
+    assert "--config $(CENTRAL_CONFIG)" in monitor_body
