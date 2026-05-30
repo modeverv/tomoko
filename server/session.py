@@ -2088,11 +2088,17 @@ class TomoroSession:
         except Exception:
             logger.warning("AudioInteractionTap tomoko observer failed", exc_info=True)
 
-    async def _send_audio_chunk(self, chunk: AudioChunkOut) -> None:
+    async def _send_audio_chunk(
+        self,
+        chunk: AudioChunkOut,
+        *,
+        mark_reply_output: bool = True,
+    ) -> None:
         self._observe_tomoko_audio(chunk)
         if self.send_audio is None:
             return
-        self._latency_probe.mark_reply_output_started()
+        if mark_reply_output:
+            self._latency_probe.mark_reply_output_started()
         async with self._send_lock:
             maybe_awaitable = self.send_audio(chunk.data)
             if inspect.isawaitable(maybe_awaitable):
@@ -2161,9 +2167,11 @@ class TomoroSession:
         text = str(command.payload.get("text") or "").strip()
         if not text:
             return
-        self.audio_turns.begin_turn()
-        await self._flush_tts_text(text, style=str(command.payload.get("style") or "gentle"))
-        await self._send_reserved_audio_end()
+        await self._flush_tts_text(
+            text,
+            style=str(command.payload.get("style") or "gentle"),
+            track_audio_turn=False,
+        )
         await self._send_event({"type": "reply_done", "control": "backchannel"})
 
     async def _insert_stop_intent_observation(self, command: SessionCommand) -> None:
@@ -2214,7 +2222,13 @@ class TomoroSession:
             text, style = item
             await self._flush_tts_text(text, style=style)
 
-    async def _flush_tts_text(self, text: str, *, style: str) -> None:
+    async def _flush_tts_text(
+        self,
+        text: str,
+        *,
+        style: str,
+        track_audio_turn: bool = True,
+    ) -> None:
         if self.tts_backend is None or not text.strip():
             return
 
@@ -2246,12 +2260,15 @@ class TomoroSession:
                     tts_input.text,
                     len(chunk.data),
                 )
-            await self._send_reserved_audio_start()
-            outgoing = await self.audio_turns.reserve_audio_chunk(
-                text=tts_input.text,
-                chunk=chunk,
-            )
-            await self._send_audio_chunk(outgoing)
+            if track_audio_turn:
+                await self._send_reserved_audio_start()
+                outgoing = await self.audio_turns.reserve_audio_chunk(
+                    text=tts_input.text,
+                    chunk=chunk,
+                )
+                await self._send_audio_chunk(outgoing)
+            else:
+                await self._send_audio_chunk(chunk, mark_reply_output=False)
 
     async def _record_stop_intent_observation(
         self,

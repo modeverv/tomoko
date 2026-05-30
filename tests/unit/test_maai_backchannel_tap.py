@@ -180,6 +180,9 @@ async def test_maai_react_suggestion_releases_llm_less_backchannel_audio() -> No
     assert tts.inputs[0].text in {"うん", "なるほど", "そっか"}
     assert tts.inputs[0].style == "gentle"
     assert audio == [f"audio:{tts.inputs[0].text}".encode()]
+    assert session.audio_turns.is_tomoko_speaking() is False
+    assert not any(event.get("type") == "audio_start" for event in events)
+    assert not any(event.get("type") == "audio_end" for event in events)
     assert {"type": "reply_done", "control": "backchannel"} in events
 
 
