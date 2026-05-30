@@ -3712,3 +3712,21 @@ MaAI backchannel release では audio turn を begin せず、`AudioTurnControll
 
 通常 reply、stop ack、pregenerated candidate は引き続き audio turn を使う。
 この分離により、相槌が user turn の終端や通常 reply start の trigger になる経路を塞ぐ。
+
+### 確定した判断: MaAI backchannel release は TomoroSession の外で行う
+2026-05-31 の会話確認では、相槌を TomoroSession 内部の `backchannel_suggested` event /
+`release_backchannel_audio` command として扱う限り、通常会話 state と gesture audio の境界が曖昧になった。
+
+以前の「TomoroSession 内で MaAI suggestion を reduce して release する」設計を否定する。
+MaAI 相槌は会話 turn ではなく server-owned gesture audio lane であり、
+TomoroSession は `get_now_state()` の read-only snapshot を提供するだけにする。
+
+release gate は `GestureAudioEmitter` が snapshot の `attention_mode` / `vad_state` /
+`playback_state` と cooldown / TTS availability から判定する。
+audio は既存 `/ws` の binary send を使うが、`audio_start` / `audio_end` / `SessionCommand` /
+`AudioTurnController` / reply output latency state は通さない。
+
+TomoroSession から `backchannel_suggested` reduce、`apply_backchannel_suggestion()`、
+`release_backchannel_audio` command は削除する。
+通常 reply 用の `_send_audio_chunk()` / `_flush_tts_text()` は無害化オプションを持たない形に戻し、
+gesture audio の例外は gateway 側に閉じ込める。

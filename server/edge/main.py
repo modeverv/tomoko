@@ -29,6 +29,7 @@ from server.gateway.candidate_commands import CandidateCommandRunner
 from server.gateway.connections import ClientConnectionRegistry
 from server.gateway.dedup import DuplicateSpeechFilter, PostgresRecentTranscriptReader
 from server.gateway.edge_adapter import GatewayEdgeProtocolHandler
+from server.gateway.gesture_audio import GestureAudioEmitter
 from server.gateway.initiative_feedback import PostgresCandidateFeedbackStore
 from server.gateway.initiative_policy import InitiativeLLMJudge
 from server.gateway.maai_backchannel import (
@@ -353,6 +354,7 @@ async def _central_browser_session(websocket: WebSocket) -> None:
     router = router_factory()
     embedding_backend = embedding_backend_factory()
     audio_interaction_tap = audio_interaction_tap_factory()
+    tts_backend = tts_backend_factory()
     output_state = _connection_registry.register(
         connection_id=connection_id,
         device_id=vad_processor.device_id,
@@ -372,7 +374,7 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         router=router,
         thinking_mode=thinking_mode_factory(),
         deep_thinking_mode=deep_thinking_mode_factory(),
-        tts_backend=tts_backend_factory(),
+        tts_backend=tts_backend,
         embedding_backend=embedding_backend,
         memory_store=memory_store_factory(),
         session_summary_store=session_summary_store_factory(),
@@ -403,9 +405,16 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         connected_output_state=output_state,
         audio_interaction_tap=audio_interaction_tap,
     )
+    gesture_audio_emitter = GestureAudioEmitter(
+        state_provider=session.get_now_state,
+        send_audio=send_audio,
+        send_event=send_event,
+        tts_backend=tts_backend,
+        audio_observer=audio_interaction_tap,
+    )
     if isinstance(audio_interaction_tap, MaaiBackchannelTap):
         audio_interaction_tap.set_suggestion_callback(
-            lambda suggestion: _apply_backchannel_suggestion(session, suggestion)
+            gesture_audio_emitter.release_backchannel
         )
         await audio_interaction_tap.start()
     debug_recorder_factory = getattr(
@@ -492,14 +501,6 @@ async def _central_browser_session(websocket: WebSocket) -> None:
             await initiative_task
         with suppress(asyncio.CancelledError):
             await stop_intent_task
-
-
-async def _apply_backchannel_suggestion(
-    session: TomoroSession,
-    suggestion,
-) -> None:
-    result = await session.apply_backchannel_suggestion(suggestion)
-    await session.send_transition_emissions(result)
 
 
 @app.websocket("/edge/ws")

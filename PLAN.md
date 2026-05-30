@@ -7156,3 +7156,47 @@ reply_start していた。
 - [x] focused unit / ruff が通る
 - [x] full unit / global ruff が通る
 - [x] git commit まで完了する
+
+### Phase 10.20.19: move MaAI backchannel release outside TomoroSession
+
+この Phase では、以前の「TomoroSession 内で MaAI backchannel suggestion を reduce し、
+SessionCommand として相槌 TTS を release する」設計を否定する。
+
+MaAI 相槌は会話 turn ではなく gesture audio なので、TomoroSession の state machine を mutation しない
+server-owned gesture audio lane として扱う。
+TomoroSession は通常会話・turn-taking・barge-in・conversation log の owner に留め、
+MaAI 相槌は `TomoroSession.get_now_state()` の read-only snapshot だけを参照して release gate を判断する。
+
+#### 変更対象
+
+- `server/gateway/gesture_audio.py`
+  - `GestureAudioEmitter` を追加する
+  - `attention_mode` / `vad_state` / `playback_state` / cooldown / TTS availability を snapshot から判定する
+  - same websocket audio send を使うが、`audio_start` / `audio_end` / TomoroSession command は使わない
+- `server/edge/main.py`
+  - MaAI callback を `session.apply_backchannel_suggestion()` から `GestureAudioEmitter.release_backchannel()` に差し替える
+- `server/session.py`
+  - `backchannel_suggested` reduce、`apply_backchannel_suggestion()`、`release_backchannel_audio` command を削除する
+  - `_flush_tts_text(track_audio_turn=False)` / `_send_audio_chunk(mark_reply_output=False)` の無害化パッチを削除し、通常 reply 用経路に戻す
+- `_tools/smoke_maai_dialogue.py` / `_tools/smoke_maai_material.py`
+  - session release harness を gesture emitter harness に差し替える
+- `tests/unit/test_gesture_audio.py`
+  - gesture lane の release / skip / cooldown を固定する
+- `tests/unit/test_maai_backchannel_tap.py`
+  - TomoroSession 内 release test を削除し、audio tap の hot-path test に戻す
+
+#### 残すもの
+
+- `turn_id=None` playback telemetry を通常 echo state に混ぜない防御
+- `...さぁ` / `...が` など未完 follow-up を通常 reply にしない guard
+- MaAI adapter の raw score / suggestion generation
+
+#### 完了条件
+
+- [x] GestureAudioEmitter の release / skip / cooldown unit が通る
+- [x] MaAI callback が TomoroSession を mutation しない lane に差し替わる
+- [x] TomoroSession から backchannel release command が消える
+- [x] smoke MaAI JSON が gesture lane release を記録する
+- [x] focused unit / ruff が通る
+- [x] full unit / global ruff が通る
+- [x] git commit まで完了する

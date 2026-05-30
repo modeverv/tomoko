@@ -20,20 +20,16 @@ from _tools.smoke_maai_dialogue import (  # noqa: E402
     RawScoreMaaiTap,
     SmokeBackchannelTTS,
     _frame,
+    _gesture_state,
     _json_safe,
 )
-from server.edge.pipeline.vad import VADProcessor  # noqa: E402
+from server.gateway.gesture_audio import GestureAudioEmitter  # noqa: E402
 from server.gateway.maai_backchannel import (  # noqa: E402
     MAAI_FRAME_SIZE,
     MAAI_SAMPLE_RATE,
     MaaiBackchannelConfig,
 )
-from server.gateway.turn_taking.barge_in import BargeInDetector  # noqa: E402
-from server.session import TomoroSession  # noqa: E402
-from server.shared.models import (  # noqa: E402
-    BackchannelSuggestion,
-    PlaybackTelemetry,
-)
+from server.shared.models import BackchannelSuggestion  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -44,12 +40,6 @@ class MaterialTimeline:
     user_audio: np.ndarray
     tomoko_audio: np.ndarray
     duration_sec: float
-
-
-class QuietVAD:
-    def process_chunk(self, chunk: np.ndarray) -> float:
-        del chunk
-        return 0.0
 
 
 async def run_material_smoke(
@@ -229,34 +219,31 @@ async def simulate_material_session_releases(
     events: list[dict[str, Any]] = []
     sent_audio: list[bytes] = []
     tts = SmokeBackchannelTTS()
-    session = TomoroSession(
-        vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
-        send_event=events.append,
-        send_audio=sent_audio.append,
-        tts_backend=tts,
-        barge_in_detector=BargeInDetector(),
-    )
     releases: list[dict[str, Any]] = []
     previous_event_count = 0
     previous_audio_count = 0
     previous_tts_count = 0
-    await session._transition_attention("engaged")
+    current_user_speaking = False
+    current_tomoko_speaking = False
+    emitter = GestureAudioEmitter(
+        state_provider=lambda: _gesture_state(
+            user_speaking=current_user_speaking,
+            tomoko_speaking=current_tomoko_speaking,
+        ),
+        send_event=events.append,
+        send_audio=sent_audio.append,
+        tts_backend=tts,
+        react_utterances=("うん",),
+    )
     for suggestion in suggestions:
         observed_sec = _suggestion_observed_sec(suggestion, raw_scores)
         user_rms = _window_rms(timeline.user_audio, observed_sec)
         tomoko_rms = _window_rms(timeline.tomoko_audio, observed_sec)
         user_speaking = user_rms >= speech_rms_threshold
         tomoko_speaking = tomoko_rms >= speech_rms_threshold
-        await session._transition("listening" if user_speaking else "idle")
-        if tomoko_speaking:
-            await session.handle_playback_telemetry(
-                PlaybackTelemetry(
-                    type="playback_started",
-                    turn_id=f"material-tomoko-{len(releases)}",
-                    chunk_id=0,
-                )
-            )
-        result = await session.apply_backchannel_suggestion(suggestion)
+        current_user_speaking = user_speaking
+        current_tomoko_speaking = tomoko_speaking
+        await emitter.release_backchannel(suggestion)
         new_events = events[previous_event_count:]
         new_audio = sent_audio[previous_audio_count:]
         new_tts_inputs = tts.inputs[previous_tts_count:]
@@ -277,10 +264,13 @@ async def simulate_material_session_releases(
                 },
                 "emissions": [
                     {
-                        "type": emission.type,
-                        "payload": _json_safe(emission.payload),
+                        "type": event.get("type"),
+                        "payload": _json_safe(
+                            {key: value for key, value in event.items() if key != "type"}
+                        ),
                     }
-                    for emission in result.emissions
+                    for event in new_events
+                    if event.get("type") in {"backchannel_released", "backchannel_skipped"}
                 ],
                 "audio_chunks": len(new_audio),
                 "audio_bytes": sum(len(chunk) for chunk in new_audio),
@@ -299,9 +289,6 @@ async def simulate_material_session_releases(
                 ],
             }
         )
-        session.audio_turns._tomoko_speaking_until = 0.0
-        session.audio_turns._active_playback_chunks.clear()
-        session.audio_turns._playback_echo_until = 0.0
     return releases
 
 
