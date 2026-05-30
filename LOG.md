@@ -1,3 +1,41 @@
+## 2026-05-30 セッション24
+
+### やること（開始時に書く）
+- Retrieve と Use を分ける memory gate 境界を追加する
+- `MemoryGate` interface / rule 実装 / logging decorator を用意し、差し替え可能にする
+- `TomoroSession` は取得済み long-term memory / calendar memory を gate 経由で prompt へ渡す
+- 最初の rule として recall request は会話記憶を使い、calendar request は calendar だけ使い、self statement / chitchat / unclear は会話記憶を抑制する
+- gate trace を log に残し、今後の調整点を観測できるようにする
+- LLM 追加推論、DB schema、ContextSnapshotBuilder の retrieval policy、audio / TTS hot path は変更しない
+
+### やったこと
+- `server/session_memory_gate.py` を追加し、`MemoryGate` protocol / `RuleBasedMemoryGate` / `LoggingMemoryGate` を切った
+- `TomoroSession` に `memory_gate` を注入可能にし、context snapshot で取れた候補を prompt へ出す前に gate へ通すようにした
+- retrieval plan と prompt exposure を分け、`self_statement` / `chitchat` / `unclear` は deep retrieval と prompt exposure を抑制するようにした
+- `calendar_request` は calendar memory だけを expose し、会話要約や restored turn は抑制するようにした
+- exposed された fresh memory だけを carryover へ保存するようにし、抑制済みの `123` のような memory が次 turn に残らないようにした
+- gate log に retrieved / exposed / suppressed / reason / source counts / top suppressed を出すようにした
+
+### 詰まったこと・解決したこと
+- project logger 設定の影響で `caplog` に decorator log が載らなかったため、unit では logger injection で観測する形にした
+- calendar cue は `deep` snapshot を使うが、gate で calendar source だけを expose することで「予定確認に過去会話が混ざる」問題を避けた
+
+### 検証
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_session_memory_gate.py tests/unit/test_phase88_context_snapshot.py::test_tomoro_session_suppresses_self_statement_memory_prompt -q`
+  - 6 passed
+- broader memory unit: `.venv/bin/python -m pytest -m unit tests/unit/test_phase8_memory.py tests/unit/test_phase88_context_snapshot.py tests/unit/test_session_memory_helpers.py tests/unit/test_session_carryover.py tests/unit/test_session_memory_gate.py -q`
+  - 48 passed
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 473 passed, 17 deselected
+- ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- diff whitespace: `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- 実会話ログで `memory_gate plan` / `memory_gate filter` を確認し、intent rule の過不足を調整する
+- persona / short memory を gate 対象へ広げる場合は、`MemoryGate` の DTO を `MemoryHit` 専用から source slice 単位へ拡張する
+
 ## 2026-05-30 セッション21
 
 ### やること（開始時に書く）

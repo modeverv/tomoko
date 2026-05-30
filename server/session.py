@@ -53,6 +53,12 @@ from server.session_carryover import (
 )
 from server.session_key_helpers import candidate_request_id
 from server.session_latency import LatencyProbeState, elapsed_ms
+from server.session_memory_gate import (
+    LoggingMemoryGate,
+    MemoryGate,
+    MemoryGateRequest,
+    RuleBasedMemoryGate,
+)
 from server.session_memory_helpers import (
     context_snapshot_calendar_memory,
     context_snapshot_long_term_memory,
@@ -141,6 +147,7 @@ class TomoroSession:
         stop_intent_store: StopIntentStore | None = None,
         stop_ack_audio_provider: StopAckAudioProvider | None = None,
         connected_output_state: ConnectedOutputState | None = None,
+        memory_gate: MemoryGate | None = None,
         engaged_timeout_ms: int = 8000,
         cooldown_timeout_ms: int = 8000,
         playback_echo_grace_ms: int = 1200,
@@ -174,6 +181,7 @@ class TomoroSession:
         self.candidate_feedback_store = candidate_feedback_store
         self.stop_intent_store = stop_intent_store
         self.stop_ack_audio_provider = stop_ack_audio_provider or StopAckAudioProvider()
+        self.memory_gate = memory_gate or LoggingMemoryGate(RuleBasedMemoryGate())
         self.state: SessionState = "idle"
         self.attention_mode: AttentionMode = "ambient"
         self.latest_segment: SpeechSegment | None = None
@@ -1420,13 +1428,19 @@ class TomoroSession:
             self._elapsed_since_speech_end_ms(),
         )
         thinking_mode = self.thinking_mode
-        explicit_memory_cue = has_deep_memory_cue(transcript.text)
+        base_deep_memory = should_use_deep_memory(transcript.text)
         calendar_cue = has_calendar_cue(transcript.text)
-        depth = (
-            "deep"
-            if should_use_deep_memory(transcript.text) or calendar_cue
-            else "fast"
+        memory_plan = self.memory_gate.plan_retrieval(
+            text=transcript.text,
+            base_deep_memory=base_deep_memory,
+            calendar_cue=calendar_cue,
         )
+        explicit_memory_cue = (
+            has_deep_memory_cue(transcript.text) and memory_plan.retrieve_long_term
+        )
+        depth = "deep" if (
+            memory_plan.retrieve_long_term or memory_plan.retrieve_calendar
+        ) else "fast"
         context_snapshot = await self._build_context_snapshot(
             transcript,
             depth=depth,
@@ -1446,22 +1460,58 @@ class TomoroSession:
         )
         fresh_long_term_memory = context_snapshot_long_term_memory(context_snapshot)
         fresh_calendar_memory = context_snapshot_calendar_memory(context_snapshot)
-        long_term_memory = self._merge_carried_long_term_memory(fresh_long_term_memory)
-        if fresh_long_term_memory:
-            self._remember_retrieved_context(fresh_long_term_memory)
-        if fresh_calendar_memory:
-            self._remember_retrieved_context(fresh_calendar_memory)
+        raw_memory_candidates = [
+            *fresh_long_term_memory,
+            *fresh_calendar_memory,
+        ]
+        merged_memory_candidates = self._merge_carried_long_term_memory(
+            raw_memory_candidates
+        )
+        memory_gate_decision = self.memory_gate.filter_for_prompt(
+            MemoryGateRequest(
+                text=transcript.text,
+                intent=memory_plan.intent,
+                memories=merged_memory_candidates,
+            )
+        )
+        long_term_memory = memory_gate_decision.exposed_memories
+        exposed_memory_ids = {id(memory) for memory in long_term_memory}
+        exposed_fresh_long_term_memory = [
+            memory
+            for memory in fresh_long_term_memory
+            if id(memory) in exposed_memory_ids
+        ]
+        exposed_fresh_calendar_memory = [
+            memory
+            for memory in fresh_calendar_memory
+            if id(memory) in exposed_memory_ids
+        ]
+        if exposed_fresh_long_term_memory:
+            self._remember_retrieved_context(exposed_fresh_long_term_memory)
+        if exposed_fresh_calendar_memory:
+            self._remember_retrieved_context(exposed_fresh_calendar_memory)
             logger.info(
                 "TomoroSession calendar context carried count=%s cue=%s text=%r",
-                len(fresh_calendar_memory),
+                len(exposed_fresh_calendar_memory),
                 calendar_cue,
                 transcript.text,
             )
-        if self.deep_thinking_mode is not None and depth == "deep" and long_term_memory:
+        exposed_conversation_memory_count = len(
+            [
+                memory
+                for memory in long_term_memory
+                if not (memory.source_id or "").startswith("calendar:")
+            ]
+        )
+        if (
+            self.deep_thinking_mode is not None
+            and depth == "deep"
+            and exposed_conversation_memory_count > 0
+        ):
             thinking_mode = self.deep_thinking_mode
             logger.info(
                 "TomoroSession deep memory selected hits=%s text=%r",
-                len(long_term_memory),
+                exposed_conversation_memory_count,
                 transcript.text,
             )
 

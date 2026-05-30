@@ -837,6 +837,43 @@ async def test_tomoro_session_carries_deep_memory_into_short_followup() -> None:
 
 
 @pytest.mark.unit
+async def test_tomoro_session_suppresses_self_statement_memory_prompt() -> None:
+    mode = RecordingThinkingMode()
+    session = TomoroSession(
+        vad_processor=FakeVADProcessor(),  # type: ignore[arg-type]
+        send_event=lambda event: None,
+        router=FakeRouter(),  # type: ignore[arg-type]
+        thinking_mode=mode,
+        context_snapshot_builder=ContextSnapshotBuilder(
+            conversation_log_reader=InMemoryConversationReader(),
+            embedding_backend=FakeEmbeddingBackend(),  # type: ignore[arg-type]
+            memory_store=FakeMemoryStore(),  # type: ignore[arg-type]
+            session_summary_store=FakeSummaryStore(),  # type: ignore[arg-type]
+        ),
+    )
+    session.active_conversation_session_id = uuid4()
+
+    await session._reply_to(
+        Transcript(
+            text="普通に覚えております",
+            device_id="local",
+            speaker=None,
+            audio_level_db=-20.0,
+            recorded_at=datetime(2026, 5, 30, 10, 10, tzinfo=UTC),
+            is_final=True,
+        )
+    )
+    await session._wait_for_reply_task()
+
+    assert len(mode.inputs) == 1
+    first_input = mode.inputs[0]
+    assert first_input.context_snapshot is not None
+    assert first_input.context_snapshot.depth == "fast"
+    assert first_input.long_term_memory == []
+    assert session._carried_long_term_memory() == []
+
+
+@pytest.mark.unit
 async def test_tomoro_session_carries_calendar_context_into_short_followup() -> None:
     calendar_store = InMemoryCalendarEventStore()
     await calendar_store.replace_source_events(

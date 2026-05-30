@@ -1,3 +1,19 @@
+## 2026-05-30 memory gate boundary
+
+取得した記憶をそのまま prompt に出す方針は否定する。
+Retrieve と Use を分け、`TomoroSession` が final owner として
+「今の返答に使ってよい記憶」だけを `ThinkingInput.long_term_memory` に渡す。
+
+### 完了条件
+
+- [x] `MemoryGate` interface を追加し、差し替え可能な境界にする
+- [x] 初期実体として rule-based gate を追加する
+- [x] gate の入出力と抑制理由を記録する logging decorator を追加する
+- [x] `TomoroSession` が long-term memory / calendar memory を gate 経由で使う
+- [x] recall request は会話記憶を使い、calendar request は calendar だけ使う
+- [x] self statement / chitchat / unclear は会話記憶を prompt へ出さない
+- [x] focused unit / ruff / full unit が通る
+
 ## 2026-05-30 arrival candidate retention cleanup
 
 `arrival_candidates` を TTL で fetch 対象から外すだけの運用は否定する。
