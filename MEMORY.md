@@ -3646,3 +3646,31 @@ Wake word がない engaged / cooldown follow-up でも、12 文字以下で
 
 `さっきの続きなんだけど` のような短いが意図として成立する follow-up は維持するため、
 `けど` / `から` / `って` / `とか` は今回の fragment 終端には含めない。
+
+### 確定した判断: MaAI 相槌の playback telemetry は通常 echo 判定に混ぜない
+2026-05-31 の実サーバー確認で、MaAI 相槌 `うん` の再生 telemetry が
+`turn_id=None` として届き、その直後の user transcript が Tomoko playback の
+echo grace / active chunk として observer に落ちる挙動を確認した。
+
+MaAI 相槌は通常 reply ではなく gesture audio なので、`turn_id=None` の
+`playback_started` / `playback_ended` telemetry は `AudioTurnController` の
+通常 playback state / echo grace に反映しない。
+ログや外部イベントとして観測されることは許すが、turn-taking / barge-in / echo 判定の
+authoritative state には混ぜない。
+
+これにより、相槌直後の user 発話が `playback_ended_grace` や
+`playback_active_chunk` だけを理由に落ちる経路を塞ぐ。
+
+### 確定した判断: engaged 中の長い未完 continuation tail も通常 reply を開始しない
+2026-05-31 の実ログでは、`...そういうのって` で STT segment が一度切れ、
+`attention_engaged_followup` として通常 LLM reply が開始された。
+その後にユーザーが続きを話していたため、Tomoko が遮る形になった。
+
+以前の「`って` / `とか` は短い未完 fragment 終端には含めない」という判断は、
+短文 fragment guard に限って維持する。
+一方で、長い発話が terminal punctuation なしで
+`って` / `とか` / `みたいな` / `という` / `というか` で終わる場合は、
+継続中の文として `low_confidence_followup` に落とす。
+
+これは LLM なしで発話継続らしさを保守的に扱う gate であり、
+`。` / `？` / `!` などの終端記号がある場合は通常 follow-up として扱う。

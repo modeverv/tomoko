@@ -63,6 +63,22 @@ async def test_audio_turn_controller_tracks_active_playback_chunks_and_grace() -
 
 
 @pytest.mark.unit
+async def test_audio_turn_controller_ignores_playback_telemetry_without_turn_id() -> None:
+    controller = AudioTurnController(playback_echo_grace_ms=1200)
+
+    await controller.handle_playback_telemetry(
+        PlaybackTelemetry(type="playback_started", turn_id=None, chunk_id=1)
+    )
+    await controller.handle_playback_telemetry(
+        PlaybackTelemetry(type="playback_ended", turn_id=None, chunk_id=1)
+    )
+
+    assert controller.is_client_playback_active() is False
+    assert controller.is_playback_echo_grace_active() is False
+    assert controller.playback_state == "idle"
+
+
+@pytest.mark.unit
 async def test_audio_turn_controller_stop_event_is_reserved_once() -> None:
     controller = AudioTurnController()
     controller.begin_turn()

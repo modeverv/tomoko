@@ -120,6 +120,8 @@ class AudioTurnController:
 
     async def handle_playback_telemetry(self, telemetry: PlaybackTelemetry) -> None:
         async with self._lock:
+            if telemetry.turn_id is None:
+                return
             chunk_key = (telemetry.turn_id, telemetry.chunk_id)
             if telemetry.type == "playback_started":
                 self._last_playback_started = telemetry

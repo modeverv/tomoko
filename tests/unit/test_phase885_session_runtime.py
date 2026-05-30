@@ -65,6 +65,28 @@ async def test_post_event_updates_playback_runtime_state() -> None:
 
 
 @pytest.mark.unit
+async def test_post_event_ignores_playback_runtime_state_without_turn_id() -> None:
+    session = _session()
+
+    started = await session.post_event(
+        SessionEvent(
+            type="playback_started",
+            payload={"turn_id": None, "chunk_id": 1},
+        )
+    )
+    ended = await session.post_event(
+        SessionEvent(
+            type="playback_ended",
+            payload={"turn_id": None, "chunk_id": 1},
+        )
+    )
+
+    assert started.state.playback_state == "idle"
+    assert ended.state.playback_state == "idle"
+    assert session.get_now_state().playback_state == "idle"
+
+
+@pytest.mark.unit
 async def test_reduce_marks_active_playback_transcript_as_echo_observer() -> None:
     session = _session()
     await session.post_event(
