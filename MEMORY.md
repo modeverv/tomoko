@@ -95,6 +95,32 @@ overlay は base persona の直後、現在時刻・calendar・short memory・lo
 `ThinkFastMode` の default overlay path は `persona_path.with_name("persona_overlay.md")` とし、
 tmp persona を使う unit test や比較実験へ repo overlay が漏れないようにする。
 
+### 気づき: 未定義 emotion 禁止は overlay 側にも必要
+2026-05-30 の実推論確認では、`prompts/base_persona.md` の emotion 列挙直下に
+「プログラム側で未定義の emotion は出力しないこと」「playful は使わないこと」と明記しても、
+overlay 有りの `gemma-4-26b-a4b-it-mlx` は `EMOTION:playful` を2/3ケースで出した。
+
+これは base persona の禁止文が効かないというより、overlay の「小悪魔的」「茶目っ気」「遊び心」の意味づけが
+emotion label 生成へ強く引っ張られている可能性が高い。
+次の最小修正では `prompts/persona_overlay.md` 側にも、
+`emotion は neutral / happy / surprised / sad / thinking / gentle / excited だけを使う。
+playful は本文の雰囲気で表し、ラベルには使わない` と明記する。
+
+runtime guard として、未定義 `EMOTION:*` 行を本文に漏らさず fallback emotion へ丸める案もあるが、
+まずは prompt-only 修正で再測定する。
+
+### 確定した判断: 未定義 emotion label は runtime で neutral に丸める
+2026-05-30 の実推論で `EMOTION:playful` が繰り返し出たため、
+会話 prompt だけで emotion protocol を守らせる方針は補助的なものとして扱う。
+
+`ThinkFastMode` の emotion parser は、`EMOTION:` で始まる行や inline header の label が
+`neutral / happy / surprised / sad / thinking / gentle / excited` に含まれない場合、
+その行を本文として流さず `neutral` emotion に丸める。
+これにより TTS / reply_text へ `EMOTION:playful` のような protocol 行が漏れない。
+
+structured output への移行は、conversation streaming / TTS first audio への影響を測る別 Phase とする。
+現時点では streaming text protocol を維持し、受信側の deterministic guard で破綻を止める。
+
 ### Git 運用
 - コミットは自由、origin への push は人間のみ
 - テストが通る単位でコミット

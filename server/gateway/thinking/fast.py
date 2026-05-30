@@ -16,6 +16,7 @@ from server.shared.models import CalendarEvent, ThinkingEvent, ThinkingInput
 from server.shared.persona_prompt import format_persona_prompt_slice_for_prompt
 
 EMOTION_PREFIX = "EMOTION:"
+FALLBACK_EMOTION = "neutral"
 logger = logging.getLogger(__name__)
 DEFAULT_PROMPT_LOG_PATH = Path("logs/conversation-prompts.jsonl")
 EMOTIONS = {
@@ -214,7 +215,7 @@ def _parse_emotion_line(line: str) -> str | None:
         return None
     emotion = stripped.removeprefix(EMOTION_PREFIX).strip()
     if emotion not in EMOTIONS:
-        return None
+        return FALLBACK_EMOTION
     return emotion
 
 
@@ -232,7 +233,7 @@ def _parse_inline_emotion_header(text: str) -> tuple[str, str] | None:
 
     emotion, remainder = parts
     if emotion not in EMOTIONS:
-        return None
+        return FALLBACK_EMOTION, remainder
     return emotion, remainder
 
 

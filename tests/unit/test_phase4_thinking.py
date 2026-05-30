@@ -496,6 +496,67 @@ async def test_think_fast_extracts_emotion_prefix_without_newline(tmp_path) -> N
 
 
 @pytest.mark.unit
+async def test_think_fast_suppresses_unknown_emotion_line_before_text(
+    tmp_path,
+) -> None:
+    persona = tmp_path / "persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend(["EMOTION:playful\nふふ", "、了解。"])
+    mode = ThinkFastMode(persona_path=persona)
+
+    events = [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="トモコ、全部あとでいいって言って",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+            ),
+        )
+    ]
+
+    assert events == [
+        ThinkingEvent(type="emotion", value="neutral"),
+        ThinkingEvent(type="text_delta", value="ふふ"),
+        ThinkingEvent(type="text_delta", value="、了解。"),
+        ThinkingEvent(type="done", value=""),
+    ]
+
+
+@pytest.mark.unit
+async def test_think_fast_suppresses_unknown_inline_emotion_before_text(
+    tmp_path,
+) -> None:
+    persona = tmp_path / "persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend(["EMOTION:playful ふふ、了解。"])
+    mode = ThinkFastMode(persona_path=persona)
+
+    events = [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="トモコ、全部あとでいいって言って",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+            ),
+        )
+    ]
+
+    assert events == [
+        ThinkingEvent(type="emotion", value="neutral"),
+        ThinkingEvent(type="text_delta", value="ふふ、了解。"),
+        ThinkingEvent(type="done", value=""),
+    ]
+
+
+@pytest.mark.unit
 async def test_session_streams_reply_text_after_wake_word() -> None:
     events: list[dict[str, str]] = []
     backend = FakeBackend(["うん", "、聞こえるよ"])

@@ -1,3 +1,61 @@
+## 2026-05-30 セッション12
+
+### やること（開始時に書く）
+- `_parse_emotion_line()` 周辺に deterministic guard を追加し、未定義 `EMOTION:*` を本文へ漏らさない
+- `EMOTION:playful` が出ても許可済み fallback emotion に丸め、本文は改行後/ラベル後だけを流す
+- 会話 prompt、audio hot path、DB write ordering、TTS / playback ordering は変更しない
+
+### やったこと
+- `ThinkFastMode` の emotion parser に `FALLBACK_EMOTION = "neutral"` を追加した
+- `EMOTION:` で始まる行の label が未定義の場合、本文扱いせず `neutral` emotion event に丸めるようにした
+- 改行ありの `EMOTION:playful\n...` と、改行なしの `EMOTION:playful ...` の両方を unit test で固定した
+- 会話 prompt、audio hot path、DB write ordering、TTS / playback ordering は変更していない
+
+### 検証
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_phase4_thinking.py::test_think_fast_extracts_emotion_line_before_text tests/unit/test_phase4_thinking.py::test_think_fast_extracts_emotion_prefix_without_newline tests/unit/test_phase4_thinking.py::test_think_fast_suppresses_unknown_emotion_line_before_text tests/unit/test_phase4_thinking.py::test_think_fast_suppresses_unknown_inline_emotion_before_text tests/unit/test_phase4_thinking.py::test_session_sends_emotion_event_after_wake_word -q`
+  - 5 passed
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 447 passed, 17 deselected
+- ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- git diff check: `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- 実 LM Studio 出力で `EMOTION:playful` が再度出ても、UI / TTS へは `neutral` emotion + 本文だけが流れることを実会話で確認する
+
+## 2026-05-30 セッション11
+
+### やること（開始時に書く）
+- 未定義 emotion 禁止を追加した後の基本 prompt で、overlay 有り実推論を再実行する
+- 前回 `EMOTION:playful` が出た入力を含め、未定義 emotion が消えるか確認する
+- DB への user / Tomoko turn 追記、runtime code 変更、audio hot path 変更は行わない
+
+### やったこと
+- 実 `lmstudio_gemma4_26b_a4b` / `gemma-4-26b-a4b-it-mlx` に、overlay 有り prompt を再度投げた
+- 前回 `EMOTION:playful` が出た2入力と、予定相談の1入力で比較した
+- prompt に `プログラム側で未定義の emotion は出力しないこと。` と `playful / angry / embarrassed` 例が入っていることを確認した
+- 出力を `/tmp/tomoko-overlay-emotion-guard-real-inference.md` に保存した
+
+### 実測メモ
+- `prompt_has_undefined_guard=True`
+- `prompt_has_playful_example=True`
+- `contains_playful_count=2`
+- 入力 `今日の予定を踏まえて...`
+  - `EMOTION:thinking`
+  - `次は11時20分から「び」の予定があるけど、それより先に何か片付けておきたいことはある？`
+- 入力 `正直めんどいから全部あとでいいって言って`
+  - `EMOTION:playful` が漏れた
+  - `ふふ、了解。じゃあ全部「あとで」って言っておくね。これでいい？`
+- 入力 `無茶振りだけど、今すぐ全部終わらせる方法ある？`
+  - `EMOTION:playful` が漏れた
+  - `それはさすがに、魔法でも使わないと無理じゃない？まずは何から片付けたい気分？`
+
+### 分かったこと
+- base persona の列挙直下に未定義 emotion 禁止を書くだけでは、overlay の「遊び心」誘導を抑えきれない
+- 次の最小修正は overlay 側に `emotion は neutral / happy / surprised / sad / thinking / gentle / excited だけを使う。playful は本文の雰囲気で表し、ラベルには使わない` と明記すること
+- さらに堅くするなら、parser 側で未定義 emotion line を本文扱いせず fallback emotion へ丸める runtime guard を検討する
+
 ## 2026-05-30 セッション10
 
 ### やること（開始時に書く）
