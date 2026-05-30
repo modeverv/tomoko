@@ -198,3 +198,38 @@ async def test_candidate_store_fetches_latest_fresh_arrival_candidate() -> None:
         device_id=None,
     )
     assert any_device == other_device
+
+
+@pytest.mark.unit
+async def test_candidate_store_deletes_old_expired_arrival_candidates() -> None:
+    now = datetime(2026, 5, 24, 12, 0, tzinfo=UTC)
+    store = InMemoryCandidateStore()
+    old_expired = await store.insert_arrival_candidate(
+        context_snapshot=ArrivalContextSnapshot(computed_at=now),
+        behavior="wait_silent",
+        computed_at=now - timedelta(days=8),
+        valid_until=now - timedelta(days=7, seconds=1),
+    )
+    recent_expired = await store.insert_arrival_candidate(
+        context_snapshot=ArrivalContextSnapshot(computed_at=now),
+        behavior="wait_silent",
+        computed_at=now - timedelta(hours=2),
+        valid_until=now - timedelta(hours=1),
+    )
+    fresh = await store.insert_arrival_candidate(
+        context_snapshot=ArrivalContextSnapshot(computed_at=now),
+        behavior="wait_silent",
+        computed_at=now,
+        valid_until=now + timedelta(minutes=3),
+    )
+
+    deleted_count = await store.delete_expired_arrival_candidates(
+        older_than=now - timedelta(days=7)
+    )
+
+    assert deleted_count == 1
+    assert [candidate.id for candidate in store.arrival_candidates] == [
+        recent_expired.id,
+        fresh.id,
+    ]
+    assert old_expired.id not in {candidate.id for candidate in store.arrival_candidates}

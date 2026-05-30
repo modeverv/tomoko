@@ -378,6 +378,12 @@ class CandidateStore(Protocol):
         used_at: datetime,
     ) -> None: ...
 
+    async def delete_expired_arrival_candidates(
+        self,
+        *,
+        older_than: datetime,
+    ) -> int: ...
+
 
 class PregeneratedAudioChunkStore(Protocol):
     async def replace_chunks(
@@ -624,6 +630,19 @@ class InMemoryCandidateStore:
                     used_at=used_at,
                 )
                 return
+
+    async def delete_expired_arrival_candidates(
+        self,
+        *,
+        older_than: datetime,
+    ) -> int:
+        before_count = len(self.arrival_candidates)
+        self.arrival_candidates = [
+            candidate
+            for candidate in self.arrival_candidates
+            if candidate.valid_until >= older_than
+        ]
+        return before_count - len(self.arrival_candidates)
 
     def _replace_utterance(
         self,
@@ -1106,6 +1125,22 @@ class PostgresCandidateStore:
                     """,
                     (used_at, candidate_id),
                 )
+
+    async def delete_expired_arrival_candidates(
+        self,
+        *,
+        older_than: datetime,
+    ) -> int:
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    DELETE FROM arrival_candidates
+                    WHERE valid_until < %s
+                    """,
+                    (older_than,),
+                )
+                return cur.rowcount or 0
 
 
 class PostgresPregeneratedAudioChunkStore:

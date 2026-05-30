@@ -167,6 +167,47 @@ async def test_postgres_candidate_store_round_trip() -> None:
             )
             is None
         )
+
+        cleanup_base = datetime(2000, 1, 8, 12, 0, tzinfo=UTC)
+        old_arrival = await store.insert_arrival_candidate(
+            context_snapshot=ArrivalContextSnapshot(
+                device_id=device_id,
+                computed_at=cleanup_base - timedelta(days=8),
+                local_time="12:00",
+            ),
+            behavior="wait_silent",
+            computed_at=cleanup_base - timedelta(days=8),
+            valid_until=cleanup_base - timedelta(seconds=1),
+        )
+        recent_arrival = await store.insert_arrival_candidate(
+            context_snapshot=ArrivalContextSnapshot(
+                device_id=device_id,
+                computed_at=cleanup_base,
+                local_time="12:00",
+            ),
+            behavior="wait_silent",
+            computed_at=cleanup_base,
+            valid_until=cleanup_base + timedelta(seconds=1),
+        )
+        arrival_ids.extend([old_arrival.id, recent_arrival.id])
+
+        deleted_count = await store.delete_expired_arrival_candidates(
+            older_than=cleanup_base
+        )
+        assert deleted_count >= 1
+        async with await psycopg.AsyncConnection.connect(dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id
+                    FROM arrival_candidates
+                    WHERE id = ANY(%s)
+                    ORDER BY valid_until
+                    """,
+                    ([old_arrival.id, recent_arrival.id],),
+                )
+                remaining_arrivals = [row[0] for row in await cur.fetchall()]
+        assert remaining_arrivals == [recent_arrival.id]
     finally:
         async with await psycopg.AsyncConnection.connect(dsn) as conn:
             async with conn.cursor() as cur:

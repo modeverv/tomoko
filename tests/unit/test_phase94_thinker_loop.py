@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from server.shared.candidate import (
+    ArrivalContextSnapshot,
     CandidateSeed,
     EvaluatedUtterance,
     InMemoryCandidateStore,
@@ -152,6 +153,40 @@ async def test_run_once_generates_candidate_and_arrival() -> None:
     assert source.calls == 1
     assert pregenerator.calls == [now]
     assert evaluator.calls[0][1].device_id == "desk"
+
+
+@pytest.mark.unit
+async def test_arrival_precompute_deletes_expired_arrivals_older_than_seven_days() -> None:
+    now = datetime(2026, 5, 24, 15, 0, tzinfo=UTC)
+    store = InMemoryCandidateStore()
+    old_expired = await store.insert_arrival_candidate(
+        context_snapshot=ArrivalContextSnapshot(computed_at=now),
+        behavior="wait_silent",
+        computed_at=now - timedelta(days=8),
+        valid_until=now - timedelta(days=7, seconds=1),
+    )
+    recent_expired = await store.insert_arrival_candidate(
+        context_snapshot=ArrivalContextSnapshot(computed_at=now),
+        behavior="wait_silent",
+        computed_at=now - timedelta(hours=2),
+        valid_until=now - timedelta(hours=1),
+    )
+    thinker = ThinkerProcess(
+        store=store,
+        sources=[],
+        evaluator=RecordingEvaluator(),  # type: ignore[arg-type]
+        arrival_precomputer=ArrivalPrecomputer(
+            store=store,
+            router=FakeRouter(),  # type: ignore[arg-type]
+        ),
+        config=ThinkerLoopConfig(device_id="desk"),
+    )
+
+    result = await thinker.run_arrival_precompute_once(now=now)
+
+    assert result.deleted_expired_arrival_count == 1
+    assert old_expired.id not in {candidate.id for candidate in store.arrival_candidates}
+    assert recent_expired.id in {candidate.id for candidate in store.arrival_candidates}
 
 
 @pytest.mark.unit

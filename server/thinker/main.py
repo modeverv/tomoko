@@ -6,7 +6,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from server.shared.candidate import (
     CandidateSeed,
@@ -28,6 +28,7 @@ from server.thinker.sources.time_based import TimeBasedSource
 from server.thinker.sources.world_observation import WorldObservationSource
 
 logger = logging.getLogger(__name__)
+_ARRIVAL_CLEANUP_RETENTION = timedelta(days=7)
 
 NowFactory = Callable[[], datetime]
 SleepFunc = Callable[[float], Awaitable[None]]
@@ -54,6 +55,7 @@ class CandidateGenerationResult:
 class ArrivalPrecomputeResult:
     behavior: str
     elapsed_ms: float
+    deleted_expired_arrival_count: int = 0
     error_count: int = 0
 
 
@@ -224,6 +226,19 @@ class ThinkerProcess:
         observed_at = now or datetime.now(UTC)
         started_at = time.perf_counter()
         error_count = 0
+        deleted_expired_arrival_count = 0
+        try:
+            deleted_expired_arrival_count = (
+                await self.store.delete_expired_arrival_candidates(
+                    older_than=observed_at - _ARRIVAL_CLEANUP_RETENTION
+                )
+            )
+        except Exception as exc:
+            error_count += 1
+            logger.info(
+                "thinker arrival cleanup failed reason=%s",
+                type(exc).__name__,
+            )
         try:
             candidate = await self.arrival_precomputer.precompute_once(
                 now=observed_at,
@@ -231,7 +246,7 @@ class ThinkerProcess:
             )
             behavior = candidate.behavior
         except Exception as exc:
-            error_count = 1
+            error_count += 1
             behavior = "error"
             logger.info(
                 "thinker arrival_precompute failed reason=%s",
@@ -241,11 +256,14 @@ class ThinkerProcess:
         result = ArrivalPrecomputeResult(
             behavior=behavior,
             elapsed_ms=elapsed_ms,
+            deleted_expired_arrival_count=deleted_expired_arrival_count,
             error_count=error_count,
         )
         logger.info(
-            "thinker arrival_precompute behavior=%s elapsed_ms=%.1f error_count=%s",
+            "thinker arrival_precompute behavior=%s "
+            "deleted_expired_arrival_count=%s elapsed_ms=%.1f error_count=%s",
             result.behavior,
+            result.deleted_expired_arrival_count,
             result.elapsed_ms,
             result.error_count,
         )

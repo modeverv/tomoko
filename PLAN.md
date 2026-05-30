@@ -1,3 +1,17 @@
+## 2026-05-30 arrival candidate retention cleanup
+
+`arrival_candidates` を TTL で fetch 対象から外すだけの運用は否定する。
+arrival は入室・接続時の一時候補であり、会話原本や長期記憶ではないため、
+thinker の arrival precompute 実行時に 7 日より古い期限切れ候補を物理削除する。
+
+### 完了条件
+
+- [x] `CandidateStore` に arrival cleanup 用 API を追加する
+- [x] InMemory / PostgreSQL store が `valid_until < now - 7 days` 相当を削除できる
+- [x] `ThinkerProcess.run_arrival_precompute_once()` が precompute 前に cleanup を一発実行する
+- [x] cleanup 失敗時も arrival precompute 自体は続行し、error_count に反映する
+- [x] focused unit / integration / ruff が通る
+
 ## 2026-05-30 persona updater diff-only merge
 
 persona updater の full snapshot 生成方式は、snapshot が育つほど input / output の両方が肥大化し、
