@@ -1,3 +1,45 @@
+## 2026-05-30 セッション26
+
+### やること（開始時に書く）
+- 実ブラウザや実マイクなしで MaAI audio tap を確認できる smoke program を追加する
+- `TomoroSession` を空回りさせ、`say` 由来の Tomoko WAV を TTS/audio send 経路から optional tap へ流す
+- 任意で user 側 dummy/sine audio を `process_audio_chunk()` に入れ、tap の user 側も確認できるようにする
+- `make smoke-maai-tap` で実行できるようにする
+- MaAI 本体、sidecar process、相槌発話判断、runtime server 経路は変更しない
+
+### やったこと
+- `_tools/smoke_maai_tap_session.py` を追加した
+- `TomoroSession` を実サーバーなしで生成し、`SayBackend` の WAV を `_flush_tts_text()` / `_send_audio_chunk()` 経由で流すようにした
+- recording tap で Tomoko 音声 chunk 数・bytes、user dummy sine chunk 数・samples、`audio_start` / `audio_end` event を JSON summary として出すようにした
+- `make smoke-maai-tap` を追加した
+- MaAI 本体、sidecar process、相槌発話判断、runtime server 経路は変更していない
+
+### 詰まったこと・解決したこと
+- `_tools` 直下から実行すると repo root が import path に入らず `ModuleNotFoundError: No module named 'server'` になったため、既存 bench tool と同じく script 冒頭で repo root を `sys.path` に追加した
+- ruff の E402 は、root path 注入後の local import に `# noqa: E402` を付ける既存 tool pattern に合わせた
+
+### 検証
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_smoke_maai_tap_session.py tests/unit/test_makefile_process_entries.py -q`
+  - 9 passed
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 481 passed, 17 deselected
+- ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- diff check: `git diff --check`
+  - pass
+- 実 smoke: `make smoke-maai-tap`
+  - `say_invoked=true`
+  - `sent_audio_chunks=1`
+  - `sent_audio_bytes=40918`
+  - `tomoko_tap_chunks=1`
+  - `tomoko_tap_bytes=40918`
+  - `user_tap_chunks=8`
+  - `user_tap_samples=4000`
+
+### 次のセッションでやること
+- MaAI 本体へつなぐ場合は、この smoke の recording tap を 16kHz 2ch timeline writer / sidecar client に置き換える
+- playback telemetry 補正が必要になったら、server send 時刻ではなく browser playback_started 時刻を Tomoko ch2 の基準にする
+
 ## 2026-05-30 セッション25
 
 ### やること（開始時に書く）

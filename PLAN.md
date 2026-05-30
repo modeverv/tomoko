@@ -29,6 +29,20 @@ tap 由来の判断は命令ではなく `TomoroSession.post_event()` に戻る 
 - [x] MaAI 由来の `backchannel_suggested` event は non-authoritative emission として扱う
 - [x] focused unit / ruff / diff check が通る
 
+## 2026-05-30 MaAI tap say-driven session smoke
+
+MaAI tap の確認を実ブラウザや実マイクに依存させる方針は否定する。
+`TomoroSession` を空回りさせ、`say` 由来の Tomoko 音声を `_send_audio_chunk()` 経由で
+optional audio tap に流す smoke program を追加する。
+
+### 完了条件
+
+- [x] `say` backend で生成した WAV が `TomoroSession` の TTS/audio send 経路を通る
+- [x] optional audio tap が Tomoko 音声 chunk を観測し、JSON summary を出せる
+- [x] 任意で user 側の dummy/sine audio を `process_audio_chunk()` へ流し、tap の user 側も確認できる
+- [x] `make smoke-maai-tap` で実行できる
+- [x] focused unit / ruff / 実 smoke が通る
+
 ## 2026-05-30 arrival candidate retention cleanup
 
 `arrival_candidates` を TTL で fetch 対象から外すだけの運用は否定する。

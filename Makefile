@@ -50,7 +50,7 @@ SCREEN_SHELL ?= zsh
 .PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
 .PHONY: information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
 .PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list
-.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack log-report monitor lint check
+.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap log-report monitor lint check
 
 deps:
 	mise exec -- uv sync
@@ -257,6 +257,9 @@ soak-stt:
 
 soak-voice-stack:
 	mise exec -- uv run python _tools/soak_voice_stack_scenarios.py
+
+smoke-maai-tap:
+	mise exec -- uv run python _tools/smoke_maai_tap_session.py
 
 log-report:
 	mise exec -- uv run python _tools/analyze_server_debug_log.py --input $(TOMOKO_DEBUG_LOG_FILE) --output logs/server-debug-report.html

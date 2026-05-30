@@ -25,6 +25,12 @@ event として `TomoroSession.post_event()` に戻す。
 hold / discard するかの最終判断は `TomoroSession` が持つ。
 通常の conversation log や long-term memory へ相槌をそのまま混ぜる設計にはしない。
 
+MaAI tap の動作確認は、実ブラウザや実マイクを必須にしない。
+`_tools/smoke_maai_tap_session.py` は `TomoroSession` を実サーバーなしで生成し、
+macOS `say` 由来の WAV を `_flush_tts_text()` / `_send_audio_chunk()` 経由で tap に流す。
+任意の user dummy sine を `process_audio_chunk()` に入れることで user 側 tap も確認する。
+`make smoke-maai-tap` の実 smoke では Tomoko send bytes と tap bytes が一致することを確認する。
+
 ### MemoryGate で Retrieve と Use を分ける
 2026-05-30 時点では、context snapshot で取得できた記憶をそのまま prompt に渡さない。
 `TomoroSession` は `MemoryGate` を通して、deep memory / calendar memory を読むかどうかと、

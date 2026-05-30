@@ -114,3 +114,10 @@ def test_makefile_monitor_stays_read_only_and_uses_current_logs() -> None:
     assert "--server-log $(TOMOKO_DEBUG_LOG_FILE)" in monitor_body
     assert "--backend-trace $(BACKEND_TRACE_LOG_FILE)" in monitor_body
     assert "--config $(CENTRAL_CONFIG)" in monitor_body
+
+
+@pytest.mark.unit
+def test_makefile_exposes_maai_tap_smoke_tool() -> None:
+    smoke_body = _target_body("smoke-maai-tap")
+
+    assert "_tools/smoke_maai_tap_session.py" in smoke_body
