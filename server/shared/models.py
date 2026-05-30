@@ -24,6 +24,12 @@ BargeInKind = Literal[
     "new_question",
 ]
 BargeInAction = Literal["continue_speaking", "finish_sentence", "restart_turn"]
+BackchannelSuggestionKind = Literal[
+    "react",
+    "emo",
+    "understood",
+    "floor_take",
+]
 PlaybackEventType = Literal["playback_started", "playback_ended"]
 TranscriptFilterAction = Literal["accept", "suppress_partial", "drop"]
 ConversationLogStatus = Literal["completed", "interrupted", "cancelled", "error"]
@@ -103,6 +109,47 @@ class BargeInDecision:
     kind: BargeInKind
     action: BargeInAction
     reason: str
+
+
+@dataclass(frozen=True)
+class BackchannelSuggestion:
+    kind: BackchannelSuggestionKind
+    score: float
+    source: str
+    observed_at: datetime
+    reason: str = ""
+    schema_version: int = 1
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> BackchannelSuggestion:
+        kind = str(payload.get("kind", "react"))
+        if kind not in {"react", "emo", "understood", "floor_take"}:
+            kind = "react"
+        observed_at = payload.get("observed_at")
+        if isinstance(observed_at, datetime):
+            parsed_observed_at = observed_at
+        elif isinstance(observed_at, str):
+            parsed_observed_at = datetime.fromisoformat(observed_at)
+        else:
+            parsed_observed_at = datetime.now(UTC)
+        return cls(
+            schema_version=int(payload.get("schema_version", 1)),
+            kind=kind,  # type: ignore[arg-type]
+            score=_float_or_zero(payload.get("score")),
+            source=str(payload.get("source", "unknown"))[:40],
+            observed_at=parsed_observed_at,
+            reason=str(payload.get("reason", ""))[:120],
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "kind": self.kind,
+            "score": self.score,
+            "source": self.source,
+            "observed_at": self.observed_at.isoformat(),
+            "reason": self.reason,
+        }
 
 
 @dataclass(frozen=True)

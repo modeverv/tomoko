@@ -1,3 +1,40 @@
+## 2026-05-30 セッション25
+
+### やること（開始時に書く）
+- MaAI / VAP 系の相槌予測を hot path の前段ではなく、別軸の gesture sensor として接続する土台を追加する
+- `TomoroSession` に optional audio tap を注入し、人間マイク chunk と Tomoko TTS chunk を複製できるようにする
+- tap 失敗時も VAD / STT / TTS / WebSocket audio send が継続することを unit test で固定する
+- MaAI 由来の `backchannel_suggested` event を non-authoritative suggestion として `post_event()` で受けられるようにする
+- 実 MaAI dependency / sidecar process / 相槌 TTS 発話本体 / gateway 経路変更は今回入れない
+
+### やったこと
+- `server/gateway/audio_interaction_tap.py` を追加し、MaAI / VAP sidecar 用の optional audio observer 境界を作った
+- `TomoroSession.process_audio_chunk()` 入口で user mic float32 chunk を tap へ複製するようにした
+- `TomoroSession._send_audio_chunk()` で Tomoko output audio bytes を tap へ複製するようにした
+- tap の同期例外は warning log にして握り、非同期 awaitable は fire-and-forget task として失敗を log するようにした
+- `BackchannelSuggestion` DTO を追加し、`backchannel_suggested` event を command なしの non-authoritative emission として扱うようにした
+- MaAI dependency、sidecar process、相槌 TTS 発話、gateway 経路変更、通常 reply policy は変更していない
+
+### 詰まったこと・解決したこと
+- 最初の user hot path test で `QuietVAD` が idle のままであることを見落としていたため、tap failure で例外が伝播しないことと state が壊れないことを確認する assertion に直した
+- Tomoko 側 audio は `_send_audio_chunk()` で観測するため、最初は browser 実再生時刻ではなく server send 時刻を observed_at とする。playback telemetry 補正は別 Phase に残す
+
+### 検証
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_maai_backchannel_tap.py -q`
+  - 5 passed
+- related unit: `.venv/bin/python -m pytest -m unit tests/unit/test_maai_backchannel_tap.py tests/unit/test_phase885_session_runtime.py tests/unit/test_phase5_tts.py -q`
+  - 14 passed
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 478 passed, 17 deselected
+- ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- diff check: `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- 実 MaAI sidecar を起動する adapter を追加する場合は、この audio tap から 16kHz 2ch timeline へ変換する
+- 相槌を実際に鳴らす場合は、`BackchannelSuggestion` を `TomoroSession` の release / hold 判断へ進め、通常 conversation log へ混ぜない
+
 ## 2026-05-30 セッション24
 
 ### やること（開始時に書く）

@@ -14,6 +14,21 @@ Retrieve と Use を分け、`TomoroSession` が final owner として
 - [x] self statement / chitchat / unclear は会話記憶を prompt へ出さない
 - [x] focused unit / ruff / full unit が通る
 
+## 2026-05-30 MaAI backchannel gesture tap foundation
+
+MaAI / VAP 系の相槌予測を、VAD / STT / reply hot path の前段や中継に置く方針は否定する。
+MaAI は別軸の gesture sensor として扱い、人間と Tomoko の音声を optional tap へ複製する。
+tap 由来の判断は命令ではなく `TomoroSession.post_event()` に戻る suggestion とし、
+最終判断は `TomoroSession` に残す。
+
+### 完了条件
+
+- [x] MaAI 用 audio tap 境界を追加し、user / tomoko 音声を hot path と独立して観測できる
+- [x] tap が失敗しても VAD / STT / TTS / WebSocket audio send は継続する
+- [x] Tomoko TTS chunk はブラウザ送信と別に tap へ複製される
+- [x] MaAI 由来の `backchannel_suggested` event は non-authoritative emission として扱う
+- [x] focused unit / ruff / diff check が通る
+
 ## 2026-05-30 arrival candidate retention cleanup
 
 `arrival_candidates` を TTL で fetch 対象から外すだけの運用は否定する。

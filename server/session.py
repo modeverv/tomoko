@@ -18,6 +18,10 @@ from server.edge.pipeline.stt import SpeechTranscriber, supports_streaming
 from server.edge.pipeline.stt_filter import TranscriptFilter
 from server.edge.pipeline.stt_gate import SttAudioFrontend, SttSignalGate
 from server.edge.pipeline.vad import VADProcessor
+from server.gateway.audio_interaction_tap import (
+    AudioInteractionTap,
+    maybe_schedule_tap_result,
+)
 from server.gateway.audio_turn import AudioTurnController
 from server.gateway.context import ContextSnapshotBuilder
 from server.gateway.initiative_feedback import (
@@ -82,6 +86,7 @@ from server.shared.memory import ConversationMemoryStore, ConversationSessionSum
 from server.shared.models import (
     AttentionMode,
     AudioChunkOut,
+    BackchannelSuggestion,
     BargeInContext,
     BargeInDecision,
     CandidateFeedbackScope,
@@ -148,6 +153,7 @@ class TomoroSession:
         stop_ack_audio_provider: StopAckAudioProvider | None = None,
         connected_output_state: ConnectedOutputState | None = None,
         memory_gate: MemoryGate | None = None,
+        audio_interaction_tap: AudioInteractionTap | None = None,
         engaged_timeout_ms: int = 8000,
         cooldown_timeout_ms: int = 8000,
         playback_echo_grace_ms: int = 1200,
@@ -182,6 +188,7 @@ class TomoroSession:
         self.stop_intent_store = stop_intent_store
         self.stop_ack_audio_provider = stop_ack_audio_provider or StopAckAudioProvider()
         self.memory_gate = memory_gate or LoggingMemoryGate(RuleBasedMemoryGate())
+        self.audio_interaction_tap = audio_interaction_tap
         self.state: SessionState = "idle"
         self.attention_mode: AttentionMode = "ambient"
         self.latest_segment: SpeechSegment | None = None
@@ -230,6 +237,7 @@ class TomoroSession:
 
     async def process_audio_chunk(self, chunk_bytes: bytes) -> SpeechSegment | None:
         chunk = np.frombuffer(chunk_bytes, dtype=np.float32)
+        self._observe_user_audio(chunk)
         result = self.vad_processor.process_chunk(chunk)
         if result.state_changed_to is not None:
             await self._transition(result.state_changed_to)
@@ -325,12 +333,22 @@ class TomoroSession:
             return self._reduce_arrival_candidate_loaded(event)
         if event.type == "stop_intent_classified":
             return self._reduce_stop_intent_classified(event)
+        if event.type == "backchannel_suggested":
+            return self._reduce_backchannel_suggested(event)
         if event.type == "candidate_command_failed":
             return self._transition_result(
                 "candidate_command_failed",
                 payload=dict(event.payload),
             )
         return TransitionResult(state=self.get_now_state())
+
+    def _reduce_backchannel_suggested(self, event: SessionEvent) -> TransitionResult:
+        suggestion = event.payload.get("suggestion")
+        if isinstance(suggestion, BackchannelSuggestion):
+            payload = suggestion.to_json()
+        else:
+            payload = BackchannelSuggestion.from_json(dict(suggestion or {})).to_json()
+        return self._transition_result("backchannel_suggested", payload=payload)
 
     def _reduce_idle_timer_elapsed(self, event: SessionEvent) -> TransitionResult:
         gate_reason = self._candidate_reply_gate_reason()
@@ -1970,7 +1988,32 @@ class TomoroSession:
                 }
             )
 
+    def _observe_user_audio(self, chunk: np.ndarray) -> None:
+        if self.audio_interaction_tap is None:
+            return
+        try:
+            result = self.audio_interaction_tap.observe_user_audio(
+                chunk,
+                observed_at=datetime.now(UTC),
+            )
+            maybe_schedule_tap_result(result)
+        except Exception:
+            logger.warning("AudioInteractionTap user observer failed", exc_info=True)
+
+    def _observe_tomoko_audio(self, chunk: AudioChunkOut) -> None:
+        if self.audio_interaction_tap is None:
+            return
+        try:
+            result = self.audio_interaction_tap.observe_tomoko_audio(
+                chunk.data,
+                observed_at=datetime.now(UTC),
+            )
+            maybe_schedule_tap_result(result)
+        except Exception:
+            logger.warning("AudioInteractionTap tomoko observer failed", exc_info=True)
+
     async def _send_audio_chunk(self, chunk: AudioChunkOut) -> None:
+        self._observe_tomoko_audio(chunk)
         if self.send_audio is None:
             return
         self._latency_probe.mark_reply_output_started()
