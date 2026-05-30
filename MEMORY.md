@@ -3674,3 +3674,27 @@ authoritative state には混ぜない。
 
 これは LLM なしで発話継続らしさを保守的に扱う gate であり、
 `。` / `？` / `!` などの終端記号がある場合は通常 follow-up として扱う。
+
+### 確定した判断: 相槌は同一 speech segment でも cooldown 後なら複数回出す
+2026-05-31 の実ブラウザ確認では、相槌は鳴るようになったが長い user speech segment 中に少なすぎた。
+原因は TomoroSession 側の `already_released_in_speech_segment` gate が、
+同一 user speech segment 内の 2 回目以降の MaAI react 相槌を止めていたことだった。
+
+以前の「同じ user speech segment 内でまだ相槌していない」という release 条件は否定する。
+相槌は通常 reply ではなく gesture audio なので、長い発話中には複数回出てよい。
+暴発抑制は Tomoko idle gate / user speaking gate / attention engaged gate / global cooldown で行う。
+
+TomoroSession 側の global cooldown は 2000ms から 1500ms に短縮する。
+MaAI adapter 側の suggestion cooldown 900ms は維持し、実ログでまだ少ない場合に次の調整対象にする。
+
+### 確定した判断: VAD speech_end 後の未完 transcript は participation gate で聞き続ける
+2026-05-31 の実ログでは、`...よくさぁ` や `...関係が` のような未完発話が
+`attention_engaged_followup` として通常 reply を開始していた。
+この問題は VAD silence threshold を単純に伸ばすだけでは、レイテンシーと切り分けの副作用が大きい。
+
+まずは speech_end 後の transcript を participation gate で分類し、
+長い発話でも `さぁ` や助詞 `が` で終わる場合は `low_confidence_followup` として observer に落とす。
+これは発話を「無視する」ためではなく、通常 reply を開始せずに聞き続けるための gate である。
+
+将来、未完 fragment の内容を次の transcript と統合して LLM に渡す必要が出たら、
+observer に落とすだけではなく、TomoroSession に pending user utterance buffer を持たせる Phase を切る。

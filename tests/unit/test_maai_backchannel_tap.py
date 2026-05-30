@@ -224,7 +224,7 @@ async def test_maai_react_suggestion_below_production_threshold_is_skipped() -> 
 
 
 @pytest.mark.unit
-async def test_maai_backchannel_is_once_per_user_speech_segment() -> None:
+async def test_maai_backchannel_can_repeat_in_same_user_speech_after_cooldown() -> None:
     audio: list[bytes] = []
     tts = RecordingTTSBackend()
     session = _session(send_audio=audio.append, tts_backend=tts)
@@ -236,14 +236,20 @@ async def test_maai_backchannel_is_once_per_user_speech_segment() -> None:
         source="maai",
         observed_at=datetime.now(UTC),
     )
+    second = BackchannelSuggestion(
+        kind="react",
+        score=0.8,
+        source="maai",
+        observed_at=suggestion.observed_at + timedelta(milliseconds=1600),
+    )
 
     first = await session.apply_backchannel_suggestion(suggestion)
-    second = await session.apply_backchannel_suggestion(suggestion)
+    session.audio_turns._tomoko_speaking_until = 0.0
+    second_result = await session.apply_backchannel_suggestion(second)
 
     assert first.emissions[0].type == "backchannel_released"
-    assert second.emissions[0].type == "backchannel_skipped"
-    assert second.emissions[0].payload["reason"] == "already_released_in_speech_segment"
-    assert len(tts.inputs) == 1
+    assert second_result.emissions[0].type == "backchannel_released"
+    assert len(tts.inputs) == 2
 
 
 @pytest.mark.unit

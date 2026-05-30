@@ -122,7 +122,7 @@ SessionState = Literal["idle", "listening", "processing"]
 logger = logging.getLogger(__name__)
 
 BACKCHANNEL_REACT_THRESHOLD = 0.45
-BACKCHANNEL_COOLDOWN_MS = 2000
+BACKCHANNEL_COOLDOWN_MS = 1500
 BACKCHANNEL_REACT_UTTERANCES = ("うん", "なるほど", "そっか")
 
 class TomoroSession:
@@ -398,8 +398,6 @@ class TomoroSession:
             return "attention_not_engaged"
         if self.state != "listening":
             return "user_not_speaking"
-        if self._backchannel_released_in_current_speech:
-            return "already_released_in_speech_segment"
         if self.audio_turns.playback_state != "idle" or self._is_reply_generation_active():
             return "tomoko_not_idle"
         if self._last_backchannel_released_at is not None:

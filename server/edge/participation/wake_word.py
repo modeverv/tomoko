@@ -110,10 +110,12 @@ def _looks_like_unfinished_continuation_tail(text: str) -> bool:
     if len(normalized) <= 12:
         return False
     continuation_endings = (
+        "さぁ",
         "って",
         "とか",
         "みたいな",
         "という",
         "というか",
+        "が",
     )
     return normalized.endswith(continuation_endings)

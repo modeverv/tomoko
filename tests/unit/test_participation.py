@@ -124,21 +124,30 @@ async def test_engaged_followup_filters_short_unfinished_fragment() -> None:
 async def test_engaged_followup_filters_long_unfinished_continuation_tail() -> None:
     judge = WakeWordJudge()
 
-    result = await judge.judge(
-        ParticipationContext(
-            transcript=(
-                "作るときにさぁそれってなんかあんまりさぁうまくね言えないんだけど"
-                "なんか人間のね立ち位置みたいなのがすごい抽象化層に上がったりさぁ"
-                "そういうのって"
-            ),
-            attention_mode="engaged",
-            audio_level_db=-20.0,
+    for transcript in (
+        (
+            "作るときにさぁそれってなんかあんまりさぁうまくね言えないんだけど"
+            "なんか人間のね立ち位置みたいなのがすごい抽象化層に上がったりさぁ"
+            "そういうのって"
+        ),
+        (
+            "彼女の社会的なさぁ発達に向けてはかなりマイナスに働く気がするよね"
+            "だからさぁ止めるべきなんか教育すべきなんか強く言うべきなんか"
+            "とかがさぁその辺がさぁよくさぁ"
+        ),
+        "あのね会話を破壊するんだよね友達とその関係が",
+    ):
+        result = await judge.judge(
+            ParticipationContext(
+                transcript=transcript,
+                attention_mode="engaged",
+                audio_level_db=-20.0,
+            )
         )
-    )
 
-    assert result.should_participate is False
-    assert result.mode == "observer"
-    assert result.reason == "low_confidence_followup"
+        assert result.should_participate is False
+        assert result.mode == "observer"
+        assert result.reason == "low_confidence_followup"
 
 
 @pytest.mark.unit
