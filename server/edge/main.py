@@ -498,12 +498,7 @@ async def _apply_backchannel_suggestion(
     session: TomoroSession,
     suggestion,
 ) -> None:
-    result = await session.post_event(
-        SessionEvent(
-            type="backchannel_suggested",
-            payload={"suggestion": suggestion},
-        )
-    )
+    result = await session.apply_backchannel_suggestion(suggestion)
     await session.send_transition_emissions(result)
 
 

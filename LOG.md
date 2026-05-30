@@ -1,3 +1,50 @@
+## 2026-05-30 セッション29
+
+### やること（開始時に書く）
+- MaAI `p_bc_react >= 0.68` を LLM なし固定相槌として release する
+- release 条件は Tomoko が喋っていない、user が話している、同一 user speech segment で未発話、global cooldown 2000ms とする
+- 文言は `うん` / `なるほど` / `そっか` から選ぶ
+- backchannel audio は conversation log や本返答 LLM に混ぜず、gesture audio として扱う
+
+### やったこと
+- `BackchannelSuggestion(kind="react", score>=0.68)` を TomoroSession の release 対象にした
+- release gate に user speaking (`listening`)、Tomoko idle、同一 speech segment 1 回、global cooldown 2000ms を追加した
+- release 文言は `うん` / `なるほど` / `そっか` の固定 pool から選び、`style="gentle"` の短い TTS として流すようにした
+- gateway の MaAI callback は `post_event()` 直呼びではなく `apply_backchannel_suggestion()` を使い、内部 command まで実行するようにした
+- backchannel release は `reply_done` に `control="backchannel"` を付け、conversation log へ保存しない経路にした
+
+### 詰まったこと・解決したこと
+- 既存の `backchannel_suggested` は観測 emission だけだったため、そのままでは TTS command が走らなかった
+  - `TomoroSession.apply_backchannel_suggestion()` を追加し、event reduce と internal command 実行を 1 つの runtime entry にまとめた
+- release 直後は audio turn の speaking guard が残るため、unit test の cooldown 確認では playback guard と cooldown guard を分離して検証した
+
+### 検証
+- red test: `.venv/bin/python -m pytest -m unit tests/unit/test_maai_backchannel_tap.py::test_maai_react_suggestion_releases_llm_less_backchannel_audio tests/unit/test_maai_backchannel_tap.py::test_maai_backchannel_is_once_per_user_speech_segment tests/unit/test_maai_backchannel_tap.py::test_maai_backchannel_release_requires_user_speaking_and_idle_tomoko tests/unit/test_maai_backchannel_tap.py::test_maai_backchannel_release_applies_global_cooldown -q`
+  - `apply_backchannel_suggestion` 未実装で 4 failed
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_maai_backchannel_tap.py tests/unit/test_maai_backchannel_adapter.py -q`
+  - 16 passed
+- related unit: `.venv/bin/python -m pytest -m unit tests/unit/test_maai_backchannel_tap.py tests/unit/test_maai_backchannel_adapter.py tests/unit/test_smoke_maai_dialogue.py tests/unit/test_makefile_process_entries.py -q`
+  - 25 passed
+- ruff focused: `.venv/bin/python -m ruff check server/session.py server/edge/main.py server/gateway/maai_backchannel.py tests/unit/test_maai_backchannel_tap.py tests/unit/test_maai_backchannel_adapter.py`
+  - pass
+- 実 smoke: `make smoke-maai-dialogue`
+  - `raw_score_count=200`
+  - `frames_sent=2008`
+  - `duration_sec=20.0753125`
+  - `max_p_bc_react=0.7259804606437683`
+  - `max_p_bc_emo=0.19943645596504211`
+  - `suggestions=[{"kind":"react","score":0.7259804606437683,...}]`
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 494 passed, 17 deselected
+- global ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- diff check: `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- 実ブラウザで MaAI enabled にした時の相槌タイミングと体感頻度を確認する
+- 必要なら `backchannel_released` / `backchannel_skipped` の monitor 表示を追加する
+
 ## 2026-05-30 セッション28
 
 ### やること（開始時に書く）

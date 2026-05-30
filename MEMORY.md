@@ -49,8 +49,15 @@ MaAI raw result には `x1` / `x2` の音声配列が含まれるため、診断
 `raw` に残し、音声配列 key は `raw_omitted_keys` へ記録する。
 2026-05-30 の合成 dialogue smoke では raw score が 200 件返り、
 `max_p_bc_react=0.7259804606437683`、`max_p_bc_emo=0.19943645596504211` だった。
-現行 threshold 0.78 では `suggestions=[]` なので、合成音声では反応が threshold 直下まで来ているが、
-実際の相槌発火には至っていない。
+この結果を受けて react threshold は 0.68 に下げる。
+
+MaAI react suggestion は LLM 本返答ではなく LLM-less gesture audio として release する。
+release 対象は `kind="react"` かつ `score >= 0.68` だけにする。
+`kind="emo"` は現時点では release せず、TomoroSession では `unsupported_kind` として skip する。
+release 条件は、user が speech segment 中 (`state="listening"`)、Tomoko playback が idle、
+同一 user speech segment でまだ相槌していない、global cooldown 2000ms を満たすこと。
+文言は `うん` / `なるほど` / `そっか` の固定 pool から選ぶ。
+これは会話ログや長期記憶に入る発話ではなく、`reply_done` に `control="backchannel"` を付ける短い gesture audio として扱う。
 
 ### MemoryGate で Retrieve と Use を分ける
 2026-05-30 時点では、context snapshot で取得できた記憶をそのまま prompt に渡さない。

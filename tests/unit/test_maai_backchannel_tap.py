@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import numpy as np
@@ -9,7 +10,14 @@ import pytest
 from server.edge.pipeline.vad import VADProcessor
 from server.gateway.turn_taking.barge_in import BargeInDetector
 from server.session import TomoroSession
-from server.shared.models import AudioChunkOut, BackchannelSuggestion, SessionEvent
+from server.shared.inference.tts.base import TTSBackend
+from server.shared.models import (
+    AudioChunkOut,
+    BackchannelSuggestion,
+    PlaybackTelemetry,
+    SessionEvent,
+    TTSInput,
+)
 
 
 class QuietVAD:
@@ -42,15 +50,36 @@ class FailingAudioTap:
         raise RuntimeError("tap tomoko failure")
 
 
+class RecordingTTSBackend(TTSBackend):
+    name = "recording_tts"
+
+    def __init__(self) -> None:
+        self.inputs: list[TTSInput] = []
+
+    async def synthesize(
+        self,
+        tts_input: TTSInput,
+    ) -> AsyncGenerator[AudioChunkOut, None]:
+        self.inputs.append(tts_input)
+        yield AudioChunkOut(
+            data=f"audio:{tts_input.text}".encode(),
+            sequence=0,
+            is_last=True,
+        )
+
+
 def _session(
     *,
     send_audio: Any | None = None,
     audio_interaction_tap: Any | None = None,
+    send_event: Any | None = None,
+    tts_backend: TTSBackend | None = None,
 ) -> TomoroSession:
     return TomoroSession(
         vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
-        send_event=lambda event: None,
+        send_event=send_event or (lambda event: None),
         send_audio=send_audio,
+        tts_backend=tts_backend,
         barge_in_detector=BargeInDetector(),
         audio_interaction_tap=audio_interaction_tap,
     )
@@ -105,7 +134,7 @@ async def test_tomoko_audio_tap_failure_does_not_block_audio_send() -> None:
 
 
 @pytest.mark.unit
-async def test_backchannel_suggestion_event_is_non_authoritative_emission() -> None:
+async def test_backchannel_suggestion_event_is_gated_before_audio_release() -> None:
     session = _session()
     suggestion = BackchannelSuggestion(
         kind="react",
@@ -121,8 +150,107 @@ async def test_backchannel_suggestion_event_is_non_authoritative_emission() -> N
         )
     )
 
-    assert result.emissions[0].type == "backchannel_suggested"
+    assert result.emissions[0].type == "backchannel_skipped"
     assert result.emissions[0].payload["kind"] == "react"
     assert result.emissions[0].payload["source"] == "maai"
     assert result.emissions[0].payload["score"] == pytest.approx(0.82)
+    assert result.emissions[0].payload["reason"] == "user_not_speaking"
     assert result.commands == []
+
+
+@pytest.mark.unit
+async def test_maai_react_suggestion_releases_llm_less_backchannel_audio() -> None:
+    events: list[dict[str, Any]] = []
+    audio: list[bytes] = []
+    tts = RecordingTTSBackend()
+    session = _session(send_event=events.append, send_audio=audio.append, tts_backend=tts)
+    await session._transition("listening")
+    suggestion = BackchannelSuggestion(
+        kind="react",
+        score=0.69,
+        source="maai",
+        observed_at=datetime.now(UTC),
+    )
+
+    result = await session.apply_backchannel_suggestion(suggestion)
+
+    assert result.emissions[0].type == "backchannel_released"
+    assert tts.inputs[0].text in {"うん", "なるほど", "そっか"}
+    assert tts.inputs[0].style == "gentle"
+    assert audio == [f"audio:{tts.inputs[0].text}".encode()]
+    assert {"type": "reply_done", "control": "backchannel"} in events
+
+
+@pytest.mark.unit
+async def test_maai_backchannel_is_once_per_user_speech_segment() -> None:
+    audio: list[bytes] = []
+    tts = RecordingTTSBackend()
+    session = _session(send_audio=audio.append, tts_backend=tts)
+    await session._transition("listening")
+    suggestion = BackchannelSuggestion(
+        kind="react",
+        score=0.8,
+        source="maai",
+        observed_at=datetime.now(UTC),
+    )
+
+    first = await session.apply_backchannel_suggestion(suggestion)
+    second = await session.apply_backchannel_suggestion(suggestion)
+
+    assert first.emissions[0].type == "backchannel_released"
+    assert second.emissions[0].type == "backchannel_skipped"
+    assert second.emissions[0].payload["reason"] == "already_released_in_speech_segment"
+    assert len(tts.inputs) == 1
+
+
+@pytest.mark.unit
+async def test_maai_backchannel_release_requires_user_speaking_and_idle_tomoko() -> None:
+    tts = RecordingTTSBackend()
+    session = _session(tts_backend=tts)
+    suggestion = BackchannelSuggestion(
+        kind="react",
+        score=0.8,
+        source="maai",
+        observed_at=datetime.now(UTC),
+    )
+
+    idle_result = await session.apply_backchannel_suggestion(suggestion)
+    await session._transition("listening")
+    await session.handle_playback_telemetry(
+        PlaybackTelemetry(type="playback_started", turn_id="turn-1", chunk_id=1)
+    )
+    playback_result = await session.apply_backchannel_suggestion(suggestion)
+
+    assert idle_result.emissions[0].payload["reason"] == "user_not_speaking"
+    assert playback_result.emissions[0].payload["reason"] == "tomoko_not_idle"
+    assert tts.inputs == []
+
+
+@pytest.mark.unit
+async def test_maai_backchannel_release_applies_global_cooldown() -> None:
+    audio: list[bytes] = []
+    tts = RecordingTTSBackend()
+    session = _session(send_audio=audio.append, tts_backend=tts)
+    await session._transition("listening")
+    first = BackchannelSuggestion(
+        kind="react",
+        score=0.8,
+        source="maai",
+        observed_at=datetime.now(UTC),
+    )
+    second = BackchannelSuggestion(
+        kind="react",
+        score=0.8,
+        source="maai",
+        observed_at=first.observed_at + timedelta(milliseconds=500),
+    )
+
+    await session.apply_backchannel_suggestion(first)
+    await session._transition("idle")
+    await session._transition("listening")
+    session.audio_turns._tomoko_speaking_until = 0.0
+    result = await session.apply_backchannel_suggestion(second)
+
+    assert result.emissions[0].type == "backchannel_skipped"
+    assert result.emissions[0].payload["reason"] == "cooldown_active"
+    assert len(tts.inputs) == 1

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import random
 import time
 from collections.abc import Callable
 from contextlib import suppress
@@ -120,6 +121,10 @@ SessionState = Literal["idle", "listening", "processing"]
 
 logger = logging.getLogger(__name__)
 
+BACKCHANNEL_REACT_THRESHOLD = 0.68
+BACKCHANNEL_COOLDOWN_MS = 2000
+BACKCHANNEL_REACT_UTTERANCES = ("うん", "なるほど", "そっか")
+
 class TomoroSession:
     def __init__(
         self,
@@ -228,6 +233,8 @@ class TomoroSession:
         self._short_memory_buffer = ShortMemoryBuffer()
         self._short_memory_turn = 0
         self._short_memory_extraction_tasks: set[asyncio.Task[None]] = set()
+        self._backchannel_released_in_current_speech = False
+        self._last_backchannel_released_at: datetime | None = None
 
     # Audio input and state snapshots.
 
@@ -345,10 +352,63 @@ class TomoroSession:
     def _reduce_backchannel_suggested(self, event: SessionEvent) -> TransitionResult:
         suggestion = event.payload.get("suggestion")
         if isinstance(suggestion, BackchannelSuggestion):
-            payload = suggestion.to_json()
+            parsed = suggestion
         else:
-            payload = BackchannelSuggestion.from_json(dict(suggestion or {})).to_json()
-        return self._transition_result("backchannel_suggested", payload=payload)
+            parsed = BackchannelSuggestion.from_json(dict(suggestion or {}))
+        skip_reason = self._backchannel_release_skip_reason(parsed)
+        payload = {
+            **parsed.to_json(),
+            "threshold": BACKCHANNEL_REACT_THRESHOLD,
+            "cooldown_ms": BACKCHANNEL_COOLDOWN_MS,
+            "vad_state": self.state,
+            "playback_state": self.audio_turns.playback_state,
+        }
+        if skip_reason is not None:
+            return self._transition_result(
+                "backchannel_skipped",
+                payload={**payload, "reason": skip_reason},
+            )
+        text = random.choice(BACKCHANNEL_REACT_UTTERANCES)
+        self._backchannel_released_in_current_speech = True
+        self._last_backchannel_released_at = parsed.observed_at
+        return self._transition_result(
+            "backchannel_released",
+            payload={**payload, "text": text},
+            commands=[
+                SessionCommand(
+                    type="release_backchannel_audio",
+                    payload={
+                        "text": text,
+                        "style": "gentle",
+                        "suggestion": parsed,
+                    },
+                )
+            ],
+        )
+
+    def _backchannel_release_skip_reason(
+        self,
+        suggestion: BackchannelSuggestion,
+    ) -> str | None:
+        if suggestion.kind != "react":
+            return "unsupported_kind"
+        if suggestion.score < BACKCHANNEL_REACT_THRESHOLD:
+            return "below_threshold"
+        if self.state != "listening":
+            return "user_not_speaking"
+        if self._backchannel_released_in_current_speech:
+            return "already_released_in_speech_segment"
+        if self.audio_turns.playback_state != "idle" or self._is_reply_generation_active():
+            return "tomoko_not_idle"
+        if self._last_backchannel_released_at is not None:
+            elapsed_ms = (
+                suggestion.observed_at - self._last_backchannel_released_at
+            ).total_seconds() * 1000
+            if elapsed_ms < BACKCHANNEL_COOLDOWN_MS:
+                return "cooldown_active"
+        if self.tts_backend is None or self.send_audio is None:
+            return "audio_output_unavailable"
+        return None
 
     def _reduce_idle_timer_elapsed(self, event: SessionEvent) -> TransitionResult:
         gate_reason = self._candidate_reply_gate_reason()
@@ -1653,6 +1713,20 @@ class TomoroSession:
         await self._run_internal_commands(result.commands)
         return result
 
+    async def apply_backchannel_suggestion(
+        self,
+        suggestion: BackchannelSuggestion,
+    ) -> TransitionResult:
+        """Apply a MaAI backchannel suggestion through TomoroSession release gates."""
+        result = await self.post_event(
+            SessionEvent(
+                type="backchannel_suggested",
+                payload={"suggestion": suggestion},
+            )
+        )
+        await self._run_internal_commands(result.commands)
+        return result
+
     async def apply_client_lifecycle_event(
         self,
         event: SessionEvent,
@@ -1747,6 +1821,8 @@ class TomoroSession:
         if state not in {"idle", "listening", "processing"}:
             raise ValueError(f"unknown session state: {state}")
         self.state = state  # type: ignore[assignment]
+        if state == "listening":
+            self._backchannel_released_in_current_speech = False
         logger.info("TomoroSession state changed to %s", state)
         await self._send_event({"type": "state", "state": state})
 
@@ -2078,6 +2154,17 @@ class TomoroSession:
                 await self._close_conversation_session(
                     end_reason=str(command.payload.get("end_reason") or "unknown")
                 )
+            elif command.type == "release_backchannel_audio":
+                await self._release_backchannel_audio(command)
+
+    async def _release_backchannel_audio(self, command: SessionCommand) -> None:
+        text = str(command.payload.get("text") or "").strip()
+        if not text:
+            return
+        self.audio_turns.begin_turn()
+        await self._flush_tts_text(text, style=str(command.payload.get("style") or "gentle"))
+        await self._send_reserved_audio_end()
+        await self._send_event({"type": "reply_done", "control": "backchannel"})
 
     async def _insert_stop_intent_observation(self, command: SessionCommand) -> None:
         if self.stop_intent_store is None:
