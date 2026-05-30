@@ -121,7 +121,7 @@ SessionState = Literal["idle", "listening", "processing"]
 
 logger = logging.getLogger(__name__)
 
-BACKCHANNEL_REACT_THRESHOLD = 0.68
+BACKCHANNEL_REACT_THRESHOLD = 0.45
 BACKCHANNEL_COOLDOWN_MS = 2000
 BACKCHANNEL_REACT_UTTERANCES = ("うん", "なるほど", "そっか")
 

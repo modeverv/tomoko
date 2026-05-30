@@ -6977,3 +6977,38 @@ timeout / degraded context、carryover state は変更しない。
 - context snapshot / phase8 memory 周辺 tests が通る
 - full unit / ruff / diff check が通る
 - git commit まで完了する
+
+### Phase 10.20.14: MaAI react backchannel production threshold 0.45
+
+この Phase では、以前の `p_bc_react >= 0.68` 方針を否定し、本番側の react 相槌閾値を
+`p_bc_react >= 0.45` に下げる。
+弱めの react cue でも相槌 candidate として扱うが、Tomoko が喋っていないこと、user が話していること、
+同一 user speech segment で未発火であること、global cooldown 2000ms は維持する。
+
+#### 変更対象
+
+- `server/gateway/maai_backchannel.py`
+  - MaAI adapter の `react_threshold` default を 0.45 にする
+  - `TOMOKO_MAAI_REACT_THRESHOLD` 未指定時の env default も 0.45 にする
+- `server/session.py`
+  - TomoroSession の `BACKCHANNEL_REACT_THRESHOLD` を 0.45 にする
+- `tests/unit/test_maai_backchannel_adapter.py`
+  - 本番 default が 0.45 であることを固定する
+- `tests/unit/test_maai_backchannel_tap.py`
+  - 0.45 は release、0.44 は below_threshold skip として固定する
+
+#### 今回触らないもの
+
+- `p_bc_emo` の release
+- MaAI model / mode / channel assignment
+- cooldown / once-per-segment / Tomoko idle gate
+- STT / VAD / LLM / TTS pipeline
+
+#### 完了条件
+
+- [x] 0.45 境界値 test を先に追加して赤を確認する
+- [x] MaAI adapter default と TomoroSession release gate が 0.45 で揃う
+- [x] focused unit が通る
+- [x] smoke で JSON 出力を確認する
+- [x] full unit / ruff / diff check が通る
+- [x] git commit まで完了する

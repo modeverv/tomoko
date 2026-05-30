@@ -170,6 +170,11 @@ async def test_maai_backchannel_tap_emits_thresholded_suggestion_with_cooldown()
 
 
 @pytest.mark.unit
+def test_maai_backchannel_config_uses_production_react_threshold() -> None:
+    assert MaaiBackchannelConfig().react_threshold == pytest.approx(0.45)
+
+
+@pytest.mark.unit
 def test_create_maai_backchannel_tap_from_env_is_disabled_by_default(monkeypatch) -> None:
     monkeypatch.delenv("TOMOKO_MAAI_BACKCHANNEL_ENABLED", raising=False)
 
@@ -187,3 +192,16 @@ def test_create_maai_backchannel_tap_from_env_reads_thresholds(monkeypatch) -> N
     assert tap is not None
     assert tap.config.react_threshold == 0.6
     assert tap.config.emo_threshold == 0.75
+
+
+@pytest.mark.unit
+def test_create_maai_backchannel_tap_from_env_uses_production_react_default(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TOMOKO_MAAI_BACKCHANNEL_ENABLED", "1")
+    monkeypatch.delenv("TOMOKO_MAAI_REACT_THRESHOLD", raising=False)
+
+    tap = create_maai_backchannel_tap_from_env(maai_module=FakeMaaiModule())
+
+    assert tap is not None
+    assert tap.config.react_threshold == pytest.approx(0.45)

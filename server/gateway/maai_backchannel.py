@@ -29,7 +29,7 @@ class MaaiBackchannelConfig:
     frame_rate: int | float = 10
     context_len_sec: int = 5
     device: str = "cpu"
-    react_threshold: float = 0.68
+    react_threshold: float = 0.45
     emo_threshold: float = 0.35
     cooldown_ms: int = 900
 
@@ -230,7 +230,7 @@ def create_maai_backchannel_tap_from_env(
         return None
     return MaaiBackchannelTap(
         config=MaaiBackchannelConfig(
-            react_threshold=_env_float("TOMOKO_MAAI_REACT_THRESHOLD", 0.68),
+            react_threshold=_env_float("TOMOKO_MAAI_REACT_THRESHOLD", 0.45),
             emo_threshold=_env_float("TOMOKO_MAAI_EMO_THRESHOLD", 0.35),
             cooldown_ms=_env_int("TOMOKO_MAAI_COOLDOWN_MS", 900),
             device=os.environ.get("TOMOKO_MAAI_DEVICE", "cpu"),

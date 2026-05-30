@@ -167,7 +167,7 @@ async def test_maai_react_suggestion_releases_llm_less_backchannel_audio() -> No
     await session._transition("listening")
     suggestion = BackchannelSuggestion(
         kind="react",
-        score=0.69,
+        score=0.45,
         source="maai",
         observed_at=datetime.now(UTC),
     )
@@ -179,6 +179,25 @@ async def test_maai_react_suggestion_releases_llm_less_backchannel_audio() -> No
     assert tts.inputs[0].style == "gentle"
     assert audio == [f"audio:{tts.inputs[0].text}".encode()]
     assert {"type": "reply_done", "control": "backchannel"} in events
+
+
+@pytest.mark.unit
+async def test_maai_react_suggestion_below_production_threshold_is_skipped() -> None:
+    tts = RecordingTTSBackend()
+    session = _session(tts_backend=tts)
+    await session._transition("listening")
+    suggestion = BackchannelSuggestion(
+        kind="react",
+        score=0.44,
+        source="maai",
+        observed_at=datetime.now(UTC),
+    )
+
+    result = await session.apply_backchannel_suggestion(suggestion)
+
+    assert result.emissions[0].type == "backchannel_skipped"
+    assert result.emissions[0].payload["reason"] == "below_threshold"
+    assert tts.inputs == []
 
 
 @pytest.mark.unit
