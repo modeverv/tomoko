@@ -31,6 +31,10 @@ from server.gateway.dedup import DuplicateSpeechFilter, PostgresRecentTranscript
 from server.gateway.edge_adapter import GatewayEdgeProtocolHandler
 from server.gateway.initiative_feedback import PostgresCandidateFeedbackStore
 from server.gateway.initiative_policy import InitiativeLLMJudge
+from server.gateway.maai_backchannel import (
+    MaaiBackchannelTap,
+    create_maai_backchannel_tap_from_env,
+)
 from server.gateway.presence import PresenceManager
 from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
 from server.gateway.resolver import DirectSpeakerResolver
@@ -338,11 +342,17 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         "barge_in_detector_factory",
         BargeInDetector,
     )
+    audio_interaction_tap_factory = getattr(
+        app.state,
+        "audio_interaction_tap_factory",
+        create_maai_backchannel_tap_from_env,
+    )
     vad_processor = vad_processor_factory()
     candidate_feedback_store = candidate_feedback_store_factory()
     stop_intent_store = stop_intent_store_factory()
     router = router_factory()
     embedding_backend = embedding_backend_factory()
+    audio_interaction_tap = audio_interaction_tap_factory()
     output_state = _connection_registry.register(
         connection_id=connection_id,
         device_id=vad_processor.device_id,
@@ -391,7 +401,13 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         stop_intent_store=stop_intent_store,
         stop_ack_audio_provider=stop_ack_audio_provider_factory(),
         connected_output_state=output_state,
+        audio_interaction_tap=audio_interaction_tap,
     )
+    if isinstance(audio_interaction_tap, MaaiBackchannelTap):
+        audio_interaction_tap.set_suggestion_callback(
+            lambda suggestion: _apply_backchannel_suggestion(session, suggestion)
+        )
+        await audio_interaction_tap.start()
     debug_recorder_factory = getattr(
         app.state,
         "debug_recorder_factory",
@@ -466,10 +482,29 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         initiative_task.cancel()
         stop_intent_worker.stop()
         stop_intent_task.cancel()
+        if audio_interaction_tap is not None:
+            stop = getattr(audio_interaction_tap, "stop", None)
+            if stop is not None:
+                maybe_awaitable = stop()
+                if asyncio.iscoroutine(maybe_awaitable):
+                    await maybe_awaitable
         with suppress(asyncio.CancelledError):
             await initiative_task
         with suppress(asyncio.CancelledError):
             await stop_intent_task
+
+
+async def _apply_backchannel_suggestion(
+    session: TomoroSession,
+    suggestion,
+) -> None:
+    result = await session.post_event(
+        SessionEvent(
+            type="backchannel_suggested",
+            payload={"suggestion": suggestion},
+        )
+    )
+    await session.send_transition_emissions(result)
 
 
 @app.websocket("/edge/ws")

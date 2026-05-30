@@ -31,6 +31,16 @@ macOS `say` 由来の WAV を `_flush_tts_text()` / `_send_audio_chunk()` 経由
 任意の user dummy sine を `process_audio_chunk()` に入れることで user 側 tap も確認する。
 `make smoke-maai-tap` の実 smoke では Tomoko send bytes と tap bytes が一致することを確認する。
 
+MaAI 本体は optional dependency とし、通常 runtime では無効にする。
+`TOMOKO_MAAI_BACKCHANNEL_ENABLED=1` の時だけ gateway が `MaaiBackchannelTap` を作り、
+MaAI 未インストール時は通常会話中に黙って壊れるのではなく明示エラーにする。
+MaAI 0.1.16 の `bc_2type` model は `frame_rate=10` のような integer filename (`10hz`) を期待するため、
+default は `10.0` ではなく `10` にする。
+`get_result()` は blocking queue wait なので、runtime adapter では MaAI の `result_dict_queue.get(timeout=0.2)`
+を使える時だけ timeout poll にし、stop 時に threadpool task が残らないようにする。
+`make smoke-maai-real` は `maai_enabled=true` で Tomoko `say` WAV と user dummy sine を MaAI 本体へ流し、
+短い smoke では suggestion が空でも MaAI 本体経由で process が終了することを確認する。
+
 ### MemoryGate で Retrieve と Use を分ける
 2026-05-30 時点では、context snapshot で取得できた記憶をそのまま prompt に渡さない。
 `TomoroSession` は `MemoryGate` を通して、deep memory / calendar memory を読むかどうかと、

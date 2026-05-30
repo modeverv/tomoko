@@ -1,3 +1,55 @@
+## 2026-05-30 セッション27
+
+### やること（開始時に書く）
+- MaAI 本体を optional audio tap implementation として組み込む
+- `MaaiInput.Chunk` に user / Tomoko 2ch 音声を流し、`bc_2type` の `p_bc_react` / `p_bc_emo` を読む
+- 閾値と cooldown をかけて `BackchannelSuggestion` を `TomoroSession.post_event()` に戻す
+- runtime では `TOMOKO_MAAI_BACKCHANNEL_ENABLED=1` の時だけ有効化し、未インストールや disabled 時の通常会話は壊さない
+- 相槌 TTS 発話本体、conversation log 保存、MaAI dependency の default 化は今回入れない
+
+### やったこと
+- `server/gateway/maai_backchannel.py` を追加し、MaAI `bc_2type` を `AudioInteractionTap` 実装として起動できるようにした
+- user mic chunk は ch1、Tomoko WAV chunk は 16kHz mono float32 に decode / resample して ch2 へ流すようにした
+- 片側だけの音声が来た場合は反対 channel に無音 160 samples frame を入れる
+- `p_bc_react` / `p_bc_emo` を threshold と cooldown で `BackchannelSuggestion(kind=react|emo, source=maai)` に変換するようにした
+- `TOMOKO_MAAI_BACKCHANNEL_ENABLED=1` の時だけ gateway runtime が MaAI tap を作り、suggestion を `TomoroSession.post_event()` へ戻すようにした
+- `_tools/smoke_maai_tap_session.py --use-maai` と `make smoke-maai-real` を追加し、実ブラウザなしで MaAI 本体を通せるようにした
+- `maai==0.1.16` をローカル `.venv` に追加インストールして smoke を確認した
+
+### 詰まったこと・解決したこと
+- MaAI の model filename は `10hz` であり、`frame_rate=10.0` だと Hugging Face lookup が `10.0hz` になって 404 した
+  - default / env parse を integer `10` 優先にした
+- MaAI `get_result()` は blocking queue wait なので、poll task が終了時に残って smoke が止まることがあった
+  - `result_dict_queue.get(timeout=0.2)` を使える時だけ timeout poll にして、`stop()` 後に process が抜けるようにした
+- real MaAI smoke では短い dummy / say 音声だけなので suggestion は出ない
+  - 今回の完了判定は「MaAI 本体へ音声が流れ、runtime を壊さず終了する」までとする
+
+### 検証
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_maai_backchannel_adapter.py tests/unit/test_smoke_maai_tap_session.py tests/unit/test_makefile_process_entries.py -q`
+  - 15 passed
+- ruff focused: `.venv/bin/python -m ruff check server/gateway/maai_backchannel.py tests/unit/test_maai_backchannel_adapter.py`
+  - pass
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 487 passed, 17 deselected
+- ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- diff check: `git diff --check`
+  - pass
+- 実 smoke: `make smoke-maai-real`
+  - `maai_enabled=true`
+  - `say_invoked=true`
+  - `sent_audio_chunks=1`
+  - `sent_audio_bytes=40918`
+  - `tomoko_tap_chunks=1`
+  - `tomoko_tap_bytes=40918`
+  - `user_tap_chunks=8`
+  - `user_tap_samples=4000`
+  - `suggestions=[]`
+
+### 次のセッションでやること
+- 実会話ログで `p_bc_react` / `p_bc_emo` の分布を見て threshold / cooldown を調整する
+- 相槌を実際に鳴らす場合は、TomoroSession 側で playback / reply state を見て release / hold / discard を決める
+
 ## 2026-05-30 セッション26
 
 ### やること（開始時に書く）

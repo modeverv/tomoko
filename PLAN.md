@@ -43,6 +43,21 @@ optional audio tap に流す smoke program を追加する。
 - [x] `make smoke-maai-tap` で実行できる
 - [x] focused unit / ruff / 実 smoke が通る
 
+## 2026-05-30 MaAI backchannel adapter
+
+MaAI 本体の組み込みを runtime hot path へ直接埋め込む方針は否定する。
+MaAI は optional audio tap の実装として追加し、無効時や未インストール時は通常会話を壊さない。
+有効時だけ `MaaiInput.Chunk` へ user / Tomoko 2ch 音声を流し、
+`p_bc_react` / `p_bc_emo` を `BackchannelSuggestion` として `TomoroSession.post_event()` へ戻す。
+
+### 完了条件
+
+- [x] `MaaiBackchannelTap` が `AudioInteractionTap` として user / Tomoko 音声を MaAI `Chunk` input へ流せる
+- [x] MaAI result の `p_bc_react` / `p_bc_emo` から閾値・cooldown つきで suggestion を生成できる
+- [x] runtime は `TOMOKO_MAAI_BACKCHANNEL_ENABLED=1` の時だけ MaAI tap を作る
+- [x] MaAI 未インストール時は明示エラーにし、disabled runtime は壊さない
+- [x] focused unit / ruff / full unit が通る
+
 ## 2026-05-30 arrival candidate retention cleanup
 
 `arrival_candidates` を TTL で fetch 対象から外すだけの運用は否定する。
