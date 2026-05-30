@@ -7012,3 +7012,36 @@ timeout / degraded context、carryover state は変更しない。
 - [x] smoke で JSON 出力を確認する
 - [x] full unit / ruff / diff check が通る
 - [x] git commit まで完了する
+
+### Phase 10.20.15: MaAI backchannel must not preempt ambient participation
+
+この Phase では、MaAI 相槌が ambient の参加判定前に鳴り、通常の wake word / participation / reply path を
+邪魔する挙動を否定する。
+相槌は会話中の gesture audio であり、`attention_mode=ambient` の発話には release しない。
+
+#### 変更対象
+
+- `server/session.py`
+  - `attention_mode=ambient` では `backchannel_skipped reason=attention_not_engaged` にする
+- `_tools/smoke_maai_dialogue.py`
+  - session release smoke は会話中 harness として `engaged` にしてから release 判定する
+- `_tools/smoke_maai_material.py`
+  - material release smoke も同様に会話中 harness として扱う
+- `tests/unit/test_maai_backchannel_tap.py`
+  - ambient listening では MaAI react suggestion が release されないことを固定する
+
+#### 今回触らないもの
+
+- `p_bc_react` 閾値 0.45
+- `p_bc_emo` release
+- MaAI model / channel assignment
+- STT / wake word / ParticipationJudge
+- 通常 reply LLM / TTS の生成経路
+
+#### 完了条件
+
+- [x] ambient listening で相槌が release される赤テストを確認する
+- [x] `attention_mode=ambient` では `attention_not_engaged` skip になる
+- [x] MaAI focused unit / smoke unit / ruff が通る
+- [x] full unit / global ruff / diff check が通る
+- [x] git commit まで完了する

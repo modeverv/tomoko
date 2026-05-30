@@ -265,6 +265,7 @@ async def simulate_session_backchannel_releases(
     previous_event_count = 0
     previous_audio_count = 0
     previous_tts_count = 0
+    await session._transition_attention("engaged")
     for suggestion in suggestions:
         observed_sec = _suggestion_observed_sec(suggestion, raw_scores)
         user_speaking = _role_active_at(

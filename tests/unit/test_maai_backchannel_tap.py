@@ -136,6 +136,7 @@ async def test_tomoko_audio_tap_failure_does_not_block_audio_send() -> None:
 @pytest.mark.unit
 async def test_backchannel_suggestion_event_is_gated_before_audio_release() -> None:
     session = _session()
+    await session._transition_attention("engaged")
     suggestion = BackchannelSuggestion(
         kind="react",
         score=0.82,
@@ -164,6 +165,7 @@ async def test_maai_react_suggestion_releases_llm_less_backchannel_audio() -> No
     audio: list[bytes] = []
     tts = RecordingTTSBackend()
     session = _session(send_event=events.append, send_audio=audio.append, tts_backend=tts)
+    await session._transition_attention("engaged")
     await session._transition("listening")
     suggestion = BackchannelSuggestion(
         kind="react",
@@ -182,9 +184,30 @@ async def test_maai_react_suggestion_releases_llm_less_backchannel_audio() -> No
 
 
 @pytest.mark.unit
+async def test_maai_backchannel_does_not_release_before_attention_engaged() -> None:
+    audio: list[bytes] = []
+    tts = RecordingTTSBackend()
+    session = _session(send_audio=audio.append, tts_backend=tts)
+    await session._transition("listening")
+    suggestion = BackchannelSuggestion(
+        kind="react",
+        score=0.8,
+        source="maai",
+        observed_at=datetime.now(UTC),
+    )
+
+    result = await session.apply_backchannel_suggestion(suggestion)
+
+    assert result.emissions[0].type == "backchannel_skipped"
+    assert result.emissions[0].payload["reason"] == "attention_not_engaged"
+    assert tts.inputs == []
+
+
+@pytest.mark.unit
 async def test_maai_react_suggestion_below_production_threshold_is_skipped() -> None:
     tts = RecordingTTSBackend()
     session = _session(tts_backend=tts)
+    await session._transition_attention("engaged")
     await session._transition("listening")
     suggestion = BackchannelSuggestion(
         kind="react",
@@ -205,6 +228,7 @@ async def test_maai_backchannel_is_once_per_user_speech_segment() -> None:
     audio: list[bytes] = []
     tts = RecordingTTSBackend()
     session = _session(send_audio=audio.append, tts_backend=tts)
+    await session._transition_attention("engaged")
     await session._transition("listening")
     suggestion = BackchannelSuggestion(
         kind="react",
@@ -226,6 +250,7 @@ async def test_maai_backchannel_is_once_per_user_speech_segment() -> None:
 async def test_maai_backchannel_release_requires_user_speaking_and_idle_tomoko() -> None:
     tts = RecordingTTSBackend()
     session = _session(tts_backend=tts)
+    await session._transition_attention("engaged")
     suggestion = BackchannelSuggestion(
         kind="react",
         score=0.8,
@@ -250,6 +275,7 @@ async def test_maai_backchannel_release_applies_global_cooldown() -> None:
     audio: list[bytes] = []
     tts = RecordingTTSBackend()
     session = _session(send_audio=audio.append, tts_backend=tts)
+    await session._transition_attention("engaged")
     await session._transition("listening")
     first = BackchannelSuggestion(
         kind="react",

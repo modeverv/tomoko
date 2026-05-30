@@ -394,6 +394,8 @@ class TomoroSession:
             return "unsupported_kind"
         if suggestion.score < BACKCHANNEL_REACT_THRESHOLD:
             return "below_threshold"
+        if self.attention_mode == "ambient":
+            return "attention_not_engaged"
         if self.state != "listening":
             return "user_not_speaking"
         if self._backchannel_released_in_current_speech:

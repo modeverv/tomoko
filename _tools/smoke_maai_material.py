@@ -240,6 +240,7 @@ async def simulate_material_session_releases(
     previous_event_count = 0
     previous_audio_count = 0
     previous_tts_count = 0
+    await session._transition_attention("engaged")
     for suggestion in suggestions:
         observed_sec = _suggestion_observed_sec(suggestion, raw_scores)
         user_rms = _window_rms(timeline.user_audio, observed_sec)
