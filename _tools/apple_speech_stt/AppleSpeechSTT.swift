@@ -31,6 +31,17 @@ func value(after option: String, in args: [String]) -> String? {
     return args[index + 1]
 }
 
+func values(after option: String, in args: [String]) -> [String] {
+    var result: [String] = []
+    for (index, argument) in args.enumerated() where argument == option {
+        guard index + 1 < args.count else {
+            continue
+        }
+        result.append(args[index + 1])
+    }
+    return result
+}
+
 let args = Array(CommandLine.arguments.dropFirst())
 guard let audioPath = value(after: "--audio", in: args) else {
     fail("missing --audio PATH")
@@ -40,6 +51,7 @@ let localeID = value(after: "--locale", in: args) ?? "ja-JP"
 let timeoutSeconds = Double(value(after: "--timeout", in: args) ?? "30") ?? 30.0
 let requiresOnDevice = args.contains("--on-device")
 let requestAuthorization = args.contains("--request-authorization")
+let contextualStrings = values(after: "--contextual-string", in: args)
 
 if requestAuthorization {
     let authSemaphore = DispatchSemaphore(value: 0)
@@ -68,6 +80,9 @@ if !recognizer.isAvailable {
 let request = SFSpeechURLRecognitionRequest(url: URL(fileURLWithPath: audioPath))
 request.shouldReportPartialResults = false
 request.requiresOnDeviceRecognition = requiresOnDevice
+if !contextualStrings.isEmpty {
+    request.contextualStrings = contextualStrings
+}
 
 let startedAt = DispatchTime.now()
 let resultSemaphore = DispatchSemaphore(value: 0)

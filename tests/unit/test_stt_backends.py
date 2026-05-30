@@ -158,6 +158,13 @@ async def test_apple_speech_transcribes_via_sidecar(
     assert calls[0][0] == "/bin/echo"
     assert "--audio" in calls[0]
     assert calls[0][calls[0].index("--locale") + 1] == "ja-JP"
+    assert calls[0].count("--contextual-string") == 6
+    contextual_strings = [
+        calls[0][index + 1]
+        for index, value in enumerate(calls[0])
+        if value == "--contextual-string"
+    ]
+    assert contextual_strings == ["ともこ", "トモコ", "Tomoko", "智子", "朋子", "tomoko"]
     assert "--on-device" in calls[0]
 
 

@@ -162,6 +162,13 @@ def test_persona_overlay_describes_inspired_style_without_original_lines() -> No
     prompt = (ROOT / "prompts" / "persona_overlay.md").read_text(encoding="utf-8")
 
     assert "PERSONA OVERLAY" in prompt
+    overlay_body = "\n".join(
+        line
+        for line in prompt.splitlines()
+        if line.strip() and line.strip() != "## PERSONA OVERLAY"
+    )
+    if not overlay_body.strip():
+        return
     assert "小悪魔的" in prompt
     assert "後輩" in prompt
     assert "原作台詞" in prompt

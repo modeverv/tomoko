@@ -6,6 +6,28 @@ Tomoko 音声対話システムの段階的実装計画。
 
 ---
 
+## 2026-05-30 Apple Speech contextual strings
+
+Apple Speech active 時に「ともこ」だけが落ちる/崩れる実ログがあるため、
+`SFSpeechRecognitionRequest.contextualStrings` に Tomoko wake word の短い語句を渡す。
+これは STT 入力そのものを改善する最小変更であり、wake word alias 追加や ambient 弱呼びかけ参加判定は別判断にする。
+
+### 完了条件
+
+- [x] Apple Speech sidecar が `--contextual-string` を複数受け取れる
+- [x] Python の `AppleSpeechSTT` wrapper が `ともこ` / `トモコ` / `Tomoko` / `智子` などの短い語句を渡す
+- [x] 既存 Apple Speech unit test で sidecar 引数を固定する
+- [ ] focused unit / ruff / diff check が通る
+
+### 検証メモ
+
+- focused unit / STT 周辺 unit / ruff は通過
+- `swiftc -parse _tools/apple_speech_stt/AppleSpeechSTT.swift` は通過
+- `git diff --check` は今回触っていない `prompts/persona_overlay.md` の EOF 空行で失敗
+- `pytest -m unit` は今回触っていない `prompts/persona_overlay.md` が空に近い状態のため、persona overlay test 1 件で失敗
+
+---
+
 ## 2026-05-30 Calendar cue long-term context
 
 calendar cue を過去会話 memory cue と分けて扱い、予定・スケジュール系の短い発話から

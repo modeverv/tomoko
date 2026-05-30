@@ -20,6 +20,14 @@ DEFAULT_PLIST = ROOT / "_tools" / "apple_speech_stt" / "Info.plist"
 DEFAULT_APP = ROOT / ".cache" / "tomoko" / "AppleSpeechSTT.app"
 DEFAULT_BINARY = DEFAULT_APP / "Contents" / "MacOS" / "apple-speech-stt"
 NO_SPEECH_ERROR = "No speech detected"
+DEFAULT_CONTEXTUAL_STRINGS = (
+    "ともこ",
+    "トモコ",
+    "Tomoko",
+    "智子",
+    "朋子",
+    "tomoko",
+)
 
 
 class AppleSpeechSTT:
@@ -31,6 +39,7 @@ class AppleSpeechSTT:
         plist_path: str | None = None,
         language: str = "ja-JP",
         on_device: bool = True,
+        contextual_strings: tuple[str, ...] = DEFAULT_CONTEXTUAL_STRINGS,
         timeout_s: float = 30.0,
     ) -> None:
         self.command = command or str(DEFAULT_BINARY)
@@ -38,6 +47,7 @@ class AppleSpeechSTT:
         self.plist_path = Path(plist_path) if plist_path else DEFAULT_PLIST
         self.language = language
         self.on_device = on_device
+        self.contextual_strings = contextual_strings
         self.timeout_s = timeout_s
 
     async def transcribe(self, segment: SpeechSegment) -> Transcript:
@@ -104,6 +114,8 @@ class AppleSpeechSTT:
                 "--timeout",
                 str(self.timeout_s),
             ]
+            for contextual_string in self.contextual_strings:
+                args.extend(["--contextual-string", contextual_string])
             if self.on_device:
                 args.append("--on-device")
             try:
