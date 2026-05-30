@@ -211,7 +211,7 @@ async def test_hard_barge_in_cancels_generating_tts_and_stops_playback() -> None
 
 
 @pytest.mark.unit
-async def test_new_listening_does_not_cancel_unstarted_reply_until_transcript_accept() -> None:
+async def test_new_listening_cancels_unstarted_reply_before_output() -> None:
     events: list[dict[str, str]] = []
     backend = BlockingBackend()
     session = TomoroSession(
@@ -229,22 +229,7 @@ async def test_new_listening_does_not_cancel_unstarted_reply_until_transcript_ac
 
     assert session._is_reply_generation_active() is True
     await session._transition("listening")
-    await session.process_transcript(
-        Transcript(
-            text="",
-            device_id="test",
-            speaker=None,
-            audio_level_db=-42.0,
-            recorded_at=datetime.now(UTC),
-            is_final=True,
-        )
-    )
 
-    assert backend.cancelled is False
-    assert session._is_reply_generation_active() is True
-    backend.release.set()
-    await session._wait_for_reply_task()
-
+    assert backend.cancelled is True
     assert session._is_reply_generation_active() is False
-    assert any(event["type"] == "reply_text" for event in events)
-    assert {"type": "reply_done"} in events
+    assert not any(event["type"] == "reply_text" for event in events)

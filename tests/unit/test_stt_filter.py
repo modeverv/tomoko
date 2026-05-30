@@ -86,6 +86,16 @@ def test_filter_does_not_drop_short_wake_word() -> None:
 
 
 @pytest.mark.unit
+def test_filter_accepts_low_audio_clock_query() -> None:
+    decision = TranscriptFilter().evaluate(
+        _transcript("今何時", audio_level_db=-36.0)
+    )
+
+    assert decision.action == "accept"
+    assert decision.reason == "accepted"
+
+
+@pytest.mark.unit
 def test_filter_suppresses_partial_instead_of_dropping() -> None:
     decision = TranscriptFilter().evaluate(
         _transcript("ご視聴ありがとうございました", is_final=False),

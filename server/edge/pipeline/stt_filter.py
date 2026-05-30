@@ -61,6 +61,8 @@ class TranscriptFilter:
             and transcript.audio_level_db <= self.LOW_AUDIO_DB
         ):
             return "known_hallucination_phrase"
+        if _looks_like_clock_query(text):
+            return None
         if (
             transcript.audio_level_db <= -30.0
             and len(normalized) <= self.LOW_AUDIO_SHORT_MAX_CHARS
@@ -105,6 +107,18 @@ def _looks_like_ascii_only_text(text: str) -> bool:
     if not re.fullmatch(r"[A-Za-z][A-Za-z\s'.,!?-]*", stripped):
         return False
     return not _contains_wake_word(stripped)
+
+
+def _looks_like_clock_query(text: str) -> bool:
+    normalized = _normalize_text(text).rstrip("。？！!?")
+    return (
+        "今何時" in normalized
+        or "いま何時" in normalized
+        or "何時ぐらい" in normalized
+        or "何時くらい" in normalized
+        or "何時かわかる" in normalized
+        or normalized in {"何時", "時刻", "現在時刻"}
+    )
 
 
 def _looks_like_repetition_loop(text: str) -> bool:

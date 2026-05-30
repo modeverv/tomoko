@@ -3730,3 +3730,25 @@ TomoroSession から `backchannel_suggested` reduce、`apply_backchannel_suggest
 `release_backchannel_audio` command は削除する。
 通常 reply 用の `_send_audio_chunk()` / `_flush_tts_text()` は無害化オプションを持たない形に戻し、
 gesture audio の例外は gateway 側に閉じ込める。
+
+### 確定した判断: 短い時刻質問は低音量でも transcript filter で落とさない
+2026-05-31 の実ログでは、`今何時` は STT で `transcript text='今何時'` まで出ていたが、
+`TranscriptFilter` が `low_audio_short_text` として drop していた。
+同じ会話で長めの `俺今何時とかっていうのは反応できひんのかな` は accept され、
+prompt の current local time から Tomoko が `深夜の1時32分` と答えられていた。
+
+つまり問題は LLM や clock prompt ではなく、短い低音量発話を hallucination 対策で落とす filter の例外不足だった。
+`今何時` / `いま何時` / `何時ぐらい` / `時刻` などの clock query は、
+Tomoko が system prompt の current local time で即答できる実用 command なので、
+低音量短文 filter より前に accept する。
+
+### 確定した判断: user speech が再開したら未出力 reply は stale cancel する
+2026-05-31 の実ログでは、長い user 発話の VAD speech_end 後に通常 reply task が起動した直後、
+user が話し続けて `state changed to listening` へ戻っていた。
+それでも reply output がまだ始まっていない task が cancel されず、Tomoko が発話を始めて遮る形になった。
+
+これは VAD が一度 speech_end を出したこと自体は自然な挙動だが、その後の resumed listening を
+stale reply cancel の signal として使えていなかった問題である。
+`listening` へ遷移した時点で、reply generation が active かつ reply output が未開始なら
+`resumed_user_speech_before_output` として cancel する。
+空 transcript を待ってから判断する方針は、今回の実会話では遅すぎるため否定する。
