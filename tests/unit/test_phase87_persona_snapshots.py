@@ -4,7 +4,10 @@ from uuid import uuid4
 
 import pytest
 
-from server.background.persona_updater import PersonaSnapshotUpdater
+from server.background.persona_updater import (
+    LLMPersonaSnapshotExtractor,
+    PersonaSnapshotUpdater,
+)
 from server.shared.models import (
     LexiconTerm,
     PersonaDiffEntry,
@@ -222,6 +225,143 @@ async def test_persona_snapshot_updater_writes_versions_from_session_summary() -
 
 
 @pytest.mark.unit
+async def test_llm_persona_snapshot_extractor_uses_persona_update_role() -> None:
+    router = FakePersonaRouter()
+    extractor = LLMPersonaSnapshotExtractor(router=router)  # type: ignore[arg-type]
+
+    await extractor.extract(
+        summary_text="作業方針について話した。",
+        raw_turns=[],
+        previous_lexicon=None,
+        previous_state=None,
+    )
+
+    assert router.selections == [("persona_update", "privacy")]
+    assert router.backend.calls[0]["trace_role"] == "persona_update"
+    assert router.backend.calls[0]["max_tokens"] == 4096
+    schema = router.backend.calls[0]["json_schema"]["schema"]
+    assert schema["required"] == ["lexicon_diff_json", "state_diff_json"]
+    assert "lexicon_json" not in schema["properties"]
+    assert "state_json" not in schema["properties"]
+    diff_schema = schema["properties"]["lexicon_diff_json"]
+    assert diff_schema["properties"]["added"]["maxItems"] == 6
+
+
+@pytest.mark.unit
+async def test_llm_persona_snapshot_extractor_sends_compact_previous_snapshot() -> None:
+    router = FakePersonaRouter()
+    extractor = LLMPersonaSnapshotExtractor(router=router)  # type: ignore[arg-type]
+    previous_lexicon = PersonaLexiconSnapshot.from_json(
+        {
+            "schema_version": 1,
+            "user_terms": [
+                {
+                    "term": "重要な呼び名",
+                    "meaning": "ユーザーが好む呼び名",
+                    "salience": 0.95,
+                    "evidence": ["evidence should not enter compact context"],
+                },
+                {
+                    "term": "低優先の古い話",
+                    "meaning": "長く参照されていない低 salience topic",
+                    "salience": 0.01,
+                    "evidence": ["large low-salience evidence"],
+                },
+            ],
+        }
+    )
+    previous_state = PersonaStateSnapshot.from_json(
+        {
+            "schema_version": 1,
+            "traits": {"warmth": 0.7},
+            "relationship": {
+                "familiarity": 0.6,
+                "boundaries": [f"boundary-{index}" for index in range(20)],
+            },
+            "speaking_style": {
+                "signature_phrases": [f"phrase-{index}" for index in range(20)]
+            },
+            "open_threads": [
+                {"topic": f"thread-{index}", "status": "open"}
+                for index in range(20)
+            ],
+        }
+    )
+
+    await extractor.extract(
+        summary_text="呼び名と距離感について話した。",
+        raw_turns=[],
+        previous_lexicon=previous_lexicon,
+        previous_state=previous_state,
+    )
+
+    content = router.backend.calls[0]["messages"][0]["content"]
+    assert '"previous_compact"' in content
+    assert "重要な呼び名" in content
+    assert "低優先の古い話" not in content
+    assert "evidence should not enter compact context" not in content
+    assert "phrase-11" not in content
+    assert "thread-7" not in content
+
+
+@pytest.mark.unit
+async def test_llm_persona_snapshot_extractor_merges_diff_deterministically() -> None:
+    router = FakePersonaRouter()
+    router.backend.payload = (
+        '{"lexicon_diff_json":{"schema_version":1,'
+        '"added":[{"path":"$.user_terms","reason":"呼び名が明示された",'
+        '"value":{"term":"呼び名","meaning":"ユーザーが Tomoko に望む呼び方",'
+        '"salience":0.82}}],'
+        '"updated":[{"path":"$.user_terms","reason":"意味が更新された",'
+        '"value":{"term":"作業モード","meaning":"静かに集中したい状態",'
+        '"salience":0.91}}],'
+        '"deprecated":[{"path":"$.user_terms","reason":"低優先で不要",'
+        '"value":{"term":"古い話題"}}]},'
+        '"state_diff_json":{"schema_version":1,'
+        '"added":[{"path":"$.open_threads","reason":"次回確認する",'
+        '"value":{"topic":"31B persona updater","status":"watch"}}],'
+        '"updated":[{"path":"$.relationship.familiarity","reason":"継続会話",'
+        '"to":0.74}],'
+        '"deprecated":[]}}'
+    )
+    extractor = LLMPersonaSnapshotExtractor(router=router)  # type: ignore[arg-type]
+    previous_lexicon = PersonaLexiconSnapshot.from_json(
+        {
+            "schema_version": 1,
+            "user_terms": [
+                {
+                    "term": "作業モード",
+                    "meaning": "実装に集中する",
+                    "salience": 0.6,
+                },
+                {"term": "古い話題", "meaning": "残さない話題", "salience": 0.9},
+            ],
+        }
+    )
+    previous_state = PersonaStateSnapshot.from_json(
+        {
+            "schema_version": 1,
+            "relationship": {"familiarity": 0.5},
+        }
+    )
+
+    lexicon, lexicon_diff, state, state_diff = await extractor.extract(
+        summary_text="persona updater の設計について話した。",
+        raw_turns=[],
+        previous_lexicon=previous_lexicon,
+        previous_state=previous_state,
+    )
+
+    assert [term.term for term in lexicon.user_terms] == ["作業モード", "呼び名"]
+    assert lexicon.user_terms[0].meaning == "静かに集中したい状態"
+    assert lexicon.user_terms[0].salience == 0.91
+    assert state.relationship.familiarity == 0.74
+    assert state.open_threads[0].topic == "31B persona updater"
+    assert lexicon_diff.updated[0].path == "$.user_terms"
+    assert state_diff.updated[0].path == "$.relationship.familiarity"
+
+
+@pytest.mark.unit
 async def test_null_persona_snapshot_store_keeps_background_boundary_noop() -> None:
     store = NullPersonaSnapshotStore()
 
@@ -296,6 +436,50 @@ class FakePersonaExtractor:
                 }
             ),
         )
+
+
+class FakePersonaRouter:
+    def __init__(self) -> None:
+        self.selections: list[tuple[str, str]] = []
+        self.backend = FakePersonaBackend()
+
+    async def select(self, role: str, preference: str):
+        self.selections.append((role, preference))
+        return self.backend
+
+
+class FakePersonaBackend:
+    name = "fake_persona_backend"
+    privacy_allowed = True
+
+    def __init__(self) -> None:
+        self.calls = []
+        self.payload = (
+            '{"lexicon_diff_json":{"schema_version":1,"added":[],'
+            '"updated":[],"deprecated":[]},'
+            '"state_diff_json":{"schema_version":1,"added":[],'
+            '"updated":[],"deprecated":[]}}'
+        )
+
+    async def chat_stream_structured(
+        self,
+        system_prompt,
+        messages,
+        *,
+        json_schema,
+        max_tokens=None,
+        trace_role=None,
+    ):
+        self.calls.append(
+            {
+                "system_prompt": system_prompt,
+                "messages": messages,
+                "json_schema": json_schema,
+                "max_tokens": max_tokens,
+                "trace_role": trace_role,
+            }
+        )
+        yield self.payload
 
 
 class InMemoryPersonaSnapshotStore:

@@ -1,3 +1,47 @@
+## 2026-05-30 persona updater diff-only merge
+
+persona updater の full snapshot 生成方式は、snapshot が育つほど input / output の両方が肥大化し、
+JSON truncation や parse failure を再発させるため否定する。
+LLM は変更提案の diff だけを返し、previous snapshot の compact slice 作成、
+snapshot merge、salience / 件数上限による prune は deterministic code で行う。
+
+### 完了条件
+
+- [x] LLM output schema は `lexicon_diff_json` / `state_diff_json` のみを要求する
+- [x] previous snapshot は full JSON ではなく compact prompt slice として渡す
+- [x] diff を deterministic code で full snapshot に merge する
+- [x] persona update `max_tokens` を 4096 にする
+- [x] `PERSONA_UPDATE_LIMIT ?= 1` を基本値にする
+- [x] focused unit / ruff / full unit / 実 `make persona-updater-once` が通る
+
+## 2026-05-30 persona updater structured output
+
+上の 31B lane 変更だけでは、persona updater の JSON 生成は prompt-only のままである。
+この方針を否定し、LM Studio backend の `response_format=json_schema` を使う structured output に変更する。
+
+### 完了条件
+
+- [x] persona updater が `chat_stream_structured` を要求する
+- [x] persona update 用 JSON schema を渡す
+- [x] persona update 用 `max_tokens` を明示する
+- [x] unit test で `json_schema` / `trace_role="persona_update"` / `max_tokens` を固定する
+- [x] focused unit / ruff / full unit / 実 `make persona-updater-once` が通る
+
+## 2026-05-30 persona updater 31B lane
+
+persona updater は会話 hot path ではなく background worker なので、速度より JSON 生成品質を優先する。
+`session_summary` role を兼用する方針は、session summary と persona update の品質要件が異なるため否定する。
+`persona_update_backend` / `persona_update_fallback` を追加し、central realtime では
+`lmstudio_gemma4_31b` を使う。
+
+### 完了条件
+
+- [x] `InferenceSection` に persona update 専用 backend / fallback を追加する
+- [x] `InferenceRouter.select("persona_update", "privacy")` が専用 backend を選ぶ
+- [x] persona updater が `session_summary` ではなく `persona_update` role を選ぶ
+- [x] `config/central_realtime.toml` で persona updater を `lmstudio_gemma4_31b` にする
+- [x] focused unit / ruff / diff check が通る
+
 # PLAN.md
 
 Tomoko 音声対話システムの段階的実装計画。

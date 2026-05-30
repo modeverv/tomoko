@@ -1,3 +1,130 @@
+## 2026-05-30 セッション20
+
+### やること（開始時に書く）
+- persona updater の LLM output を full snapshot 生成から diff-only 生成へ変更する
+- previous snapshot は full JSON ではなく compact prompt slice として渡す
+- LLM diff を deterministic code で merge / prune し、巨大 JSON の往復を避ける
+- persona updater の max_tokens を 4096 以上へ上げ、`make persona-updater-once` の基本 limit を 1 にする
+- DB schema と会話 hot path は変更しない
+
+### やったこと
+- persona updater の structured output schema を `lexicon_diff_json` / `state_diff_json` のみにした
+- previous snapshot を full JSON ではなく compact prompt slice として渡すようにした
+- LLM diff を Python 側で previous snapshot に merge し、salience / 件数上限で prune するようにした
+- diff の `added` / `updated` / `deprecated` は schema 側でも `maxItems=6` に制限した
+- `PERSONA_UPDATE_MAX_TOKENS` を 4096 にした
+- `PERSONA_UPDATE_LIMIT ?= 1` を Makefile の基本値にした
+
+### 変更していないもの
+- DB schema
+- 会話 hot path
+- session summarizer
+- persona update backend lane
+
+### 検証
+- red test: diff-only schema / compact previous snapshot / deterministic merge / Makefile default の focused test が失敗することを確認
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_phase87_persona_snapshots.py::test_llm_persona_snapshot_extractor_uses_persona_update_role tests/unit/test_phase87_persona_snapshots.py::test_llm_persona_snapshot_extractor_sends_compact_previous_snapshot tests/unit/test_phase87_persona_snapshots.py::test_llm_persona_snapshot_extractor_merges_diff_deterministically tests/unit/test_makefile_process_entries.py::test_makefile_defaults_persona_updater_once_to_one_session -q`
+  - 4 passed
+- related unit: `.venv/bin/python -m pytest -m unit tests/unit/test_phase87_persona_snapshots.py tests/unit/test_makefile_process_entries.py tests/unit/test_router.py tests/unit/test_phase0_config.py tests/unit/test_lm_studio_backend.py -q`
+  - 39 passed
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 461 passed, 17 deselected
+- ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- 実行確認: `PERSONA_UPDATE_LIMIT=1 make persona-updater-once`
+  - `processed=1`
+  - backend trace は `role="persona_update"` / `backend="lmstudio_gemma4_31b"` / `model="gemma-4-31b-it-mlx"`
+  - `maxItems=6` 追加後は `total_ms=38017.18808300211` / `chunk_count=213` で完了
+- targeted diff check: `git diff --check -- server/background/persona_updater.py tests/unit/test_phase87_persona_snapshots.py tests/unit/test_makefile_process_entries.py Makefile PLAN.md MEMORY.md LOG.md`
+  - pass
+
+### 注意
+- 8192 / 4096 だけでは structured generation が長く継続し、手動停止した
+- diff-only に加えて `maxItems=6` を schema に入れた後に実行完了した
+- global `git diff --check` は、今回触っていない `prompts/persona_overlay.md` の EOF 空行で失敗する
+
+## 2026-05-30 セッション19
+
+### やること（開始時に書く）
+- persona updater が prompt-only JSON 生成になっている問題を直す
+- LM Studio の `chat_stream_structured` / `response_format=json_schema` を使い、persona update output を schema で縛る
+- persona update 用の max_tokens を明示し、JSON truncation の可能性を下げる
+- 会話 hot path、DB schema、session summarizer は変更しない
+
+### やったこと
+- `LLMPersonaSnapshotExtractor` を通常 `chat_stream` から `chat_stream_structured_with_trace_role` に変更した
+- persona update 用 JSON schema を追加した
+- persona update 用 `PERSONA_UPDATE_MAX_TOKENS = 1600` を追加した
+- structured output 非対応 backend では明示的に `RuntimeError` にするようにした
+- unit test で `trace_role="persona_update"` / `max_tokens=1600` / top-level schema required keys を固定した
+
+### 変更していないもの
+- 会話 hot path
+- DB schema
+- session summarizer
+- 31B lane 設定
+
+### 検証
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_phase87_persona_snapshots.py::test_llm_persona_snapshot_extractor_uses_persona_update_role -q`
+  - 1 passed
+- related unit: `.venv/bin/python -m pytest -m unit tests/unit/test_phase87_persona_snapshots.py tests/unit/test_router.py tests/unit/test_phase0_config.py tests/unit/test_lm_studio_backend.py -q`
+  - 31 passed
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 458 passed, 17 deselected
+- ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- targeted diff check: `git diff --check -- server/background/persona_updater.py tests/unit/test_phase87_persona_snapshots.py PLAN.md MEMORY.md LOG.md`
+  - pass
+- 実行確認: `PERSONA_UPDATE_LIMIT=1 make persona-updater-once`
+  - `processed=1`
+  - backend trace は `role="persona_update"` / `backend="lmstudio_gemma4_31b"` / `model="gemma-4-31b-it-mlx"`
+  - DB では `session_summary_completed | lmstudio_gemma4_31b` が 2 件になった
+
+### 注意
+- 途中で `make persona-updater-once` の `--limit 10` も検証として起動し、1 件成功後に長いため停止した
+- 31B structured persona update は 1 件 88〜142 秒程度かかった
+- global `git diff --check` は、今回触っていない `prompts/persona_overlay.md` の EOF 空行で失敗する
+
+## 2026-05-30 セッション18
+
+### やること（開始時に書く）
+- persona updater の LLM role を `session_summary` 兼用から分け、31B backend を使うようにする
+- `config/central_realtime.toml` に persona update 専用 backend 設定を追加する
+- router / config の unit test を先に更新し、persona updater が `persona_update` role を選ぶことを固定する
+- 会話 hot path、session summarizer、memory extraction、DB schema は変更しない
+
+### やったこと
+- `InferenceSection` に `persona_update_backend` / `persona_update_fallback` を追加した
+- `InferenceRouter.select("persona_update", "privacy")` を追加し、専用 backend / fallback を選べるようにした
+- `LLMPersonaSnapshotExtractor` が `session_summary` ではなく `persona_update` role を選ぶようにした
+- `config/central_realtime.toml` の persona updater lane を `lmstudio_gemma4_31b` にした
+- config / router / persona updater の unit test を追加・更新した
+
+### 変更していないもの
+- 会話 hot path
+- session summarizer の backend
+- memory extraction backend
+- candidate / diary backend
+- DB schema
+
+### 検証
+- red test: `.venv/bin/python -m pytest -m unit tests/unit/test_router.py::test_persona_update_role_uses_configured_backend_and_fallback tests/unit/test_phase0_config.py::test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation -q`
+  - `InferenceSection` に persona update 設定がなく失敗することを確認
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_phase87_persona_snapshots.py::test_llm_persona_snapshot_extractor_uses_persona_update_role tests/unit/test_router.py::test_persona_update_role_uses_configured_backend_and_fallback tests/unit/test_phase0_config.py::test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation -q`
+  - 3 passed
+- related unit: `.venv/bin/python -m pytest -m unit tests/unit/test_router.py tests/unit/test_phase0_config.py tests/unit/test_phase87_persona_snapshots.py -q`
+  - 24 passed
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 458 passed, 17 deselected
+- ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- targeted diff check: `git diff --check -- server/shared/config.py server/shared/inference/router.py server/background/persona_updater.py config/central_realtime.toml tests/unit/test_router.py tests/unit/test_phase0_config.py tests/unit/test_phase87_persona_snapshots.py PLAN.md MEMORY.md LOG.md`
+  - pass
+
+### 未解決・今回触っていないこと
+- global `git diff --check` は、作業開始時点から dirty な `prompts/persona_overlay.md` の EOF 空行で失敗する
+- 実 `make persona-updater-once` は DB に persona snapshot を書く可能性があるため、今回は unit/config verification までにした
+
 ## 2026-05-30 セッション12
 
 ### やること（開始時に書く）

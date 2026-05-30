@@ -24,11 +24,13 @@ class InferenceSection:
     candidate_gen_backend: str | None = None
     diary_backend: str | None = None
     memory_extraction_backend: str | None = None
+    persona_update_backend: str | None = None
     conversation_fallback: str | None = None
     session_summary_fallback: str | None = None
     candidate_gen_fallback: str | None = None
     diary_fallback: str | None = None
     memory_extraction_fallback: str | None = None
+    persona_update_fallback: str | None = None
     speech_normalizer_enabled: bool = True
 
 

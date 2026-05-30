@@ -22,6 +22,8 @@ def make_config(
     session_summary_fallback: str | None = None,
     memory_extraction_backend: str | None = None,
     memory_extraction_fallback: str | None = None,
+    persona_update_backend: str | None = None,
+    persona_update_fallback: str | None = None,
     diary_backend: str | None = None,
     diary_fallback: str | None = None,
 ) -> NodeConfig:
@@ -34,6 +36,8 @@ def make_config(
             session_summary_fallback=session_summary_fallback,
             memory_extraction_backend=memory_extraction_backend,
             memory_extraction_fallback=memory_extraction_fallback,
+            persona_update_backend=persona_update_backend,
+            persona_update_fallback=persona_update_fallback,
             diary_backend=diary_backend,
             diary_fallback=diary_fallback,
             stt_backend=None,
@@ -178,6 +182,22 @@ async def test_memory_extraction_role_uses_configured_backend_and_fallback() -> 
     )
 
     backend = await router.select("memory_extraction", "privacy")
+
+    assert backend.name == "local_fallback"
+
+
+@pytest.mark.unit
+async def test_persona_update_role_uses_configured_backend_and_fallback() -> None:
+    config = make_config(
+        persona_update_backend="local",
+        persona_update_fallback="local_fallback",
+    )
+    router = InferenceRouter(
+        config=config,
+        monitor=MockMonitor({"local": InferenceMetrics(latency_ms=600)}),
+    )
+
+    backend = await router.select("persona_update", "privacy")
 
     assert backend.name == "local_fallback"
 

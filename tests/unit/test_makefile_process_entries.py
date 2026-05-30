@@ -42,6 +42,11 @@ def test_makefile_exposes_config_and_log_vars_for_separate_processes() -> None:
 
 
 @pytest.mark.unit
+def test_makefile_defaults_persona_updater_once_to_one_session() -> None:
+    assert "PERSONA_UPDATE_LIMIT ?= 1" in MAKEFILE_TEXT
+
+
+@pytest.mark.unit
 def test_background_process_targets_pass_the_central_config_explicitly() -> None:
     for target in [
         "session-summarizer",
