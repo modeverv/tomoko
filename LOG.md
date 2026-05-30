@@ -1,3 +1,54 @@
+## 2026-05-30 セッション21
+
+### やること（開始時に書く）
+- Perplexity で外部観測 Markdown を取得し、`informations/work/2026-05-30-world-observation.md` に保存する
+- prompt は `informations/prompts/daily_world_observation.md` を基準にし、投入時だけ日付を 2026-05-30 に合わせる
+- private page / account 情報 / secret / 個人情報が混ざっていないことを目視する
+- 保存後に strict validator と `make information-ingest-dry-run` / `make information-ingest-once` / `make information-interpret-once` を実行する
+- Tomoko 本体 runtime / `/ws` / DB schema / prompt source file は変更しない
+
+### やったこと
+- Perplexity へ prompt を clipboard paste で投入し、Markdown 形式でダウンロードした
+- ダウンロード成果物から Perplexity export header を除き、frontmatter closing delimiter だけ `***` から `---` に直して `informations/work/2026-05-30-world-observation.md` に保存した
+- secret / account / private page / 個人情報らしき混入がないことを目視と keyword scan で確認した
+- `make information-ingest` alias を追加し、operator recipe のコマンド名で実行できるようにした
+- LM Studio SSE の `event: error` payload を空返答として握りつぶさず、backend error として扱うようにした
+- world observation normalizer は 26B candidate lane ではなく 31B memory extraction lane を使うようにした
+- LLM normalizer が context length / timeout / JSON truncation で失敗した場合、raw Markdown を保持したまま Markdown 見出し由来の deterministic fallback item を作るようにした
+
+### 保存結果
+- 保存先: `informations/work/2026-05-30-world-observation.md`
+- 文字数: 11734 chars
+- ingest 後 archive 先: `informations/archived/2026-05-30/2026-05-30-world-observation.md`
+
+### 詰まったこと・解決したこと
+- 26B normalizer は LM Studio から `context length` error を SSE で返していたが、parser が error payload を拾えず `chunk_count=0` / `JSONDecodeError` として見えていた
+- 31B は context には入ったが、JSON 生成が長くなり truncation したため、normalizer は代表 item 最大 8 件・backend timeout 45s・deterministic fallback にした
+- fallback は本文を書き換えず、DB に残る raw Markdown への traceable entry point として扱う
+
+### 検証
+- strict validator: `mise exec -- uv run python _tools/validate_world_observation_md.py --strict informations/work/2026-05-30-world-observation.md`
+  - valid true / issues 0
+- dry-run: `make information-ingest-dry-run`
+  - `processed=1 archived=0 failed=0 skipped=1`
+  - `would_ingest informations/work/2026-05-30-world-observation.md`
+- ingest: `make information-ingest-once`
+  - 最終結果: `processed=1 archived=1 failed=0 skipped=0`
+- alias check: `make information-ingest`
+  - `processed=0 archived=0 failed=0 skipped=0`
+- interpret: `make information-interpret-once`
+  - `interpreted=10 error_count=0`
+- focused unit: `mise exec -- uv run pytest -m unit tests/unit/test_world_observation_normalizer.py tests/unit/test_lm_studio_backend.py tests/unit/test_makefile_process_entries.py -q`
+  - 19 passed
+- ruff focused: `mise exec -- uv run ruff check background-process/ingest_world_observations.py server/world_observations/normalizer.py server/shared/inference/backends/lm_studio.py server/shared/inference/trace.py tests/unit/test_world_observation_normalizer.py tests/unit/test_lm_studio_backend.py`
+  - pass
+- full unit: `mise exec -- uv run pytest -m unit`
+  - 465 passed, 17 deselected
+
+### 次のセッションでやること
+- `make thinker-once` / `make journalist-once` は今回必須ではないため未実行
+- LLM normalizer の品質を上げるなら、raw Markdown 全体を一括で JSON 化するのではなく section chunking を検討する
+
 ## 2026-05-30 セッション20
 
 ### やること（開始時に書く）

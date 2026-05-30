@@ -58,14 +58,20 @@ async def chat_stream_with_trace_role(
     system_prompt: str,
     messages: list[dict[str, str]],
     *,
+    max_tokens: int | None = None,
     trace_role: str,
 ) -> AsyncGenerator[str, None]:
     chat_stream = backend.chat_stream
+    kwargs: dict[str, Any] = {}
+    if max_tokens is not None and _accepts_keyword(chat_stream, "max_tokens"):
+        kwargs["max_tokens"] = max_tokens
     if _accepts_keyword(chat_stream, "trace_role"):
+        kwargs["trace_role"] = trace_role
+    if kwargs:
         async for chunk in chat_stream(
             system_prompt,
             messages,
-            trace_role=trace_role,
+            **kwargs,
         ):
             yield chunk
         return

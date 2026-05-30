@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import re
 import time
 from typing import Any, Protocol
 
 from server.shared.inference.trace import (
-    chat_stream_structured_with_trace_role,
     chat_stream_with_trace_role,
 )
 from server.shared.models import (
@@ -78,6 +79,8 @@ raw Markdown は不安定な外部観測原稿であり、Tomoko が信じる事
 本文をルールベースで無理に理解せず、観測項目を JSON に整理してください。
 
 返答は JSON object だけにしてください。
+items は最大 8 件にしてください。
+raw Markdown 全体は DB に保存されるため、網羅よりも代表的な観測項目の抽出を優先してください。
 schema:
 {
   "items": [
@@ -104,10 +107,12 @@ class WorldObservationNormalizer:
         backend: NormalizerBackend,
         max_retries: int = 1,
         low_confidence_threshold: float = 0.35,
+        backend_timeout_sec: float = 45.0,
     ) -> None:
         self.backend = backend
         self.max_retries = max_retries
         self.low_confidence_threshold = low_confidence_threshold
+        self.backend_timeout_sec = backend_timeout_sec
 
     async def normalize(
         self,
@@ -121,7 +126,10 @@ class WorldObservationNormalizer:
         for attempt in range(self.max_retries + 1):
             attempts = attempt + 1
             try:
-                raw = await self._run_backend(document)
+                raw = await asyncio.wait_for(
+                    self._run_backend(document),
+                    timeout=self.backend_timeout_sec,
+                )
                 items, parse_issues = parse_normalizer_output(raw)
                 issues.extend(parse_issues)
                 elapsed_ms = (time.perf_counter() - started_at) * 1000
@@ -151,6 +159,24 @@ class WorldObservationNormalizer:
                     message="normalizer exhausted retry budget",
                 )
             )
+        fallback_items = _build_deterministic_fallback_items(document)
+        if fallback_items:
+            issues.append(
+                WorldObservationParseIssue(
+                    field="normalizer",
+                    message="used deterministic heading fallback after LLM normalizer failure",
+                    severity="warning",
+                )
+            )
+            return WorldObservationNormalizedBatch(
+                items=tuple(fallback_items),
+                trace=WorldObservationNormalizeTrace(
+                    model=f"{self.backend.name}:deterministic_fallback",
+                    elapsed_ms=elapsed_ms,
+                    attempts=attempts,
+                    issues=tuple(issues),
+                ),
+            )
         return WorldObservationNormalizedBatch(
             items=(),
             trace=WorldObservationNormalizeTrace(
@@ -164,23 +190,13 @@ class WorldObservationNormalizer:
     async def _run_backend(self, document: WorldObservationRawDocument) -> str:
         chunks: list[str] = []
         messages = [{"role": "user", "content": _format_document_for_prompt(document)}]
-        structured_stream = getattr(self.backend, "chat_stream_structured", None)
-        if structured_stream is None:
-            stream = chat_stream_with_trace_role(
-                self.backend,
-                NORMALIZER_SYSTEM_PROMPT,
-                messages,
-                trace_role="world_observation_normalizer",
-            )
-        else:
-            stream = chat_stream_structured_with_trace_role(
-                self.backend,
-                NORMALIZER_SYSTEM_PROMPT,
-                messages,
-                json_schema=NORMALIZER_JSON_SCHEMA,
-                max_tokens=4096,
-                trace_role="world_observation_normalizer",
-            )
+        stream = chat_stream_with_trace_role(
+            self.backend,
+            NORMALIZER_SYSTEM_PROMPT,
+            messages,
+            max_tokens=768,
+            trace_role="world_observation_normalizer",
+        )
         async for chunk in stream:
             chunks.append(chunk)
         return "".join(chunks)
@@ -249,6 +265,83 @@ def _format_document_for_prompt(document: WorldObservationRawDocument) -> str:
             document.body,
         ]
     )
+
+
+def _build_deterministic_fallback_items(
+    document: WorldObservationRawDocument,
+) -> list[WorldObservationNormalizedItem]:
+    allowed_topics = {
+        "news",
+        "economy",
+        "technology",
+        "culture",
+        "local_life",
+        "ai",
+        "local_inference",
+        "other",
+    }
+    current_topic = "other"
+    current_title: str | None = None
+    current_lines: list[str] = []
+    items: list[WorldObservationNormalizedItem] = []
+
+    def flush() -> None:
+        nonlocal current_title, current_lines
+        if current_title is None:
+            return
+        text = _compact_markdown_text("\n".join(current_lines))
+        if not text:
+            return
+        items.append(
+            WorldObservationNormalizedItem(
+                topic=current_topic,
+                title=current_title[:120],
+                summary=text[:360],
+                source_hint=_extract_source_hint(text),
+                freshness="unknown",
+                confidence=0.45,
+                raw_excerpt=text[:500],
+                item_json={"normalizer_fallback": "markdown_heading_excerpt"},
+                parse_notes=("LLM normalizer failed; item was derived from Markdown headings.",),
+            )
+        )
+        current_title = None
+        current_lines = []
+
+    for line in document.body.splitlines():
+        topic_match = re.match(r"^##\s+(.+?)\s*$", line)
+        if topic_match and not line.startswith("###"):
+            flush()
+            topic = topic_match.group(1).strip().lower()
+            current_topic = topic if topic in allowed_topics else "other"
+            continue
+
+        title_match = re.match(r"^###\s+(.+?)\s*$", line)
+        if title_match:
+            flush()
+            current_title = re.sub(r"^\d+[.)]\s*", "", title_match.group(1).strip())
+            continue
+
+        if current_title is not None:
+            current_lines.append(line)
+
+        if len(items) >= 8:
+            break
+
+    flush()
+    return items[:8]
+
+
+def _compact_markdown_text(text: str) -> str:
+    lines = [line.strip() for line in text.splitlines()]
+    return re.sub(r"\s+", " ", " ".join(line for line in lines if line)).strip()
+
+
+def _extract_source_hint(text: str) -> str:
+    match = re.search(r"(出典|source|参考)[:：]\s*([^。,\n]{1,120})", text, re.IGNORECASE)
+    if match:
+        return match.group(2).strip()
+    return "markdown_heading_excerpt"
 
 
 def _load_json_object(raw_text: str) -> dict[str, Any]:

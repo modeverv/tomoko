@@ -40,6 +40,13 @@ def parse_sse_content(line: str) -> str | None:
         return None
 
     payload = json.loads(data)
+    error = payload.get("error")
+    if isinstance(error, dict):
+        message = error.get("message") or payload.get("message") or "LM Studio error"
+        raise RuntimeError(str(message))
+    if "error" in payload:
+        raise RuntimeError(str(payload["error"]))
+
     choices = payload.get("choices") or []
     if not choices:
         return None
@@ -91,13 +98,14 @@ class LMStudioBackend(InferenceBackend):
         system_prompt: str,
         messages: list[dict[str, str]],
         *,
+        max_tokens: int | None = None,
         trace_role: str | None = None,
     ) -> AsyncGenerator[str, None]:
         async for content in self._chat_stream(
             system_prompt,
             messages,
             response_format=None,
-            max_tokens=self.max_tokens,
+            max_tokens=max_tokens or self.max_tokens,
             trace_role=trace_role or "unknown",
         ):
             yield content

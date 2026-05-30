@@ -31,10 +31,10 @@ async def async_main(argv: list[str] | None = None) -> int:
 
     config = NodeConfig.load(args.config)
     router = InferenceRouter(config=config)
-    backend = await router.select("candidate_gen", "privacy")
+    backend = await router.select("memory_extraction", "privacy")
     ingestor = WorldObservationIngestor(
         store=PostgresWorldObservationStore(config.database.dsn),
-        normalizer=WorldObservationNormalizer(backend=backend),
+        normalizer=WorldObservationNormalizer(backend=backend, max_retries=0),
         archive_root=args.archive_root,
         failed_root=args.failed_root,
     )

@@ -69,6 +69,17 @@ def test_parse_sse_content_extracts_openai_delta_content() -> None:
 
 
 @pytest.mark.unit
+def test_parse_sse_content_raises_lm_studio_error_payload() -> None:
+    line = (
+        'data: {"error":{"message":"context length exceeded"},'
+        '"message":"provide a shorter input"}'
+    )
+
+    with pytest.raises(RuntimeError, match="context length exceeded"):
+        parse_sse_content(line)
+
+
+@pytest.mark.unit
 def test_lm_studio_queue_key_allows_different_models_to_run_independently() -> None:
     assert (
         lmstudio_queue_key("http://192.168.11.66:1234", "gemma-4-26b-a4b-it-mlx")

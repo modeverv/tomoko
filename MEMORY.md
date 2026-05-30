@@ -3484,3 +3484,26 @@ corrections / open threads などを上限つきで prune する。
 以前の `PERSONA_UPDATE_MAX_TOKENS = 1600` 方針は、full snapshot output 前提だったため否定する。
 diff-only output では `PERSONA_UPDATE_MAX_TOKENS = 4096` とし、さらに schema の `maxItems=6` で
 各 diff 配列の伸びを抑える。
+
+### 確定した判断: world observation normalizer は raw 保存を優先し deterministic fallback を持つ
+2026-05-30 の外部観測収集で、Perplexity 由来の `2026-05-30-world-observation.md` は
+strict Markdown validator を通ったが、ingest 中の LLM normalizer で失敗した。
+
+最初の失敗は `lmstudio_gemma4_26b_a4b` の context length 超過だった。
+LM Studio は SSE で `event: error` と `data: {"error": ...}` を返していたが、
+parser が error payload を空 delta と同じ扱いにしていたため、表面上は
+`chunk_count=0` と `JSONDecodeError` に見えていた。
+LM Studio SSE parser は error payload を `RuntimeError` として扱う。
+
+world observation normalizer は会話 hot path ではなく background ingest なので、
+短い candidate generation lane ではなく `memory_extraction` lane を使う。
+現行 config では `lmstudio_gemma4_31b` で、長い観測 Markdown の context を扱える。
+
+ただし 31B でも raw Markdown 全体を一括 JSON 化すると生成が長くなり、
+JSON truncation / parse failure が起きる。
+そのため LLM normalizer は代表 item 最大 8 件・backend timeout 45s・retry なしを基本にし、
+失敗時は Markdown の `## topic` / `### title` / 本文 excerpt から deterministic fallback item を作る。
+raw Markdown は DB に保存されるため、fallback item は原本の代替ではなく traceable entry point として扱う。
+
+将来品質を上げる場合は、raw Markdown を勝手に要約・改変するのではなく、
+section 単位 chunking で normalizer に渡す。

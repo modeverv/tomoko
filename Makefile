@@ -48,7 +48,7 @@ SCREEN_SHELL ?= zsh
 .PHONY: deps prepare download-models download-optional-models server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
 .PHONY: session-summarizer session-summarizer-once turn-embedder turn-embedder-once
 .PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
-.PHONY: information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
+.PHONY: information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
 .PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list
 .PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack log-report monitor lint check
 
@@ -153,6 +153,8 @@ information-ingest-once:
 		--path $(WORLD_OBSERVATION_WORK) \
 		--archive-root $(WORLD_OBSERVATION_ARCHIVED) \
 		--failed-root $(WORLD_OBSERVATION_FAILED)
+
+information-ingest: information-ingest-once
 
 information-ingest-dry-run:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(WORLD_OBSERVATION_LOG_FILE) mise exec -- uv run python background-process/ingest_world_observations.py \
