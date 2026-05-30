@@ -41,6 +41,17 @@ default は `10.0` ではなく `10` にする。
 `make smoke-maai-real` は `maai_enabled=true` で Tomoko `say` WAV と user dummy sine を MaAI 本体へ流し、
 短い smoke では suggestion が空でも MaAI 本体経由で process が終了することを確認する。
 
+MaAI raw score の診断は threshold 後の suggestion だけで見ない。
+`make smoke-maai-dialogue` は `say` で user / Tomoko の合成二者会話を作り、
+16kHz mono timeline の ch1 / ch2 として MaAI へ 10ms frame 投入する。
+JSON summary には `raw_scores[].p_bc_react` / `raw_scores[].p_bc_emo` を全件保存する。
+MaAI raw result には `x1` / `x2` の音声配列が含まれるため、診断 JSON では score / metadata だけを
+`raw` に残し、音声配列 key は `raw_omitted_keys` へ記録する。
+2026-05-30 の合成 dialogue smoke では raw score が 200 件返り、
+`max_p_bc_react=0.7259804606437683`、`max_p_bc_emo=0.19943645596504211` だった。
+現行 threshold 0.78 では `suggestions=[]` なので、合成音声では反応が threshold 直下まで来ているが、
+実際の相槌発火には至っていない。
+
 ### MemoryGate で Retrieve と Use を分ける
 2026-05-30 時点では、context snapshot で取得できた記憶をそのまま prompt に渡さない。
 `TomoroSession` は `MemoryGate` を通して、deep memory / calendar memory を読むかどうかと、

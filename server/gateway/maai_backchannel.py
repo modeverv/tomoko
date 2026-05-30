@@ -110,6 +110,19 @@ class MaaiBackchannelTap:
             return
         self._feed_two_channel(tomoko_audio=audio)
 
+    def observe_duplex_audio(
+        self,
+        *,
+        user_chunk: np.ndarray,
+        tomoko_chunk: np.ndarray,
+        observed_at: datetime,
+    ) -> None:
+        del observed_at
+        self._feed_two_channel(
+            user_audio=np.asarray(user_chunk, dtype=np.float32),
+            tomoko_audio=np.asarray(tomoko_chunk, dtype=np.float32),
+        )
+
     def handle_result(
         self,
         result: dict[str, Any],

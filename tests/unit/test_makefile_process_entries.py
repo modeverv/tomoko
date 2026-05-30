@@ -120,6 +120,8 @@ def test_makefile_monitor_stays_read_only_and_uses_current_logs() -> None:
 def test_makefile_exposes_maai_tap_smoke_tool() -> None:
     smoke_body = _target_body("smoke-maai-tap")
     real_body = _target_body("smoke-maai-real")
+    dialogue_body = _target_body("smoke-maai-dialogue")
 
     assert "_tools/smoke_maai_tap_session.py" in smoke_body
     assert "_tools/smoke_maai_tap_session.py --use-maai" in real_body
+    assert "_tools/smoke_maai_dialogue.py" in dialogue_body

@@ -125,6 +125,27 @@ async def test_maai_backchannel_tap_decodes_tomoko_wav_to_system_channel() -> No
 
 
 @pytest.mark.unit
+async def test_maai_backchannel_tap_feeds_duplex_audio_frame() -> None:
+    fake_module = FakeMaaiModule()
+    tap = MaaiBackchannelTap(
+        config=MaaiBackchannelConfig(),
+        maai_module=fake_module,
+    )
+    await tap.start()
+
+    tap.observe_duplex_audio(
+        user_chunk=np.ones(160, dtype=np.float32) * 0.2,
+        tomoko_chunk=np.ones(160, dtype=np.float32) * 0.4,
+        observed_at=datetime.now(UTC),
+    )
+
+    assert len(fake_module.chunks[0].chunks) == 1
+    assert len(fake_module.chunks[1].chunks) == 1
+    assert fake_module.chunks[0].chunks[0] == pytest.approx([0.2] * 160)
+    assert fake_module.chunks[1].chunks[0] == pytest.approx([0.4] * 160)
+
+
+@pytest.mark.unit
 async def test_maai_backchannel_tap_emits_thresholded_suggestion_with_cooldown() -> None:
     suggestions = []
     tap = MaaiBackchannelTap(

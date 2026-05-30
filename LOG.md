@@ -1,3 +1,41 @@
+## 2026-05-30 セッション28
+
+### やること（開始時に書く）
+- `make smoke-maai-dialogue` を追加し、`say` 合成の user / Tomoko 二者会話を MaAI 本体へ流す
+- MaAI `bc_2type` の raw `p_bc_react` / `p_bc_emo` を threshold 前の JSON summary として全部出す
+- user / Tomoko 音声を 16kHz mono の同一 timeline に並べ、ch1 / ch2 frame として投入する
+- runtime hot path、相槌発話本体、conversation log 保存、MaAI threshold policy は変更しない
+
+### やったこと
+- `_tools/smoke_maai_dialogue.py` を追加し、`say` で user / Tomoko の合成二者会話を作るようにした
+- 各発話を 16kHz mono float32 に戻し、同一 timeline 上で user=ch1 / Tomoko=ch2 に配置するようにした
+- `MaaiBackchannelTap.observe_duplex_audio()` を追加し、10ms frame 単位で ch1/ch2 を同時投入できるようにした
+- `RawScoreMaaiTap` が threshold 前の raw `p_bc_react` / `p_bc_emo` を `raw_scores[]` に記録するようにした
+- MaAI raw payload の `x1` / `x2` 音声配列は JSON が巨大になるため `raw_omitted_keys` に逃がし、score / metadata だけを `raw` に残した
+- `make smoke-maai-dialogue` を追加した
+
+### 詰まったこと・解決したこと
+- 初回の実 smoke では MaAI raw payload に `x1` / `x2` の長い音声配列が入り、stdout / JSON が巨大になった
+  - raw score 診断に必要な `p_bc_react` / `p_bc_emo` と `t` は残し、音声配列は omit する形にした
+
+### 検証
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_smoke_maai_dialogue.py tests/unit/test_maai_backchannel_adapter.py tests/unit/test_makefile_process_entries.py -q`
+  - 16 passed
+- ruff focused: `.venv/bin/python -m ruff check _tools/smoke_maai_dialogue.py server/gateway/maai_backchannel.py tests/unit/test_smoke_maai_dialogue.py tests/unit/test_maai_backchannel_adapter.py tests/unit/test_makefile_process_entries.py`
+  - pass
+- 実 smoke: `make smoke-maai-dialogue`
+  - `raw_score_count=200`
+  - `frames_sent=2008`
+  - `duration_sec=20.0753125`
+  - `max_p_bc_react=0.7259804606437683`
+  - `max_p_bc_emo=0.19943645596504211`
+  - `suggestions=[]`
+  - output: `logs/maai-dialogue-smoke.json`
+
+### 次のセッションでやること
+- threshold を下げる前に、実ブラウザ会話でも raw score logging を取り、合成音声と実音声の分布差を見る
+- 相槌を鳴らす場合は `p_bc_react` の peak と playback state を合わせて release / hold / discard を決める
+
 ## 2026-05-30 セッション27
 
 ### やること（開始時に書く）
