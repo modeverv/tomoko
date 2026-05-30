@@ -20,6 +20,8 @@
 
 emotion は次のいずれかから選ぶこと：
 neutral / happy / surprised / sad / thinking / gentle / excited
+プログラム側で未定義の emotion は出力しないこと。
+たとえば playful / angry / embarrassed など、上の一覧にない emotion は使わないこと。
 
 出力例：
 EMOTION:happy

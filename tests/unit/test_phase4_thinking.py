@@ -153,6 +153,8 @@ def test_base_persona_contains_voice_conversation_rules() -> None:
     assert "確認して" in prompt
     assert "開発中のTomoko" in prompt
     assert "EMOTION:<emotion>" in prompt
+    assert "プログラム側で未定義" in prompt
+    assert "playful" in prompt
 
 
 @pytest.mark.unit

@@ -1,3 +1,83 @@
+## 2026-05-30 セッション10
+
+### やること（開始時に書く）
+- 実推論で `EMOTION:playful` が出た問題への最小修正として、基本人格 prompt に未定義 emotion 禁止を明記する
+- `prompts/base_persona.md` と unit test だけを変更する
+- runtime code、audio hot path、DB write ordering は変更しない
+
+### やったこと
+- `prompts/base_persona.md` の emotion 列挙直下に、プログラム側で未定義の emotion を出力しない指示を追加した
+- `playful / angry / embarrassed` を未定義 emotion の例として明記した
+- `test_base_persona_contains_voice_conversation_rules` で未定義 emotion 禁止文と `playful` 例が基本 prompt に入ることを固定した
+
+### 検証
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_phase4_thinking.py::test_base_persona_contains_voice_conversation_rules -q`
+  - 1 passed
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 445 passed, 17 deselected
+- ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- git diff check: `git diff --check`
+  - pass
+- prompt build check:
+  - `undefined_emotion_guard=True`
+  - `playful_example=True`
+
+### 次のセッションでやること
+- 実推論で overlay 有りケースを再実行し、`EMOTION:playful` が抑制されるか確認する
+
+## 2026-05-30 セッション9
+
+### やること（開始時に書く）
+- 実 DB context と実 conversation LLM で、persona overlay 有り/無しの応答差分を比較する
+- DB への user / Tomoko turn 追記、runtime code 変更、audio hot path 変更は行わない
+- 比較条件を揃えるため、同じ context snapshot / messages / now_provider を使う
+
+### やったこと
+- 実 `config/central_realtime.toml` の `lmstudio_gemma4_26b_a4b` / `gemma-4-26b-a4b-it-mlx` に、overlay 有り/無しの system prompt を実際に投げて比較した
+- 実 DB から `ContextSnapshotBuilder` で context snapshot を読み、同じ snapshot / messages / now_provider を overlay 有り/無しで使った
+- 出力を `/tmp/tomoko-overlay-ab-real-inference.md` と `/tmp/tomoko-overlay-ab-real-inference-multi.md` に保存した
+- DB への user / Tomoko turn 追記、runtime code 変更、audio hot path 変更は行っていない
+
+### 実測メモ
+- 入力 `今日の予定を踏まえて...`
+  - overlay 無し: `そうだね、次は11時20分から「び」っていう予定があるみたいだけど、それに向けて準備が必要かな？`
+  - overlay 有り: `うーん、まずは11時20分からの「び」の予定に向けて準備かな？それとも何か別のことを先に済ませたい感じ？`
+- 入力 `正直めんどいから全部あとでいいって言って`
+  - overlay 無し: `わかった。めんどい時は、全部あとでいいって言うね。今は少し休む？`
+  - overlay 有り: `EMOTION:playful\nえー、そんなこと言っちゃうんだ？\nわかったよ。じゃあ、全部あとでいいよね？`
+- 入力 `無茶振りだけど、今すぐ全部終わらせる方法ある？`
+  - overlay 無し: `それは、ちょっと魔法が必要そうだね。一番先に片付けたいことはある？`
+  - overlay 有り: `EMOTION:playful\nそれはさすがに、魔法でも使わないと無理じゃない？まずは何から片付けたい気分？`
+
+### 分かったこと
+- overlay は応答の語り出しと距離感に効いている
+- 一方で `playful` という許可外 emotion を誘発したため、現状の overlay は emotion protocol と衝突する可能性がある
+- 次に直すなら、`prompts/persona_overlay.md` に「emotion は base persona の列挙値だけを使い、playful は使わない」と明記するのが最小修正
+
+## 2026-05-30 セッション8
+
+### やること（開始時に書く）
+- 実 PostgreSQL データを使い、TomoroSession 経由で会話応答 LLM に渡る prompt を capture する
+- LLM 本体には投げず、capture backend で system prompt / messages を確認する
+- DB への user / Tomoko turn 追記、runtime code 変更、audio hot path 変更は行わない
+
+### やったこと
+- `config/central_realtime.toml` の実 DB 接続を使い、`PostgresConversationLogWriter` / `PostgresConversationMemoryStore` / `PostgresConversationSessionSummaryStore` / `PostgresPersonaSnapshotStore` / `PostgresCalendarEventStore` を読み取り用に渡した
+- `TomoroSession._reply_to()` を capture backend 付きで実行し、会話応答 LLM に渡る `system_prompt` / `messages` を `/tmp/tomoko-real-db-conversation-prompt.md` に保存した
+- `conversation_log_writer=None` とし、post-reply short memory extraction を無効化して、DB への user / Tomoko turn 追記を避けた
+
+### 検証メモ
+- 入力: `トモコ、今日の予定を踏まえて、次に何から片付けるとよさそう？`
+- router selection: `conversation` / `privacy`
+- trace role: `conversation`
+- context snapshot: `depth=deep`, `recent_turns=12`, `persona_slice=1`, `lexicon_terms=4`, `calendar_events=8`
+- `session_summaries` / `memory_hits` / `query_embedding` は 101ms budget 内で timeout した
+- system prompt は 2867 文字、messages は 13 件
+
+### 次のセッションでやること
+- memory / session summary も prompt に載せたい場合は、explicit memory cue の 300ms budget や embedding warm 状態を確認し、capture を再実行する
+
 ## 2026-05-30 セッション7
 
 ### やること（開始時に書く）
