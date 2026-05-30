@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import json
 import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from server.edge.pipeline.vad import VADProcessor  # noqa: E402
 from server.gateway.maai_backchannel import (  # noqa: E402
     MAAI_FRAME_SIZE,
     MAAI_SAMPLE_RATE,
@@ -23,8 +24,16 @@ from server.gateway.maai_backchannel import (  # noqa: E402
     MaaiBackchannelTap,
     wav_bytes_to_float32_mono_16k,
 )
+from server.gateway.turn_taking.barge_in import BargeInDetector  # noqa: E402
+from server.session import TomoroSession  # noqa: E402
+from server.shared.inference.tts.base import TTSBackend  # noqa: E402
 from server.shared.inference.tts.say import SayBackend  # noqa: E402
-from server.shared.models import BackchannelSuggestion, TTSInput  # noqa: E402
+from server.shared.models import (  # noqa: E402
+    AudioChunkOut,
+    BackchannelSuggestion,
+    PlaybackTelemetry,
+    TTSInput,
+)
 
 
 @dataclass(frozen=True)
@@ -82,6 +91,30 @@ class RawScoreMaaiTap(MaaiBackchannelTap):
             }
         )
         return super().handle_result(result, observed_at=observed)
+
+
+class QuietVAD:
+    def process_chunk(self, chunk: np.ndarray) -> float:
+        del chunk
+        return 0.0
+
+
+class SmokeBackchannelTTS(TTSBackend):
+    name = "smoke_backchannel_tts"
+
+    def __init__(self) -> None:
+        self.inputs: list[TTSInput] = []
+
+    async def synthesize(
+        self,
+        tts_input: TTSInput,
+    ) -> AsyncGenerator[AudioChunkOut, None]:
+        self.inputs.append(tts_input)
+        yield AudioChunkOut(
+            data=f"backchannel:{tts_input.text}".encode(),
+            sequence=0,
+            is_last=True,
+        )
 
 
 DEFAULT_DIALOGUE = [
@@ -164,6 +197,13 @@ async def run_dialogue_smoke(
     finally:
         await tap.stop()
 
+    session_releases = await simulate_session_backchannel_releases(
+        suggestions=suggestions,
+        raw_scores=raw_scores,
+        turns=scheduled_turns,
+        rendered=rendered,
+    )
+
     summary = {
         "maai_enabled": True,
         "sample_rate": MAAI_SAMPLE_RATE,
@@ -193,6 +233,7 @@ async def run_dialogue_smoke(
         ],
         "raw_scores": raw_scores,
         "suggestions": [suggestion.to_json() for suggestion in suggestions],
+        "session_releases": session_releases,
     }
     if output_path is not None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -201,6 +242,97 @@ async def run_dialogue_smoke(
             encoding="utf-8",
         )
     return summary
+
+
+async def simulate_session_backchannel_releases(
+    *,
+    suggestions: list[BackchannelSuggestion],
+    raw_scores: list[dict[str, Any]],
+    turns: list[DialogueTurn],
+    rendered: dict[int, np.ndarray],
+) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    sent_audio: list[bytes] = []
+    tts = SmokeBackchannelTTS()
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
+        send_event=events.append,
+        send_audio=sent_audio.append,
+        tts_backend=tts,
+        barge_in_detector=BargeInDetector(),
+    )
+    releases: list[dict[str, Any]] = []
+    previous_event_count = 0
+    previous_audio_count = 0
+    previous_tts_count = 0
+    for suggestion in suggestions:
+        observed_sec = _suggestion_observed_sec(suggestion, raw_scores)
+        user_speaking = _role_active_at(
+            turns=turns,
+            rendered=rendered,
+            role="user",
+            at_sec=observed_sec,
+        )
+        tomoko_speaking = _role_active_at(
+            turns=turns,
+            rendered=rendered,
+            role="tomoko",
+            at_sec=observed_sec,
+        )
+        await session._transition("listening" if user_speaking else "idle")
+        if tomoko_speaking:
+            await session.handle_playback_telemetry(
+                PlaybackTelemetry(
+                    type="playback_started",
+                    turn_id=f"smoke-tomoko-{len(releases)}",
+                    chunk_id=0,
+                )
+            )
+        result = await session.apply_backchannel_suggestion(suggestion)
+        new_events = events[previous_event_count:]
+        new_audio = sent_audio[previous_audio_count:]
+        new_tts_inputs = tts.inputs[previous_tts_count:]
+        previous_event_count = len(events)
+        previous_audio_count = len(sent_audio)
+        previous_tts_count = len(tts.inputs)
+        releases.append(
+            {
+                "suggestion": {
+                    **suggestion.to_json(),
+                    "observed_sec": observed_sec,
+                },
+                "timeline": {
+                    "user_speaking": user_speaking,
+                    "tomoko_speaking": tomoko_speaking,
+                },
+                "emissions": [
+                    {
+                        "type": emission.type,
+                        "payload": _json_safe(emission.payload),
+                    }
+                    for emission in result.emissions
+                ],
+                "audio_chunks": len(new_audio),
+                "audio_bytes": sum(len(chunk) for chunk in new_audio),
+                "tts_inputs": [
+                    {
+                        "text": item.text,
+                        "style": item.style,
+                        "voice": item.voice,
+                    }
+                    for item in new_tts_inputs
+                ],
+                "reply_done_controls": [
+                    event.get("control")
+                    for event in new_events
+                    if event.get("type") == "reply_done"
+                ],
+            }
+        )
+        session.audio_turns._tomoko_speaking_until = 0.0
+        session.audio_turns._active_playback_chunks.clear()
+        session.audio_turns._playback_echo_until = 0.0
+    return releases
 
 
 async def synthesize_say_turn(turn: DialogueTurn) -> np.ndarray:
@@ -263,6 +395,33 @@ def compose_dialogue_timeline(
         tomoko_audio=tomoko_audio,
         duration_sec=total_samples / sample_rate,
     )
+
+
+def _suggestion_observed_sec(
+    suggestion: BackchannelSuggestion,
+    raw_scores: list[dict[str, Any]],
+) -> float:
+    observed_at = suggestion.observed_at.isoformat()
+    for score in raw_scores:
+        if score.get("observed_at") == observed_at:
+            return float(score.get("observed_sec") or 0.0)
+    return 0.0
+
+
+def _role_active_at(
+    *,
+    turns: list[DialogueTurn],
+    rendered: dict[int, np.ndarray],
+    role: str,
+    at_sec: float,
+) -> bool:
+    for index, turn in enumerate(turns):
+        if turn.role != role or turn.start_sec is None:
+            continue
+        duration_sec = rendered[index].size / MAAI_SAMPLE_RATE
+        if turn.start_sec <= at_sec <= turn.start_sec + duration_sec:
+            return True
+    return False
 
 
 async def feed_dialogue_timeline(

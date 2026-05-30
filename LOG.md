@@ -1,3 +1,47 @@
+## 2026-05-30 セッション30
+
+### やること（開始時に書く）
+- `make smoke-maai-dialogue` の JSON に TomoroSession release 判定結果も出す
+- MaAI suggestion が出た時刻を合成 dialogue timeline に対応させ、user speaking / Tomoko idle の時だけ session を listening にして流す
+- `backchannel_released` / `backchannel_skipped`、選ばれた文言、audio bytes、`reply_done control=backchannel` をプログラムで確認できるようにする
+- runtime hot path や実ブラウザ経路は変更しない
+
+### やったこと
+- `_tools/smoke_maai_dialogue.py` に `session_releases[]` を追加した
+- MaAI suggestion の `observed_at` を raw score の `observed_sec` に対応させ、合成 timeline 上の user / Tomoko 発話中フラグを出すようにした
+- smoke 専用の `SmokeBackchannelTTS` と TomoroSession harness を使い、suggestion を `apply_backchannel_suggestion()` へ流すようにした
+- `session_releases[]` には suggestion、timeline flags、session emissions、TTS input、audio chunk/bytes、`reply_done_controls` を出す
+
+### 詰まったこと・解決したこと
+- 既存 smoke は MaAI tap までで止まっていたため、`backchannel_released` は unit test でしか見えなかった
+  - 同じ script 内で session release simulation まで行い、JSON だけで発火有無を追える形にした
+- 実 runtime の WebSocket 経路は変えず、smoke 専用 harness で TTS/audio を記録する形にした
+
+### 検証
+- red test: `.venv/bin/python -m pytest -m unit tests/unit/test_smoke_maai_dialogue.py::test_run_dialogue_smoke_records_session_backchannel_release -q`
+  - `session_releases` 未実装で failed
+- focused unit: `.venv/bin/python -m pytest -m unit tests/unit/test_smoke_maai_dialogue.py tests/unit/test_makefile_process_entries.py -q`
+  - 10 passed
+- ruff focused: `.venv/bin/python -m ruff check _tools/smoke_maai_dialogue.py tests/unit/test_smoke_maai_dialogue.py`
+  - pass
+- 実 smoke: `make smoke-maai-dialogue`
+  - `suggestions[0].kind=react`
+  - `suggestions[0].score=0.7259804606437683`
+  - `session_releases[0].timeline.user_speaking=true`
+  - `session_releases[0].timeline.tomoko_speaking=false`
+  - `session_releases[0].emissions[0].type=backchannel_released`
+  - `session_releases[0].audio_chunks=1`
+  - `session_releases[0].reply_done_controls=["backchannel"]`
+- full unit: `.venv/bin/python -m pytest -m unit`
+  - 495 passed, 17 deselected
+- global ruff: `.venv/bin/python -m ruff check .`
+  - pass
+- diff check: `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- 実ブラウザ runtime で MaAI enabled にした時、同じ `backchannel_released` emission が server log / monitor で見えるか確認する
+
 ## 2026-05-30 セッション29
 
 ### やること（開始時に書く）

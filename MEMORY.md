@@ -59,6 +59,14 @@ release 条件は、user が speech segment 中 (`state="listening"`)、Tomoko p
 文言は `うん` / `なるほど` / `そっか` の固定 pool から選ぶ。
 これは会話ログや長期記憶に入る発話ではなく、`reply_done` に `control="backchannel"` を付ける短い gesture audio として扱う。
 
+`make smoke-maai-dialogue` は MaAI raw score / suggestion だけでなく、smoke 専用 TomoroSession harness に
+suggestion を流した `session_releases[]` も JSON に出す。
+各 entry には timeline 上の `user_speaking` / `tomoko_speaking`、TomoroSession emission、
+TTS input、audio chunk/bytes、`reply_done_controls` を含める。
+2026-05-30 の実 smoke では `p_bc_react=0.7259804606437683` の react suggestion が
+`observed_sec=8.521801` で発生し、user speaking / Tomoko idle のため
+`backchannel_released`、`reply_done_controls=["backchannel"]`、`audio_chunks=1` が確認できた。
+
 ### MemoryGate で Retrieve と Use を分ける
 2026-05-30 時点では、context snapshot で取得できた記憶をそのまま prompt に渡さない。
 `TomoroSession` は `MemoryGate` を通して、deep memory / calendar memory を読むかどうかと、

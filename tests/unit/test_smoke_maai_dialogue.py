@@ -70,6 +70,30 @@ class FakeMaaiModule:
         return FakeMaai(**kwargs)
 
 
+class TriggerResultQueue:
+    def __init__(self) -> None:
+        self._results = [
+            {"p_bc_react": 0.72, "p_bc_emo": 0.04, "detail": {"frame": 1}},
+        ]
+
+    def get(self, *, timeout: float):
+        del timeout
+        if self._results:
+            return self._results.pop(0)
+        raise queue.Empty
+
+
+class TriggerMaai(FakeMaai):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.result_dict_queue = TriggerResultQueue()
+
+
+class TriggerMaaiModule(FakeMaaiModule):
+    def Maai(self, **kwargs) -> TriggerMaai:
+        return TriggerMaai(**kwargs)
+
+
 @pytest.mark.unit
 def test_compose_dialogue_timeline_places_roles_on_separate_channels() -> None:
     turns = [
@@ -122,3 +146,27 @@ async def test_run_dialogue_smoke_records_raw_maai_scores(tmp_path: Path) -> Non
     assert summary["raw_score_count"] == 2
     assert summary["max_p_bc_react"] == pytest.approx(0.56)
     assert summary["max_p_bc_emo"] == pytest.approx(0.78)
+
+
+@pytest.mark.unit
+async def test_run_dialogue_smoke_records_session_backchannel_release() -> None:
+    async def fake_synthesize(turn: DialogueTurn) -> np.ndarray:
+        del turn
+        return np.ones(3200, dtype=np.float32) * 0.1
+
+    summary = await run_dialogue_smoke(
+        turns=[
+            DialogueTurn(role="user", text="まだ話してる途中です", voice="Kyoko"),
+        ],
+        synthesize_turn=fake_synthesize,
+        maai_module=TriggerMaaiModule(),
+        realtime_scale=0.0,
+        wait_after_sec=0.05,
+    )
+
+    assert summary["suggestions"][0]["kind"] == "react"
+    assert summary["session_releases"][0]["timeline"]["user_speaking"] is True
+    assert summary["session_releases"][0]["timeline"]["tomoko_speaking"] is False
+    assert summary["session_releases"][0]["emissions"][0]["type"] == "backchannel_released"
+    assert summary["session_releases"][0]["audio_bytes"] > 0
+    assert summary["session_releases"][0]["reply_done_controls"] == ["backchannel"]
