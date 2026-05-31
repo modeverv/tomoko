@@ -7384,3 +7384,21 @@ closed-loop の観点では、各 lane が「入力を受ける / 床を取る /
 - [x] focused unit / ruff が通る
 - [x] full unit / global ruff が通る
 - [ ] git commit まで完了する
+
+## 2026-05-31 Research MCP subprocess E2E smoke
+
+Research MCP 境界を unit test の fake client だけで完了扱いにする方針は否定する。
+Tomoko 側で rule-based intent detection、TomoroSession command、MCP JSON-RPC subprocess、
+result-ready emission までを一つの smoke と integration test で確認する。
+
+実 Perplexity / Chrome 画面操作はログイン状態と外部 UI に依存するため、この Phase の自動確認では
+deterministic fake MCP subprocess を使う。実 operator への接続は同じ smoke script の `--command` で任意確認する。
+
+### 完了条件
+
+- [x] speech-like text から `ResearchIntentDetector` が request を作る
+- [x] `TomoroSession` が `submit_research_request` command を出す
+- [x] `ResearchMcpClient` が subprocess に JSON-RPC `tools/call` を投げる
+- [x] MCP structured result が `research_result_ready` emission として戻る
+- [x] `make smoke-research-mcp` で同じ経路を手動確認できる
+- [x] focused unit / integration / ruff / 実 smoke が通る

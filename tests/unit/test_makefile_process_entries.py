@@ -147,3 +147,10 @@ def test_makefile_exposes_maai_tap_smoke_tool() -> None:
     assert "--start-sec $(MAAI_MATERIAL_START_SEC)" in material_body
     assert "--duration-sec $(MAAI_MATERIAL_DURATION_SEC)" in material_body
     assert "$(MAAI_MATERIAL_SWAP_CHANNELS)" in material_body
+
+
+@pytest.mark.unit
+def test_makefile_exposes_research_mcp_smoke_tool() -> None:
+    body = _target_body("smoke-research-mcp")
+
+    assert "_tools/smoke_research_mcp_flow.py" in body

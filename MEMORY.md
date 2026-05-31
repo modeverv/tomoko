@@ -3853,3 +3853,10 @@ Tomoko 側で citation URL dedupe、status 分離、speakable 判定を行う。
 
 この初段では DB 永続化、「教えて」で本文を読む処理、ContextSnapshotBuilder への接続、
 conversation prompt への research result 直入れは行わない。
+
+### 確定した判断: Research MCP smoke は deterministic subprocess を標準にする
+2026-05-31 時点では、実 Perplexity / Chrome 操作はログイン済み browser state と外部 UI timing に依存する。
+Tomoko 側の e2e/smoke では、まず fake MCP subprocess を起動して JSON-RPC `tools/call`、
+structured result parse、TomoroSession emission までを固定する。
+
+実 operator は同じ smoke script に `--command` を渡して任意確認する。
