@@ -3950,3 +3950,11 @@ deep context summary 取り込みまでを JSON summary で確認する。
 
 この smoke は deterministic fake MCP / fake conversation backend を使い、
 外部 UI や実 LLM の揺れではなく TomoroSession lifecycle と command drain の接続を固定する。
+
+### 確定した判断: central realtime STT は精度優先で MLX Whisper large turbo q4 に戻す
+2026-05-31 時点では、GPU active にまだ余裕があり、STT 精度の歴代評価では
+`local_whisper_mlx_large_turbo_q4` が最も会話を噛み合わせた。
+
+そのため、central realtime の active `stt_backend` は
+`local_apple_speech_ja` から `local_whisper_mlx_large_turbo_q4` に戻す。
+Apple Speech は Mac 実機で有力な STT lane として比較候補に残すが、現時点の精度優先 default にはしない。

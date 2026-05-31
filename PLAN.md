@@ -7539,3 +7539,17 @@ deep context summary 取り込みまでを 1 本の smoke で確認する。
 - [x] follow-up で pending research result の本文を返す
 - [x] `make smoke-research-session` で JSON summary を確認できる
 - [x] focused unit / fake smoke / ruff が通る
+
+## 2026-05-31 central STT precision default
+
+Apple Speech を Mac 実機の primary 候補として扱う判断は否定しない。
+ただし、GPU 余力があり、精度優先では `local_whisper_mlx_large_turbo_q4` が歴代で最も会話を噛み合わせたため、
+central realtime の active STT backend を MLX Whisper large turbo q4 に戻す。
+
+### 完了条件
+
+- [x] `config/central_realtime.toml` の `stt_backend` が `local_whisper_mlx_large_turbo_q4` になる
+- [x] README の default backend 表が active STT と比較候補を正しく示す
+- [x] config unit test が active STT を固定する
+- [x] focused unit / ruff が通る
+- [x] full unit / global ruff が通る
