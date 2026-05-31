@@ -75,6 +75,7 @@ from server.shared.memory import (
 from server.shared.models import ConnectedOutputState, PlaybackTelemetry, SessionEvent
 from server.shared.persona import PostgresPersonaSnapshotStore
 from server.shared.presence import PostgresPresenceStore
+from server.shared.research_results import PostgresResearchResultStore
 
 
 def _configure_app_logging() -> None:
@@ -225,6 +226,11 @@ def _create_default_calendar_store() -> PostgresCalendarEventStore:
     return PostgresCalendarEventStore(config.database.dsn)
 
 
+def _create_default_research_result_store() -> PostgresResearchResultStore:
+    config = _load_config()
+    return PostgresResearchResultStore(config.database.dsn)
+
+
 @app.websocket("/ws")
 async def websocket_session(websocket: WebSocket) -> None:
     config = _load_config()
@@ -313,6 +319,11 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         "calendar_store_factory",
         _create_default_calendar_store,
     )
+    research_result_store_factory = getattr(
+        app.state,
+        "research_result_store_factory",
+        _create_default_research_result_store,
+    )
     conversation_session_store_factory = getattr(
         app.state,
         "conversation_session_store_factory",
@@ -380,6 +391,7 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         session_summary_store=session_summary_store_factory(),
         persona_store=persona_store_factory(),
         calendar_store=calendar_store_factory(),
+        research_result_store=research_result_store_factory(),
         speech_normalizer=(
             speech_normalizer_factory()
             if speech_normalizer_factory is not None
@@ -697,6 +709,7 @@ def _create_gateway_text_session(
         session_summary_store=_create_default_session_summary_store(),
         persona_store=_create_default_persona_store(),
         calendar_store=_create_default_calendar_store(),
+        research_result_store=_create_default_research_result_store(),
         speech_normalizer=None,
         barge_in_detector=BargeInDetector(),
         turn_taking_judge=TurnTakingWorkerClient(

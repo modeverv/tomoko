@@ -246,6 +246,7 @@ class ResearchCommandRunner:
             short_answer=result.short_answer,
             citation_urls=tuple(citation.url for citation in result.citations),
             raw_artifact_path=result.raw_artifact_path,
+            embedding_model=getattr(self.embedding_backend, "model", ""),
         )
 
 

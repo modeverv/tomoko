@@ -3895,3 +3895,13 @@ prompt には `RESEARCH CONTEXT` として summary だけを渡す。
 fast / normal では research result source を読まない。
 Research result は会話記憶ではなく外部調査メモなので、provider / fetched_at / citations を保持し、
 必要な時だけ参照する。
+
+### 確定した判断: Research result は PostgreSQL `research_results` に永続化する
+2026-05-31 時点では、Research result store を InMemory 前提にする方針を否定する。
+Tomoko 側が MCP operator から受け取った speakable result を LLM summary 化し、
+`research_results.summary_text` と `summary_embedding vector(1024)` として保存する。
+
+`ContextSnapshotBuilder(depth="deep" / "reflective")` はこの table を pgvector cosine search で読み、
+prompt には raw answer ではなく保存済み summary だけを `RESEARCH CONTEXT` として混ぜる。
+`short_answer` は follow-up 発話用、`citation_urls` / `raw_artifact_path` は追跡用 metadata として保持する。
+process-local `InMemoryResearchResultStore` は test / smoke 用 fake として残す。
