@@ -3801,3 +3801,17 @@ GPU 観測は会話 hot path / TomoroSession state / backend routing の authori
 mactop headless は interval だけでなく起動と初回 sample に余裕が必要なため、
 timeout は `max(10s, interval_sec + 8s)` にする。
 monitor dashboard は最新行が timeout でも、直近に available sample があればその値を表示する。
+
+### 確定した判断: MaAI react 相槌の本番閾値は 0.50 に少し戻す
+2026-05-31 の実ブラウザ会話では、MaAI 相槌が `gesture_audio` lane として自然に入り、
+通常 turn / playback state を汚さない状態になった。
+一方で長い発話中に `turn_id=None` の相槌 playback が複数回入り、体感として少し多い。
+
+以前の「本番 react threshold は 0.45」という判断は、相槌が少なすぎた段階の補正としては有効だったが、
+現状では少し低すぎるため否定する。
+MaAI adapter の suggestion 発火 default、env 未指定時の `TOMOKO_MAAI_REACT_THRESHOLD` default、
+`GestureAudioEmitter` の release gate default は `0.50` に揃える。
+
+cooldown は 1500ms、MaAI adapter 側 suggestion cooldown は 900ms のまま維持する。
+今回の調整は弱めの react cue だけを落とす小幅変更であり、
+gesture audio lane / output lane / floor ownership / AudioTurnController 分離は変更しない。

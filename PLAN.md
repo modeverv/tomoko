@@ -16,6 +16,21 @@ Tomoko 側では normalized JSONL と read-only monitor 表示に閉じ込める
 - [x] mactop 未インストール時は runtime を壊さず unavailable sample として記録する
 - [x] focused unit / ruff / full unit が通る
 
+## 2026-05-31 MaAI backchannel slight threshold increase
+
+MaAI 相槌が少なすぎたために本番 react threshold を 0.45 へ下げた判断は、現在の体感では少し強すぎる。
+gesture audio lane / cooldown / floor ownership は維持し、まずは MaAI react suggestion と
+GestureAudioEmitter release gate の閾値だけを 0.50 へ小幅に上げる。
+
+### 完了条件
+
+- [x] MaAI adapter default react threshold が 0.50 で固定される
+- [x] env 未指定時の `TOMOKO_MAAI_REACT_THRESHOLD` default が 0.50 になる
+- [x] GestureAudioEmitter の default release threshold が 0.50 で固定される
+- [x] 0.49 は gesture release されず、0.50 は release される
+- [x] focused unit / ruff が通る
+- [x] full unit / global ruff が通る
+
 ## 2026-05-30 memory gate boundary
 
 取得した記憶をそのまま prompt に出す方針は否定する。

@@ -13,7 +13,7 @@ from server.shared.models import BackchannelSuggestion, TomoroRuntimeState, TTSI
 
 logger = logging.getLogger(__name__)
 
-GESTURE_BACKCHANNEL_REACT_THRESHOLD = 0.45
+GESTURE_BACKCHANNEL_REACT_THRESHOLD = 0.50
 GESTURE_BACKCHANNEL_COOLDOWN_MS = 1500
 GESTURE_BACKCHANNEL_REACT_UTTERANCES = ("うん", "なるほど", "そっか")
 

@@ -5,7 +5,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from server.gateway.gesture_audio import GestureAudioEmitter
+from server.gateway.gesture_audio import (
+    GESTURE_BACKCHANNEL_REACT_THRESHOLD,
+    GestureAudioEmitter,
+)
 from server.shared.inference.tts.base import TTSBackend
 from server.shared.models import (
     AudioChunkOut,
@@ -149,3 +152,42 @@ async def test_gesture_audio_applies_cooldown_without_session_state() -> None:
     assert third.released is True
     assert len(audio) == 2
     assert len(tts.inputs) == 2
+
+
+@pytest.mark.unit
+async def test_gesture_audio_uses_production_react_threshold() -> None:
+    assert GESTURE_BACKCHANNEL_REACT_THRESHOLD == pytest.approx(0.50)
+
+    events: list[dict[str, object]] = []
+    audio: list[bytes] = []
+    tts = RecordingTTSBackend()
+    emitter = GestureAudioEmitter(
+        state_provider=_state,
+        send_audio=audio.append,
+        send_event=events.append,
+        tts_backend=tts,
+        react_utterances=("うん",),
+    )
+    now = datetime.now(UTC)
+
+    below = await emitter.release_backchannel(
+        BackchannelSuggestion(
+            kind="react",
+            score=0.49,
+            source="maai",
+            observed_at=now,
+        )
+    )
+    at_threshold = await emitter.release_backchannel(
+        BackchannelSuggestion(
+            kind="react",
+            score=0.50,
+            source="maai",
+            observed_at=now + timedelta(milliseconds=1600),
+        )
+    )
+
+    assert below.released is False
+    assert below.reason == "below_threshold"
+    assert at_threshold.released is True
+    assert audio == [b"audio:\xe3\x81\x86\xe3\x82\x93"]

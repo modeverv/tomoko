@@ -171,7 +171,7 @@ async def test_maai_backchannel_tap_emits_thresholded_suggestion_with_cooldown()
 
 @pytest.mark.unit
 def test_maai_backchannel_config_uses_production_react_threshold() -> None:
-    assert MaaiBackchannelConfig().react_threshold == pytest.approx(0.45)
+    assert MaaiBackchannelConfig().react_threshold == pytest.approx(0.50)
 
 
 @pytest.mark.unit
@@ -204,4 +204,4 @@ def test_create_maai_backchannel_tap_from_env_uses_production_react_default(
     tap = create_maai_backchannel_tap_from_env(maai_module=FakeMaaiModule())
 
     assert tap is not None
-    assert tap.config.react_threshold == pytest.approx(0.45)
+    assert tap.config.react_threshold == pytest.approx(0.50)

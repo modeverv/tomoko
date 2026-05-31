@@ -1,3 +1,32 @@
+## 2026-05-31 セッション13
+
+### やること（開始時に書く）
+- 最新起動ログで相槌が自然だが少し多い体感になったため、MaAI react 閾値を小幅に上げる
+- `0.45` で広げた相槌候補を少し絞り、cooldown / gesture audio lane / output lane 境界は変更しない
+- test を先に更新して、adapter default と gesture release gate の境界値を固定する
+
+### やったこと
+- MaAI adapter の本番 `react_threshold` default を `0.45` から `0.50` に上げた
+- `TOMOKO_MAAI_REACT_THRESHOLD` 未指定時の env default も `0.50` に揃えた
+- `GestureAudioEmitter` の release gate default も `0.50` に揃えた
+- unit test で `0.49` は `below_threshold`、`0.50` は release されることを固定した
+
+### 検証
+- red test: `.venv/bin/pytest -m unit tests/unit/test_maai_backchannel_adapter.py::test_maai_backchannel_config_uses_production_react_threshold tests/unit/test_maai_backchannel_adapter.py::test_create_maai_backchannel_tap_from_env_uses_production_react_default tests/unit/test_gesture_audio.py::test_gesture_audio_uses_production_react_threshold -q`
+  - 既存 default `0.45` のため 3 failed
+- focused unit + ruff: `.venv/bin/pytest -m unit tests/unit/test_maai_backchannel_adapter.py tests/unit/test_gesture_audio.py -q && .venv/bin/ruff check server/gateway/maai_backchannel.py server/gateway/gesture_audio.py tests/unit/test_maai_backchannel_adapter.py tests/unit/test_gesture_audio.py`
+  - 13 passed / ruff pass
+- full unit + global ruff: `.venv/bin/pytest -m unit -q && .venv/bin/ruff check .`
+  - 516 passed, 17 deselected / ruff pass
+- 実 smoke: `make smoke-maai-dialogue`
+  - `max_p_bc_react=0.7259804606437683`
+  - `suggestions[0].score=0.7259804606437683`
+  - `session_releases[0].emissions[0].payload.threshold=0.5`
+  - 0.50 に上げても明確な react cue は `gesture_audio` として release されることを確認
+
+### 次のセッションでやること
+- 実ブラウザ会話で相槌頻度を確認し、まだ多ければ cooldown 1500ms 側を少し伸ばすか判断する
+
 ## 2026-05-30 セッション31
 
 ### やること（開始時に書く）
