@@ -154,3 +154,10 @@ def test_makefile_exposes_research_mcp_smoke_tool() -> None:
     body = _target_body("smoke-research-mcp")
 
     assert "_tools/smoke_research_mcp_flow.py" in body
+
+
+@pytest.mark.unit
+def test_makefile_exposes_research_session_smoke_tool() -> None:
+    body = _target_body("smoke-research-session")
+
+    assert "_tools/smoke_research_tomoro_session_flow.py" in body

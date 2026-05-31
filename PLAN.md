@@ -7501,3 +7501,22 @@ Research request を受けた時に無言で background 調査だけを走らせ
 - [x] research request transcript で LLM wait reply が開始される
 - [x] wait reply prompt は「調査結果を答えない」ことを明示する
 - [x] focused unit / fake smoke / full unit / ruff が通る
+
+## 2026-05-31 TomoroSession research transcript smoke
+
+Research smoke が `research_requested` event を直接投げるだけで、
+実際の `TomoroSession.process_transcript()` の反応を見ない状態を否定する。
+
+`智子オバマ大統領について調べて` を finalized transcript として入力し、
+LLM wait reply、MCP result-ready、`教えて` follow-up、research answer reply、
+deep context summary 取り込みまでを 1 本の smoke で確認する。
+
+### 完了条件
+
+- [x] `process_transcript("智子オバマ大統領について調べて")` から research request が起動する
+- [x] 通常 LLM 経路で待機応答が返る
+- [x] MCP subprocess result が `research_result_ready` になる
+- [x] `process_transcript("教えて")` が `research_answer_requested` になる
+- [x] follow-up で pending research result の本文を返す
+- [x] `make smoke-research-session` で JSON summary を確認できる
+- [x] focused unit / fake smoke / ruff が通る

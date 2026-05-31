@@ -3927,3 +3927,13 @@ Tomoko は `submit_research_request` を background drain に渡した後、
 `RESPONSE DIRECTIVE` を差し込み、「今は調査結果を答えず、調べ始めたことと少し待ってほしいことだけ」を
 自然な日本語で返すよう縛る。
 調査対象について推測で説明しないことも directive に明記する。
+
+### 確定した判断: Research transcript smoke は TomoroSession.process_transcript から確認する
+2026-05-31 時点では、`research_requested` event を直接投げる smoke だけでは実運用の確認として浅い。
+`_tools/smoke_research_tomoro_session_flow.py` / `make smoke-research-session` は、
+`智子オバマ大統領について調べて` を `TomoroSession.process_transcript()` に入れ、
+LLM wait reply、MCP subprocess result、`教えて` follow-up、research answer reply、
+deep context summary 取り込みまでを JSON summary で確認する。
+
+この smoke は deterministic fake MCP / fake conversation backend を使い、
+外部 UI や実 LLM の揺れではなく TomoroSession lifecycle と command drain の接続を固定する。
