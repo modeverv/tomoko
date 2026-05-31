@@ -52,8 +52,13 @@ def collect_mactop_sample(
     *,
     command: str = "mactop",
     interval_ms: int = 1000,
-    timeout_sec: float = 5.0,
+    timeout_sec: float | None = None,
 ) -> SystemMetricsSample:
+    resolved_timeout_sec = (
+        timeout_sec
+        if timeout_sec is not None
+        else default_mactop_timeout_sec(interval_sec=interval_ms / 1000)
+    )
     try:
         result = subprocess.run(
             [
@@ -67,7 +72,7 @@ def collect_mactop_sample(
             check=False,
             capture_output=True,
             text=True,
-            timeout=timeout_sec,
+            timeout=resolved_timeout_sec,
         )
     except FileNotFoundError:
         return SystemMetricsSample.unavailable(
@@ -77,7 +82,7 @@ def collect_mactop_sample(
     except subprocess.TimeoutExpired:
         return SystemMetricsSample.unavailable(
             provider="mactop",
-            error=f"timeout_after_sec:{timeout_sec}",
+            error=f"timeout_after_sec:{resolved_timeout_sec}",
         )
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or f"exit:{result.returncode}"
@@ -110,6 +115,10 @@ def parse_mactop_headless_output(output: str) -> SystemMetricsSample:
     if not isinstance(payload, dict):
         raise ValueError("mactop_output_has_no_sample")
     return normalize_mactop_sample(payload)
+
+
+def default_mactop_timeout_sec(*, interval_sec: float) -> float:
+    return max(10.0, interval_sec + 8.0)
 
 
 def normalize_mactop_sample(payload: dict[str, Any]) -> SystemMetricsSample:
@@ -148,14 +157,19 @@ def normalize_mactop_sample(payload: dict[str, Any]) -> SystemMetricsSample:
 def latest_system_metrics_sample(path: Path) -> SystemMetricsSample | None:
     if not path.exists():
         return None
+    latest_unavailable: SystemMetricsSample | None = None
     for line in reversed(path.read_text(encoding="utf-8").splitlines()):
         try:
             payload = json.loads(line)
         except json.JSONDecodeError:
             continue
         if isinstance(payload, dict):
-            return SystemMetricsSample(**payload)
-    return None
+            sample = SystemMetricsSample(**payload)
+            if sample.available:
+                return sample
+            if latest_unavailable is None:
+                latest_unavailable = sample
+    return latest_unavailable
 
 
 def run_sampler(
@@ -180,7 +194,6 @@ def run_sampler(
                 sample = collect_mactop_sample(
                     command=command,
                     interval_ms=interval_ms,
-                    timeout_sec=max(5.0, interval_sec + 3.0),
                 )
             fp.write(json.dumps(sample.to_json(), ensure_ascii=False) + "\n")
             fp.flush()

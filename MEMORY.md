@@ -3795,3 +3795,9 @@ mactop は v2 で `--headless --count` JSON を出せるため、Tomoko 側へ p
 mactop 未インストール、timeout、parse failure は runtime failure ではなく、
 `available=false` の sample として記録する。
 GPU 観測は会話 hot path / TomoroSession state / backend routing の authoritative input にはしない。
+
+2026-05-31 の実測では `mactop --headless --count 1 --interval 2000` が約 6.9 秒かかり、
+初期実装の timeout 5 秒では `available=false timeout_after_sec:5.0` が連続した。
+mactop headless は interval だけでなく起動と初回 sample に余裕が必要なため、
+timeout は `max(10s, interval_sec + 8s)` にする。
+monitor dashboard は最新行が timeout でも、直近に available sample があればその値を表示する。

@@ -7,6 +7,8 @@ import pytest
 
 from _tools.system_metrics import (
     SystemMetricsSample,
+    collect_mactop_sample,
+    default_mactop_timeout_sec,
     latest_system_metrics_sample,
     normalize_mactop_sample,
     parse_mactop_headless_output,
@@ -99,3 +101,63 @@ def test_latest_system_metrics_sample_reads_last_valid_json_line(tmp_path: Path)
     assert latest is not None
     assert latest.available is True
     assert latest.gpu_active_percent == 42.0
+
+
+@pytest.mark.unit
+def test_latest_system_metrics_sample_prefers_recent_available_sample(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "system-metrics.jsonl"
+    available = SystemMetricsSample(
+        provider="mactop",
+        available=True,
+        timestamp="2026-05-31T12:00:00+09:00",
+        gpu_active_percent=42.0,
+    )
+    unavailable = SystemMetricsSample.unavailable(provider="mactop", error="timeout")
+    log_path.write_text(
+        json.dumps(available.to_json()) + "\n" + json.dumps(unavailable.to_json()) + "\n",
+        encoding="utf-8",
+    )
+
+    latest = latest_system_metrics_sample(log_path)
+
+    assert latest is not None
+    assert latest.available is True
+    assert latest.gpu_active_percent == 42.0
+
+
+@pytest.mark.unit
+def test_default_mactop_timeout_scales_with_interval() -> None:
+    assert default_mactop_timeout_sec(interval_sec=2.0) >= 10.0
+    assert default_mactop_timeout_sec(interval_sec=10.0) >= 18.0
+
+
+@pytest.mark.unit
+def test_collect_mactop_sample_uses_scaled_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, float] = {}
+
+    def fake_run(*args: object, **kwargs: object) -> object:
+        del args
+        captured["timeout"] = float(kwargs["timeout"])
+
+        class Result:
+            returncode = 0
+            stdout = json.dumps(
+                [
+                    {
+                        "timestamp": "2026-05-31T12:00:00+09:00",
+                        "soc_metrics": {"GPUActive": 1.0},
+                    }
+                ]
+            )
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    sample = collect_mactop_sample(command="mactop", interval_ms=2000)
+
+    assert sample.available is True
+    assert captured["timeout"] >= 10.0
