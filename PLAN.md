@@ -1,3 +1,22 @@
+## 2026-05-31 Research MCP runtime observability
+
+Tomoko の一次応答だけを見て Research MCP が動いたか判断する方針は否定する。
+live transcript path では待機応答と background MCP subprocess が分離しているため、
+`TomoroSession` の background task schedule から MCP subprocess 起動、result parse、DB 取り込みまでを
+server log 上で追えるようにする。
+
+MCP は常駐 make target を別途起動する前提ではなく、Tomoko が `tomoko-research-mcp` を
+必要時に subprocess として起動する境界を維持する。
+
+### 完了条件
+
+- [x] research transition handler attach / schedule / finish / cancel / missing をログに出す
+- [x] `ResearchCommandRunner` が request start / finish / ingestion / ingestion skip をログに出す
+- [x] `ResearchMcpClient` が subprocess command / timeout / failure / completion をログに出す
+- [x] focused unit / ruff が通る
+- [x] fake session smoke と real operator smoke が通る
+- [x] full unit / global ruff が通る
+
 ## 2026-05-31 GPU pressure monitor
 
 GPU 使用率を人間が別 terminal で眺めるだけにする方針は否定する。

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import Mock
 
 import pytest
 
@@ -155,6 +156,57 @@ async def test_research_mcp_client_builds_json_rpc_tool_call() -> None:
     assert request_payload["method"] == "tools/call"
     assert request_payload["params"]["name"] == "research.search"
     assert request_payload["params"]["arguments"]["query"] == "OpenAI"
+
+
+@pytest.mark.unit
+async def test_research_mcp_client_logs_subprocess_lifecycle(monkeypatch) -> None:
+    async def fake_runner(command: list[str], stdin_text: str, timeout_sec: float) -> str:
+        del command, stdin_text, timeout_sec
+        return json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "structuredContent": {
+                        "status": "completed",
+                        "query": "OpenAI",
+                        "short_answer": "ok",
+                        "provider_trace_id": "trace-openai",
+                        "citations": [],
+                    },
+                    "isError": False,
+                },
+            }
+        )
+
+    info = Mock()
+    monkeypatch.setattr("server.gateway.research.logger.info", info)
+    client = ResearchMcpClient(command=("uv", "run", "tomoko-research-mcp"), runner=fake_runner)
+
+    result = await client.search(ResearchRequest(query="OpenAI"))
+
+    assert result.status == "completed"
+    messages = [call.args[0] for call in info.call_args_list]
+    assert any("Research MCP subprocess starting" in message for message in messages)
+    assert any("Research MCP subprocess completed" in message for message in messages)
+    assert any("trace-openai" in call.args for call in info.call_args_list)
+
+
+@pytest.mark.unit
+async def test_research_mcp_client_logs_timeout(monkeypatch) -> None:
+    async def fake_runner(command: list[str], stdin_text: str, timeout_sec: float) -> str:
+        del command, stdin_text, timeout_sec
+        raise TimeoutError("slow")
+
+    warning = Mock()
+    monkeypatch.setattr("server.gateway.research.logger.warning", warning)
+    client = ResearchMcpClient(command=("uv", "run", "tomoko-research-mcp"), runner=fake_runner)
+
+    result = await client.search(ResearchRequest(query="OpenAI"))
+
+    assert result.status == "timeout"
+    messages = [call.args[0] for call in warning.call_args_list]
+    assert any("Research MCP subprocess timed out" in message for message in messages)
 
 
 @pytest.mark.unit

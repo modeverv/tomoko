@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -185,6 +186,41 @@ async def test_research_command_runner_ingests_llm_summary_embedding() -> None:
 
 
 @pytest.mark.unit
+async def test_research_command_runner_logs_ingestion_lifecycle(monkeypatch) -> None:
+    session = _session()
+    request = ResearchRequest(query="OpenAI news")
+    client = FakeResearchClient(
+        ResearchResult(
+            status="completed",
+            query="OpenAI news",
+            short_answer="OpenAIの短い調査結果です。",
+            fetched_at=datetime(2026, 5, 31, tzinfo=UTC),
+            provider_trace_id="trace-openai",
+        )
+    )
+    store = InMemoryResearchResultStore()
+    runner = ResearchCommandRunner(
+        session=session,
+        client=client,
+        result_store=store,
+        embedding_backend=FakeEmbeddingBackend(),
+        summarizer=ResearchResultSummarizer(backend=FakeSummaryBackend()),
+    )
+    accepted = await session.post_event(
+        SessionEvent(type="research_requested", payload={"request": request})
+    )
+
+    info = Mock()
+    monkeypatch.setattr("server.gateway.research.logger.info", info)
+    await runner.run_result(accepted)
+
+    messages = [call.args[0] for call in info.call_args_list]
+    assert any("Research command runner starting request" in message for message in messages)
+    assert any("Research command runner ingested result" in message for message in messages)
+    assert any("trace-openai" in call.args for call in info.call_args_list)
+
+
+@pytest.mark.unit
 async def test_process_transcript_routes_research_request_before_normal_reply() -> None:
     events: list[dict[str, object]] = []
     session = _session(events)
@@ -217,6 +253,31 @@ async def test_process_transcript_hands_research_command_to_background_handler()
     assert results[0].emissions[0].type == "research_request_accepted"
     assert results[0].commands[0].type == "submit_research_request"
     assert results[0].commands[0].payload["request"].query == "OpenAIについて"
+
+
+@pytest.mark.unit
+async def test_process_transcript_logs_research_background_task_lifecycle(monkeypatch) -> None:
+    session = _session()
+    called = asyncio.Event()
+
+    async def handler(result):
+        del result
+        called.set()
+
+    info = Mock()
+    monkeypatch.setattr("server.session.logger.info", info)
+    session.set_research_transition_handler(handler)
+
+    await session.process_transcript(_transcript("OpenAIについて調べて"))
+    await asyncio.wait_for(called.wait(), timeout=1.0)
+    await asyncio.sleep(0)
+
+    messages = [call.args[0] for call in info.call_args_list]
+    assert any(
+        "TomoroSession scheduling research transition handler" in message
+        for message in messages
+    )
+    assert any("TomoroSession research transition task finished" in message for message in messages)
 
 
 @pytest.mark.unit

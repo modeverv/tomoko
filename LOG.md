@@ -1,3 +1,33 @@
+## 2026-05-31 セッション25
+
+### やること（開始時に書く）
+- live research request で Tomoko の一次応答は出るが MCP 結果が保存されない件をログで追えるようにする
+- `TomoroSession` の research background task schedule / completion / cancel を server log に出す
+- `ResearchCommandRunner` / `ResearchMcpClient` の subprocess 起動、完了、timeout、DB 取り込みを観測できるようにする
+- 既存設計どおり MCP は常駐プロセスではなく必要時 subprocess 起動であることをログから判断できるようにする
+
+### やったこと
+- `TomoroSession.set_research_transition_handler()` と `_dispatch_research_transition_result()` に handler attach / missing / schedule / finish / cancel / failure ログを追加した
+- `ResearchCommandRunner` に request start / finish、invalid request、ingestion skip、ingestion success のログを追加した
+- `ResearchMcpClient` と subprocess runner に command start、timeout、failure、parse 後 completion、process exit のログを追加した
+- Research MCP は常駐 make process ではなく、Tomoko が request ごとに `tomoko-research-mcp` を subprocess 起動する設計であることを PLAN / MEMORY に記録した
+
+### 検証
+- red test: `.venv/bin/pytest -m unit tests/unit/test_research_gateway.py::test_research_mcp_client_logs_subprocess_lifecycle tests/unit/test_research_gateway.py::test_research_mcp_client_logs_timeout tests/unit/test_research_session_contract.py::test_research_command_runner_logs_ingestion_lifecycle tests/unit/test_research_session_contract.py::test_process_transcript_logs_research_background_task_lifecycle -q`
+  - 4 failed。期待する lifecycle log が未実装だった
+- focused unit / ruff: `.venv/bin/pytest -m unit tests/unit/test_research_gateway.py tests/unit/test_research_session_contract.py tests/unit/test_smoke_research_mcp_flow.py tests/unit/test_makefile_process_entries.py -q && .venv/bin/ruff check server/gateway/research.py server/session.py tests/unit/test_research_gateway.py tests/unit/test_research_session_contract.py`
+  - 45 passed / ruff pass
+- fake smoke: `make smoke-research-session`
+  - `ok=true`, `status=completed`, `ingested_research_count=1`
+- real operator smoke: `uv run python _tools/smoke_research_tomoro_session_flow.py --command 'uv --directory /Users/seijiro/Sync/sync_work/by-llms/tomoko-research-operator run tomoko-research-mcp' --timeout-sec 180 --output logs/research-tomoro-session-real-smoke-latest.json`
+  - `ok=true`, `status=completed`, `ingested_research_count=1`
+- full unit / global ruff: `.venv/bin/pytest -m unit -q && .venv/bin/ruff check .`
+  - 561 passed, 19 deselected / ruff pass
+
+### 次のセッションでやること
+- 実 server を再起動して live 発話で `Research MCP subprocess starting` 以降が出るか確認する
+- もし start が出ない場合は handler 未接続、start は出るが completion がない場合は operator / Chrome UI 側を次に見る
+
 ## 2026-05-31 セッション14
 
 ### やること（開始時に書く）

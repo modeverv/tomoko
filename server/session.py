@@ -272,6 +272,10 @@ class TomoroSession:
         handler: Callable[[TransitionResult], Any] | None,
     ) -> None:
         self._research_transition_handler = handler
+        logger.info(
+            "TomoroSession research transition handler %s",
+            "attached" if handler is not None else "cleared",
+        )
 
     @property
     def _playback_echo_grace_ms(self) -> int:
@@ -1351,20 +1355,55 @@ class TomoroSession:
         return True
 
     async def _dispatch_research_transition_result(self, result: TransitionResult) -> None:
+        research_command_count = sum(
+            1 for command in result.commands if command.type == "submit_research_request"
+        )
         if self._research_transition_handler is None:
+            if research_command_count:
+                logger.warning(
+                    "TomoroSession research transition handler missing commands=%d emissions=%d",
+                    research_command_count,
+                    len(result.emissions),
+                )
             await self.send_transition_emissions(result)
             await self._run_internal_commands(result.commands)
             return
 
         maybe_awaitable = self._research_transition_handler(result)
         if not inspect.isawaitable(maybe_awaitable):
+            if research_command_count:
+                logger.warning(
+                    "TomoroSession research transition handler returned non-awaitable "
+                    "commands=%d emissions=%d",
+                    research_command_count,
+                    len(result.emissions),
+                )
             return
-        task = asyncio.create_task(maybe_awaitable)
+        logger.info(
+            "TomoroSession scheduling research transition handler commands=%d "
+            "emissions=%d active_tasks=%d",
+            research_command_count,
+            len(result.emissions),
+            len(self._research_transition_tasks),
+        )
+        started = time.monotonic()
+
+        async def run_handler() -> None:
+            await maybe_awaitable
+
+        task = asyncio.create_task(run_handler())
         self._research_transition_tasks.add(task)
 
         def forget(done_task: asyncio.Task[None]) -> None:
             self._research_transition_tasks.discard(done_task)
+            elapsed_ms = (time.monotonic() - started) * 1000
             if done_task.cancelled():
+                logger.warning(
+                    "TomoroSession research transition task cancelled elapsed_ms=%.1f "
+                    "active_tasks=%d",
+                    elapsed_ms,
+                    len(self._research_transition_tasks),
+                )
                 return
             exc = done_task.exception()
             if exc is not None:
@@ -1372,6 +1411,12 @@ class TomoroSession:
                     "TomoroSession research transition task failed",
                     exc_info=(type(exc), exc, exc.__traceback__),
                 )
+                return
+            logger.info(
+                "TomoroSession research transition task finished elapsed_ms=%.1f active_tasks=%d",
+                elapsed_ms,
+                len(self._research_transition_tasks),
+            )
 
         task.add_done_callback(forget)
 

@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import re
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -13,6 +15,8 @@ from server.shared.models import SessionCommand, SessionEvent, TransitionResult
 
 ResearchMode = Literal["quick", "deep"]
 ResearchStatus = Literal["pending", "running", "completed", "failed", "needs_human", "timeout"]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,21 +126,55 @@ class ResearchMcpClient:
             },
             ensure_ascii=False,
         )
+        started = time.monotonic()
+        logger.info(
+            "Research MCP subprocess starting query=%r mode=%s command=%s timeout_sec=%.1f",
+            request.normalized_query(),
+            request.mode,
+            " ".join(self.command),
+            self.timeout_sec,
+        )
         try:
             stdout = await self.runner(list(self.command), stdin_text + "\n", self.timeout_sec)
         except TimeoutError as exc:
+            elapsed_ms = (time.monotonic() - started) * 1000
+            logger.warning(
+                "Research MCP subprocess timed out query=%r elapsed_ms=%.1f error=%s",
+                request.normalized_query(),
+                elapsed_ms,
+                exc,
+            )
             return ResearchResult(
                 status="timeout",
                 query=request.normalized_query(),
                 error_reason=str(exc),
             )
         except OSError as exc:
+            elapsed_ms = (time.monotonic() - started) * 1000
+            logger.warning(
+                "Research MCP subprocess failed query=%r elapsed_ms=%.1f error=%s",
+                request.normalized_query(),
+                elapsed_ms,
+                exc,
+            )
             return ResearchResult(
                 status="failed",
                 query=request.normalized_query(),
                 error_reason=str(exc),
             )
-        return parse_mcp_tool_call_response(stdout, fallback_query=request.normalized_query())
+        result = parse_mcp_tool_call_response(stdout, fallback_query=request.normalized_query())
+        elapsed_ms = (time.monotonic() - started) * 1000
+        logger.info(
+            "Research MCP subprocess completed query=%r status=%s speakable=%s "
+            "elapsed_ms=%.1f trace_id=%s artifact=%s",
+            result.query,
+            result.status,
+            result.is_speakable(),
+            elapsed_ms,
+            result.provider_trace_id,
+            result.raw_artifact_path,
+        )
+        return result
 
 
 class ResearchResultSummarizer:
@@ -200,6 +238,10 @@ class ResearchCommandRunner:
             return None
         request = command.payload.get("request")
         if not isinstance(request, ResearchRequest):
+            logger.warning(
+                "Research command runner received invalid request request_id=%s",
+                command.payload.get("request_id"),
+            )
             return await self.session.post_event(
                 SessionEvent(
                     type="research_result_ready",
@@ -213,8 +255,23 @@ class ResearchCommandRunner:
                     },
                 )
             )
+        request_id = command.payload.get("request_id")
+        logger.info(
+            "Research command runner starting request request_id=%s query=%r mode=%s",
+            request_id,
+            request.normalized_query(),
+            request.mode,
+        )
         result = await self.client.search(request)
         await self._ingest_result(result)
+        logger.info(
+            "Research command runner finished request request_id=%s status=%s "
+            "speakable=%s trace_id=%s",
+            request_id,
+            result.status,
+            result.is_speakable(),
+            result.provider_trace_id,
+        )
         return await self.session.post_event(
             SessionEvent(
                 type="research_result_ready",
@@ -232,6 +289,15 @@ class ResearchCommandRunner:
             or self.embedding_backend is None
             or self.summarizer is None
         ):
+            logger.info(
+                "Research command runner skipped ingestion status=%s speakable=%s "
+                "has_store=%s has_embedding=%s has_summarizer=%s",
+                result.status,
+                result.is_speakable(),
+                self.result_store is not None,
+                self.embedding_backend is not None,
+                self.summarizer is not None,
+            )
             return
         summary_text = await self.summarizer.summarize(result)
         embedding = await self.embedding_backend.embed_passage(summary_text)
@@ -247,6 +313,14 @@ class ResearchCommandRunner:
             citation_urls=tuple(citation.url for citation in result.citations),
             raw_artifact_path=result.raw_artifact_path,
             embedding_model=getattr(self.embedding_backend, "model", ""),
+        )
+        logger.info(
+            "Research command runner ingested result result_id=%s query=%r "
+            "summary_chars=%d embedding_dims=%d",
+            result_id,
+            result.query,
+            len(summary_text),
+            len(embedding),
         )
 
 
@@ -291,6 +365,7 @@ def parse_mcp_tool_call_response(
 
 
 async def _run_subprocess(command: list[str], stdin_text: str, timeout_sec: float) -> str:
+    started = time.monotonic()
     process = await asyncio.create_subprocess_exec(
         *command,
         stdin=asyncio.subprocess.PIPE,
@@ -308,6 +383,14 @@ async def _run_subprocess(command: list[str], stdin_text: str, timeout_sec: floa
         raise TimeoutError(f"research MCP command timed out after {timeout_sec:.1f}s") from exc
     if process.returncode != 0:
         raise OSError(stderr.decode("utf-8", errors="replace").strip())
+    logger.info(
+        "Research MCP subprocess exited returncode=%s elapsed_ms=%.1f "
+        "stdout_bytes=%d stderr_bytes=%d",
+        process.returncode,
+        (time.monotonic() - started) * 1000,
+        len(stdout),
+        len(stderr),
+    )
     return stdout.decode("utf-8", errors="replace")
 
 
