@@ -33,6 +33,7 @@ def test_makefile_exposes_config_and_log_vars_for_separate_processes() -> None:
         "MONITOR_HOST ?= 127.0.0.1",
         "MONITOR_PORT ?= 8770",
         "BACKEND_TRACE_LOG_FILE ?= logs/backend-trace.jsonl",
+        "SYSTEM_METRICS_LOG_FILE ?= logs/system-metrics.jsonl",
         "WORLD_OBSERVATION_LOG_FILE ?= logs/world-observations.log",
         "GCAL_URLS_FILE ?= config/gcal_urls.txt",
     ]
@@ -113,7 +114,19 @@ def test_makefile_monitor_stays_read_only_and_uses_current_logs() -> None:
     assert "_tools/monitor_dashboard.py" in monitor_body
     assert "--server-log $(TOMOKO_DEBUG_LOG_FILE)" in monitor_body
     assert "--backend-trace $(BACKEND_TRACE_LOG_FILE)" in monitor_body
+    assert "--system-metrics $(SYSTEM_METRICS_LOG_FILE)" in monitor_body
     assert "--config $(CENTRAL_CONFIG)" in monitor_body
+
+
+@pytest.mark.unit
+def test_makefile_exposes_system_metrics_monitor() -> None:
+    body = _target_body("system-monitor")
+
+    assert "_tools/system_metrics.py" in body
+    assert "--provider $(SYSTEM_METRICS_PROVIDER)" in body
+    assert "--command $(SYSTEM_METRICS_COMMAND)" in body
+    assert "--output $(SYSTEM_METRICS_LOG_FILE)" in body
+    assert "--interval-sec $(SYSTEM_METRICS_INTERVAL_SEC)" in body
 
 
 @pytest.mark.unit

@@ -3781,3 +3781,17 @@ integration test は `try/finally` で checksum fixture を必ず cleanup し、
 自分が作った `item_id` / `interpretation_id` が `world_observation_trace` に見えることを
 直接 DB query で確認する。
 store の global fetch order / limit は、共有DB fixture の存在を前提にした assertion へ使わない。
+
+### 確定した判断: GPU pressure は mactop headless を optional provider として読む
+2026-05-31 時点では、GPU 使用率を別 terminal で人間が眺めるだけにしない。
+Tomoko の会話 latency / backend trace / server-debug log と同じ観測面へ、
+Apple Silicon の GPU active / power / frequency / memory / thermal sample を取り込む。
+
+mactop は v2 で `--headless --count` JSON を出せるため、Tomoko 側へ private IOReport 実装を移植しない。
+`_tools/system_metrics.py` が mactop を optional external command として呼び、
+`logs/system-metrics.jsonl` に normalized JSONL を追記する。
+`make monitor` はこの JSONL の最新 sample を read-only snapshot として表示する。
+
+mactop 未インストール、timeout、parse failure は runtime failure ではなく、
+`available=false` の sample として記録する。
+GPU 観測は会話 hot path / TomoroSession state / backend routing の authoritative input にはしない。

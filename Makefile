@@ -24,6 +24,10 @@ MAAI_MATERIAL_SWAP_CHANNELS ?=
 MONITOR_HOST ?= 127.0.0.1
 MONITOR_PORT ?= 8770
 BACKEND_TRACE_LOG_FILE ?= logs/backend-trace.jsonl
+SYSTEM_METRICS_LOG_FILE ?= logs/system-metrics.jsonl
+SYSTEM_METRICS_PROVIDER ?= mactop
+SYSTEM_METRICS_COMMAND ?= mactop
+SYSTEM_METRICS_INTERVAL_SEC ?= 2
 WORLD_OBSERVATION_LOG_FILE ?= logs/world-observations.log
 WORLD_OBSERVATION_WORK ?= informations/work
 WORLD_OBSERVATION_ARCHIVED ?= informations/archived
@@ -54,7 +58,7 @@ SCREEN_SHELL ?= zsh
 .PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
 .PHONY: information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
 .PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list
-.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material log-report monitor lint check
+.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material log-report monitor system-monitor lint check
 
 deps:
 	mise exec -- uv sync
@@ -278,7 +282,10 @@ log-report:
 	mise exec -- uv run python _tools/analyze_server_debug_log.py --input $(TOMOKO_DEBUG_LOG_FILE) --output logs/server-debug-report.html
 
 monitor:
-	mise exec -- uv run python _tools/monitor_dashboard.py --host $(MONITOR_HOST) --port $(MONITOR_PORT) --server-log $(TOMOKO_DEBUG_LOG_FILE) --backend-trace $(BACKEND_TRACE_LOG_FILE) --config $(CENTRAL_CONFIG)
+	mise exec -- uv run python _tools/monitor_dashboard.py --host $(MONITOR_HOST) --port $(MONITOR_PORT) --server-log $(TOMOKO_DEBUG_LOG_FILE) --backend-trace $(BACKEND_TRACE_LOG_FILE) --system-metrics $(SYSTEM_METRICS_LOG_FILE) --config $(CENTRAL_CONFIG)
+
+system-monitor:
+	mise exec -- uv run python _tools/system_metrics.py --provider $(SYSTEM_METRICS_PROVIDER) --command $(SYSTEM_METRICS_COMMAND) --output $(SYSTEM_METRICS_LOG_FILE) --interval-sec $(SYSTEM_METRICS_INTERVAL_SEC)
 
 lint:
 	mise exec -- uv run ruff check .

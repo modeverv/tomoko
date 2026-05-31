@@ -84,6 +84,7 @@ def test_parse_backend_trace_lines_keeps_recent_json_events() -> None:
 def test_build_monitor_snapshot_reads_logs_without_db(tmp_path: Path) -> None:
     server_log = tmp_path / "server-debug.log"
     backend_trace = tmp_path / "backend-trace.jsonl"
+    system_metrics = tmp_path / "system-metrics.jsonl"
     server_log.write_text(
         "2026-05-30 12:00:00.001 INFO:server.gateway.context:"
         "ContextSnapshotBuilder depth=deep elapsed_ms=93.4 budget_ms=100 "
@@ -94,14 +95,20 @@ def test_build_monitor_snapshot_reads_logs_without_db(tmp_path: Path) -> None:
         '{"trace":"tomoko_backend_call","event":"done","role":"conversation",'
         '"kind":"chat","backend":"lmstudio","total_ms":800.0}\n'
     )
+    system_metrics.write_text(
+        '{"provider":"mactop","available":true,"gpu_active_percent":68.0,'
+        '"gpu_total_power_w":5.4}\n'
+    )
 
     snapshot = build_monitor_snapshot(
         server_log_path=server_log,
         backend_trace_path=backend_trace,
+        system_metrics_path=system_metrics,
         config_path=None,
         log_tail_lines=100,
     )
 
     assert snapshot["context"]["latest"]["depth"] == "deep"
     assert snapshot["backend_trace"]["recent_calls"][0]["total_ms"] == 800.0
+    assert snapshot["system_metrics"]["latest"]["gpu_active_percent"] == 68.0
     assert snapshot["database"]["available"] is False

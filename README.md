@@ -255,6 +255,7 @@ make server-reload           # reload 付き runtime
 make server-debug            # DEBUG ログ付き runtime
 make log-report              # server-debug.log から HTML report
 make monitor                 # local monitor dashboard
+make system-monitor          # mactop headless 由来の GPU pressure JSONL sampler
 make lint                    # ruff check .
 make test-unit               # pytest -m unit
 make check                   # lint + unit
@@ -299,6 +300,17 @@ make smoke-maai-material
 
 `make soak-stt` は Ctrl-C まで走る長時間 soak です。有限確認だけなら `make bench-stt` や
 `_tools/soak_voice_stack_scenarios.py --max-cycles 1` を使います。
+
+GPU pressure を latency log と同じ時間軸で見る場合は、別 terminal で次を起動します。
+
+```bash
+make system-monitor
+make monitor
+```
+
+`system-monitor` は optional provider として mactop v2 の `--headless --count` JSON を呼び、
+`logs/system-metrics.jsonl` に GPU active%、GPU power、GPU frequency、ANE power、memory、thermal を保存します。
+mactop が未インストールでも runtime は壊さず、`available=false` sample として記録します。
 
 ## Background Data Pipelines
 
@@ -369,6 +381,7 @@ make gcal
 
 - `logs/server-debug.log`: 状態遷移、transcript、reply、playback、candidate、turn-taking の人間向けログ
 - `logs/backend-trace.jsonl`: backend call の JSONL trace
+- `logs/system-metrics.jsonl`: mactop headless 由来の GPU / power / memory / thermal sample
 - `logs/thinker.log`: candidate generation
 - `logs/session-summarizer.log`: session summary worker
 - `logs/turn-embedder.log`: turn embedding worker

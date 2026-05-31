@@ -26,6 +26,7 @@ class MonitorRequestHandler(BaseHTTPRequestHandler):
             snapshot = build_monitor_snapshot(
                 server_log_path=self.server.server_log_path,
                 backend_trace_path=self.server.backend_trace_path,
+                system_metrics_path=self.server.system_metrics_path,
                 config_path=self.server.config_path,
                 log_tail_lines=self.server.log_tail_lines,
             )
@@ -61,12 +62,14 @@ class MonitorHTTPServer(ThreadingHTTPServer):
         *,
         server_log_path: Path,
         backend_trace_path: Path,
+        system_metrics_path: Path,
         config_path: Path | None,
         log_tail_lines: int,
     ) -> None:
         super().__init__(server_address, MonitorRequestHandler)
         self.server_log_path = server_log_path
         self.backend_trace_path = backend_trace_path
+        self.system_metrics_path = system_metrics_path
         self.config_path = config_path
         self.log_tail_lines = log_tail_lines
 
@@ -77,6 +80,7 @@ def run_monitor(
     port: int,
     server_log_path: Path,
     backend_trace_path: Path,
+    system_metrics_path: Path,
     config_path: Path | None,
     log_tail_lines: int,
 ) -> None:
@@ -84,6 +88,7 @@ def run_monitor(
         (host, port),
         server_log_path=server_log_path,
         backend_trace_path=backend_trace_path,
+        system_metrics_path=system_metrics_path,
         config_path=config_path,
         log_tail_lines=log_tail_lines,
     )
@@ -97,6 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=8770)
     parser.add_argument("--server-log", type=Path, default=Path("logs/server-debug.log"))
     parser.add_argument("--backend-trace", type=Path, default=Path("logs/backend-trace.jsonl"))
+    parser.add_argument("--system-metrics", type=Path, default=Path("logs/system-metrics.jsonl"))
     parser.add_argument("--config", type=Path, default=Path("config/central_realtime.toml"))
     parser.add_argument("--log-tail-lines", type=int, default=4000)
     args = parser.parse_args(argv)
@@ -105,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         port=args.port,
         server_log_path=args.server_log,
         backend_trace_path=args.backend_trace,
+        system_metrics_path=args.system_metrics,
         config_path=args.config,
         log_tail_lines=args.log_tail_lines,
     )
@@ -205,6 +212,7 @@ function render(data) {
   const recentCalls = data.backend_trace.recent_calls || [];
   const conversationCalls = recentCalls.filter((call) => call.role === "conversation");
   const promptCount = data.categories.conversation_prompt || 0;
+  const gpu = data.system_metrics.latest;
   const cards = [
     ["Context depth", context ? context.depth : "none", context ? `depth-${context.depth}` : ""],
     ["Context elapsed", context ? `${context.elapsed_ms} ms` : "-", ""],
@@ -222,6 +230,32 @@ function render(data) {
       db.available ? "depth-fast" : "depth-reflective"
     ],
     ["Active candidates", db.available ? db.utterance_candidates.active : "-", ""],
+    [
+      "GPU",
+      gpu && gpu.available && gpu.gpu_active_percent !== null
+        ? `${gpu.gpu_active_percent.toFixed(1)}%`
+        : "unavailable",
+      gpu && gpu.available ? "depth-normal" : "depth-reflective"
+    ],
+    [
+      "GPU power",
+      gpu && gpu.available && gpu.gpu_total_power_w !== null
+        ? `${gpu.gpu_total_power_w.toFixed(2)} W`
+        : "-",
+      ""
+    ],
+    [
+      "GPU freq",
+      gpu && gpu.available && gpu.gpu_freq_mhz !== null
+        ? `${gpu.gpu_freq_mhz.toFixed(0)} MHz`
+        : "-",
+      ""
+    ],
+    [
+      "Thermal",
+      gpu && gpu.available && gpu.thermal_state ? gpu.thermal_state : "-",
+      gpu && gpu.thermal_state && gpu.thermal_state !== "Nominal" ? "depth-deep" : ""
+    ],
   ];
   document.getElementById("cards").innerHTML = cards.map(([label, value, cls]) =>
     `<div class="card"><span class="muted">${escapeHtml(label)}</span>` +

@@ -1,3 +1,21 @@
+## 2026-05-31 GPU pressure monitor
+
+GPU 使用率を人間が別 terminal で眺めるだけにする方針は否定する。
+会話 latency / backend trace / server-debug log と同じ Tomoko の観測面に、Apple Silicon の GPU pressure を
+JSONL と monitor dashboard として取り込む。
+
+ただし mactop の IOReport 実装を repo 内へ直接移植する方針は採らない。
+まずは mactop v2 の `--headless --count` JSON を optional provider として呼び、
+Tomoko 側では normalized JSONL と read-only monitor 表示に閉じ込める。
+
+### 完了条件
+
+- [x] mactop headless JSON から gpu usage / power / freq / ANE / memory / thermal を正規化できる
+- [x] `make system-monitor` で `logs/system-metrics.jsonl` に常時 sampling できる
+- [x] `make monitor` が最新 GPU pressure を dashboard snapshot に含める
+- [x] mactop 未インストール時は runtime を壊さず unavailable sample として記録する
+- [x] focused unit / ruff / full unit が通る
+
 ## 2026-05-30 memory gate boundary
 
 取得した記憶をそのまま prompt に出す方針は否定する。

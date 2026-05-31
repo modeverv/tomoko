@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from _tools.analyze_server_debug_log import classify_event, read_tail_lines
+from _tools.system_metrics import latest_system_metrics_sample
 
 CONTEXT_RE = re.compile(
     r"ContextSnapshotBuilder depth=(?P<depth>\w+) "
@@ -69,6 +70,7 @@ def build_monitor_snapshot(
     *,
     server_log_path: Path,
     backend_trace_path: Path,
+    system_metrics_path: Path,
     config_path: Path | None,
     log_tail_lines: int = 2000,
 ) -> dict[str, Any]:
@@ -76,12 +78,14 @@ def build_monitor_snapshot(
     trace_lines = _read_if_exists(backend_trace_path, max_lines=log_tail_lines)
     parsed_log = parse_server_debug_lines(server_lines)
     recent_calls = parse_backend_trace_lines(trace_lines, limit=80)
+    latest_system_metrics = latest_system_metrics_sample(system_metrics_path)
     database = read_database_summary(config_path)
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "sources": {
             "server_log": str(server_log_path),
             "backend_trace": str(backend_trace_path),
+            "system_metrics": str(system_metrics_path),
             "config": str(config_path) if config_path is not None else None,
         },
         "timeline": [asdict(event) for event in parsed_log.timeline[-120:]],
@@ -94,6 +98,11 @@ def build_monitor_snapshot(
         "backend_trace": {
             "recent_calls": [asdict(call) for call in recent_calls],
             "role_counts": dict(Counter(call.role or "unknown" for call in recent_calls)),
+        },
+        "system_metrics": {
+            "latest": latest_system_metrics.to_json()
+            if latest_system_metrics is not None
+            else None,
         },
         "database": database,
     }
