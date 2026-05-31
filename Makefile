@@ -73,14 +73,14 @@ download-optional-models:
 	mise exec -- uv run python _tools/download_models.py --include-optional
 
 server:
-	PYTHONUNBUFFERED=1 TOMOKO_CONFIG=$(CENTRAL_CONFIG) TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TOMOKO_LOG_FILE) mise exec -- uv run uvicorn server.edge.main:app --host $(HOST) --port $(PORT) --log-level $(UVICORN_LOG_LEVEL)
+	TOMOKO_MAAI_BACKCHANNEL_ENABLED=1 PYTHONUNBUFFERED=1 TOMOKO_CONFIG=$(CENTRAL_CONFIG) TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TOMOKO_LOG_FILE) mise exec -- uv run uvicorn server.edge.main:app --host $(HOST) --port $(PORT) --log-level $(UVICORN_LOG_LEVEL)
 
 server-reload:
-	PYTHONUNBUFFERED=1 TOMOKO_CONFIG=$(CENTRAL_CONFIG) TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TOMOKO_LOG_FILE) mise exec -- uv run uvicorn server.edge.main:app --host $(HOST) --port $(PORT) --log-level $(UVICORN_LOG_LEVEL) --reload
+	TOMOKO_MAAI_BACKCHANNEL_ENABLED=1 PYTHONUNBUFFERED=1 TOMOKO_CONFIG=$(CENTRAL_CONFIG) TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TOMOKO_LOG_FILE) mise exec -- uv run uvicorn server.edge.main:app --host $(HOST) --port $(PORT) --log-level $(UVICORN_LOG_LEVEL) --reload
 
 server-debug:
 	mkdir -p logs
-	PYTHONUNBUFFERED=1 TOMOKO_CONFIG=$(CENTRAL_CONFIG) TOMOKO_LOG_LEVEL=DEBUG TOMOKO_LOG_FILE= mise exec -- uv run uvicorn server.edge.main:app --host $(HOST) --port $(PORT) --log-level info --reload 2>&1 | tee -a $(TOMOKO_DEBUG_LOG_FILE)
+	TOMOKO_MAAI_BACKCHANNEL_ENABLED=1 PYTHONUNBUFFERED=1 TOMOKO_CONFIG=$(CENTRAL_CONFIG) TOMOKO_LOG_LEVEL=DEBUG TOMOKO_LOG_FILE= mise exec -- uv run uvicorn server.edge.main:app --host $(HOST) --port $(PORT) --log-level info --reload 2>&1 | tee -a $(TOMOKO_DEBUG_LOG_FILE)
 
 gateway:
 	PYTHONUNBUFFERED=1 TOMOKO_CONFIG=$(CENTRAL_CONFIG) TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TOMOKO_LOG_FILE) mise exec -- uv run uvicorn server.edge.main:app --host $(HOST) --port $(PORT) --log-level $(UVICORN_LOG_LEVEL)
