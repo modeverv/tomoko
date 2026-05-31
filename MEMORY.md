@@ -3838,3 +3838,18 @@ Tomoko 側は rule-based intent detection、operator call、result validation、
 
 `chatgpt-el` は CDP workflow の参考にはするが、GPLv3-or-later source を Tomoko や operator へコピーしない。
 selector や completion heuristic の考え方を読み、自前実装として小さく作る。
+
+### 確定した判断: Research MCP は command runner 経由で TomoroSession に戻す
+2026-05-31 時点では、Tomoko の会話 hot path で `tomoko-research-mcp` の完了を同期待ちしない。
+`ResearchIntentDetector` が rule-based に `ResearchRequest` を作り、
+`TomoroSession` は `research_requested` event から `submit_research_request` command を出す。
+`ResearchCommandRunner` が MCP subprocess を呼び、`ResearchResult` を
+`research_result_ready` event として TomoroSession に戻す。
+
+MCP response は `content[0].text` ではなく `structuredContent` を正とし、
+Tomoko 側で citation URL dedupe、status 分離、speakable 判定を行う。
+`completed` かつ `short_answer` がある場合だけ通知文は `調べ終わったよ。聞く？` にする。
+`failed` / `timeout` / `needs_human` は成功と混ぜず、`調べきれなかったみたい。` として扱う。
+
+この初段では DB 永続化、「教えて」で本文を読む処理、ContextSnapshotBuilder への接続、
+conversation prompt への research result 直入れは行わない。

@@ -31,6 +31,7 @@ from server.gateway.initiative_feedback import (
 )
 from server.gateway.reply import ReplyPipeline
 from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
+from server.gateway.research import ResearchRequest, ResearchResult
 from server.gateway.stop_ack import StopAckAudioProvider
 from server.gateway.stop_intent import (
     StopIntentStore,
@@ -225,6 +226,7 @@ class TomoroSession:
         ] = asyncio.Queue()
         self._event_drain_lock = asyncio.Lock()
         self._candidate_request_sequence = 0
+        self._research_request_sequence = 0
         self._active_initiative_request_id: str | None = None
         self._active_arrival_request_id: str | None = None
         self._last_start_reason: StartReason | None = None
@@ -342,6 +344,10 @@ class TomoroSession:
             return self._reduce_initiative_candidate_loaded(event)
         if event.type == "arrival_candidate_loaded":
             return self._reduce_arrival_candidate_loaded(event)
+        if event.type == "research_requested":
+            return self._reduce_research_requested(event)
+        if event.type == "research_result_ready":
+            return self._reduce_research_result_ready(event)
         if event.type == "stop_intent_classified":
             return self._reduce_stop_intent_classified(event)
         if event.type == "candidate_command_failed":
@@ -754,6 +760,65 @@ class TomoroSession:
 
     def _set_start_reason(self, reason: StartReason) -> None:
         self._last_start_reason = reason
+
+    def _new_research_request_id(self) -> str:
+        self._research_request_sequence += 1
+        return f"research-{self._research_request_sequence}"
+
+    def _reduce_research_requested(self, event: SessionEvent) -> TransitionResult:
+        request = event.payload.get("request")
+        if not isinstance(request, ResearchRequest):
+            return self._transition_result(
+                "research_request_rejected",
+                payload={"reason": "invalid_request"},
+            )
+        request_id = str(event.payload.get("request_id") or self._new_research_request_id())
+        return self._transition_result(
+            "research_request_accepted",
+            payload={
+                "request_id": request_id,
+                "query": request.normalized_query(),
+                "mode": request.mode,
+                "locale": request.locale,
+                "recency": request.recency,
+            },
+            commands=[
+                SessionCommand(
+                    type="submit_research_request",
+                    payload={
+                        "request_id": request_id,
+                        "request": request,
+                    },
+                )
+            ],
+        )
+
+    def _reduce_research_result_ready(self, event: SessionEvent) -> TransitionResult:
+        result = event.payload.get("result")
+        if not isinstance(result, ResearchResult):
+            return self._transition_result(
+                "research_result_ignored",
+                payload={"reason": "invalid_result"},
+            )
+        speakable = result.is_speakable()
+        return self._transition_result(
+            "research_result_ready",
+            payload={
+                "request_id": event.payload.get("request_id"),
+                "status": result.status,
+                "query": result.query,
+                "provider": result.provider,
+                "speakable": speakable,
+                "notice_text": "調べ終わったよ。聞く？"
+                if speakable
+                else "調べきれなかったみたい。",
+                "short_answer": result.short_answer if speakable else "",
+                "citation_count": len(result.citations),
+                "provider_trace_id": result.provider_trace_id,
+                "raw_artifact_path": result.raw_artifact_path,
+                "error_reason": result.error_reason,
+            },
+        )
 
     def _reduce_transcript_finalized(self, event: SessionEvent) -> TransitionResult:
         transcript = event.payload.get("transcript")
