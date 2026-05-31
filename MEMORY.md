@@ -3769,3 +3769,15 @@ closed-loop の観点では、各 lane が「入力を受ける / 床を取る /
 のどこへ接続されるかを固定する。
 現行 candidate / arrival gate は `initiative_turn` の `ambient_idle` floor policy であり、
 人間が話している最中に Tomoko が床を取る `interrupting_turn` の実装は別 Phase とする。
+
+### 確定した判断: world observation integration は共有DBの topN に依存しない
+2026-05-31 の `tests/integration/test_phase180_world_observations_db.py` では、
+`fetch_candidate_interpretations(limit=10)` の global topN に fixture interpretation が入ることを期待していた。
+共有DBに既存 candidate が多い場合、この assertion は実装破損ではなく DB 状態で落ちる。
+
+`PostgresWorldObservationStore` へ connection / transaction を外部注入する設計は、
+現時点ではテスト都合の影響が大きいため採用しない。
+integration test は `try/finally` で checksum fixture を必ず cleanup し、
+自分が作った `item_id` / `interpretation_id` が `world_observation_trace` に見えることを
+直接 DB query で確認する。
+store の global fetch order / limit は、共有DB fixture の存在を前提にした assertion へ使わない。
