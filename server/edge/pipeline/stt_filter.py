@@ -28,7 +28,7 @@ class TranscriptFilter:
         "またまたまた",
     )
     LOW_AUDIO_DB = -24.0
-    LOW_AUDIO_SHORT_MAX_CHARS = 20
+    LOW_AUDIO_SHORT_MAX_CHARS = 6
     LOW_AUDIO_ASCII_DB = -24.0
 
     def evaluate(

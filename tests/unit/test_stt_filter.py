@@ -96,6 +96,36 @@ def test_filter_accepts_low_audio_clock_query() -> None:
 
 
 @pytest.mark.unit
+def test_filter_accepts_low_audio_complete_sentence() -> None:
+    decision = TranscriptFilter().evaluate(
+        _transcript("大変良いと思いますよ私は", audio_level_db=-35.6)
+    )
+
+    assert decision.action == "accept"
+    assert decision.reason == "accepted"
+
+
+@pytest.mark.unit
+def test_filter_accepts_low_audio_short_but_complete_sentence() -> None:
+    decision = TranscriptFilter().evaluate(
+        _transcript("いいと思います", audio_level_db=-35.0)
+    )
+
+    assert decision.action == "accept"
+    assert decision.reason == "accepted"
+
+
+@pytest.mark.unit
+def test_filter_still_drops_very_short_low_audio_fragment() -> None:
+    decision = TranscriptFilter().evaluate(
+        _transcript("たぶんね", audio_level_db=-35.0)
+    )
+
+    assert decision.action == "drop"
+    assert decision.reason == "low_audio_short_text"
+
+
+@pytest.mark.unit
 def test_filter_suppresses_partial_instead_of_dropping() -> None:
     decision = TranscriptFilter().evaluate(
         _transcript("ご視聴ありがとうございました", is_final=False),

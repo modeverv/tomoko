@@ -1,3 +1,33 @@
+## 2026-05-31 セッション14
+
+### やること（開始時に書く）
+- ambient STT の `大変良いと思いますよ私は` が `low_audio_short_text` で drop された件を確認する
+- 低音量短文 filter が日本語の普通の一文まで巻き込んでいないか、test を先に追加して境界を固定する
+- hallucination 対策は残しつつ、成立した低音量文は UI LOG / ambient log へ進めるようにする
+
+### 分かったこと
+- `大変良いと思いますよ私は` は正規化後 12 文字で、既存の `LOW_AUDIO_SHORT_MAX_CHARS = 20` に巻き込まれていた
+- 日本語では 20 文字以内でも普通の短文が成立するため、低音量の blanket drop としては広すぎた
+- UI LOG に出ない直接原因は、STT 後に `TranscriptFilter` が drop し、`transcript_final` 送信まで進まなかったこと
+
+### やったこと
+- `LOW_AUDIO_SHORT_MAX_CHARS` を 20 から 6 に狭めた
+- `大変良いと思いますよ私は` と `いいと思います` は低音量でも accept される unit test を追加した
+- `たぶんね` のような 6 文字以下の低音量 fragment は `low_audio_short_text` で drop されることを固定した
+
+### 検証
+- red test: `.venv/bin/pytest -m unit tests/unit/test_stt_filter.py::test_filter_accepts_low_audio_complete_sentence -q`
+  - 既存 threshold 20 のため `drop` になり 1 failed
+- focused unit + ruff: `.venv/bin/pytest -m unit tests/unit/test_stt_filter.py -q && .venv/bin/ruff check server/edge/pipeline/stt_filter.py tests/unit/test_stt_filter.py`
+  - 12 passed / ruff pass
+- related unit + ruff: `.venv/bin/pytest -m unit tests/unit/test_stt_filter.py tests/unit/test_phase3_stt.py tests/unit/test_edge_remote_stt_gate.py -q && .venv/bin/ruff check server/edge/pipeline/stt_filter.py tests/unit/test_stt_filter.py tests/unit/test_phase3_stt.py tests/unit/test_edge_remote_stt_gate.py`
+  - 18 passed / ruff pass
+- full unit + global ruff: `.venv/bin/pytest -m unit -q && .venv/bin/ruff check .`
+  - 519 passed, 17 deselected / ruff pass
+
+### 次のセッションでやること
+- 実ブラウザ会話で、ambient / observer の成立文が UI LOG に表示されることを確認する
+
 ## 2026-05-31 セッション13
 
 ### やること（開始時に書く）
