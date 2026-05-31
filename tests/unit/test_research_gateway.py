@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
+from server.edge.main import _create_default_research_mcp_client
 from server.gateway.research import (
     ResearchIntentDetector,
     ResearchMcpClient,
@@ -59,6 +61,18 @@ def test_research_answer_request_can_match_query_overlap() -> None:
     assert not is_research_answer_request(
         "Anthropicについて知ってることある？",
         query="今日のOpenAI関連ニュースを短く",
+    )
+
+
+@pytest.mark.unit
+def test_research_answer_request_requires_overlap_for_topic_answer_cue() -> None:
+    assert is_research_answer_request(
+        "手書について教えて",
+        query="手書についてみて",
+    )
+    assert not is_research_answer_request(
+        "日本の首相について教えて",
+        query="手書についてみて",
     )
 
 
@@ -125,10 +139,15 @@ def test_parse_mcp_tool_call_response_maps_error_to_failed_result() -> None:
 
 @pytest.mark.unit
 async def test_research_mcp_client_builds_json_rpc_tool_call() -> None:
-    calls: list[tuple[list[str], str, float]] = []
+    calls: list[tuple[list[str], str, float, Path | None]] = []
 
-    async def fake_runner(command: list[str], stdin_text: str, timeout_sec: float) -> str:
-        calls.append((command, stdin_text, timeout_sec))
+    async def fake_runner(
+        command: list[str],
+        stdin_text: str,
+        timeout_sec: float,
+        cwd: Path | None,
+    ) -> str:
+        calls.append((command, stdin_text, timeout_sec, cwd))
         return json.dumps(
             {
                 "jsonrpc": "2.0",
@@ -160,8 +179,13 @@ async def test_research_mcp_client_builds_json_rpc_tool_call() -> None:
 
 @pytest.mark.unit
 async def test_research_mcp_client_logs_subprocess_lifecycle(monkeypatch) -> None:
-    async def fake_runner(command: list[str], stdin_text: str, timeout_sec: float) -> str:
-        del command, stdin_text, timeout_sec
+    async def fake_runner(
+        command: list[str],
+        stdin_text: str,
+        timeout_sec: float,
+        cwd: Path | None,
+    ) -> str:
+        del command, stdin_text, timeout_sec, cwd
         return json.dumps(
             {
                 "jsonrpc": "2.0",
@@ -194,8 +218,13 @@ async def test_research_mcp_client_logs_subprocess_lifecycle(monkeypatch) -> Non
 
 @pytest.mark.unit
 async def test_research_mcp_client_logs_timeout(monkeypatch) -> None:
-    async def fake_runner(command: list[str], stdin_text: str, timeout_sec: float) -> str:
-        del command, stdin_text, timeout_sec
+    async def fake_runner(
+        command: list[str],
+        stdin_text: str,
+        timeout_sec: float,
+        cwd: Path | None,
+    ) -> str:
+        del command, stdin_text, timeout_sec, cwd
         raise TimeoutError("slow")
 
     warning = Mock()
@@ -207,6 +236,20 @@ async def test_research_mcp_client_logs_timeout(monkeypatch) -> None:
     assert result.status == "timeout"
     messages = [call.args[0] for call in warning.call_args_list]
     assert any("Research MCP subprocess timed out" in message for message in messages)
+
+
+@pytest.mark.unit
+def test_default_research_mcp_client_points_to_sibling_operator(monkeypatch) -> None:
+    monkeypatch.delenv("TOMOKO_RESEARCH_MCP_COMMAND", raising=False)
+
+    client = _create_default_research_mcp_client()
+
+    assert client.command == ("uv", "run", "tomoko-research-mcp")
+    assert client.cwd is not None
+    operator_dir = client.cwd
+    assert operator_dir.name == "tomoko-research-operator"
+    assert operator_dir.parent.name == "by-llms"
+    assert operator_dir.parent / "tomoko" == Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.unit

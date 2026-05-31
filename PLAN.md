@@ -7553,3 +7553,151 @@ central realtime の active STT backend を MLX Whisper large turbo q4 に戻す
 - [x] config unit test が active STT を固定する
 - [x] focused unit / ruff が通る
 - [x] full unit / global ruff が通る
+
+## 2026-06-01 Research MCP operator cwd
+
+live server log で MCP が起動していないように見える状態を、まずログ上の lifecycle で切り分ける。
+`research request detected` と `Research MCP subprocess starting` は出ていたため、未接続ではなく
+subprocess command の path 解決失敗として扱う。
+
+default は sibling repo `../tomoko-research-operator` を cwd にし、
+`uv run tomoko-research-mcp` を実行する。
+
+### 完了条件
+
+- [x] live log の failure reason が `No such file or directory` であることを確認する
+- [x] default MCP client が sibling operator repo を cwd にする
+- [x] command は `uv run tomoko-research-mcp` とし、operator repo 基準で実行する
+- [x] focused research unit / ruff が通る
+- [ ] full unit / global ruff が通る
+
+## 2026-06-01 Research result-ready spoken notice
+
+MCP は完走しているのに Tomoko が「調べ終わった」ことを言わない状態を否定する。
+`research_result_ready.notice_text` を UI emission だけで終わらせず、
+speakable result では短い完了通知を通常の音声出力経路に流す。
+
+結果本文は自動で長く読み上げず、これまでどおり pending result として保持し、
+ユーザーの follow-up で `short_answer` を返す。
+
+### 完了条件
+
+- [x] live log で MCP completed / ingested / finished まで成功していることを確認する
+- [x] `research_result_ready` が speakable の時に `start_research_notice_reply` command を返す
+- [x] background `ResearchCommandRunner` 経路でも完了通知が `reply_text` に出る
+- [x] follow-up の `research_answer_requested` / short answer 発話は維持する
+- [x] focused research unit / ruff が通る
+- [ ] full unit が通る
+
+## 2026-06-01 Research failed-result spoken notice
+
+MCP subprocess が起動しても operator result が `status=failed` の場合に、
+Tomoko が無音で終わる状態を否定する。
+
+成功時だけでなく、失敗時も短く「調べきれなかった」ことを発話し、
+ログには failed の理由を残す。
+
+### 完了条件
+
+- [x] live log で `status=failed speakable=False` が無音の原因であることを確認する
+- [x] 同じ cwd から手動 MCP call が成功することを確認し、cwd 恒久失敗ではないと切り分ける
+- [x] failed / needs_human result でも `start_research_notice_reply` command が出る
+- [x] `Research MCP subprocess completed` / command runner finished log に `error_reason` が出る
+- [x] focused research unit / ruff が通る
+- [ ] full unit が通る
+
+## 2026-06-01 Research follow-up topic guard
+
+`教えて` follow-up が pending result に反応しない/違う答えを返す状態を、
+STT final transcript と pending query matching に分けて扱う。
+
+topic なしの `教えて` は直前 pending result を読む。
+topic 付きの `日本の首相について教えて` は、その topic が pending query と重なる時だけ読む。
+別 topic の pending result を誤って返さない。
+
+### 完了条件
+
+- [x] live log で `ともこ教えて` が partial だけで final transcript に残っていないことを確認する
+- [x] topic 付き `教えて` が final transcript として通っていることを確認する
+- [x] topic 付き `教えて` は pending query overlap がある時だけ research answer になる
+- [x] 単独 `教えて` / `ともこ教えて` は pending result があれば引き続き research answer になる
+- [x] focused research unit / ruff が通る
+- [ ] full unit が通る
+
+## 2026-06-01 Research follow-up result phrase
+
+`教えて` が Whisper で `そして` になりやすい状態を踏まえ、
+result-ready 後の follow-up 合言葉を `結果を教えて` に寄せる。
+
+Tomoko の完了通知も `聞く？` ではなく、`結果を教えて` と言うよう促す。
+
+### 完了条件
+
+- [x] result-ready notice が `調べ終わったよ。結果を教えてって言ってね。` になる
+- [x] `process_transcript("結果を教えて")` が `research_answer_requested` になる
+- [x] pending result の `short_answer` が発話される
+- [x] focused research unit / ruff が通る
+- [ ] live voice で `結果を教えて` の final transcript を確認する
+- [ ] full unit が通る
+
+## 2026-06-01 Research result phrase STT filter exception
+
+`結果を教えて` が Whisper final transcript までは正しく出ているのに、
+低音量短文フィルタで drop される状態を否定する。
+
+`結果を教えて` は明示 command phrase として低音量でも通し、
+pending research result の answer flow まで届かせる。
+
+### 完了条件
+
+- [x] live log で `結果を教えて` が final transcript まで出ていることを確認する
+- [x] live log で `low_audio_short_text` drop が原因であることを確認する
+- [x] `結果を教えて` は `audio_level_db=-37.0` でも STT filter が accept する
+- [x] `process_transcript("結果を教えて")` が research answer を発話する
+- [x] focused unit / ruff が通る
+- [ ] live voice で answer flow まで確認する
+- [ ] full unit が通る
+
+## 2026-06-01 central STT Apple Speech default
+
+MLX Whisper large turbo q4 を active STT とする直前判断を否定し、
+central realtime の active STT を Apple Speech に戻す。
+
+### 完了条件
+
+- [x] `config/central_realtime.toml` の `stt_backend` が `local_apple_speech_ja` になる
+- [x] README の Default Backends 表が Apple Speech active を示す
+- [x] config unit test が Apple Speech active を固定する
+- [x] focused config unit / ruff が通る
+- [x] live startup warm-up log で active STT が `local_apple_speech_ja` になっている
+- [ ] full unit が通る
+
+## 2026-06-01 engaged cooldown timeout extension
+
+engaged から cooldown までが約 8 秒で落ちる既定値は、live 会話では短すぎる。
+会話の続きや research follow-up を待てる余白を増やすため、既定の engaged timeout を 2.5 倍の 20 秒にする。
+
+cooldown から ambient へ戻る時間は今回変更しない。
+
+### 完了条件
+
+- [x] 既定の engaged timeout が 20 秒相当であることを unit test で固定する
+- [x] 20 秒未満の無音では engaged のままである
+- [x] 20 秒相当の無音で cooldown へ遷移する
+- [x] focused attention unit / ruff が通る
+- [ ] full unit が通る
+
+## 2026-06-01 engaged low-audio follow-up participation
+
+engaged 中の follow-up を、低音量かつ 20 文字以下というだけで observer に落とす方針を否定する。
+日本語では 20 文字以下でも自然な短文が多く、`もうかなり夜遅いやん` のような返答すべき発話を落としてしまう。
+
+低音量 blanket drop は 6 文字以下に狭め、既知 hallucination phrase や未完 fragment は個別 rule で落とす。
+
+### 完了条件
+
+- [x] live log で STT / transcript filter accept 後に observer になっていることを確認する
+- [x] `もうかなり夜遅いやん` が低音量でも invited になる unit test を追加する
+- [x] 既知 hallucination phrase / 短い noise は observer のまま維持する
+- [x] focused participation / attention unit と ruff が通る
+- [ ] full unit が通る

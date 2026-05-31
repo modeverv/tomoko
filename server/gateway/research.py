@@ -9,6 +9,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Literal
 
 from server.shared.models import SessionCommand, SessionEvent, TransitionResult
@@ -97,7 +98,7 @@ class ResearchIntentDetector:
         return request
 
 
-Runner = Callable[[list[str], str, float], Awaitable[str]]
+Runner = Callable[[list[str], str, float, Path | None], Awaitable[str]]
 
 
 class ResearchMcpClient:
@@ -106,10 +107,12 @@ class ResearchMcpClient:
         *,
         command: tuple[str, ...],
         timeout_sec: float = 120.0,
+        cwd: Path | None = None,
         runner: Runner | None = None,
     ) -> None:
         self.command = command
         self.timeout_sec = timeout_sec
+        self.cwd = cwd
         self.runner = runner or _run_subprocess
 
     async def search(self, request: ResearchRequest) -> ResearchResult:
@@ -128,14 +131,20 @@ class ResearchMcpClient:
         )
         started = time.monotonic()
         logger.info(
-            "Research MCP subprocess starting query=%r mode=%s command=%s timeout_sec=%.1f",
+            "Research MCP subprocess starting query=%r mode=%s command=%s cwd=%s timeout_sec=%.1f",
             request.normalized_query(),
             request.mode,
             " ".join(self.command),
+            str(self.cwd) if self.cwd is not None else None,
             self.timeout_sec,
         )
         try:
-            stdout = await self.runner(list(self.command), stdin_text + "\n", self.timeout_sec)
+            stdout = await self.runner(
+                list(self.command),
+                stdin_text + "\n",
+                self.timeout_sec,
+                self.cwd,
+            )
         except TimeoutError as exc:
             elapsed_ms = (time.monotonic() - started) * 1000
             logger.warning(
@@ -166,13 +175,14 @@ class ResearchMcpClient:
         elapsed_ms = (time.monotonic() - started) * 1000
         logger.info(
             "Research MCP subprocess completed query=%r status=%s speakable=%s "
-            "elapsed_ms=%.1f trace_id=%s artifact=%s",
+            "elapsed_ms=%.1f trace_id=%s artifact=%s error_reason=%r",
             result.query,
             result.status,
             result.is_speakable(),
             elapsed_ms,
             result.provider_trace_id,
             result.raw_artifact_path,
+            result.error_reason,
         )
         return result
 
@@ -235,6 +245,15 @@ class ResearchCommandRunner:
 
     async def run_command(self, command: SessionCommand) -> TransitionResult | None:
         if command.type != "submit_research_request":
+            if command.type == "start_research_notice_reply":
+                await self.session.start_precomputed_reply(
+                    text=str(command.payload.get("text") or ""),
+                    device_id=str(command.payload.get("device_id") or "unknown"),
+                    reason="research_result_notice",
+                    candidate_source="research",
+                    candidate_id=command.payload.get("request_id"),
+                    output_lane="reply_turn",
+                )
             return None
         request = command.payload.get("request")
         if not isinstance(request, ResearchRequest):
@@ -266,17 +285,19 @@ class ResearchCommandRunner:
         await self._ingest_result(result)
         logger.info(
             "Research command runner finished request request_id=%s status=%s "
-            "speakable=%s trace_id=%s",
+            "speakable=%s trace_id=%s error_reason=%r",
             request_id,
             result.status,
             result.is_speakable(),
             result.provider_trace_id,
+            result.error_reason,
         )
         return await self.session.post_event(
             SessionEvent(
                 type="research_result_ready",
                 payload={
                     "request_id": command.payload.get("request_id"),
+                    "device_id": command.payload.get("device_id"),
                     "result": result,
                 },
             )
@@ -364,13 +385,19 @@ def parse_mcp_tool_call_response(
     return _research_result_from_payload(structured, fallback_query=fallback_query)
 
 
-async def _run_subprocess(command: list[str], stdin_text: str, timeout_sec: float) -> str:
+async def _run_subprocess(
+    command: list[str],
+    stdin_text: str,
+    timeout_sec: float,
+    cwd: Path | None,
+) -> str:
     started = time.monotonic()
     process = await asyncio.create_subprocess_exec(
         *command,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        cwd=str(cwd) if cwd is not None else None,
     )
     try:
         stdout, stderr = await asyncio.wait_for(
@@ -530,7 +557,10 @@ def is_research_answer_request(text: str, *, query: str | None = None) -> bool:
         return _research_query_overlaps_text(query=query, text=compact)
     if query is None:
         return True
-    return True
+    text_terms = _research_answer_topic_terms(compact)
+    if not text_terms:
+        return True
+    return _research_query_overlaps_text(query=query, text=" ".join(text_terms))
 
 
 def _research_query_overlaps_text(*, query: str, text: str) -> bool:
@@ -554,6 +584,32 @@ def _research_query_terms(query: str) -> tuple[str, ...]:
         "について",
         "こと",
         "ある",
+    ):
+        compact = compact.replace(noise, " ")
+    terms = [
+        term.strip(" 、。,.!?！？のをがにはとも")
+        for term in compact.split()
+        if term.strip()
+    ]
+    return tuple(term for term in terms if len(term) >= 2)
+
+
+def _research_answer_topic_terms(text: str) -> tuple[str, ...]:
+    compact = _normalize_text(text).replace(" ", "")
+    for noise in (
+        "ともこ",
+        "トモコ",
+        "智子",
+        "教えて",
+        "聞かせて",
+        "結果",
+        "内容",
+        "読んで",
+        "お願い",
+        "はい",
+        "うん",
+        "について",
+        "こと",
     ):
         compact = compact.replace(noise, " ")
     terms = [

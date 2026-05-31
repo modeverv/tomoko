@@ -172,8 +172,8 @@ TomoroSession が所有するもの:
 | 会話 fallback | `local_gemma4_e2b_mlx` | MLX の `mlx-community/gemma-4-e2b-it-4bit` |
 | session summary | `lmstudio_gemma4_26b_a4b` | online hot path ではなく background |
 | short memory extraction | `lmstudio_gemma4_31b` | post-reply background lane |
-| STT | `local_whisper_mlx_large_turbo_q4` | MLX Whisper large turbo q4 |
-| STT 比較候補 | `local_apple_speech_ja` | macOS Speech framework |
+| STT | `local_apple_speech_ja` | macOS Speech framework |
+| STT 比較候補 | `local_whisper_mlx_large_turbo_q4` | MLX Whisper large turbo q4 |
 | STT 比較候補 | `local_whisperkit_serve_large_turbo_632m_cpu_ne` | WhisperKit serve + CPU/ANE |
 | VAD | `silero_vad` | 16kHz / 32ms chunk |
 | TTS | `voicevox_tsumugi` | VOICEVOX Engine speaker id 8 |

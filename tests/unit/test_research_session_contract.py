@@ -144,7 +144,9 @@ async def test_research_command_runner_posts_result_ready_event() -> None:
     assert events[1]["type"] == "research_result_ready"
     assert events[1]["status"] == "completed"
     assert events[1]["speakable"] is True
-    assert events[1]["notice_text"] == "調べ終わったよ。聞く？"
+    assert events[1]["notice_text"] == "調べ終わったよ。結果を教えてって言ってね。"
+    reply_event = next(event for event in events if event["type"] == "reply_text")
+    assert reply_event["delta"] == "調べ終わったよ。結果を教えてって言ってね。"
 
 
 @pytest.mark.unit
@@ -304,7 +306,7 @@ async def test_process_transcript_starts_llm_wait_reply_for_research_request() -
 
 
 @pytest.mark.unit
-async def test_research_result_ready_failure_does_not_claim_speakable() -> None:
+async def test_research_result_ready_failure_starts_failure_notice_reply() -> None:
     session = _session()
 
     result = await session.post_event(
@@ -321,11 +323,48 @@ async def test_research_result_ready_failure_does_not_claim_speakable() -> None:
         )
     )
 
-    assert result.commands == []
     assert result.emissions[0].type == "research_result_ready"
     assert result.emissions[0].payload["status"] == "needs_human"
     assert result.emissions[0].payload["speakable"] is False
     assert result.emissions[0].payload["notice_text"] == "調べきれなかったみたい。"
+    assert [command.type for command in result.commands] == [
+        "start_research_notice_reply"
+    ]
+    assert result.commands[0].payload["text"] == "調べきれなかったみたい。"
+
+
+@pytest.mark.unit
+async def test_research_result_ready_completed_starts_notice_reply() -> None:
+    session = _session()
+
+    result = await session.post_event(
+        SessionEvent(
+            type="research_result_ready",
+            payload={
+                "request_id": "research-1",
+                "device_id": "desk",
+                "result": ResearchResult(
+                    status="completed",
+                    query="OpenAI",
+                    short_answer="OpenAIの短い調査結果です。",
+                ),
+            },
+        )
+    )
+
+    assert result.emissions[0].type == "research_result_ready"
+    assert (
+        result.emissions[0].payload["notice_text"]
+        == "調べ終わったよ。結果を教えてって言ってね。"
+    )
+    assert [command.type for command in result.commands] == [
+        "start_research_notice_reply"
+    ]
+    assert result.commands[0].payload["text"] == (
+        "調べ終わったよ。結果を教えてって言ってね。"
+    )
+    assert result.commands[0].payload["device_id"] == "desk"
+    assert result.commands[0].payload["request_id"] == "research-1"
 
 
 @pytest.mark.unit
@@ -393,6 +432,33 @@ async def test_process_transcript_routes_teach_me_followup_to_research_answer() 
     assert "research_answer_requested" in event_types
     assert "reply_text" in event_types
     assert "reply_done" in event_types
+    reply_text = next(event for event in events if event["type"] == "reply_text")
+    assert reply_text["delta"] == "OpenAIの短い調査結果です。"
+
+
+@pytest.mark.unit
+async def test_process_transcript_routes_result_teach_me_followup_to_research_answer() -> None:
+    events: list[dict[str, object]] = []
+    session = _session(events)
+    await session.post_event(
+        SessionEvent(
+            type="research_result_ready",
+            payload={
+                "request_id": "research-1",
+                "result": ResearchResult(
+                    status="completed",
+                    query="OpenAI news",
+                    short_answer="OpenAIの短い調査結果です。",
+                    fetched_at=datetime(2026, 5, 31, tzinfo=UTC),
+                ),
+            },
+        )
+    )
+
+    await session.process_transcript(_transcript("結果を教えて"))
+
+    event_types = [event["type"] for event in events]
+    assert "research_answer_requested" in event_types
     reply_text = next(event for event in events if event["type"] == "reply_text")
     assert reply_text["delta"] == "OpenAIの短い調査結果です。"
 

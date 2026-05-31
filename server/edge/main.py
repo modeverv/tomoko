@@ -241,11 +241,13 @@ def _create_default_research_mcp_client() -> ResearchMcpClient:
     command_text = os.environ.get("TOMOKO_RESEARCH_MCP_COMMAND")
     if command_text:
         command = tuple(shlex.split(command_text))
+        cwd = None
     else:
-        operator_dir = WORK_DIR.parent / "tomoko-research-operator"
-        command = ("uv", "--directory", str(operator_dir), "run", "tomoko-research-mcp")
+        operator_dir = ROOT_DIR.parent / "tomoko-research-operator"
+        command = ("uv", "run", "tomoko-research-mcp")
+        cwd = operator_dir
     timeout_sec = float(os.environ.get("TOMOKO_RESEARCH_MCP_TIMEOUT_SEC", "180"))
-    return ResearchMcpClient(command=command, timeout_sec=timeout_sec)
+    return ResearchMcpClient(command=command, timeout_sec=timeout_sec, cwd=cwd)
 
 
 @app.websocket("/ws")

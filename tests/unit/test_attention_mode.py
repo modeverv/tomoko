@@ -235,6 +235,26 @@ async def test_engaged_filters_low_confidence_followup_without_extending_attenti
 
 
 @pytest.mark.unit
+async def test_default_engaged_timeout_waits_twenty_seconds_before_cooldown() -> None:
+    events: list[dict[str, str]] = []
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.0] * 625), silence_ms=400),
+        send_event=events.append,
+        participation_judge=WakeWordJudge(),
+    )
+    await session._transition_attention("engaged")
+
+    for _ in range(624):
+        await session.process_audio_chunk(np.zeros(512, dtype=np.float32).tobytes())
+    assert session.attention_mode == "engaged"
+
+    await session.process_audio_chunk(np.zeros(512, dtype=np.float32).tobytes())
+
+    assert session.attention_mode == "cooldown"
+    assert {"type": "attention", "mode": "cooldown"} in events
+
+
+@pytest.mark.unit
 async def test_attention_decays_from_engaged_to_cooldown_to_ambient() -> None:
     events: list[dict[str, str]] = []
     session = TomoroSession(

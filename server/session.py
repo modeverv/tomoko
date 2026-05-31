@@ -124,6 +124,8 @@ from server.shared.persona import PersonaSnapshotStore
 
 SessionState = Literal["idle", "listening", "processing"]
 OutputFloorPolicy = Literal["ambient_idle"]
+DEFAULT_ENGAGED_TIMEOUT_MS = 20_000
+DEFAULT_COOLDOWN_TIMEOUT_MS = 8_000
 
 _CONVERSATION_LOG_OUTPUT_LANES: tuple[OutputLane, ...] = (
     "reply_turn",
@@ -183,8 +185,8 @@ class TomoroSession:
         connected_output_state: ConnectedOutputState | None = None,
         memory_gate: MemoryGate | None = None,
         audio_interaction_tap: AudioInteractionTap | None = None,
-        engaged_timeout_ms: int = 8000,
-        cooldown_timeout_ms: int = 8000,
+        engaged_timeout_ms: int = DEFAULT_ENGAGED_TIMEOUT_MS,
+        cooldown_timeout_ms: int = DEFAULT_COOLDOWN_TIMEOUT_MS,
         playback_echo_grace_ms: int = 1200,
     ) -> None:
         self.vad_processor = vad_processor
@@ -823,6 +825,7 @@ class TomoroSession:
                     payload={
                         "request_id": request_id,
                         "request": request,
+                        "device_id": event.payload.get("device_id"),
                     },
                 )
             ],
@@ -836,31 +839,50 @@ class TomoroSession:
                 payload={"reason": "invalid_result"},
             )
         speakable = result.is_speakable()
+        request_id = event.payload.get("request_id")
+        notice_text = (
+            "調べ終わったよ。結果を教えてって言ってね。"
+            if speakable
+            else "調べきれなかったみたい。"
+        )
         if speakable:
             self._pending_research_request_id = optional_str_payload(
-                event.payload.get("request_id")
+                request_id
             )
             self._pending_research_result = result
         else:
             self._pending_research_request_id = None
             self._pending_research_result = None
+        commands = [
+            SessionCommand(
+                type="start_research_notice_reply",
+                payload={
+                    "request_id": request_id,
+                    "text": notice_text,
+                    "device_id": (
+                        event.payload.get("device_id")
+                        or self._connected_output_state.active_device_id
+                        or "unknown"
+                    ),
+                },
+            )
+        ]
         return self._transition_result(
             "research_result_ready",
             payload={
-                "request_id": event.payload.get("request_id"),
+                "request_id": request_id,
                 "status": result.status,
                 "query": result.query,
                 "provider": result.provider,
                 "speakable": speakable,
-                "notice_text": "調べ終わったよ。聞く？"
-                if speakable
-                else "調べきれなかったみたい。",
+                "notice_text": notice_text,
                 "short_answer": result.short_answer if speakable else "",
                 "citation_count": len(result.citations),
                 "provider_trace_id": result.provider_trace_id,
                 "raw_artifact_path": result.raw_artifact_path,
                 "error_reason": result.error_reason,
             },
+            commands=commands,
         )
 
     def _reduce_research_answer_requested(self, event: SessionEvent) -> TransitionResult:
@@ -1214,6 +1236,12 @@ class TomoroSession:
             if self.router is not None and self.thinking_mode is not None:
                 await self._start_reply_task(transcript)
         else:
+            if decision is not None:
+                logger.info(
+                    "TomoroSession participation mode=%s reason=%s",
+                    decision.mode,
+                    decision.reason,
+                )
             await self._send_transcript_final_event(
                 transcript,
                 attention_mode=previous_attention,
@@ -1339,7 +1367,7 @@ class TomoroSession:
         result = await self.post_event(
             SessionEvent(
                 type="research_requested",
-                payload={"request": request},
+                payload={"request": request, "device_id": transcript.device_id},
             )
         )
         await self._dispatch_research_transition_result(result)
@@ -2481,6 +2509,17 @@ class TomoroSession:
                     text=text,
                     device_id=device_id,
                     reason="research_answer",
+                    candidate_source="research",
+                    candidate_id=command.payload.get("request_id"),
+                    output_lane="reply_turn",
+                )
+            elif command.type == "start_research_notice_reply":
+                text = str(command.payload.get("text") or "")
+                device_id = str(command.payload.get("device_id") or "unknown")
+                await self.start_precomputed_reply(
+                    text=text,
+                    device_id=device_id,
+                    reason="research_result_notice",
                     candidate_source="research",
                     candidate_id=command.payload.get("request_id"),
                     output_lane="reply_turn",

@@ -103,6 +103,22 @@ async def test_engaged_followup_filters_quiet_short_phrase() -> None:
 
 
 @pytest.mark.unit
+async def test_engaged_followup_keeps_quiet_complete_sentence() -> None:
+    judge = WakeWordJudge()
+
+    result = await judge.judge(
+        ParticipationContext(
+            transcript="もうかなり夜遅いやん",
+            attention_mode="engaged",
+            audio_level_db=-31.0,
+        )
+    )
+
+    assert result.should_participate is True
+    assert result.mode == "invited"
+
+
+@pytest.mark.unit
 async def test_engaged_followup_filters_short_unfinished_fragment() -> None:
     judge = WakeWordJudge()
 

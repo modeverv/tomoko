@@ -23,7 +23,7 @@ def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation(
     assert config.inference.persona_update_backend == "lmstudio_gemma4_31b"
     assert config.inference.persona_update_fallback == "local_gemma4_e2b_mlx"
     assert config.audio.vad_silence_ms == 800
-    assert config.inference.stt_backend == "local_whisper_mlx_large_turbo_q4"
+    assert config.inference.stt_backend == "local_apple_speech_ja"
     assert config.inference.tts_backend == "voicevox_tsumugi"
     assert config.inference.embedding_backend == "local_bge_m3"
     assert config.inference.speech_normalizer_enabled is False
@@ -71,9 +71,10 @@ def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation(
     assert mlx_stt_backend.model == "mlx-community/whisper-large-v3-turbo-q4"
 
     active_stt_backend = config.backends[config.inference.stt_backend]
-    assert active_stt_backend.type == "mlx_whisper"
-    assert active_stt_backend.model == "mlx-community/whisper-large-v3-turbo-q4"
-    assert active_stt_backend.streaming is True
+    assert active_stt_backend.type == "apple_speech"
+    assert active_stt_backend.language == "ja-JP"
+    assert active_stt_backend.on_device is True
+    assert active_stt_backend.streaming is False
 
     apple_speech_backend = config.backends["local_apple_speech_ja"]
     assert apple_speech_backend.type == "apple_speech"

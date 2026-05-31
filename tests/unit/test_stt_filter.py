@@ -96,6 +96,16 @@ def test_filter_accepts_low_audio_clock_query() -> None:
 
 
 @pytest.mark.unit
+def test_filter_accepts_low_audio_research_result_followup_phrase() -> None:
+    decision = TranscriptFilter().evaluate(
+        _transcript("結果を教えて", audio_level_db=-37.0)
+    )
+
+    assert decision.action == "accept"
+    assert decision.reason == "accepted"
+
+
+@pytest.mark.unit
 def test_filter_accepts_low_audio_complete_sentence() -> None:
     decision = TranscriptFilter().evaluate(
         _transcript("大変良いと思いますよ私は", audio_level_db=-35.6)

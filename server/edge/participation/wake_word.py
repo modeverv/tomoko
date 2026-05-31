@@ -80,7 +80,7 @@ def _looks_like_low_confidence_followup(ctx: ParticipationContext) -> bool:
         return True
     if _looks_like_unfinished_continuation_tail(text):
         return True
-    if ctx.audio_level_db is not None and ctx.audio_level_db <= -30.0 and len(text) <= 20:
+    if ctx.audio_level_db is not None and ctx.audio_level_db <= -30.0 and len(text) <= 6:
         return True
     return False
 

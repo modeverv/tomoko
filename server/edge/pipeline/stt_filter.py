@@ -63,6 +63,8 @@ class TranscriptFilter:
             return "known_hallucination_phrase"
         if _looks_like_clock_query(text):
             return None
+        if _looks_like_command_phrase(text):
+            return None
         if (
             transcript.audio_level_db <= -30.0
             and len(normalized) <= self.LOW_AUDIO_SHORT_MAX_CHARS
@@ -119,6 +121,13 @@ def _looks_like_clock_query(text: str) -> bool:
         or "何時かわかる" in normalized
         or normalized in {"何時", "時刻", "現在時刻"}
     )
+
+
+def _looks_like_command_phrase(text: str) -> bool:
+    normalized = _normalize_text(text).rstrip("。？！!?")
+    return normalized in {
+        "結果を教えて",
+    }
 
 
 def _looks_like_repetition_loop(text: str) -> bool:

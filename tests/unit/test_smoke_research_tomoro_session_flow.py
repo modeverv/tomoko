@@ -24,11 +24,14 @@ async def test_tomoro_session_research_smoke_runs_wait_reply_and_followup(
     assert loaded["detected_query"] == "オバマ大統領について"
     assert loaded["wait_prompt_has_response_directive"] is True
     assert loaded["wait_prompt_forbids_answering"] is True
-    assert loaded["wait_reply_text"] == "調べてみるね。少し待って。"
+    assert loaded["wait_reply_text"] == (
+        "調べてみるね。少し待って。"
+        "調べ終わったよ。結果を教えてって言ってね。"
+    )
     assert loaded["answer_requested"] is True
     assert loaded["answer_reply_text"] == (
         "オバマ大統領について について調べたよ。"
         "バラク・オバマはアメリカ合衆国の第44代大統領です。"
     )
     assert loaded["ingested_research_count"] == 1
-    assert loaded["reply_done_count"] == 2
+    assert loaded["reply_done_count"] == 3
