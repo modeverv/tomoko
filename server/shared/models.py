@@ -31,6 +31,13 @@ BackchannelSuggestionKind = Literal[
     "floor_take",
 ]
 PlaybackEventType = Literal["playback_started", "playback_ended"]
+OutputLane = Literal[
+    "reply_turn",
+    "initiative_turn",
+    "gesture_audio",
+    "stop_ack",
+    "interrupting_turn",
+]
 TranscriptFilterAction = Literal["accept", "suppress_partial", "drop"]
 ConversationLogStatus = Literal["completed", "interrupted", "cancelled", "error"]
 SummaryStatus = Literal["not_ready", "pending", "processing", "completed", "error"]

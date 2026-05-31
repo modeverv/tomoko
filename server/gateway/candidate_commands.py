@@ -181,6 +181,7 @@ class CandidateCommandRunner:
                 candidate_source=command.payload.get("candidate_source"),
                 candidate_id=command.payload.get("candidate_id")
                 or command.payload.get("arrival_candidate_id"),
+                output_lane=command.payload.get("output_lane", "initiative_turn"),
             )
             return None
 

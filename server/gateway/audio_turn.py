@@ -5,7 +5,14 @@ import struct
 import time
 import uuid
 
-from server.shared.models import AudioChunkOut, PlaybackTelemetry
+from server.shared.models import AudioChunkOut, OutputLane, PlaybackTelemetry
+
+TURN_AUDIO_OUTPUT_LANES: tuple[OutputLane, ...] = (
+    "reply_turn",
+    "initiative_turn",
+    "stop_ack",
+    "interrupting_turn",
+)
 
 
 class AudioTurnController:
@@ -60,7 +67,9 @@ class AudioTurnController:
             return "echo_grace"
         return "idle"
 
-    def begin_turn(self) -> None:
+    def begin_turn(self, *, lane: OutputLane = "reply_turn") -> None:
+        if lane not in TURN_AUDIO_OUTPUT_LANES:
+            raise ValueError(f"output lane does not use AudioTurnController: {lane}")
         self._active_audio_turn_id = uuid.uuid4().hex
         self._audio_turn_started = False
         self._audio_turn_ended = False

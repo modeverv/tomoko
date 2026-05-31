@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from server.edge.pipeline.vad import VADProcessor
-from server.session import TomoroSession
+from server.session import TomoroSession, conversation_log_writes_output_lane
 from server.shared.candidate import ArrivalCandidate, ArrivalContextSnapshot, UtteranceCandidate
 from server.shared.models import CandidateSpeakDecision, ConnectedOutputState, SessionEvent
 
@@ -150,6 +150,7 @@ async def test_loaded_initiative_candidate_starts_reply_and_marks_spoken() -> No
         "mark_utterance_spoken",
     ]
     assert result.commands[0].payload["candidate_id"] == candidate.id
+    assert result.commands[0].payload["output_lane"] == "initiative_turn"
     assert result.commands[0].payload["text"] == candidate.generated_text
     assert result.commands[0].payload["candidate_source"] == candidate.source
     assert result.commands[1].payload["candidate_id"] == candidate.id
@@ -183,6 +184,8 @@ async def test_loaded_initiative_candidate_final_gate_blocks_runtime_state(
     assert result.commands == []
     assert result.emissions[0].payload["reason"] == "not_speakable"
     assert result.emissions[0].payload["gate_reason"] == gate_reason
+    assert result.emissions[0].payload["output_lane"] == "initiative_turn"
+    assert result.emissions[0].payload["floor_policy"] == "ambient_idle"
 
 
 @pytest.mark.unit
@@ -265,6 +268,7 @@ async def test_arrival_speak_first_starts_reply_and_marks_used() -> None:
         "mark_arrival_used",
     ]
     assert result.commands[0].payload["arrival_candidate_id"] == candidate.id
+    assert result.commands[0].payload["output_lane"] == "initiative_turn"
     assert result.commands[0].payload["text"] == candidate.utterance_text
     assert result.commands[0].payload["candidate_source"] == "arrival"
     assert result.commands[1].payload["arrival_candidate_id"] == candidate.id
@@ -299,6 +303,15 @@ async def test_initiative_reply_does_not_start_conversation_session() -> None:
 
     assert store.created == []
     assert session.active_conversation_session_id is None
+
+
+@pytest.mark.unit
+def test_conversation_log_output_lane_policy_is_explicit() -> None:
+    assert conversation_log_writes_output_lane("reply_turn") is True
+    assert conversation_log_writes_output_lane("initiative_turn") is True
+    assert conversation_log_writes_output_lane("interrupting_turn") is True
+    assert conversation_log_writes_output_lane("gesture_audio") is False
+    assert conversation_log_writes_output_lane("stop_ack") is False
 
 
 @pytest.mark.unit

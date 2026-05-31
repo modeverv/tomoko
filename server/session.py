@@ -96,6 +96,7 @@ from server.shared.models import (
     ConversationLogStatus,
     ConversationTurn,
     MemoryHit,
+    OutputLane,
     ParticipationContext,
     ParticipationMode,
     PlaybackTelemetry,
@@ -116,6 +117,17 @@ from server.shared.models import (
 from server.shared.persona import PersonaSnapshotStore
 
 SessionState = Literal["idle", "listening", "processing"]
+OutputFloorPolicy = Literal["ambient_idle"]
+
+_CONVERSATION_LOG_OUTPUT_LANES: tuple[OutputLane, ...] = (
+    "reply_turn",
+    "initiative_turn",
+    "interrupting_turn",
+)
+
+
+def conversation_log_writes_output_lane(lane: OutputLane) -> bool:
+    return lane in _CONVERSATION_LOG_OUTPUT_LANES
 
 logger = logging.getLogger(__name__)
 
@@ -509,6 +521,7 @@ class TomoroSession:
                         "reason": "initiative",
                         "start_reason": "initiative",
                         "started_by": "initiative",
+                        "output_lane": "initiative_turn",
                     },
                 ),
                 SessionCommand(
@@ -610,6 +623,7 @@ class TomoroSession:
                         "reason": "arrival",
                         "start_reason": "arrival",
                         "started_by": "arrival",
+                        "output_lane": "initiative_turn",
                     },
                 ),
                 mark_used,
@@ -620,6 +634,21 @@ class TomoroSession:
         return self._candidate_reply_gate_reason() is None
 
     def _candidate_reply_gate_reason(self) -> str | None:
+        return self._output_floor_gate_reason(
+            lane="initiative_turn",
+            floor_policy="ambient_idle",
+        )
+
+    def _output_floor_gate_reason(
+        self,
+        *,
+        lane: OutputLane,
+        floor_policy: OutputFloorPolicy,
+    ) -> str | None:
+        if lane == "gesture_audio":
+            return "not_turn_audio"
+        if floor_policy != "ambient_idle":
+            raise ValueError(f"unknown output floor policy: {floor_policy}")
         if self.attention_mode != "ambient":
             return "attention_not_ambient"
         if self.state != "idle":
@@ -633,6 +662,8 @@ class TomoroSession:
     def _candidate_reply_gate_payload(self, gate_reason: str) -> dict[str, object]:
         return {
             "gate_reason": gate_reason,
+            "output_lane": "initiative_turn",
+            "floor_policy": "ambient_idle",
             "attention_mode": self.attention_mode,
             "vad_state": self.state,
             "playback_state": self.audio_turns.playback_state,
@@ -1534,7 +1565,7 @@ class TomoroSession:
             context_snapshot=context_snapshot,
         )
         reply = ReplyPipeline(initial_emotion=thinking_input.emotion)
-        self.audio_turns.begin_turn()
+        self.audio_turns.begin_turn(lane="reply_turn")
         tts_queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
         tts_worker = asyncio.create_task(self._run_tts_queue(tts_queue))
         self._tts_queue = tts_queue
@@ -1580,6 +1611,7 @@ class TomoroSession:
                                 emotion=reply.current_emotion,
                                 device_id=transcript.device_id,
                                 status="completed",
+                                output_lane="reply_turn",
                             )
                         await self._send_reserved_audio_end()
                         await self._send_event({"type": "reply_done"})
@@ -1599,6 +1631,7 @@ class TomoroSession:
                     emotion=reply.current_emotion,
                     device_id=transcript.device_id,
                     status=self._reply_cancel_status or "cancelled",
+                    output_lane="reply_turn",
                 )
             raise
         finally:
@@ -1661,6 +1694,7 @@ class TomoroSession:
         feedback_scope: CandidateFeedbackScope | None = None,
         candidate_source: object | None = None,
         candidate_id: object | None = None,
+        output_lane: OutputLane = "initiative_turn",
     ) -> None:
         """Speak a text-ready initiative/arrival candidate through the normal output path."""
         stripped_text = text.strip()
@@ -1685,7 +1719,7 @@ class TomoroSession:
         await self._transition_attention("engaged")
         self._latency_probe.mark_reply_output_started()
         await self._send_event({"type": "reply_text", "delta": stripped_text})
-        self.audio_turns.begin_turn()
+        self.audio_turns.begin_turn(lane=output_lane)
         try:
             if audio_data is None:
                 await self._flush_tts_text(stripped_text, style="neutral")
@@ -1701,6 +1735,7 @@ class TomoroSession:
                 emotion="neutral",
                 device_id=device_id,
                 status="completed",
+                output_lane=output_lane,
             )
             await self._send_reserved_audio_end()
             await self._send_event({"type": "reply_done"})
@@ -2090,7 +2125,7 @@ class TomoroSession:
     async def _apply_stop_intent_ack(self) -> None:
         await self._cancel_reply_generation(status="interrupted")
         await self._send_reserved_audio_stop()
-        self.audio_turns.begin_turn()
+        self.audio_turns.begin_turn(lane="stop_ack")
         await self._send_reserved_audio_start()
         chunk = self.stop_ack_audio_provider.chunk()
         outgoing = await self.audio_turns.reserve_audio_chunk(
@@ -2400,8 +2435,16 @@ class TomoroSession:
         emotion: str,
         device_id: str,
         status: ConversationLogStatus,
+        output_lane: OutputLane = "reply_turn",
     ) -> None:
         if self.conversation_log_writer is None:
+            return
+        if not conversation_log_writes_output_lane(output_lane):
+            logger.info(
+                "TomoroSession conversation log skipped output_lane=%s status=%s",
+                output_lane,
+                status,
+            )
             return
         write_tomoko_turn = self.conversation_log_writer.write_tomoko_turn
         if _accepts_keyword(write_tomoko_turn, "conversation_session_id"):

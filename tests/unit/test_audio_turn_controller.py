@@ -5,13 +5,32 @@ import asyncio
 import pytest
 
 from server.gateway.audio_turn import AudioTurnController
-from server.shared.models import AudioChunkOut, PlaybackTelemetry
+from server.shared.models import AudioChunkOut, OutputLane, PlaybackTelemetry
+
+
+@pytest.mark.unit
+def test_output_lane_names_are_fixed() -> None:
+    lanes: tuple[OutputLane, ...] = (
+        "reply_turn",
+        "initiative_turn",
+        "gesture_audio",
+        "stop_ack",
+        "interrupting_turn",
+    )
+
+    assert lanes == (
+        "reply_turn",
+        "initiative_turn",
+        "gesture_audio",
+        "stop_ack",
+        "interrupting_turn",
+    )
 
 
 @pytest.mark.unit
 async def test_audio_turn_controller_reserves_start_and_end_for_same_turn() -> None:
     controller = AudioTurnController()
-    controller.begin_turn()
+    controller.begin_turn(lane="reply_turn")
 
     start = await controller.reserve_start_event()
     duplicate_start = await controller.reserve_start_event()
@@ -23,6 +42,14 @@ async def test_audio_turn_controller_reserves_start_and_end_for_same_turn() -> N
     assert duplicate_start is None
     assert end == {"type": "audio_end", "turn_id": start["turn_id"]}
     assert duplicate_end is None
+
+
+@pytest.mark.unit
+async def test_audio_turn_controller_rejects_gesture_audio_lane() -> None:
+    controller = AudioTurnController()
+
+    with pytest.raises(ValueError, match="gesture_audio"):
+        controller.begin_turn(lane="gesture_audio")
 
 
 @pytest.mark.unit
