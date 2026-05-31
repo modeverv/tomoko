@@ -6,6 +6,7 @@ import json
 import shlex
 import sys
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +23,7 @@ from server.gateway.research import (  # noqa: E402
     ResearchMcpClient,
 )
 from server.session import TomoroSession  # noqa: E402
-from server.shared.models import ConnectedOutputState, SessionEvent  # noqa: E402
+from server.shared.models import ConnectedOutputState, SessionEvent, Transcript  # noqa: E402
 
 
 class QuietVad:
@@ -35,6 +36,7 @@ async def run_research_smoke(
     *,
     speech_text: str,
     command: tuple[str, ...] | None = None,
+    answer_followup_text: str | None = "教えて",
     timeout_sec: float = 10.0,
     output_path: Path | None = None,
 ) -> dict[str, Any]:
@@ -57,6 +59,7 @@ async def run_research_smoke(
                 events=events,
                 request=request,
                 command=(sys.executable, str(fake_script)),
+                answer_followup_text=answer_followup_text,
                 timeout_sec=timeout_sec,
             )
     else:
@@ -65,6 +68,7 @@ async def run_research_smoke(
             events=events,
             request=request,
             command=command,
+            answer_followup_text=answer_followup_text,
             timeout_sec=timeout_sec,
         )
 
@@ -89,6 +93,7 @@ async def _run_flow(
     events: list[dict[str, Any]],
     request,
     command: tuple[str, ...],
+    answer_followup_text: str | None,
     timeout_sec: float,
 ) -> dict[str, Any]:
     accepted = await session.post_event(
@@ -99,14 +104,34 @@ async def _run_flow(
         client=ResearchMcpClient(command=command, timeout_sec=timeout_sec),
     )
     await runner.run_result(accepted)
+    if answer_followup_text is not None:
+        await session.process_transcript(
+            Transcript(
+                text=answer_followup_text,
+                device_id="desk",
+                speaker=None,
+                audio_level_db=-20.0,
+                recorded_at=datetime.now(UTC),
+                is_final=True,
+            )
+        )
 
     result_events = [event for event in events if event.get("type") == "research_result_ready"]
     ready = result_events[-1] if result_events else {}
+    reply_text_deltas = [
+        str(event.get("delta")) for event in events if event.get("type") == "reply_text"
+    ]
     return {
         "ok": bool(ready.get("speakable")),
         "command": list(command),
         "command_count": len(accepted.commands),
         "event_types": [str(event.get("type")) for event in events],
+        "answer_followup_text": answer_followup_text,
+        "answer_requested": any(
+            event.get("type") == "research_answer_requested" for event in events
+        ),
+        "reply_text_deltas": reply_text_deltas,
+        "reply_done_count": sum(1 for event in events if event.get("type") == "reply_done"),
         "status": ready.get("status"),
         "speakable": ready.get("speakable"),
         "notice_text": ready.get("notice_text"),
@@ -181,6 +206,14 @@ def _parse_args() -> argparse.Namespace:
             "'uv --directory ../tomoko-research-operator run tomoko-research-mcp'"
         ),
     )
+    parser.add_argument(
+        "--answer-followup",
+        default="教えて",
+        help=(
+            "Optional follow-up text to simulate after result-ready. "
+            "Use an empty string to skip answer simulation."
+        ),
+    )
     parser.add_argument("--timeout-sec", type=float, default=10.0)
     parser.add_argument(
         "--output",
@@ -196,6 +229,7 @@ async def _main() -> int:
     summary = await run_research_smoke(
         speech_text=args.speech,
         command=command,
+        answer_followup_text=args.answer_followup or None,
         timeout_sec=args.timeout_sec,
         output_path=args.output,
     )

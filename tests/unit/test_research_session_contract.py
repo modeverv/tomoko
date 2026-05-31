@@ -13,7 +13,7 @@ from server.gateway.research import (
     ResearchResult,
 )
 from server.session import TomoroSession
-from server.shared.models import ConnectedOutputState, SessionEvent
+from server.shared.models import ConnectedOutputState, SessionEvent, Transcript
 
 
 class QuietVAD:
@@ -39,6 +39,17 @@ def _session(events: list[dict[str, object]] | None = None) -> TomoroSession:
         vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
         send_event=events.append,
         connected_output_state=ConnectedOutputState.single_client(device_id="desk"),
+    )
+
+
+def _transcript(text: str) -> Transcript:
+    return Transcript(
+        text=text,
+        device_id="desk",
+        speaker=None,
+        audio_level_db=-20.0,
+        recorded_at=datetime(2026, 5, 31, tzinfo=UTC),
+        is_final=True,
     )
 
 
@@ -110,3 +121,72 @@ async def test_research_result_ready_failure_does_not_claim_speakable() -> None:
     assert result.emissions[0].payload["status"] == "needs_human"
     assert result.emissions[0].payload["speakable"] is False
     assert result.emissions[0].payload["notice_text"] == "調べきれなかったみたい。"
+
+
+@pytest.mark.unit
+async def test_research_answer_requested_consumes_pending_result() -> None:
+    session = _session()
+    result = ResearchResult(
+        status="completed",
+        query="OpenAI news",
+        short_answer="OpenAIの短い調査結果です。",
+        citations=(ResearchCitation(title="OpenAI", url="https://openai.com/news/"),),
+        fetched_at=datetime(2026, 5, 31, tzinfo=UTC),
+    )
+    await session.post_event(
+        SessionEvent(
+            type="research_result_ready",
+            payload={"request_id": "research-1", "result": result},
+        )
+    )
+
+    answer = await session.post_event(
+        SessionEvent(
+            type="research_answer_requested",
+            payload={"transcript": _transcript("教えて")},
+        )
+    )
+    skipped = await session.post_event(
+        SessionEvent(
+            type="research_answer_requested",
+            payload={"transcript": _transcript("もう一回教えて")},
+        )
+    )
+
+    assert answer.emissions[0].type == "research_answer_requested"
+    assert answer.emissions[0].payload["short_answer"] == "OpenAIの短い調査結果です。"
+    assert answer.emissions[0].payload["citation_count"] == 1
+    assert [command.type for command in answer.commands] == ["start_research_answer_reply"]
+    assert answer.commands[0].payload["text"] == "OpenAIの短い調査結果です。"
+    assert answer.commands[0].payload["request_id"] == "research-1"
+    assert skipped.emissions[0].type == "research_answer_skipped"
+    assert skipped.emissions[0].payload["reason"] == "no_pending_result"
+
+
+@pytest.mark.unit
+async def test_process_transcript_routes_teach_me_followup_to_research_answer() -> None:
+    events: list[dict[str, object]] = []
+    session = _session(events)
+    await session.post_event(
+        SessionEvent(
+            type="research_result_ready",
+            payload={
+                "request_id": "research-1",
+                "result": ResearchResult(
+                    status="completed",
+                    query="OpenAI news",
+                    short_answer="OpenAIの短い調査結果です。",
+                    fetched_at=datetime(2026, 5, 31, tzinfo=UTC),
+                ),
+            },
+        )
+    )
+
+    await session.process_transcript(_transcript("うん、教えて"))
+
+    event_types = [event["type"] for event in events]
+    assert "research_answer_requested" in event_types
+    assert "reply_text" in event_types
+    assert "reply_done" in event_types
+    reply_text = next(event for event in events if event["type"] == "reply_text")
+    assert reply_text["delta"] == "OpenAIの短い調査結果です。"

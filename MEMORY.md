@@ -3860,3 +3860,18 @@ Tomoko 側の e2e/smoke では、まず fake MCP subprocess を起動して JSON
 structured result parse、TomoroSession emission までを固定する。
 
 実 operator は同じ smoke script に `--command` を渡して任意確認する。
+
+### 確定した判断: Research answer follow-up は LLM ではなく pending result を読む
+2026-05-31 時点では、`research_result_ready` が speakable な場合、TomoroSession が
+pending research result として保持する。
+その直後の「教えて」「聞かせて」「結果を教えて」「はい、お願い」系 transcript は、
+通常 LLM reply へ流さず、filter 後・turn-taking / participation 前に
+`research_answer_requested` として処理する。
+
+`research_answer_requested` は pending result の `short_answer` を
+`start_research_answer_reply` command に載せ、`start_precomputed_reply()` から
+`reply_text` / TTS / `reply_done` へ流す。
+pending result は一度読んだら消費し、同じ result を二重に読まない。
+
+この Phase では DB 永続化と、最初の「調べて」発話を通常 transcript path から
+`research_requested` へ自動接続する処理はまだ行わない。

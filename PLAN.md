@@ -7402,3 +7402,18 @@ deterministic fake MCP subprocess を使う。実 operator への接続は同じ
 - [x] MCP structured result が `research_result_ready` emission として戻る
 - [x] `make smoke-research-mcp` で同じ経路を手動確認できる
 - [x] focused unit / integration / ruff / 実 smoke が通る
+
+## 2026-05-31 Research answer follow-up rule
+
+Research result が返った後、人間の「教えて」系 follow-up を通常 LLM reply に流す方針は否定する。
+TomoroSession が pending research result を持ち、transcript finalize の早い段階で
+`research_answer_requested` に落として、短い調査結果を rule-based に発話する。
+
+### 完了条件
+
+- [x] `research_result_ready` の speakable result が pending として保持される
+- [x] 「教えて」「聞かせて」「結果を教えて」「はい、お願い」が research answer request として検出される
+- [x] pending result がある場合、`research_answer_requested` emission と `start_research_answer_reply` command が出る
+- [x] pending result は一度読んだら消費され、二重読みしない
+- [x] `process_transcript()` で通常 LLM reply より前に research answer follow-up が処理される
+- [x] focused unit / ruff / full unit が通る

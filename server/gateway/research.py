@@ -331,6 +331,26 @@ def _has_research_cue(text: str) -> bool:
     return any(cue in text for cue in ("調べて", "検索して", "調査して", "最新", "今どうなって"))
 
 
+def is_research_answer_request(text: str) -> bool:
+    normalized = _normalize_text(text)
+    if not normalized:
+        return False
+    compact = normalized.replace(" ", "").strip("、。,.!?！？")
+    if compact in {"うん", "はい", "お願い", "聞く", "聞きたい", "おねがい"}:
+        return True
+    return any(
+        cue in compact
+        for cue in (
+            "教えて",
+            "聞かせて",
+            "結果",
+            "内容",
+            "読んで",
+            "お願い",
+        )
+    )
+
+
 def _strip_research_cues(text: str) -> str:
     query = re.sub(r"^(ともこ|トモコ|Tomoko)[、,\s]*", "", text, flags=re.IGNORECASE)
     query = query.replace("調べておいて", "")

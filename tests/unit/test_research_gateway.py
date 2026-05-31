@@ -9,6 +9,7 @@ from server.gateway.research import (
     ResearchMcpClient,
     ResearchRequest,
     ResearchResult,
+    is_research_answer_request,
     parse_mcp_tool_call_response,
 )
 
@@ -29,6 +30,21 @@ def test_research_intent_detector_extracts_search_query() -> None:
 @pytest.mark.parametrize("text", ["なるほどね", "さっきの話なんだけど", "今何時"])
 def test_research_intent_detector_ignores_chitchat(text: str) -> None:
     assert ResearchIntentDetector().detect(text) is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "text",
+    ["教えて", "うん、教えて", "聞かせて", "結果を教えて", "はい、お願い"],
+)
+def test_research_answer_request_detects_followup(text: str) -> None:
+    assert is_research_answer_request(text)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("text", ["なるほどね", "それは違うかも", "今何時"])
+def test_research_answer_request_ignores_unrelated_text(text: str) -> None:
+    assert not is_research_answer_request(text)
 
 
 @pytest.mark.unit

@@ -31,7 +31,11 @@ from server.gateway.initiative_feedback import (
 )
 from server.gateway.reply import ReplyPipeline
 from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
-from server.gateway.research import ResearchRequest, ResearchResult
+from server.gateway.research import (
+    ResearchRequest,
+    ResearchResult,
+    is_research_answer_request,
+)
 from server.gateway.stop_ack import StopAckAudioProvider
 from server.gateway.stop_intent import (
     StopIntentStore,
@@ -227,6 +231,8 @@ class TomoroSession:
         self._event_drain_lock = asyncio.Lock()
         self._candidate_request_sequence = 0
         self._research_request_sequence = 0
+        self._pending_research_request_id: str | None = None
+        self._pending_research_result: ResearchResult | None = None
         self._active_initiative_request_id: str | None = None
         self._active_arrival_request_id: str | None = None
         self._last_start_reason: StartReason | None = None
@@ -348,6 +354,8 @@ class TomoroSession:
             return self._reduce_research_requested(event)
         if event.type == "research_result_ready":
             return self._reduce_research_result_ready(event)
+        if event.type == "research_answer_requested":
+            return self._reduce_research_answer_requested(event)
         if event.type == "stop_intent_classified":
             return self._reduce_stop_intent_classified(event)
         if event.type == "candidate_command_failed":
@@ -801,6 +809,14 @@ class TomoroSession:
                 payload={"reason": "invalid_result"},
             )
         speakable = result.is_speakable()
+        if speakable:
+            self._pending_research_request_id = optional_str_payload(
+                event.payload.get("request_id")
+            )
+            self._pending_research_result = result
+        else:
+            self._pending_research_request_id = None
+            self._pending_research_result = None
         return self._transition_result(
             "research_result_ready",
             payload={
@@ -818,6 +834,46 @@ class TomoroSession:
                 "raw_artifact_path": result.raw_artifact_path,
                 "error_reason": result.error_reason,
             },
+        )
+
+    def _reduce_research_answer_requested(self, event: SessionEvent) -> TransitionResult:
+        transcript = event.payload.get("transcript")
+        if not isinstance(transcript, Transcript):
+            return self._transition_result(
+                "research_answer_skipped",
+                payload={"reason": "invalid_transcript"},
+            )
+        result = self._pending_research_result
+        request_id = self._pending_research_request_id
+        if result is None or not result.is_speakable():
+            return self._transition_result(
+                "research_answer_skipped",
+                payload={"reason": "no_pending_result"},
+            )
+        self._pending_research_result = None
+        self._pending_research_request_id = None
+        return self._transition_result(
+            "research_answer_requested",
+            payload={
+                "request_id": request_id,
+                "query": result.query,
+                "provider": result.provider,
+                "short_answer": result.short_answer,
+                "citation_count": len(result.citations),
+                "provider_trace_id": result.provider_trace_id,
+                "raw_artifact_path": result.raw_artifact_path,
+            },
+            commands=[
+                SessionCommand(
+                    type="start_research_answer_reply",
+                    payload={
+                        "request_id": request_id,
+                        "query": result.query,
+                        "text": result.short_answer,
+                        "device_id": transcript.device_id,
+                    },
+                )
+            ],
         )
 
     def _reduce_transcript_finalized(self, event: SessionEvent) -> TransitionResult:
@@ -1002,6 +1058,12 @@ class TomoroSession:
             await self._transition("idle")
             return
         previous_attention = self.attention_mode
+        if await self._maybe_handle_research_answer_request(
+            transcript,
+            previous_attention=previous_attention,
+            reset_audio_input=reset_audio_input,
+        ):
+            return
         turn_taking_action = await self._maybe_apply_turn_taking_decision(
             transcript,
             previous_attention=previous_attention,
@@ -1132,6 +1194,63 @@ class TomoroSession:
             self.vad_processor.reset()
             self._reset_transcriber_stream()
         await self._transition("idle")
+
+    async def _maybe_handle_research_answer_request(
+        self,
+        transcript: Transcript,
+        *,
+        previous_attention: AttentionMode,
+        reset_audio_input: bool,
+    ) -> bool:
+        if self._pending_research_result is None:
+            return False
+        if not is_research_answer_request(transcript.text):
+            return False
+        if self.ambient_log_writer is not None:
+            await self.ambient_log_writer.write(
+                transcript,
+                tomoko_participated=True,
+                attention_mode=previous_attention,
+                attended=True,
+                participation_mode="invited",
+            )
+        self._set_start_reason("followup")
+        await self._ensure_conversation_session(
+            device_id=transcript.device_id,
+            start_reason="followup",
+        )
+        await self._transition_attention("engaged")
+        if self.conversation_log_writer is not None:
+            conversation_log_id = await self._write_user_turn(
+                transcript,
+                participation_mode="invited",
+            )
+            if conversation_log_id is not None:
+                self._schedule_conversation_embedding(
+                    conversation_log_id=conversation_log_id,
+                    text=transcript.text,
+                )
+        await self._send_transcript_final_event(
+            transcript,
+            attention_mode=previous_attention,
+            participation_mode="invited",
+            attended=True,
+            conversation_session_id=self.active_conversation_session_id,
+        )
+        await self._send_event({"type": "participation", "mode": "invited"})
+        result = await self.post_event(
+            SessionEvent(
+                type="research_answer_requested",
+                payload={"transcript": transcript},
+            )
+        )
+        await self.send_transition_emissions(result)
+        await self._run_internal_commands(result.commands)
+        if reset_audio_input:
+            self.vad_processor.reset()
+            self._reset_transcriber_stream()
+        await self._transition("idle")
+        return True
 
     async def _maybe_emit_partial_transcript(self, chunk: np.ndarray) -> None:
         if not supports_streaming(self.transcriber):
@@ -2168,6 +2287,17 @@ class TomoroSession:
             elif command.type == "close_conversation_session":
                 await self._close_conversation_session(
                     end_reason=str(command.payload.get("end_reason") or "unknown")
+                )
+            elif command.type == "start_research_answer_reply":
+                text = str(command.payload.get("text") or "")
+                device_id = str(command.payload.get("device_id") or "unknown")
+                await self.start_precomputed_reply(
+                    text=text,
+                    device_id=device_id,
+                    reason="research_answer",
+                    candidate_source="research",
+                    candidate_id=command.payload.get("request_id"),
+                    output_lane="reply_turn",
                 )
 
     async def _insert_stop_intent_observation(self, command: SessionCommand) -> None:
