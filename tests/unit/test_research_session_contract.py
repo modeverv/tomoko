@@ -15,7 +15,7 @@ from server.gateway.research import (
     ResearchResultSummarizer,
 )
 from server.session import TomoroSession
-from server.shared.models import ConnectedOutputState, SessionEvent, Transcript
+from server.shared.models import ConnectedOutputState, SessionEvent, ThinkingEvent, Transcript
 from server.shared.research_results import InMemoryResearchResultStore
 
 
@@ -53,13 +53,40 @@ class FakeEmbeddingBackend:
         return [1.0, 0.0, 0.0]
 
 
-def _session(events: list[dict[str, object]] | None = None) -> TomoroSession:
+class FakeConversationBackend:
+    name = "fake_conversation"
+    privacy_allowed = True
+
+
+class FakeRouter:
+    async def select(self, role: str, preference: str = "latency") -> FakeConversationBackend:
+        del role, preference
+        return FakeConversationBackend()
+
+
+class FakeThinkingMode:
+    def __init__(self) -> None:
+        self.response_directives: list[str | None] = []
+
+    async def think(self, backend, thinking_input):
+        del backend
+        self.response_directives.append(thinking_input.response_directive)
+        yield ThinkingEvent(type="emotion", value="thinking")
+        yield ThinkingEvent(type="text_delta", value="調べてみるね。少し待って。")
+        yield ThinkingEvent(type="done", value="")
+
+
+def _session(
+    events: list[dict[str, object]] | None = None,
+    **kwargs,
+) -> TomoroSession:
     if events is None:
         events = []
     return TomoroSession(
         vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
         send_event=events.append,
         connected_output_state=ConnectedOutputState.single_client(device_id="desk"),
+        **kwargs,
     )
 
 
@@ -190,6 +217,29 @@ async def test_process_transcript_hands_research_command_to_background_handler()
     assert results[0].emissions[0].type == "research_request_accepted"
     assert results[0].commands[0].type == "submit_research_request"
     assert results[0].commands[0].payload["request"].query == "OpenAIについて"
+
+
+@pytest.mark.unit
+async def test_process_transcript_starts_llm_wait_reply_for_research_request() -> None:
+    events: list[dict[str, object]] = []
+    thinking_mode = FakeThinkingMode()
+    session = _session(
+        events,
+        router=FakeRouter(),
+        thinking_mode=thinking_mode,
+    )
+
+    await session.process_transcript(_transcript("OpenAIについて調べて"))
+    await session._wait_for_reply_task()
+
+    assert thinking_mode.response_directives
+    directive = thinking_mode.response_directives[0]
+    assert directive is not None
+    assert "今は調査結果を答えず" in directive
+    assert "調査クエリ: OpenAIについて" in directive
+    event_types = [event["type"] for event in events]
+    assert "research_request_accepted" in event_types
+    assert "reply_text" in event_types
 
 
 @pytest.mark.unit

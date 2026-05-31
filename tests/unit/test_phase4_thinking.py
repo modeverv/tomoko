@@ -512,6 +512,37 @@ async def test_think_fast_includes_research_summary_context_from_snapshot(tmp_pa
 
 
 @pytest.mark.unit
+async def test_think_fast_includes_response_directive(tmp_path) -> None:
+    persona = tmp_path / "persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend(["うん"])
+    mode = ThinkFastMode(
+        persona_path=persona,
+        prompt_log_path=None,
+        now_provider=fixed_now,
+    )
+
+    [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="OpenAIについて調べて",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+                response_directive="調査結果を答えず、調べ始めたことだけを伝える。",
+            ),
+        )
+    ]
+
+    assert backend.system_prompt is not None
+    assert "RESPONSE DIRECTIVE" in backend.system_prompt
+    assert "調査結果を答えず、調べ始めたことだけを伝える。" in backend.system_prompt
+
+
+@pytest.mark.unit
 async def test_think_fast_extracts_emotion_line_before_text(tmp_path) -> None:
     persona = tmp_path / "persona.md"
     persona.write_text("あなたはトモコです。", encoding="utf-8")

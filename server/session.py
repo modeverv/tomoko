@@ -135,6 +135,17 @@ _CONVERSATION_LOG_OUTPUT_LANES: tuple[OutputLane, ...] = (
 def conversation_log_writes_output_lane(lane: OutputLane) -> bool:
     return lane in _CONVERSATION_LOG_OUTPUT_LANES
 
+
+def _research_wait_response_directive(request: ResearchRequest) -> str:
+    return (
+        "ユーザーは外部調査を依頼しています。"
+        "今は調査結果を答えず、調べ始めたことと少し待ってほしいことだけを"
+        "自然な短い日本語で伝えてください。"
+        "質問内容について推測で説明しないでください。"
+        f"調査クエリ: {request.normalized_query()}"
+    )
+
+
 logger = logging.getLogger(__name__)
 
 class TomoroSession:
@@ -1328,6 +1339,11 @@ class TomoroSession:
             )
         )
         await self._dispatch_research_transition_result(result)
+        if self.router is not None and self.thinking_mode is not None:
+            await self._start_reply_task(
+                transcript,
+                response_directive=_research_wait_response_directive(request),
+            )
         if reset_audio_input:
             self.vad_processor.reset()
             self._reset_transcriber_stream()
@@ -1731,7 +1747,12 @@ class TomoroSession:
 
     # Reply generation and output.
 
-    async def _reply_to(self, transcript: Transcript) -> None:
+    async def _reply_to(
+        self,
+        transcript: Transcript,
+        *,
+        response_directive: str | None = None,
+    ) -> None:
         if self.router is None or self.thinking_mode is None:
             return
 
@@ -1854,6 +1875,7 @@ class TomoroSession:
             long_term_memory=long_term_memory,
             short_memory_notes=short_memory_notes,
             context_snapshot=context_snapshot,
+            response_directive=response_directive,
         )
         reply = ReplyPipeline(initial_emotion=thinking_input.emotion)
         self.audio_turns.begin_turn(lane="reply_turn")
@@ -2339,14 +2361,26 @@ class TomoroSession:
             if inspect.isawaitable(maybe_awaitable):
                 await maybe_awaitable
 
-    async def _start_reply_task(self, transcript: Transcript) -> None:
+    async def _start_reply_task(
+        self,
+        transcript: Transcript,
+        *,
+        response_directive: str | None = None,
+    ) -> None:
         await self._cancel_reply_generation(status="cancelled")
         self._reply_cancel_status = None
-        self._reply_task = asyncio.create_task(self._run_reply_task(transcript))
+        self._reply_task = asyncio.create_task(
+            self._run_reply_task(transcript, response_directive=response_directive)
+        )
 
-    async def _run_reply_task(self, transcript: Transcript) -> None:
+    async def _run_reply_task(
+        self,
+        transcript: Transcript,
+        *,
+        response_directive: str | None = None,
+    ) -> None:
         try:
-            await self._reply_to(transcript)
+            await self._reply_to(transcript, response_directive=response_directive)
         except asyncio.CancelledError:
             raise
         except Exception as e:

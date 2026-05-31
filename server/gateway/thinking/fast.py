@@ -76,6 +76,7 @@ class ThinkFastMode(ThinkingMode):
             part
             for part in (
                 current_time_prompt,
+                _format_response_directive_prompt(thinking_input),
                 _format_context_snapshot_prompt(thinking_input),
                 _format_calendar_context_prompt(thinking_input),
                 _format_research_context_prompt(thinking_input),
@@ -262,6 +263,17 @@ def _format_context_snapshot_prompt(thinking_input: ThinkingInput) -> str:
     return format_persona_prompt_slice_for_prompt(
         persona_slice=snapshot.persona_slice,
         lexicon_terms=list(snapshot.lexicon_terms),
+    )
+
+
+def _format_response_directive_prompt(thinking_input: ThinkingInput) -> str:
+    if not thinking_input.response_directive:
+        return ""
+    return "\n".join(
+        [
+            "## RESPONSE DIRECTIVE",
+            thinking_input.response_directive.strip(),
+        ]
     )
 
 

@@ -7484,3 +7484,20 @@ Tomoko hot path では MCP 完了を待たず background task として結果を
 - [x] `process_transcript()` が `research_requested` emission / `submit_research_request` command を作る
 - [x] central browser runtime が `ResearchCommandRunner` を command drain として接続する
 - [x] focused unit / fake smoke / full unit / ruff が通る
+
+## 2026-05-31 Research wait acknowledgement via normal reply
+
+Research request を受けた時に無言で background 調査だけを走らせる方針を否定する。
+通常 reply pipeline を使い、LLM prompt に一時的な response directive を差し込んで、
+「今は答えず、調べ始めたことと少し待ってほしいことだけ」を Tomoko の自然な短い発話として返す。
+
+固定文の precomputed reply にはせず、Tomoko の通常応答として emotion / text / TTS / reply_done 経路を通す。
+ただし調査対象について推測で説明しないよう、directive で明示的に縛る。
+
+### 完了条件
+
+- [x] `ThinkingInput` が一時 response directive を持てる
+- [x] `ThinkFastMode` の system prompt に `RESPONSE DIRECTIVE` が入る
+- [x] research request transcript で LLM wait reply が開始される
+- [x] wait reply prompt は「調査結果を答えない」ことを明示する
+- [x] focused unit / fake smoke / full unit / ruff が通る

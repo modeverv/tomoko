@@ -1654,6 +1654,7 @@ class ThinkingInput:
     long_term_memory: list[MemoryHit] = field(default_factory=list)
     short_memory_notes: list[ShortMemoryNote] = field(default_factory=list)
     context_snapshot: TomokoContextSnapshot | None = None
+    response_directive: str | None = None
 
 
 @dataclass(slots=True)
