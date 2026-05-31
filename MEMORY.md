@@ -3885,3 +3885,13 @@ pending result は一度読んだら消費し、同じ result を二重に読ま
 query overlap がない「知ってることある？」系発話では pending result を誤用しない。
 将来 DB 永続化する Phase では、research result を保存する時に embedding も生成し、
 同一セッション外でも安価に取り出せる索引として扱う。
+
+### 確定した判断: Research result は LLM summary を deep context に混ぜる
+2026-05-31 時点では、Research result の raw `short_answer` をそのまま deep context に混ぜない。
+MCP result 取り込み時に LLM summary を作り、その summary を embedding して保存する。
+`ContextSnapshotBuilder(depth="deep")` / `reflective` は research result store を optional source として検索し、
+prompt には `RESEARCH CONTEXT` として summary だけを渡す。
+
+fast / normal では research result source を読まない。
+Research result は会話記憶ではなく外部調査メモなので、provider / fetched_at / citations を保持し、
+必要な時だけ参照する。

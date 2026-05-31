@@ -157,6 +157,7 @@ class TomoroSession:
         session_summary_store: ConversationSessionSummaryStore | None = None,
         persona_store: PersonaSnapshotStore | None = None,
         calendar_store: CalendarEventStore | None = None,
+        research_result_store: Any | None = None,
         context_snapshot_builder: ContextSnapshotBuilder | None = None,
         speech_normalizer: ReplySpeechNormalizer | None = None,
         barge_in_detector: BargeInDetector | None = None,
@@ -191,6 +192,7 @@ class TomoroSession:
         self.session_summary_store = session_summary_store
         self.persona_store = persona_store
         self.calendar_store = calendar_store
+        self.research_result_store = research_result_store
         self.context_snapshot_builder = context_snapshot_builder
         self.speech_normalizer = speech_normalizer
         self.barge_in_detector = barge_in_detector
@@ -2529,6 +2531,7 @@ class TomoroSession:
             session_summary_store=self.session_summary_store,
             persona_store=self.persona_store,
             calendar_store=self.calendar_store,
+            research_result_store=self.research_result_store,
         )
         return await builder.build(
             text=transcript.text,

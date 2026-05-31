@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 from collections.abc import Awaitable, Callable
@@ -138,10 +139,54 @@ class ResearchMcpClient:
         return parse_mcp_tool_call_response(stdout, fallback_query=request.normalized_query())
 
 
+class ResearchResultSummarizer:
+    def __init__(self, *, backend) -> None:
+        self.backend = backend
+
+    async def summarize(self, result: ResearchResult) -> str:
+        system_prompt = (
+            "あなたはTomoko用の外部調査結果を短く索引化する要約器です。"
+            "会話用の返答ではなく、あとでdeep contextに混ぜる参照メモを作ってください。"
+            "日本語で2文以内。引用URLは書かず、事実関係と日付感だけを残す。"
+        )
+        citations = "\n".join(f"- {item.title}: {item.url}" for item in result.citations)
+        user_prompt = "\n".join(
+            [
+                f"query: {result.query}",
+                f"provider: {result.provider}",
+                f"fetched_at: {result.fetched_at.isoformat()}",
+                f"short_answer: {result.short_answer}",
+                "bullets:",
+                *(f"- {item}" for item in result.bullets),
+                "citations:",
+                citations or "- none",
+            ]
+        )
+        chunks: list[str] = []
+        async for chunk in self.backend.chat_stream(
+            system_prompt,
+            [{"role": "user", "content": user_prompt}],
+        ):
+            chunks.append(chunk)
+        summary = " ".join("".join(chunks).split())
+        return summary or _fallback_research_summary_text(result)
+
+
 class ResearchCommandRunner:
-    def __init__(self, *, session, client: ResearchMcpClient) -> None:
+    def __init__(
+        self,
+        *,
+        session,
+        client: ResearchMcpClient,
+        result_store=None,
+        embedding_backend=None,
+        summarizer=None,
+    ) -> None:
         self.session = session
         self.client = client
+        self.result_store = result_store
+        self.embedding_backend = embedding_backend
+        self.summarizer = summarizer
 
     async def run_result(self, result: TransitionResult) -> None:
         await self.session.send_transition_emissions(result)
@@ -169,6 +214,7 @@ class ResearchCommandRunner:
                 )
             )
         result = await self.client.search(request)
+        await self._ingest_result(result)
         return await self.session.post_event(
             SessionEvent(
                 type="research_result_ready",
@@ -177,6 +223,29 @@ class ResearchCommandRunner:
                     "result": result,
                 },
             )
+        )
+
+    async def _ingest_result(self, result: ResearchResult) -> None:
+        if (
+            not result.is_speakable()
+            or self.result_store is None
+            or self.embedding_backend is None
+            or self.summarizer is None
+        ):
+            return
+        summary_text = await self.summarizer.summarize(result)
+        embedding = await self.embedding_backend.embed_passage(summary_text)
+        result_id = result.provider_trace_id or _research_result_id(result)
+        await self.result_store.insert(
+            result_id=result_id,
+            query=result.query,
+            summary_text=summary_text,
+            embedding=embedding,
+            provider=result.provider,
+            fetched_at=result.fetched_at,
+            short_answer=result.short_answer,
+            citation_urls=tuple(citation.url for citation in result.citations),
+            raw_artifact_path=result.raw_artifact_path,
         )
 
 
@@ -263,6 +332,25 @@ def _research_result_from_payload(
         raw_artifact_path=_optional_str(payload.get("raw_artifact_path")),
         error_reason=_optional_str(payload.get("error_reason")),
     )
+
+
+def _research_result_id(result: ResearchResult) -> str:
+    seed = "|".join(
+        [
+            result.provider,
+            result.query,
+            result.short_answer,
+            result.fetched_at.isoformat(),
+        ]
+    )
+    return "research-" + hashlib.sha1(seed.encode("utf-8")).hexdigest()[:16]
+
+
+def _fallback_research_summary_text(result: ResearchResult) -> str:
+    parts = [result.short_answer.strip()]
+    if result.bullets:
+        parts.extend(item.strip() for item in result.bullets[:2] if item.strip())
+    return " ".join(part for part in parts if part)
 
 
 def _dedupe_citations(raw: Any) -> tuple[ResearchCitation, ...]:

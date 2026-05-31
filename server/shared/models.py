@@ -1078,6 +1078,18 @@ class SessionSummaryHit:
 
 
 @dataclass(frozen=True)
+class ResearchContextHit:
+    result_id: str
+    query: str
+    summary_text: str
+    provider: str
+    fetched_at: datetime
+    similarity: float
+    citation_urls: tuple[str, ...] = ()
+    raw_artifact_path: str | None = None
+
+
+@dataclass(frozen=True)
 class PersonaLexiconTerm:
     term: str
     meaning: str
@@ -1490,6 +1502,8 @@ class ContextBuildPolicy:
     prioritize_session_summaries: bool = True
     max_calendar_events: int = 0
     allow_calendar_context: bool = False
+    max_research_results: int = 0
+    allow_research_results: bool = False
 
     @classmethod
     def for_depth(cls, depth: ContextDepth) -> ContextBuildPolicy:
@@ -1534,6 +1548,8 @@ class ContextBuildPolicy:
                     allow_persona_slice=True,
                     max_calendar_events=8,
                     allow_calendar_context=True,
+                    max_research_results=3,
+                    allow_research_results=True,
                 )
             case "reflective":
                 return cls(
@@ -1549,6 +1565,8 @@ class ContextBuildPolicy:
                     allow_persona_slice=True,
                     max_calendar_events=16,
                     allow_calendar_context=True,
+                    max_research_results=8,
+                    allow_research_results=True,
                 )
 
 
@@ -1606,6 +1624,7 @@ class TomokoContextSnapshot:
     source_counts: dict[str, int]
     trace: ContextBuildTrace
     calendar_events: list[CalendarEvent] = field(default_factory=list)
+    research_results: list[ResearchContextHit] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

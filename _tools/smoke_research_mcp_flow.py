@@ -17,19 +17,63 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from server.edge.pipeline.vad import VADProcessor  # noqa: E402
+from server.gateway.context import ContextSnapshotBuilder  # noqa: E402
 from server.gateway.research import (  # noqa: E402
     ResearchCommandRunner,
     ResearchIntentDetector,
     ResearchMcpClient,
+    ResearchResultSummarizer,
 )
 from server.session import TomoroSession  # noqa: E402
-from server.shared.models import ConnectedOutputState, SessionEvent, Transcript  # noqa: E402
+from server.shared.models import (  # noqa: E402
+    ConnectedOutputState,
+    ContextBuildPolicy,
+    SessionEvent,
+    Transcript,
+)
+from server.shared.research_results import InMemoryResearchResultStore  # noqa: E402
 
 
 class QuietVad:
     def process_chunk(self, chunk: np.ndarray) -> float:
         del chunk
         return 0.0
+
+
+class SmokeResearchSummaryBackend:
+    name = "smoke_research_summary"
+    privacy_allowed = True
+
+    async def chat_stream(self, system_prompt: str, messages: list[dict[str, str]]):
+        del system_prompt
+        content = messages[0]["content"]
+        query = "unknown"
+        for line in content.splitlines():
+            if line.startswith("query: "):
+                query = line.removeprefix("query: ")
+                break
+        yield f"{query} の外部調査結果をdeep context用に要約したメモです。"
+
+
+class SmokeEmbeddingBackend:
+    name = "smoke_embedding"
+    model = "smoke"
+    dimensions = 3
+    privacy_allowed = True
+
+    async def embed_query(self, text: str) -> list[float]:
+        return self._embed(text)
+
+    async def embed_passage(self, text: str) -> list[float]:
+        return self._embed(text)
+
+    def _embed(self, text: str) -> list[float]:
+        lower = text.casefold()
+        return [
+            1.0 if "openai" in lower else 0.1,
+            1.0 if "ニュース" in text else 0.1,
+            1.0,
+        ]
 
 
 async def run_research_smoke(
@@ -50,6 +94,8 @@ async def run_research_smoke(
         send_event=events.append,
         connected_output_state=ConnectedOutputState.single_client(device_id="desk"),
     )
+    research_store = InMemoryResearchResultStore()
+    embedding_backend = SmokeEmbeddingBackend()
 
     if command is None:
         with tempfile.TemporaryDirectory(prefix="tomoko-research-mcp-") as temp_dir:
@@ -60,6 +106,8 @@ async def run_research_smoke(
                 request=request,
                 command=(sys.executable, str(fake_script)),
                 answer_followup_text=answer_followup_text,
+                research_store=research_store,
+                embedding_backend=embedding_backend,
                 timeout_sec=timeout_sec,
             )
     else:
@@ -69,6 +117,8 @@ async def run_research_smoke(
             request=request,
             command=command,
             answer_followup_text=answer_followup_text,
+            research_store=research_store,
+            embedding_backend=embedding_backend,
             timeout_sec=timeout_sec,
         )
 
@@ -94,6 +144,8 @@ async def _run_flow(
     request,
     command: tuple[str, ...],
     answer_followup_text: str | None,
+    research_store: InMemoryResearchResultStore,
+    embedding_backend: SmokeEmbeddingBackend,
     timeout_sec: float,
 ) -> dict[str, Any]:
     accepted = await session.post_event(
@@ -102,6 +154,9 @@ async def _run_flow(
     runner = ResearchCommandRunner(
         session=session,
         client=ResearchMcpClient(command=command, timeout_sec=timeout_sec),
+        result_store=research_store,
+        embedding_backend=embedding_backend,
+        summarizer=ResearchResultSummarizer(backend=SmokeResearchSummaryBackend()),
     )
     await runner.run_result(accepted)
     if answer_followup_text is not None:
@@ -115,6 +170,16 @@ async def _run_flow(
                 is_final=True,
             )
         )
+    deep_snapshot = await ContextSnapshotBuilder(
+        embedding_backend=embedding_backend,
+        research_result_store=research_store,
+    ).build(
+        text=request.normalized_query(),
+        speaker=None,
+        device_id="desk",
+        active_session_id=None,
+        policy=ContextBuildPolicy.for_depth("deep"),
+    )
 
     result_events = [event for event in events if event.get("type") == "research_result_ready"]
     ready = result_events[-1] if result_events else {}
@@ -132,6 +197,10 @@ async def _run_flow(
         ),
         "reply_text_deltas": reply_text_deltas,
         "reply_done_count": sum(1 for event in events if event.get("type") == "reply_done"),
+        "ingested_research_count": len(research_store.rows),
+        "deep_research_summaries": [
+            hit.summary_text for hit in deep_snapshot.research_results
+        ],
         "status": ready.get("status"),
         "speakable": ready.get("speakable"),
         "notice_text": ready.get("notice_text"),

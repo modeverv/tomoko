@@ -78,6 +78,7 @@ class ThinkFastMode(ThinkingMode):
                 current_time_prompt,
                 _format_context_snapshot_prompt(thinking_input),
                 _format_calendar_context_prompt(thinking_input),
+                _format_research_context_prompt(thinking_input),
                 format_short_memory_prompt(thinking_input.short_memory_notes),
                 format_long_term_memory_prompt(thinking_input.long_term_memory),
             )
@@ -279,6 +280,30 @@ def _format_calendar_context_prompt(thinking_input: ThinkingInput) -> str:
     ]
     for event in snapshot.calendar_events:
         lines.append(f"- {_format_calendar_event(event)}")
+    return "\n".join(lines)
+
+
+def _format_research_context_prompt(thinking_input: ThinkingInput) -> str:
+    snapshot = thinking_input.context_snapshot
+    if snapshot is None or not snapshot.research_results:
+        return ""
+
+    lines = [
+        "## RESEARCH CONTEXT",
+        (
+            "外部調査結果の要約です。ユーザーに必要な時だけ参照し、"
+            "会話記憶と混同しない。必要なら provider / fetched_at / citations を手がかりにする。"
+        ),
+    ]
+    for item in snapshot.research_results:
+        citations = ", ".join(item.citation_urls[:3]) if item.citation_urls else "none"
+        lines.append(
+            "- "
+            f"[{item.fetched_at.isoformat(timespec='seconds')}] "
+            f"query={item.query}; provider={item.provider}; "
+            f"summary={item.summary_text}; citations={citations}; "
+            f"similarity={item.similarity:.3f}"
+        )
     return "\n".join(lines)
 
 

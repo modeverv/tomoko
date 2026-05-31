@@ -19,6 +19,7 @@ from server.shared.models import (
     ContextBuildTrace,
     ConversationTurn,
     ParticipationMode,
+    ResearchContextHit,
     SpeechSegment,
     ThinkingEvent,
     ThinkingInput,
@@ -443,6 +444,71 @@ async def test_think_fast_includes_calendar_context_from_snapshot(tmp_path) -> N
     assert backend.system_prompt is not None
     assert "CALENDAR CONTEXT" in backend.system_prompt
     assert "2026-05-30 13:00-14:00: 家族の予定 @ Kitchen" in backend.system_prompt
+
+
+@pytest.mark.unit
+async def test_think_fast_includes_research_summary_context_from_snapshot(tmp_path) -> None:
+    persona = tmp_path / "persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend(["うん"])
+    mode = ThinkFastMode(
+        persona_path=persona,
+        prompt_log_path=None,
+        now_provider=fixed_now,
+    )
+    trace = ContextBuildTrace(
+        budget_ms=100,
+        elapsed_ms=1.0,
+        timed_out=False,
+        depth="deep",
+        included_counts={"research_results": 1},
+        skipped_sources=[],
+        stage_timings_ms={},
+        cache_hits={},
+        source_errors={},
+    )
+    snapshot = TomokoContextSnapshot(
+        depth="deep",
+        recent_turns=[],
+        session_summaries=[],
+        memory_hits=[],
+        lexicon_terms=[],
+        persona_slice=None,
+        token_budget_hint=2600,
+        build_elapsed_ms=1.0,
+        source_counts={"research_results": 1},
+        trace=trace,
+        research_results=[
+            ResearchContextHit(
+                result_id="research-openai",
+                query="今日のOpenAI関連ニュースを短く",
+                summary_text="OpenAIに関する外部調査の要約。",
+                provider="perplexity",
+                fetched_at=datetime(2026, 5, 31, 10, 0, tzinfo=UTC),
+                similarity=0.95,
+                citation_urls=("https://example.com/openai",),
+            )
+        ],
+    )
+
+    [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="OpenAIについて知ってることある？",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+                context_snapshot=snapshot,
+            ),
+        )
+    ]
+
+    assert backend.system_prompt is not None
+    assert "RESEARCH CONTEXT" in backend.system_prompt
+    assert "summary=OpenAIに関する外部調査の要約。" in backend.system_prompt
 
 
 @pytest.mark.unit

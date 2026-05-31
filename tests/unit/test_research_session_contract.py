@@ -11,9 +11,11 @@ from server.gateway.research import (
     ResearchCommandRunner,
     ResearchRequest,
     ResearchResult,
+    ResearchResultSummarizer,
 )
 from server.session import TomoroSession
 from server.shared.models import ConnectedOutputState, SessionEvent, Transcript
+from server.shared.research_results import InMemoryResearchResultStore
 
 
 class QuietVAD:
@@ -30,6 +32,24 @@ class FakeResearchClient:
     async def search(self, request: ResearchRequest) -> ResearchResult:
         self.requests.append(request)
         return self.result
+
+
+class FakeSummaryBackend:
+    name = "fake_summary"
+    privacy_allowed = True
+
+    def __init__(self) -> None:
+        self.prompts: list[tuple[str, list[dict[str, str]]]] = []
+
+    async def chat_stream(self, system_prompt: str, messages: list[dict[str, str]]):
+        self.prompts.append((system_prompt, messages))
+        yield "OpenAI調査のLLM要約です。"
+
+
+class FakeEmbeddingBackend:
+    async def embed_passage(self, text: str) -> list[float]:
+        assert text == "OpenAI調査のLLM要約です。"
+        return [1.0, 0.0, 0.0]
 
 
 def _session(events: list[dict[str, object]] | None = None) -> TomoroSession:
@@ -96,6 +116,44 @@ async def test_research_command_runner_posts_result_ready_event() -> None:
     assert events[1]["status"] == "completed"
     assert events[1]["speakable"] is True
     assert events[1]["notice_text"] == "調べ終わったよ。聞く？"
+
+
+@pytest.mark.unit
+async def test_research_command_runner_ingests_llm_summary_embedding() -> None:
+    session = _session()
+    request = ResearchRequest(query="OpenAI news")
+    client = FakeResearchClient(
+        ResearchResult(
+            status="completed",
+            query="OpenAI news",
+            short_answer="OpenAIの短い調査結果です。",
+            citations=(ResearchCitation(title="OpenAI", url="https://openai.com/news/"),),
+            fetched_at=datetime(2026, 5, 31, tzinfo=UTC),
+            provider_trace_id="trace-openai",
+        )
+    )
+    summary_backend = FakeSummaryBackend()
+    store = InMemoryResearchResultStore()
+    runner = ResearchCommandRunner(
+        session=session,
+        client=client,
+        result_store=store,
+        embedding_backend=FakeEmbeddingBackend(),
+        summarizer=ResearchResultSummarizer(backend=summary_backend),
+    )
+    accepted = await session.post_event(
+        SessionEvent(type="research_requested", payload={"request": request})
+    )
+
+    await runner.run_result(accepted)
+
+    assert summary_backend.prompts
+    assert len(store.rows) == 1
+    row = store.rows[0]
+    assert row.result_id == "trace-openai"
+    assert row.summary_text == "OpenAI調査のLLM要約です。"
+    assert row.embedding == [1.0, 0.0, 0.0]
+    assert row.short_answer == "OpenAIの短い調査結果です。"
 
 
 @pytest.mark.unit

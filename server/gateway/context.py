@@ -26,6 +26,7 @@ from server.shared.models import (
     LexiconTerm,
     MemoryHit,
     PersonaPromptSlice,
+    ResearchContextHit,
     SessionSummaryHit,
     TomokoContextSnapshot,
 )
@@ -72,6 +73,7 @@ class ContextSnapshotBuilder:
             role_weight=0.25,
         ),
         "lexicon_term": _SourceRankingRule(max_items=4, source_weight=0.6),
+        "research_result": _SourceRankingRule(max_items=3, source_weight=0.9),
     }
     CUE_SOURCE_WEIGHT_MULTIPLIERS = {
         "recall": {
@@ -81,6 +83,7 @@ class ContextSnapshotBuilder:
             "memory_hit_user": 1.0,
             "memory_hit_tomoko": 0.8,
             "lexicon_term": 1.0,
+            "research_result": 1.0,
         },
         "detail": {
             "session_summary": 0.95,
@@ -89,6 +92,7 @@ class ContextSnapshotBuilder:
             "memory_hit_user": 1.2,
             "memory_hit_tomoko": 0.85,
             "lexicon_term": 1.0,
+            "research_result": 1.15,
         },
         "stance": {
             "session_summary": 1.0,
@@ -97,6 +101,7 @@ class ContextSnapshotBuilder:
             "memory_hit_user": 1.15,
             "memory_hit_tomoko": 0.75,
             "lexicon_term": 1.3,
+            "research_result": 0.9,
         },
         "normal": {
             "session_summary": 0.85,
@@ -105,6 +110,7 @@ class ContextSnapshotBuilder:
             "memory_hit_user": 0.8,
             "memory_hit_tomoko": 0.6,
             "lexicon_term": 0.8,
+            "research_result": 0.75,
         },
     }
     DEFAULT_CACHE_TTL_MS = {
@@ -117,6 +123,7 @@ class ContextSnapshotBuilder:
         "lexicon_terms": 30000,
         "persona_slice": 10000,
         "calendar_events": 60000,
+        "research_results": 30000,
     }
 
     def __init__(
@@ -128,6 +135,7 @@ class ContextSnapshotBuilder:
         session_summary_store: ConversationSessionSummaryStore | None = None,
         persona_store: PersonaSnapshotStore | None = None,
         calendar_store: CalendarEventStore | None = None,
+        research_result_store: Any | None = None,
         cache_ttl_ms: dict[str, int] | None = None,
     ) -> None:
         self.conversation_log_reader = conversation_log_reader
@@ -136,6 +144,7 @@ class ContextSnapshotBuilder:
         self.session_summary_store = session_summary_store
         self.persona_store = persona_store
         self.calendar_store = calendar_store
+        self.research_result_store = research_result_store
         self._cache_ttl_ms = {
             **self.DEFAULT_CACHE_TTL_MS,
             **(cache_ttl_ms or {}),
@@ -365,6 +374,33 @@ class ContextSnapshotBuilder:
             skipped_sources.append("calendar_events")
             skipped_reasons["calendar_events"] = "missing_calendar_store"
 
+        if (
+            policy.allow_research_results
+            and policy.max_research_results > 0
+            and self.embedding_backend is not None
+            and self.research_result_store is not None
+        ):
+            tasks["research_results"] = asyncio.create_task(
+                self._timed(
+                    "research_results",
+                    stage_timings_ms,
+                    source_errors,
+                    source_semaphore,
+                    lambda: self._cached_source(
+                        source="research_results",
+                        key=("research_results", text, policy.max_research_results),
+                        cache_entries=cache_entries,
+                        loader=lambda: self._search_research_results(
+                            get_query_embedding_task(),
+                            policy.max_research_results,
+                        ),
+                    ),
+                )
+            )
+        elif policy.allow_research_results and policy.max_research_results > 0:
+            skipped_sources.append("research_results")
+            skipped_reasons["research_results"] = "missing_embedding_or_store"
+
         if tasks:
             done, pending = await asyncio.wait(
                 set(tasks.values()),
@@ -441,6 +477,11 @@ class ContextSnapshotBuilder:
         )
         persona_slice = results.get("persona_slice")
         calendar_events = results.get("calendar_events", [])
+        research_results = self._rank_research_results(
+            results.get("research_results", []),
+            cue_type=cue_type,
+            traces=source_score_traces,
+        )
         elapsed_ms = (time.perf_counter() - started_at) * 1000
         source_counts = {
             "recent_turns": len(recent_turns),
@@ -450,6 +491,7 @@ class ContextSnapshotBuilder:
             "lexicon_terms": len(lexicon_terms),
             "persona_slice": 1 if persona_slice is not None else 0,
             "calendar_events": len(calendar_events),
+            "research_results": len(research_results),
         }
         trace = ContextBuildTrace(
             budget_ms=policy.max_build_ms,
@@ -473,6 +515,7 @@ class ContextSnapshotBuilder:
             "timed_out=%s recent_turns=%s session_summaries=%s memory_hits=%s "
             "restored_turn_snippets=%s lexicon_terms=%s cue_type=%s "
             "calendar_events=%s max_parallel_sources=%s cache_hits=%s stage_timings_ms=%s "
+            "research_results=%s "
             "skipped_reasons=%s source_errors=%s source_scores=%s",
             policy.depth,
             elapsed_ms,
@@ -488,6 +531,7 @@ class ContextSnapshotBuilder:
             policy.max_parallel_sources,
             trace.cache_hits,
             trace.stage_timings_ms,
+            source_counts["research_results"],
             trace.skipped_reasons,
             trace.source_errors,
             [
@@ -514,6 +558,7 @@ class ContextSnapshotBuilder:
             source_counts=source_counts,
             trace=trace,
             calendar_events=calendar_events,
+            research_results=research_results,
         )
 
     async def _cached_source(
@@ -614,6 +659,18 @@ class ContextSnapshotBuilder:
             await asyncio.shield(wait_for)
         embedding = await embedding_task
         return await self.memory_store.search_similar(embedding=embedding, limit=limit)
+
+    async def _search_research_results(
+        self,
+        embedding_task: asyncio.Task[list[float]],
+        limit: int,
+    ) -> list[ResearchContextHit]:
+        assert self.research_result_store is not None
+        embedding = await embedding_task
+        return await self.research_result_store.search_similar(
+            embedding=embedding,
+            limit=limit,
+        )
 
     async def _restore_turn_snippets_with_deadline(
         self,
@@ -797,6 +854,29 @@ class ContextSnapshotBuilder:
             for term in terms
         ]
         selected = self._select_by_quota(scored, traces=traces)
+        return [item.item for item in selected]
+
+    def _rank_research_results(
+        self,
+        hits: list[ResearchContextHit],
+        *,
+        cue_type: str,
+        traces: list[ContextSourceScoreTrace],
+    ) -> list[ResearchContextHit]:
+        scored = [
+            self._score_item(
+                source="research_result",
+                item=hit,
+                cue_type=cue_type,
+                raw_similarity=hit.similarity,
+                source_id=hit.result_id,
+                speaker=None,
+                timestamp=hit.fetched_at,
+            )
+            for hit in hits
+        ]
+        selected = self._select_by_quota(scored, traces=traces)
+        selected.sort(key=lambda item: item.trace.final_score, reverse=True)
         return [item.item for item in selected]
 
     def _select_by_quota(

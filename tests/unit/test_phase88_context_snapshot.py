@@ -16,6 +16,7 @@ from server.shared.models import (
     MemoryHit,
     PersonaLexiconSnapshot,
     PersonaStateSnapshot,
+    ResearchContextHit,
     SessionSummaryHit,
     ThinkingInput,
     Transcript,
@@ -118,6 +119,28 @@ class FakeMemoryStore:
 
     async def write_embedding(self, **kwargs) -> None:
         del kwargs
+
+
+class FakeResearchResultStore:
+    async def search_similar(
+        self,
+        *,
+        embedding: list[float],
+        limit: int,
+    ) -> list[ResearchContextHit]:
+        assert embedding == [0.1, 0.2, 0.3]
+        assert limit == 3
+        return [
+            ResearchContextHit(
+                result_id="research-openai",
+                query="今日のOpenAI関連ニュースを短く",
+                summary_text="OpenAIに関する外部調査の要約。",
+                provider="perplexity",
+                fetched_at=datetime(2026, 5, 31, 10, 0, tzinfo=UTC),
+                similarity=0.95,
+                citation_urls=("https://example.com/openai",),
+            )
+        ]
 
     async def embed_missing_turns(self, **kwargs) -> int:
         del kwargs
@@ -359,6 +382,48 @@ async def test_deep_snapshot_reads_calendar_context() -> None:
     assert [event.summary for event in snapshot.calendar_events] == ["家族の予定"]
     assert snapshot.trace.included_counts["calendar_events"] == 1
     assert "calendar_events" in snapshot.trace.stage_timings_ms
+
+
+@pytest.mark.unit
+async def test_deep_snapshot_reads_research_result_summaries() -> None:
+    builder = ContextSnapshotBuilder(
+        embedding_backend=FakeEmbeddingBackend(),  # type: ignore[arg-type]
+        research_result_store=FakeResearchResultStore(),
+    )
+
+    snapshot = await builder.build(
+        text="OpenAIについて知ってることある？",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=ContextBuildPolicy.for_depth("deep"),
+    )
+
+    assert [hit.summary_text for hit in snapshot.research_results] == [
+        "OpenAIに関する外部調査の要約。"
+    ]
+    assert snapshot.trace.included_counts["research_results"] == 1
+    assert "research_results" in snapshot.trace.stage_timings_ms
+
+
+@pytest.mark.unit
+async def test_fast_snapshot_does_not_read_research_results() -> None:
+    builder = ContextSnapshotBuilder(
+        embedding_backend=FakeEmbeddingBackend(),  # type: ignore[arg-type]
+        research_result_store=FakeResearchResultStore(),
+    )
+
+    snapshot = await builder.build(
+        text="OpenAIについて知ってることある？",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=ContextBuildPolicy.for_depth("fast"),
+    )
+
+    assert snapshot.research_results == []
+    assert snapshot.trace.included_counts["research_results"] == 0
+    assert "research_results" not in snapshot.trace.stage_timings_ms
 
 
 @pytest.mark.unit

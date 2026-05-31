@@ -23,6 +23,10 @@ async def test_research_mcp_smoke_runs_session_command_through_subprocess() -> N
         "今日のOpenAI関連ニュースを短く についての smoke 応答です。"
     ]
     assert summary["reply_done_count"] == 1
+    assert summary["ingested_research_count"] == 1
+    assert summary["deep_research_summaries"] == [
+        "今日のOpenAI関連ニュースを短く の外部調査結果をdeep context用に要約したメモです。"
+    ]
     assert summary["status"] == "completed"
     assert summary["speakable"] is True
     assert summary["notice_text"] == "調べ終わったよ。聞く？"
