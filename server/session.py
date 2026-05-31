@@ -850,8 +850,6 @@ class TomoroSession:
                 "research_answer_skipped",
                 payload={"reason": "no_pending_result"},
             )
-        self._pending_research_result = None
-        self._pending_research_request_id = None
         return self._transition_result(
             "research_answer_requested",
             payload={
@@ -1204,7 +1202,10 @@ class TomoroSession:
     ) -> bool:
         if self._pending_research_result is None:
             return False
-        if not is_research_answer_request(transcript.text):
+        if not is_research_answer_request(
+            transcript.text,
+            query=self._pending_research_result.query,
+        ):
             return False
         if self.ambient_log_writer is not None:
             await self.ambient_log_writer.write(

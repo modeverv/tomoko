@@ -7417,3 +7417,19 @@ TomoroSession が pending research result を持ち、transcript finalize の早
 - [x] pending result は一度読んだら消費され、二重読みしない
 - [x] `process_transcript()` で通常 LLM reply より前に research answer follow-up が処理される
 - [x] focused unit / ruff / full unit が通る
+
+## 2026-05-31 Research result cache reuse and topic follow-up
+
+Research answer follow-up を一度読んだら消す方針は否定する。
+調査結果は短命な latest research cache として TomoroSession に残し、明示的な「教えて」だけでなく、
+pending result の query と重なる「OpenAIについて知ってることある？」のような発話にも rule-based に返せるようにする。
+
+この Phase では DB 永続化はまだ行わない。ただし次の永続化 Phase では、保存時に embedding を作り、
+同一セッション外でも research result を安価に取り出せる索引として扱う。
+
+### 完了条件
+
+- [x] pending research result は reply 後も保持され、同じ result を再読できる
+- [x] query overlap がある `知ってることある？` 系 follow-up は pending result を読む
+- [x] query overlap がない `知ってることある？` 系 follow-up は pending result を誤用しない
+- [x] focused unit / smoke / full unit / ruff が通る

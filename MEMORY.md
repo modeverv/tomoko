@@ -3875,3 +3875,13 @@ pending result は一度読んだら消費し、同じ result を二重に読ま
 
 この Phase では DB 永続化と、最初の「調べて」発話を通常 transcript path から
 `research_requested` へ自動接続する処理はまだ行わない。
+
+### 確定した判断: Research result は再読できる短命 cache として扱う
+2026-05-31 時点では、Research answer follow-up を一度だけで消費する方針を否定する。
+`research_result_ready` の speakable result は TomoroSession 内の短命 latest research cache として残し、
+「教えて」だけでなく、pending result の query と重なる
+「OpenAIについて知ってることある？」のような follow-up でも `short_answer` を返す。
+
+query overlap がない「知ってることある？」系発話では pending result を誤用しない。
+将来 DB 永続化する Phase では、research result を保存する時に embedding も生成し、
+同一セッション外でも安価に取り出せる索引として扱う。

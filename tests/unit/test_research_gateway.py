@@ -42,9 +42,26 @@ def test_research_answer_request_detects_followup(text: str) -> None:
 
 
 @pytest.mark.unit
+def test_research_answer_request_can_match_query_overlap() -> None:
+    assert is_research_answer_request(
+        "OpenAIについて知ってることある？",
+        query="今日のOpenAI関連ニュースを短く",
+    )
+    assert not is_research_answer_request(
+        "Anthropicについて知ってることある？",
+        query="今日のOpenAI関連ニュースを短く",
+    )
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("text", ["なるほどね", "それは違うかも", "今何時"])
 def test_research_answer_request_ignores_unrelated_text(text: str) -> None:
     assert not is_research_answer_request(text)
+
+
+@pytest.mark.unit
+def test_research_answer_request_requires_query_for_knowledge_followup() -> None:
+    assert not is_research_answer_request("OpenAIについて知ってることある？")
 
 
 @pytest.mark.unit

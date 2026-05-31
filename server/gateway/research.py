@@ -331,14 +331,14 @@ def _has_research_cue(text: str) -> bool:
     return any(cue in text for cue in ("調べて", "検索して", "調査して", "最新", "今どうなって"))
 
 
-def is_research_answer_request(text: str) -> bool:
+def is_research_answer_request(text: str, *, query: str | None = None) -> bool:
     normalized = _normalize_text(text)
     if not normalized:
         return False
     compact = normalized.replace(" ", "").strip("、。,.!?！？")
     if compact in {"うん", "はい", "お願い", "聞く", "聞きたい", "おねがい"}:
         return True
-    return any(
+    direct_answer_cue = any(
         cue in compact
         for cue in (
             "教えて",
@@ -349,6 +349,47 @@ def is_research_answer_request(text: str) -> bool:
             "お願い",
         )
     )
+    knowledge_cue = any(cue in compact for cue in ("知ってる", "わかる", "分かる"))
+    if not direct_answer_cue and not knowledge_cue:
+        return False
+    if knowledge_cue:
+        if query is None:
+            return False
+        return _research_query_overlaps_text(query=query, text=compact)
+    if query is None:
+        return True
+    return True
+
+
+def _research_query_overlaps_text(*, query: str, text: str) -> bool:
+    query_terms = _research_query_terms(query)
+    if not query_terms:
+        return False
+    return any(term.casefold() in text.casefold() for term in query_terms)
+
+
+def _research_query_terms(query: str) -> tuple[str, ...]:
+    compact = _normalize_text(query).replace(" ", "")
+    for noise in (
+        "今日",
+        "最近",
+        "最新",
+        "関連",
+        "ニュース",
+        "短く",
+        "詳しく",
+        "深く",
+        "について",
+        "こと",
+        "ある",
+    ):
+        compact = compact.replace(noise, " ")
+    terms = [
+        term.strip(" 、。,.!?！？のをがにはとも")
+        for term in compact.split()
+        if term.strip()
+    ]
+    return tuple(term for term in terms if len(term) >= 2)
 
 
 def _strip_research_cues(text: str) -> str:
