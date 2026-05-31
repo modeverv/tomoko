@@ -3825,3 +3825,16 @@ MaAI adapter の suggestion 発火 default、env 未指定時の `TOMOKO_MAAI_RE
 cooldown は 1500ms、MaAI adapter 側 suggestion cooldown は 900ms のまま維持する。
 今回の調整は弱めの react cue だけを落とす小幅変更であり、
 gesture audio lane / output lane / floor ownership / AudioTurnController 分離は変更しない。
+
+### 確定した判断: Perplexity browser automation は Tomoko 隣の別 repo に隔離する
+2026-05-31 時点では、ログイン済み Chrome / Perplexity UI を CDP で操作する research operator を
+Tomoko 本体へ入れない。
+`/Users/seijiro/Sync/sync_work/by-llms/tomoko-research-operator` を別 git project として作り、
+Tomoko からは MCP 風の外部 capability として呼ぶ。
+
+operator は Perplexity UI 操作、raw artifact 保存、structured `ResearchResult` 返却だけを担当する。
+Tomoko 側は rule-based intent detection、operator call、result validation、Tomoko DB insert、
+`ResearchResultReady` event、通知/回答発話タイミングを担当する。
+
+`chatgpt-el` は CDP workflow の参考にはするが、GPLv3-or-later source を Tomoko や operator へコピーしない。
+selector や completion heuristic の考え方を読み、自前実装として小さく作る。
