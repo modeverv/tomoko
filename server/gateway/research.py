@@ -482,7 +482,7 @@ def _research_query_terms(query: str) -> tuple[str, ...]:
 
 
 def _strip_research_cues(text: str) -> str:
-    query = re.sub(r"^(ともこ|トモコ|Tomoko)[、,\s]*", "", text, flags=re.IGNORECASE)
+    query = re.sub(r"^(ともこ|トモコ|智子|Tomoko)[、,\s]*", "", text, flags=re.IGNORECASE)
     query = query.replace("調べておいて", "")
     query = query.replace("調べといて", "")
     query = query.replace("調べて", "")

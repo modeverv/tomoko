@@ -3905,3 +3905,14 @@ Tomoko 側が MCP operator から受け取った speakable result を LLM summar
 prompt には raw answer ではなく保存済み summary だけを `RESEARCH CONTEXT` として混ぜる。
 `short_answer` は follow-up 発話用、`citation_urls` / `raw_artifact_path` は追跡用 metadata として保持する。
 process-local `InMemoryResearchResultStore` は test / smoke 用 fake として残す。
+
+### 確定した判断: Research request は transcript finalize 直後に通常 reply から横取りする
+2026-05-31 の実ログでは、`智子小浜大統領について調べて` が STT / filter / participation までは通ったが、
+`ResearchIntentDetector` が `process_transcript()` から呼ばれておらず通常 fast reply に流れた。
+この状態を否定し、filter 後・turn-taking / participation 前で research intent を検出する。
+
+検出した transcript は `research_requested` event と `submit_research_request` command に落とし、
+通常 LLM reply は開始しない。
+central browser runtime は `ResearchCommandRunner` を background command drain として接続し、
+MCP 完了後に `research_result_ready` を TomoroSession へ戻す。
+`智子` という漢字 wake name も research query から strip する。

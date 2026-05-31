@@ -32,6 +32,7 @@ from server.gateway.initiative_feedback import (
 from server.gateway.reply import ReplyPipeline
 from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
 from server.gateway.research import (
+    ResearchIntentDetector,
     ResearchRequest,
     ResearchResult,
     is_research_answer_request,
@@ -249,8 +250,17 @@ class TomoroSession:
         self._short_memory_buffer = ShortMemoryBuffer()
         self._short_memory_turn = 0
         self._short_memory_extraction_tasks: set[asyncio.Task[None]] = set()
+        self._research_intent_detector = ResearchIntentDetector()
+        self._research_transition_handler: Callable[[TransitionResult], Any] | None = None
+        self._research_transition_tasks: set[asyncio.Task[None]] = set()
 
     # Audio input and state snapshots.
+
+    def set_research_transition_handler(
+        self,
+        handler: Callable[[TransitionResult], Any] | None,
+    ) -> None:
+        self._research_transition_handler = handler
 
     @property
     def _playback_echo_grace_ms(self) -> int:
@@ -1064,6 +1074,12 @@ class TomoroSession:
             reset_audio_input=reset_audio_input,
         ):
             return
+        if await self._maybe_handle_research_request(
+            transcript,
+            previous_attention=previous_attention,
+            reset_audio_input=reset_audio_input,
+        ):
+            return
         turn_taking_action = await self._maybe_apply_turn_taking_decision(
             transcript,
             previous_attention=previous_attention,
@@ -1254,6 +1270,94 @@ class TomoroSession:
             self._reset_transcriber_stream()
         await self._transition("idle")
         return True
+
+    async def _maybe_handle_research_request(
+        self,
+        transcript: Transcript,
+        *,
+        previous_attention: AttentionMode,
+        reset_audio_input: bool,
+    ) -> bool:
+        request = self._research_intent_detector.detect(transcript.text)
+        if request is None:
+            return False
+        participation_mode = "called" if previous_attention == "ambient" else "invited"
+        start_reason = _start_reason_from_participation_mode(participation_mode)
+        if self.ambient_log_writer is not None:
+            await self.ambient_log_writer.write(
+                transcript,
+                tomoko_participated=True,
+                attention_mode=previous_attention,
+                attended=True,
+                participation_mode=participation_mode,
+            )
+        self._set_start_reason(start_reason)
+        logger.info(
+            "TomoroSession research request detected query=%r mode=%s recency=%s",
+            request.normalized_query(),
+            request.mode,
+            request.recency,
+        )
+        await self._ensure_conversation_session(
+            device_id=transcript.device_id,
+            start_reason=start_reason,
+        )
+        await self._transition_attention("engaged")
+        if self.conversation_log_writer is not None:
+            conversation_log_id = await self._write_user_turn(
+                transcript,
+                participation_mode=participation_mode,
+            )
+            if conversation_log_id is not None:
+                self._schedule_conversation_embedding(
+                    conversation_log_id=conversation_log_id,
+                    text=transcript.text,
+                )
+        await self._send_transcript_final_event(
+            transcript,
+            attention_mode=previous_attention,
+            participation_mode=participation_mode,
+            attended=True,
+            conversation_session_id=self.active_conversation_session_id,
+        )
+        await self._send_event({"type": "participation", "mode": participation_mode})
+        result = await self.post_event(
+            SessionEvent(
+                type="research_requested",
+                payload={"request": request},
+            )
+        )
+        await self._dispatch_research_transition_result(result)
+        if reset_audio_input:
+            self.vad_processor.reset()
+            self._reset_transcriber_stream()
+        await self._transition("idle")
+        return True
+
+    async def _dispatch_research_transition_result(self, result: TransitionResult) -> None:
+        if self._research_transition_handler is None:
+            await self.send_transition_emissions(result)
+            await self._run_internal_commands(result.commands)
+            return
+
+        maybe_awaitable = self._research_transition_handler(result)
+        if not inspect.isawaitable(maybe_awaitable):
+            return
+        task = asyncio.create_task(maybe_awaitable)
+        self._research_transition_tasks.add(task)
+
+        def forget(done_task: asyncio.Task[None]) -> None:
+            self._research_transition_tasks.discard(done_task)
+            if done_task.cancelled():
+                return
+            exc = done_task.exception()
+            if exc is not None:
+                logger.error(
+                    "TomoroSession research transition task failed",
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+
+        task.add_done_callback(forget)
 
     async def _maybe_emit_partial_transcript(self, chunk: np.ndarray) -> None:
         if not supports_streaming(self.transcriber):

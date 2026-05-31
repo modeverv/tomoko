@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import shlex
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
@@ -38,6 +39,11 @@ from server.gateway.maai_backchannel import (
 )
 from server.gateway.presence import PresenceManager
 from server.gateway.reply.speech_normalizer import ReplySpeechNormalizer
+from server.gateway.research import (
+    ResearchCommandRunner,
+    ResearchMcpClient,
+    ResearchResultSummarizer,
+)
 from server.gateway.resolver import DirectSpeakerResolver
 from server.gateway.stop_ack import StopAckAudioProvider
 from server.gateway.stop_intent import (
@@ -231,6 +237,17 @@ def _create_default_research_result_store() -> PostgresResearchResultStore:
     return PostgresResearchResultStore(config.database.dsn)
 
 
+def _create_default_research_mcp_client() -> ResearchMcpClient:
+    command_text = os.environ.get("TOMOKO_RESEARCH_MCP_COMMAND")
+    if command_text:
+        command = tuple(shlex.split(command_text))
+    else:
+        operator_dir = WORK_DIR.parent / "tomoko-research-operator"
+        command = ("uv", "--directory", str(operator_dir), "run", "tomoko-research-mcp")
+    timeout_sec = float(os.environ.get("TOMOKO_RESEARCH_MCP_TIMEOUT_SEC", "180"))
+    return ResearchMcpClient(command=command, timeout_sec=timeout_sec)
+
+
 @app.websocket("/ws")
 async def websocket_session(websocket: WebSocket) -> None:
     config = _load_config()
@@ -417,6 +434,15 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         connected_output_state=output_state,
         audio_interaction_tap=audio_interaction_tap,
     )
+    research_summary_backend = await router.select("session_summary")
+    research_runner = ResearchCommandRunner(
+        session=session,
+        client=_create_default_research_mcp_client(),
+        result_store=research_result_store_factory(),
+        embedding_backend=embedding_backend,
+        summarizer=ResearchResultSummarizer(backend=research_summary_backend),
+    )
+    session.set_research_transition_handler(research_runner.run_result)
     gesture_audio_emitter = GestureAudioEmitter(
         state_provider=session.get_now_state,
         send_audio=send_audio,

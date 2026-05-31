@@ -27,6 +27,14 @@ def test_research_intent_detector_extracts_search_query() -> None:
 
 
 @pytest.mark.unit
+def test_research_intent_detector_strips_kanji_wake_name() -> None:
+    request = ResearchIntentDetector().detect("智子オバマ大統領について調べて")
+
+    assert request is not None
+    assert request.query == "オバマ大統領について"
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("text", ["なるほどね", "さっきの話なんだけど", "今何時"])
 def test_research_intent_detector_ignores_chitchat(text: str) -> None:
     assert ResearchIntentDetector().detect(text) is None

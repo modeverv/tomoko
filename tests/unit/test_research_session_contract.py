@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 import numpy as np
@@ -154,6 +155,41 @@ async def test_research_command_runner_ingests_llm_summary_embedding() -> None:
     assert row.summary_text == "OpenAI調査のLLM要約です。"
     assert row.embedding == [1.0, 0.0, 0.0]
     assert row.short_answer == "OpenAIの短い調査結果です。"
+
+
+@pytest.mark.unit
+async def test_process_transcript_routes_research_request_before_normal_reply() -> None:
+    events: list[dict[str, object]] = []
+    session = _session(events)
+
+    await session.process_transcript(_transcript("智子オバマ大統領について調べて"))
+
+    event_types = [str(event["type"]) for event in events]
+    assert "research_request_accepted" in event_types
+    accepted = next(event for event in events if event["type"] == "research_request_accepted")
+    assert accepted["query"] == "オバマ大統領について"
+    assert "reply_text" not in event_types
+
+
+@pytest.mark.unit
+async def test_process_transcript_hands_research_command_to_background_handler() -> None:
+    session = _session()
+    called = asyncio.Event()
+    results = []
+
+    async def handler(result):
+        results.append(result)
+        called.set()
+
+    session.set_research_transition_handler(handler)
+
+    await session.process_transcript(_transcript("OpenAIについて調べて"))
+    await asyncio.wait_for(called.wait(), timeout=1.0)
+
+    assert results
+    assert results[0].emissions[0].type == "research_request_accepted"
+    assert results[0].commands[0].type == "submit_research_request"
+    assert results[0].commands[0].payload["request"].query == "OpenAIについて"
 
 
 @pytest.mark.unit

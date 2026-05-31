@@ -7467,3 +7467,20 @@ DB は source of truth、process-local store は test / smoke 用の fake とし
 - [x] default runtime が PostgreSQL backed research result store を TomoroSession へ渡す
 - [x] integration test で DB insert / semantic search / deep context fetch が通る
 - [x] focused integration / unit / ruff / full unit が通る
+
+## 2026-05-31 Research transcript runtime connection
+
+Research MCP の smoke だけを通し、実 transcript path から起動しない状態を否定する。
+`process_transcript()` の filter 後・turn-taking / participation 前で rule-based research intent を検出し、
+通常 LLM reply へ流さず `research_requested` event に落とす。
+
+runtime adapter は `submit_research_request` command を `ResearchCommandRunner` に渡し、
+Tomoko hot path では MCP 完了を待たず background task として結果を戻す。
+
+### 完了条件
+
+- [x] `智子オバマ大統領について調べて` が research request として検出される
+- [x] research request transcript が通常 reply に流れない
+- [x] `process_transcript()` が `research_requested` emission / `submit_research_request` command を作る
+- [x] central browser runtime が `ResearchCommandRunner` を command drain として接続する
+- [x] focused unit / fake smoke / full unit / ruff が通る
