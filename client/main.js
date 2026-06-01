@@ -5,6 +5,9 @@ const latencyEl = document.querySelector("#latency");
 const bytesEl = document.querySelector("#bytes");
 const startButton = document.querySelector("#start");
 const stopButton = document.querySelector("#stop");
+const audioInputDeviceSelect = document.querySelector("#audio-input-device");
+const audioOutputDeviceSelect = document.querySelector("#audio-output-device");
+const deviceStatusEl = document.querySelector("#device-status");
 const recordNoiseButton = document.querySelector("#record-noise");
 const recordReadButton = document.querySelector("#record-read");
 const nextReadPromptButton = document.querySelector("#next-read-prompt");
@@ -27,6 +30,9 @@ let micStream = null;
 let workletNode = null;
 let sourceNode = null;
 let sinkNode = null;
+let playbackMixerNode = null;
+let playbackOutputDestinationNode = null;
+let playbackOutputElement = null;
 let websocket = null;
 let bytesSent = 0;
 let nextPlaybackTime = 0;
@@ -37,6 +43,8 @@ let recordingTimer = null;
 let activeDebugRecording = null;
 let readPromptIndex = 0;
 let activeTomokoLogEntry = null;
+let selectedAudioInputDeviceId = localStorage.getItem("tomoko.audioInputDeviceId") || "";
+let selectedAudioOutputDeviceId = localStorage.getItem("tomoko.audioOutputDeviceId") || "";
 const MAX_TRANSCRIPT_LOG_ENTRIES = 80;
 
 const READ_PROMPTS = [
@@ -61,6 +69,129 @@ const CANDIDATE_EVENT_TYPES = new Set([
 
 function setStatus(value) {
   statusEl.textContent = value;
+}
+
+function setDeviceStatus(value) {
+  deviceStatusEl.textContent = value;
+}
+
+function supportsOutputDeviceSelection() {
+  return typeof HTMLMediaElement.prototype.setSinkId === "function";
+}
+
+function audioConstraints() {
+  const audio = {
+    channelCount: 1,
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: false,
+  };
+  if (selectedAudioInputDeviceId) {
+    audio.deviceId = { exact: selectedAudioInputDeviceId };
+  }
+  return { audio };
+}
+
+function deviceOptionLabel(device, index, fallback) {
+  return device.label || `${fallback} ${index + 1}`;
+}
+
+function renderDeviceOptions(selectEl, devices, selectedValue, defaultLabel, fallbackLabel) {
+  selectEl.replaceChildren();
+
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "";
+  defaultOption.textContent = defaultLabel;
+  selectEl.append(defaultOption);
+
+  devices.forEach((device, index) => {
+    const option = document.createElement("option");
+    option.value = device.deviceId;
+    option.textContent = deviceOptionLabel(device, index, fallbackLabel);
+    selectEl.append(option);
+  });
+
+  selectEl.value = Array.from(selectEl.options).some((option) => option.value === selectedValue)
+    ? selectedValue
+    : "";
+}
+
+async function refreshAudioDevices() {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    setDeviceStatus("device list unavailable");
+    return;
+  }
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const inputDevices = devices.filter((device) => device.kind === "audioinput");
+  const outputDevices = devices.filter((device) => device.kind === "audiooutput");
+
+  renderDeviceOptions(
+    audioInputDeviceSelect,
+    inputDevices,
+    selectedAudioInputDeviceId,
+    "Default microphone",
+    "Microphone",
+  );
+  selectedAudioInputDeviceId = audioInputDeviceSelect.value;
+
+  renderDeviceOptions(
+    audioOutputDeviceSelect,
+    outputDevices,
+    selectedAudioOutputDeviceId,
+    "Default speaker",
+    "Speaker",
+  );
+  selectedAudioOutputDeviceId = audioOutputDeviceSelect.value;
+  audioOutputDeviceSelect.disabled = !supportsOutputDeviceSelection();
+
+  const suffix = supportsOutputDeviceSelection() ? "" : " / output fixed by browser";
+  setDeviceStatus(`${inputDevices.length} inputs / ${outputDevices.length} outputs${suffix}`);
+}
+
+async function ensurePlaybackOutput() {
+  if (!audioContext) {
+    return;
+  }
+  if (!playbackMixerNode) {
+    playbackMixerNode = audioContext.createGain();
+  }
+
+  playbackMixerNode.disconnect();
+  if (!selectedAudioOutputDeviceId || !supportsOutputDeviceSelection()) {
+    playbackMixerNode.connect(audioContext.destination);
+    return;
+  }
+
+  if (!playbackOutputDestinationNode) {
+    playbackOutputDestinationNode = audioContext.createMediaStreamDestination();
+  }
+  if (!playbackOutputElement) {
+    playbackOutputElement = new Audio();
+    playbackOutputElement.autoplay = true;
+    playbackOutputElement.srcObject = playbackOutputDestinationNode.stream;
+  }
+  try {
+    await playbackOutputElement.setSinkId(selectedAudioOutputDeviceId);
+    await playbackOutputElement.play().catch(() => {});
+    playbackMixerNode.connect(playbackOutputDestinationNode);
+  } catch (error) {
+    playbackMixerNode.connect(audioContext.destination);
+    throw error;
+  }
+}
+
+async function restartMicrophoneInput() {
+  if (!audioContext || !workletNode) {
+    return;
+  }
+
+  sourceNode?.disconnect();
+  micStream?.getTracks().forEach((track) => track.stop());
+  micStream = await navigator.mediaDevices.getUserMedia(audioConstraints());
+  sourceNode = audioContext.createMediaStreamSource(micStream);
+  sourceNode.connect(workletNode);
+  await refreshAudioDevices();
 }
 
 function sendPlaybackEvent(type, entry) {
@@ -406,7 +537,7 @@ async function playAudioChunk(arrayBuffer) {
   const source = audioContext.createBufferSource();
   const turnId = currentAudioTurnId;
   source.buffer = audioBuffer;
-  source.connect(audioContext.destination);
+  source.connect(playbackMixerNode || audioContext.destination);
 
   const startAt = Math.max(audioContext.currentTime + 0.03, nextPlaybackTime);
   const startedDelayMs = Math.max(0, (startAt - audioContext.currentTime) * 1000);
@@ -443,14 +574,9 @@ async function startSession() {
   audioContext = new AudioContext({ sampleRate: 16000 });
   await audioContext.audioWorklet.addModule("/client/audio-worklet.js");
 
-  micStream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: false,
-    },
-  });
+  micStream = await navigator.mediaDevices.getUserMedia(audioConstraints());
+  await refreshAudioDevices();
+  await ensurePlaybackOutput();
 
   websocket = new WebSocket(websocketUrl());
   websocket.binaryType = "arraybuffer";
@@ -503,6 +629,10 @@ async function stopSession() {
   micStream?.getTracks().forEach((track) => track.stop());
   sendJsonEvent({ type: "client_stop" });
   websocket?.close();
+  if (playbackOutputElement) {
+    playbackOutputElement.pause();
+    playbackOutputElement.srcObject = null;
+  }
   await audioContext?.close();
 
   audioContext = null;
@@ -510,6 +640,9 @@ async function stopSession() {
   workletNode = null;
   sourceNode = null;
   sinkNode = null;
+  playbackMixerNode = null;
+  playbackOutputDestinationNode = null;
+  playbackOutputElement = null;
   websocket = null;
   nextPlaybackTime = 0;
   currentAudioTurnId = null;
@@ -549,5 +682,39 @@ nextReadPromptButton.addEventListener("click", () => {
   renderReadPrompt();
 });
 
+audioInputDeviceSelect.addEventListener("change", () => {
+  selectedAudioInputDeviceId = audioInputDeviceSelect.value;
+  localStorage.setItem("tomoko.audioInputDeviceId", selectedAudioInputDeviceId);
+  restartMicrophoneInput().catch((error) => {
+    console.error(error);
+    setDeviceStatus("input device error");
+  });
+});
+
+audioOutputDeviceSelect.addEventListener("change", () => {
+  selectedAudioOutputDeviceId = audioOutputDeviceSelect.value;
+  localStorage.setItem("tomoko.audioOutputDeviceId", selectedAudioOutputDeviceId);
+  ensurePlaybackOutput()
+    .then(() => {
+      if (!supportsOutputDeviceSelection()) {
+        setDeviceStatus("output device selection unavailable");
+      }
+    })
+    .catch((error) => {
+      console.error(error);
+      setDeviceStatus("output device error");
+    });
+});
+
+navigator.mediaDevices?.addEventListener?.("devicechange", () => {
+  refreshAudioDevices().catch((error) => {
+    console.error(error);
+    setDeviceStatus("device list error");
+  });
+});
+
 renderReadPrompt();
 updateDebugButtons();
+refreshAudioDevices().catch(() => {
+  setDeviceStatus("device labels require mic permission");
+});

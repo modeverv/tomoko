@@ -98,6 +98,7 @@ def test_parse_mcp_tool_call_response_reads_structured_content_and_dedupes_urls(
                 "query": "OpenAI",
                 "provider": "perplexity",
                 "short_answer": "新情報はありません。",
+                "full_text": "新情報はありません。\nただし、関連する背景情報は増えています。",
                 "citations": [
                     {"title": "A", "url": "https://example.com/a", "source": "example.com"},
                     {
@@ -120,6 +121,7 @@ def test_parse_mcp_tool_call_response_reads_structured_content_and_dedupes_urls(
 
     assert result.status == "completed"
     assert result.short_answer == "新情報はありません。"
+    assert result.full_text == "新情報はありません。\nただし、関連する背景情報は増えています。"
     assert [citation.url for citation in result.citations] == [
         "https://example.com/a",
         "https://example.com/b",

@@ -60,6 +60,7 @@ class ResearchResult:
     query: str
     provider: str = "perplexity"
     short_answer: str = ""
+    full_text: str = ""
     bullets: tuple[str, ...] = ()
     citations: tuple[ResearchCitation, ...] = ()
     confidence: float | None = None
@@ -70,6 +71,14 @@ class ResearchResult:
 
     def is_speakable(self) -> bool:
         return self.status == "completed" and bool(self.short_answer.strip())
+
+    def speakable_answer_text(self) -> str:
+        full_text = self.full_text.strip()
+        if full_text:
+            return full_text
+        parts = [self.short_answer.strip()]
+        parts.extend(item.strip() for item in self.bullets if item.strip())
+        return "\n".join(part for part in parts if part)
 
 
 class ResearchIntentDetector:
@@ -204,6 +213,7 @@ class ResearchResultSummarizer:
                 f"provider: {result.provider}",
                 f"fetched_at: {result.fetched_at.isoformat()}",
                 f"short_answer: {result.short_answer}",
+                f"full_text: {result.full_text}",
                 "bullets:",
                 *(f"- {item}" for item in result.bullets),
                 "citations:",
@@ -435,6 +445,7 @@ def _research_result_from_payload(
         query=str(payload.get("query") or fallback_query),
         provider=str(payload.get("provider") or "perplexity"),
         short_answer=str(payload.get("short_answer") or ""),
+        full_text=str(payload.get("full_text") or ""),
         bullets=tuple(str(item) for item in payload.get("bullets", ()) if str(item).strip()),
         citations=_dedupe_citations(payload.get("citations")),
         confidence=_optional_float(payload.get("confidence")),

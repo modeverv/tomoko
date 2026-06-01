@@ -26,7 +26,10 @@ async def test_research_mcp_smoke_writes_summary(tmp_path: Path) -> None:
     assert loaded["short_answer"] == "最近のOpenAIを についての smoke 応答です。"
     assert loaded["reply_text_deltas"] == [
         "調べ終わったよ。結果を教えてって言ってね。",
-        "最近のOpenAIを についての smoke 応答です。",
+        (
+            "最近のOpenAIを についての smoke 応答です。\n"
+            "Session command から MCP subprocess まで到達しました。"
+        ),
     ]
     assert loaded["ingested_research_count"] == 1
     assert loaded["deep_research_summaries"] == [

@@ -1,3 +1,85 @@
+## 2026-06-01 セッション9
+
+### やること（開始時に書く）
+- tomoko-research-operator 側で増やした Perplexity 出力が Tomoko 側でどこまで届いているか実 smoke で確認する
+- Tomoko が research result follow-up で読む本文量を、operator の増量結果に合わせて増やす
+- Research MCP subprocess / TomoroSession follow-up / TTS 入力までを focused test と実 operator smoke で確認する
+
+### やったこと
+- Tomoko 側の `ResearchResult` に MCP structuredContent の `full_text` を保持するようにした
+- `research_answer_requested` / `start_research_answer_reply` の発話本文を `full_text` 優先にした
+- `full_text` がない result では `short_answer` と `bullets` から発話本文を組み立てる互換 fallback を追加した
+- `short_answer` は result-ready emission / metadata 用として残し、deep context は従来どおり LLM summary を使う
+- PLAN.md / MEMORY.md / `_docs/latency.md` に今回の判断と実 smoke 結果を追記した
+
+### 詰まったこと・解決したこと
+- operator artifact には 600〜800 文字級の本文が出ていたが、Tomoko 側の DTO が `full_text` を読んでいなかった
+  - MCP parse と TomoroSession follow-up を修正し、operator の増量本文をそのまま発話対象へ渡すようにした
+- 最初の real smoke は引数名を `--speech-text` / `--answer-followup-text` と誤って実行し失敗した
+  - script の実引数 `--speech` / `--answer-followup` で再実行し、実 operator 経由で成功した
+
+### 検証
+- red test: `.venv/bin/pytest -m unit tests/unit/test_research_gateway.py::test_parse_mcp_tool_call_response_reads_structured_content_and_dedupes_urls tests/unit/test_research_session_contract.py::test_research_answer_requested_speaks_full_text_when_operator_returns_it -q`
+  - `full_text` 未保持 / `short_answer` 固定のため 2 failed
+- focused research unit: `.venv/bin/pytest -m unit tests/unit/test_research_gateway.py tests/unit/test_research_session_contract.py tests/unit/test_smoke_research_mcp_flow.py tests/unit/test_smoke_research_tomoro_session_flow.py tests/unit/test_makefile_process_entries.py -q`
+  - 51 passed
+- focused ruff: `.venv/bin/ruff check server/gateway/research.py server/session.py tests/unit/test_research_gateway.py tests/unit/test_research_session_contract.py tests/unit/test_smoke_research_mcp_flow.py tests/unit/test_smoke_research_tomoro_session_flow.py`
+  - pass
+- real operator smoke: `.venv/bin/python _tools/smoke_research_tomoro_session_flow.py --speech '智子、今日の世界情勢について調べて' --answer-followup '結果を教えて' --command 'uv --directory /Users/seijiro/Sync/sync_work/by-llms/tomoko-research-operator run tomoko-research-mcp' --timeout-sec 180 --output logs/research-tomoro-session-real-smoke-fulltext.json`
+  - `ok=true`, `status=completed`, `speakable=true`
+  - `short_answer` 45 文字、`answer_reply_text` 549 文字
+  - `research_answer_requested` と follow-up `reply_text` まで確認
+- full unit: `.venv/bin/pytest -m unit -q`
+  - 571 passed, 19 deselected, 2 failed
+  - failures: `test_deep_snapshot_reads_calendar_context`, `test_tomoro_session_carries_calendar_context_into_short_followup`
+  - 前セッションから残っている calendar context の既存 failure で、今回の Research full_text 変更とは無関係
+
+### 次のセッションでやること
+- live voice で `結果を教えて` 後の長め発話が体感として長すぎないか確認する
+- 長すぎる場合は operator prompt ではなく Tomoko 側の発話用整形として、最大文量や source 行除去を別 Phase で検討する
+
+## 2026-06-01 セッション8
+
+### やること（開始時に書く）
+- Phase: Client audio device picker
+- UI に input device と output device の select を追加する
+- input device は `getUserMedia({ deviceId })` に反映し、output device は対応ブラウザで `setSinkId` に反映する
+- `/ws` payload、TomoroSession、audio hot path、playback telemetry contract は変更しない
+
+### やったこと
+- `client/index.html` に input / output device selector と device status 表示を追加した
+- `client/main.js` で `enumerateDevices()` による device list 更新、選択保存、`getUserMedia({ deviceId })`、接続中の mic stream 差し替えを実装した
+- Tomoko playback は Web Audio の mixer を通し、`setSinkId` 対応時だけ `MediaStreamDestination` + hidden audio element 経由で選択 output に流すようにした
+- `setSinkId` 非対応時や output 切替失敗時は default destination へ fallback する
+- `tests/unit/test_client_audio_devices.py` を追加し、client static contract を固定した
+- PLAN.md / MEMORY.md / `_docs/latency.md` に今回の client-only 判断と検証を追記した
+
+### 詰まったこと・解決したこと
+- Playwright bundled browser binary が未導入だったため、system Chrome (`/Applications/Google Chrome.app`) を使って layout smoke を実行した
+- full unit は `tests/unit/test_phase88_context_snapshot.py` の calendar context 2 件で失敗したが、今回の client-only 差分とは無関係の既存 failure と判断した
+
+### 検証
+- red test: `.venv/bin/pytest -m unit tests/unit/test_client_audio_devices.py -q`
+  - device selector / device API usage 未実装で 4 failed
+- focused static client: `.venv/bin/pytest -m unit tests/unit/test_client_audio_devices.py -q`
+  - 4 passed
+- focused ruff: `.venv/bin/ruff check tests/unit/test_client_audio_devices.py`
+  - pass
+- JS syntax: `node --check client/main.js`
+  - pass
+- diff check: `git diff --check`
+  - pass
+- Chrome layout smoke: `http://127.0.0.1:8768/client/index.html`
+  - desktop: input / output select visible
+  - mobile 390px: `bodyScrollWidth=390`, `viewportWidth=390`
+- full unit: `.venv/bin/pytest -m unit -q`
+  - 570 passed, 19 deselected, 2 failed
+  - failures: `test_deep_snapshot_reads_calendar_context`, `test_tomoro_session_carries_calendar_context_into_short_followup`
+
+### 次のセッションでやること
+- 実ブラウザで permission 後に実デバイス label が出ること、選択した mic / speaker で入出力できることを手元確認する
+- calendar context の既存 unit failure は別セッションで原因を見る
+
 ## 2026-06-01 セッション7
 
 ### やること（開始時に書く）

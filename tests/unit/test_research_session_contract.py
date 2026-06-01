@@ -408,6 +408,39 @@ async def test_research_answer_requested_keeps_pending_result_reusable() -> None
 
 
 @pytest.mark.unit
+async def test_research_answer_requested_speaks_full_text_when_operator_returns_it() -> None:
+    session = _session()
+    result = ResearchResult(
+        status="completed",
+        query="世界情勢",
+        short_answer="冒頭だけです。",
+        full_text="冒頭だけです。\n中東、ウクライナ、世界経済の要点も続けて話します。",
+        fetched_at=datetime(2026, 6, 1, tzinfo=UTC),
+    )
+    await session.post_event(
+        SessionEvent(
+            type="research_result_ready",
+            payload={"request_id": "research-1", "result": result},
+        )
+    )
+
+    answer = await session.post_event(
+        SessionEvent(
+            type="research_answer_requested",
+            payload={"transcript": _transcript("結果を教えて")},
+        )
+    )
+
+    assert answer.emissions[0].payload["short_answer"] == "冒頭だけです。"
+    assert answer.emissions[0].payload["answer_text"] == (
+        "冒頭だけです。\n中東、ウクライナ、世界経済の要点も続けて話します。"
+    )
+    assert answer.commands[0].payload["text"] == (
+        "冒頭だけです。\n中東、ウクライナ、世界経済の要点も続けて話します。"
+    )
+
+
+@pytest.mark.unit
 async def test_process_transcript_routes_teach_me_followup_to_research_answer() -> None:
     events: list[dict[str, object]] = []
     session = _session(events)

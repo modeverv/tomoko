@@ -31,7 +31,9 @@ async def test_tomoro_session_research_smoke_runs_wait_reply_and_followup(
     assert loaded["answer_requested"] is True
     assert loaded["answer_reply_text"] == (
         "オバマ大統領について について調べたよ。"
-        "バラク・オバマはアメリカ合衆国の第44代大統領です。"
+        "バラク・オバマはアメリカ合衆国の第44代大統領です。\n"
+        "TomoroSession transcript path から MCP subprocess まで到達しました。\n"
+        "follow-up の「教えて」で pending result を読めます。"
     )
     assert loaded["ingested_research_count"] == 1
     assert loaded["reply_done_count"] == 3

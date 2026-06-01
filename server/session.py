@@ -899,6 +899,7 @@ class TomoroSession:
                 "research_answer_skipped",
                 payload={"reason": "no_pending_result"},
             )
+        answer_text = result.speakable_answer_text()
         return self._transition_result(
             "research_answer_requested",
             payload={
@@ -906,6 +907,7 @@ class TomoroSession:
                 "query": result.query,
                 "provider": result.provider,
                 "short_answer": result.short_answer,
+                "answer_text": answer_text,
                 "citation_count": len(result.citations),
                 "provider_trace_id": result.provider_trace_id,
                 "raw_artifact_path": result.raw_artifact_path,
@@ -916,7 +918,7 @@ class TomoroSession:
                     payload={
                         "request_id": request_id,
                         "query": result.query,
-                        "text": result.short_answer,
+                        "text": answer_text,
                         "device_id": transcript.device_id,
                     },
                 )

@@ -1,3 +1,36 @@
+## 2026-06-01 Research full-text follow-up speech
+
+tomoko-research-operator が `full_text` を返しているのに、Tomoko 側が `short_answer` だけを
+follow-up 発話に使う方針は否定する。
+
+`short_answer` は完了通知・metadata・一覧用の短い答えとして維持し、
+ユーザーが `結果を教えて` と言った時の発話本文は `full_text` を優先する。
+`full_text` がない古い/fake result では、従来互換として `short_answer` と `bullets` から発話本文を作る。
+
+### 完了条件
+
+- [x] MCP structuredContent の `full_text` を Tomoko 側 `ResearchResult` に保持する
+- [x] `research_answer_requested` の発話 command は `full_text` 優先の本文を使う
+- [x] `short_answer` は従来どおり emission / metadata として残す
+- [x] focused research unit / ruff が通る
+- [x] real operator smoke で `short_answer` より長い `answer_reply_text` が出る
+- [x] full unit の結果を確認し、既存 calendar context failure と切り分ける
+
+## 2026-06-01 Client audio device picker
+
+ブラウザ UI が OS default device だけに固定される方針は否定する。
+ただし input / output device selection は client-side browser capability として扱い、
+`/ws` payload、TomoroSession、audio hot path、playback telemetry contract は変更しない。
+
+### 完了条件
+
+- [x] UI で input device と output device を選択できる
+- [x] input device 選択は `getUserMedia({ deviceId })` に反映される
+- [x] output device 選択は対応ブラウザで playback destination に反映される
+- [x] `setSinkId` 非対応ブラウザでも UI が壊れず default output として動く
+- [x] device list は mic permission 後に label 付きで更新される
+- [x] static client unit / JS syntax check / diff check が通る
+
 ## 2026-05-31 Research MCP runtime observability
 
 Tomoko の一次応答だけを見て Research MCP が動いたか判断する方針は否定する。

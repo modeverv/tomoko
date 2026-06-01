@@ -47,6 +47,22 @@
           <button id="stop" type="button" disabled>Stop</button>
         </div>
 
+        <div class="device-controls" aria-label="Audio devices">
+          <label>
+            <span>Input</span>
+            <select id="audio-input-device">
+              <option value="">Default microphone</option>
+            </select>
+          </label>
+          <label>
+            <span>Output</span>
+            <select id="audio-output-device">
+              <option value="">Default speaker</option>
+            </select>
+          </label>
+          <p id="device-status">default devices</p>
+        </div>
+
         <div class="debug-controls" aria-label="Recording tools">
           <button id="record-noise" type="button" disabled>Noise 1s</button>
           <button id="record-read" type="button" disabled>Read 5s</button>
