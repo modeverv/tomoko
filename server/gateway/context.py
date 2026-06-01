@@ -137,6 +137,7 @@ class ContextSnapshotBuilder:
         calendar_store: CalendarEventStore | None = None,
         research_result_store: Any | None = None,
         cache_ttl_ms: dict[str, int] | None = None,
+        now_provider: Callable[[], datetime] | None = None,
     ) -> None:
         self.conversation_log_reader = conversation_log_reader
         self.embedding_backend = embedding_backend
@@ -145,6 +146,7 @@ class ContextSnapshotBuilder:
         self.persona_store = persona_store
         self.calendar_store = calendar_store
         self.research_result_store = research_result_store
+        self._now_provider = now_provider or (lambda: datetime.now(UTC))
         self._cache_ttl_ms = {
             **self.DEFAULT_CACHE_TTL_MS,
             **(cache_ttl_ms or {}),
@@ -344,6 +346,7 @@ class ContextSnapshotBuilder:
             and policy.max_calendar_events > 0
             and self.calendar_store is not None
         ):
+            calendar_now = self._now_provider()
             tasks["calendar_events"] = asyncio.create_task(
                 self._timed(
                     "calendar_events",
@@ -356,15 +359,13 @@ class ContextSnapshotBuilder:
                             "calendar_events",
                             policy.depth,
                             policy.max_calendar_events,
-                            datetime.now(UTC).date().isoformat(),
+                            calendar_now.date().isoformat(),
                         ),
                         cache_entries=cache_entries,
                         loader=lambda: self.calendar_store.read_context_events(
-                            now=datetime.now(UTC),
-                            days_before=1,
-                            days_ahead=14
-                            if policy.depth == "deep"
-                            else 30,
+                            now=calendar_now,
+                            days_before=0,
+                            days_ahead=30,
                             limit=policy.max_calendar_events,
                         ),
                     ),

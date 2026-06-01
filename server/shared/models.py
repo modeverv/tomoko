@@ -1546,7 +1546,7 @@ class ContextBuildPolicy:
                     max_lexicon_terms=8,
                     allow_turn_memory_search=True,
                     allow_persona_slice=True,
-                    max_calendar_events=8,
+                    max_calendar_events=64,
                     allow_calendar_context=True,
                     max_research_results=3,
                     allow_research_results=True,

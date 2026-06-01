@@ -1921,6 +1921,14 @@ class TomoroSession:
                 calendar_cue,
                 transcript.text,
             )
+        if context_snapshot.calendar_events:
+            fresh_calendar_ids = {id(memory) for memory in exposed_fresh_calendar_memory}
+            if fresh_calendar_ids:
+                long_term_memory = [
+                    memory
+                    for memory in long_term_memory
+                    if id(memory) not in fresh_calendar_ids
+                ]
         exposed_conversation_memory_count = len(
             [
                 memory

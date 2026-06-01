@@ -359,6 +359,7 @@ make gcal
 ```
 
 予定は PostgreSQL の `calendar_events` に保存され、会話中の deep context だけが DB から予定を読みます。
+deep context は今日から未来30日の予定を最大64件まで `CALENDAR CONTEXT` として prompt に渡します。
 
 ## Data And Logs
 

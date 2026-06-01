@@ -209,6 +209,8 @@ def _is_self_statement(text: str) -> bool:
 
 
 def _has_calendar_request(text: str) -> bool:
+    if _looks_like_clock_query(text):
+        return False
     return any(
         cue in text
         for cue in (
@@ -222,13 +224,24 @@ def _has_calendar_request(text: str) -> bool:
             "あさって",
             "今週",
             "来週",
-            "何時",
             "空いてる",
             "会議",
             "ミーティング",
             "MTG",
             "mtg",
         )
+    )
+
+
+def _looks_like_clock_query(text: str) -> bool:
+    normalized = text.replace(" ", "").replace("　", "")
+    return (
+        "今何時" in normalized
+        or "いま何時" in normalized
+        or "何時ぐらい" in normalized
+        or "何時くらい" in normalized
+        or "何時かわかる" in normalized
+        or normalized in {"何時", "時刻", "現在時刻"}
     )
 
 

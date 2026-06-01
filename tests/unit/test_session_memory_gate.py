@@ -96,6 +96,20 @@ def test_rule_memory_gate_plans_retrieval_separately_from_use() -> None:
     assert self_statement_plan.reason == "self_statement_suppresses_retrieval"
 
 
+@pytest.mark.unit
+def test_rule_memory_gate_does_not_treat_clock_query_as_calendar_request() -> None:
+    gate = RuleBasedMemoryGate()
+
+    plan = gate.plan_retrieval(
+        text="智子今何時",
+        base_deep_memory=False,
+        calendar_cue=False,
+    )
+
+    assert plan.intent == "unclear"
+    assert plan.retrieve_calendar is False
+
+
 class RecordingLogger:
     def __init__(self) -> None:
         self.messages: list[str] = []

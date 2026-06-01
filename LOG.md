@@ -1,3 +1,82 @@
+## 2026-06-01 セッション11
+
+### やること（開始時に書く）
+- 最新 `logs/server-debug.log` から、Tomoko の応答崩れと無音感の原因を STT / prompt / LLM / TTS / audio queue で切り分ける
+- calendar future 30-day context 変更が prompt を壊していないか確認する
+- 原因が実装差分なら focused test つきで hotfix する
+
+### やったこと
+- `server-debug.log` と `backend-trace.jsonl` を確認した
+- `今何時` が calendar request 扱いになり、未来30日の予定 42 件が prompt に入っていることを確認した
+- 同じ予定一覧が `CALENDAR CONTEXT` と `長期コンテキスト` の両方に二重投入されていることを確認した
+- `has_calendar_cue()` と `RuleBasedMemoryGate` で純粋な時計質問を calendar cue から外した
+- deep calendar turn の現在 prompt では fresh calendar memory を `long_term_memory` から除き、`CALENDAR CONTEXT` との二重投入を止めた
+- calendar follow-up 用の carryover は維持した
+- PLAN.md / MEMORY.md に hotfix 方針を追記した
+
+### 詰まったこと・解決したこと
+- TTS が壊れたように見えたが、`backend-trace.jsonl` では VOICEVOX が audio chunk を返していた
+  - 主因は TTS そのものではなく、LLM が `雑談` を反復する壊れた長文を出し、TTS が巨大 chunk を生成して audio queue overflow したことだった
+- `今何時` は current local time prompt だけで答えられるため、calendar DB retrieval へ入れる必要がなかった
+  - 時計質問を calendar cue / calendar request から外して解決した
+
+### 検証
+- focused hotfix unit: `.venv/bin/pytest -m unit tests/unit/test_phase8_memory.py::test_calendar_cue_is_separate_from_deep_memory_cue tests/unit/test_session_memory_gate.py::test_rule_memory_gate_does_not_treat_clock_query_as_calendar_request tests/unit/test_phase88_context_snapshot.py::test_tomoro_session_carries_calendar_context_into_short_followup -q`
+  - 3 passed
+- focused related unit: `.venv/bin/pytest -m unit tests/unit/test_phase8_memory.py tests/unit/test_session_memory_gate.py tests/unit/test_phase88_context_snapshot.py tests/unit/test_phase4_thinking.py::test_think_fast_includes_calendar_context_from_snapshot -q`
+  - 41 passed
+- focused ruff: `.venv/bin/ruff check server/gateway/thinking/selector.py server/session_memory_gate.py server/session.py tests/unit/test_phase8_memory.py tests/unit/test_session_memory_gate.py tests/unit/test_phase88_context_snapshot.py`
+  - pass
+- diff check: `git diff --check`
+  - pass
+- full unit: `.venv/bin/pytest -m unit -q`
+  - 574 passed, 19 deselected, 1 failed
+  - failure: `test_persona_overlay_describes_inspired_style_without_original_lines`
+  - `prompts/persona_overlay.md` が `原作台詞` を含まない既存/別件 failure
+
+### 次のセッションでやること
+- live server を再起動して、`今何時` の prompt に `CALENDAR CONTEXT` が出ないことと、VOICEVOX 音声が通常サイズで再生されることを確認する
+
+## 2026-06-01 セッション10
+
+### やること（開始時に書く）
+- DB の `calendar_events` から 2026年6月の予定を確認する
+- 会話 prompt の calendar context が今日から未来30日の予定を全件載せられるようにする
+- ContextSnapshotBuilder の calendar window / limit を unit test で固定する
+
+### やったこと
+- PostgreSQL `calendar_events` を確認し、2026年6月の confirmed 予定が 42 件あることを確認した
+- `ContextSnapshotBuilder(depth="deep")` の calendar window を今日から未来30日に変更した
+- deep calendar context の取得上限を 8 件から 64 件に広げた
+- `ContextSnapshotBuilder` に `now_provider` を追加し、calendar window の unit test が実日付に依存しないようにした
+- PLAN.md / MEMORY.md / ARCHITECTURE.md / README.md / `_docs/latency.md` に未来30日方針を追記した
+
+### 詰まったこと・解決したこと
+- 既存 calendar unit は実日付 `datetime.now(UTC)` に依存しており、固定 fixture の 2026-05-30 予定が現在日付から外れて失敗していた
+  - `now_provider` を注入できるようにし、test では固定時刻を渡すことで解決した
+- full unit は `prompts/persona_overlay.md` の `原作台詞` 期待で 1 件失敗した
+  - 今回の calendar 変更とは無関係の既存/別件 prompt 内容差分として切り分けた
+
+### 検証
+- DB query: 2026-06-01 から 2026-07-01 未満の confirmed calendar events は 42 件
+- red test: `.venv/bin/pytest -m unit tests/unit/test_phase88_context_snapshot.py::test_deep_snapshot_reads_all_future_30_day_calendar_context -q`
+  - `now_provider` 未実装で failed
+- focused calendar unit: `.venv/bin/pytest -m unit tests/unit/test_phase88_context_snapshot.py::test_deep_snapshot_reads_calendar_context tests/unit/test_phase88_context_snapshot.py::test_deep_snapshot_reads_all_future_30_day_calendar_context tests/unit/test_phase88_context_snapshot.py::test_tomoro_session_carries_calendar_context_into_short_followup -q`
+  - 3 passed
+- focused related unit: `.venv/bin/pytest -m unit tests/unit/test_phase88_context_snapshot.py tests/unit/test_phase4_thinking.py::test_think_fast_includes_calendar_context_from_snapshot tests/unit/test_session_memory_helpers.py -q`
+  - 31 passed
+- focused ruff: `.venv/bin/ruff check server/gateway/context.py server/shared/models.py tests/unit/test_phase88_context_snapshot.py`
+  - pass
+- diff check: `git diff --check`
+  - pass
+- full unit: `.venv/bin/pytest -m unit -q`
+  - 573 passed, 19 deselected, 1 failed
+  - failure: `test_persona_overlay_describes_inspired_style_without_original_lines`
+  - `prompts/persona_overlay.md` が `原作台詞` を含まないためで、今回の calendar 変更とは無関係
+
+### 次のセッションでやること
+- `prompts/persona_overlay.md` の persona overlay test failure を別セッションで直すか、意図した overlay 内容に合わせて test を更新する
+
 ## 2026-06-01 セッション9
 
 ### やること（開始時に書く）

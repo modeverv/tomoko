@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -281,13 +281,18 @@ class SlowPersonaStore(FakePersonaStore):
         return await super().read_latest_state()
 
 
-def _calendar_event(summary: str) -> CalendarEvent:
+def _calendar_event(
+    summary: str,
+    *,
+    start_time: datetime | None = None,
+) -> CalendarEvent:
+    start_time = start_time or datetime(2026, 5, 30, 4, 0, tzinfo=UTC)
     return CalendarEvent(
         source_id="gcal",
         uid=f"{summary}@example.com",
         summary=summary,
-        start_time=datetime(2026, 5, 30, 4, 0, tzinfo=UTC),
-        end_time=datetime(2026, 5, 30, 5, 0, tzinfo=UTC),
+        start_time=start_time,
+        end_time=start_time + timedelta(hours=1),
         all_day=False,
         location="Kitchen",
     )
@@ -369,7 +374,10 @@ async def test_deep_snapshot_reads_calendar_context() -> None:
         source_id="gcal",
         events=[_calendar_event("家族の予定")],
     )
-    builder = ContextSnapshotBuilder(calendar_store=calendar_store)
+    builder = ContextSnapshotBuilder(
+        calendar_store=calendar_store,
+        now_provider=lambda: datetime(2026, 5, 30, 0, 0, tzinfo=UTC),
+    )
 
     snapshot = await builder.build(
         text="トモコ、今日の予定ある？",
@@ -382,6 +390,50 @@ async def test_deep_snapshot_reads_calendar_context() -> None:
     assert [event.summary for event in snapshot.calendar_events] == ["家族の予定"]
     assert snapshot.trace.included_counts["calendar_events"] == 1
     assert "calendar_events" in snapshot.trace.stage_timings_ms
+
+
+@pytest.mark.unit
+async def test_deep_snapshot_reads_all_future_30_day_calendar_context() -> None:
+    now = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
+    calendar_store = InMemoryCalendarEventStore()
+    june_events = [
+        _calendar_event(
+            f"6月の予定{i:02d}",
+            start_time=now + timedelta(hours=9, days=i),
+        )
+        for i in range(30)
+    ]
+    await calendar_store.replace_source_events(
+        source_id="gcal",
+        events=[
+            _calendar_event(
+                "昨日の予定",
+                start_time=now - timedelta(days=1),
+            ),
+            *june_events,
+            _calendar_event(
+                "31日後の予定",
+                start_time=now + timedelta(days=31),
+            ),
+        ],
+    )
+    builder = ContextSnapshotBuilder(
+        calendar_store=calendar_store,
+        now_provider=lambda: now,
+    )
+
+    snapshot = await builder.build(
+        text="トモコ、今後の予定ある？",
+        speaker=None,
+        device_id="local",
+        active_session_id=None,
+        policy=ContextBuildPolicy.for_depth("deep"),
+    )
+
+    assert [event.summary for event in snapshot.calendar_events] == [
+        event.summary for event in june_events
+    ]
+    assert snapshot.trace.included_counts["calendar_events"] == 30
 
 
 @pytest.mark.unit
@@ -954,6 +1006,7 @@ async def test_tomoro_session_carries_calendar_context_into_short_followup() -> 
         context_snapshot_builder=ContextSnapshotBuilder(
             conversation_log_reader=InMemoryConversationReader(),
             calendar_store=calendar_store,
+            now_provider=lambda: datetime(2026, 5, 30, 0, 0, tzinfo=UTC),
         ),
     )
     session.active_conversation_session_id = uuid4()
@@ -989,6 +1042,7 @@ async def test_tomoro_session_carries_calendar_context_into_short_followup() -> 
     assert [event.summary for event in first_input.context_snapshot.calendar_events] == [
         "家族の予定"
     ]
+    assert first_input.long_term_memory == []
 
     followup_input = mode.inputs[1]
     assert followup_input.context_snapshot is not None

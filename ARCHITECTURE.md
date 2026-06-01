@@ -2302,6 +2302,12 @@ class ContextBuildPolicy:
 初期値は conservative にし、性能改善や実測に応じて広げる。
 policy は「Tomoko の賢さ」と「応答速度」のトレードオフを調整するための制御点である。
 
+2026-06-01 追記:
+予定を聞かれた時の `deep` calendar context は、直近数件だけではなく
+今日から未来30日の予定を最大64件まで読む。
+これはユーザーの予定確認では月内・近未来の全体像が必要になりやすいためである。
+calendar context は `calendar_events` 由来の参照情報であり、会話原本やユーザー発話として扱わない。
+
 ### ContextBuildTrace
 
 context build は必ず trace を返す。

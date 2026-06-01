@@ -31,7 +31,6 @@ CALENDAR_CUES = (
     "あさって",
     "今週",
     "来週",
-    "何時",
     "空いてる",
     "空き",
     "会議",
@@ -62,4 +61,18 @@ def has_deep_memory_cue(text: str) -> bool:
 
 def has_calendar_cue(text: str) -> bool:
     normalized = text.strip()
+    if _looks_like_clock_query(normalized):
+        return False
     return any(cue in normalized for cue in CALENDAR_CUES)
+
+
+def _looks_like_clock_query(text: str) -> bool:
+    normalized = text.replace(" ", "").replace("　", "")
+    return (
+        "今何時" in normalized
+        or "いま何時" in normalized
+        or "何時ぐらい" in normalized
+        or "何時くらい" in normalized
+        or "何時かわかる" in normalized
+        or normalized in {"何時", "時刻", "現在時刻"}
+    )

@@ -1,3 +1,31 @@
+## 2026-06-01 Calendar prompt overload hotfix
+
+未来30日の calendar context を prompt に載せる判断は維持する。
+ただし `今何時` のような純粋な時計質問まで calendar request として扱い、
+さらに同じ予定一覧を `CALENDAR CONTEXT` と `長期コンテキスト` の両方に二重投入する方針は否定する。
+
+### 完了条件
+
+- [x] `今何時` / 時計質問は calendar cue にならない
+- [x] MemoryGate も時計質問を calendar request として扱わない
+- [x] deep calendar turn の現在 prompt では予定を `CALENDAR CONTEXT` にだけ載せ、`long_term_memory` には重複投入しない
+- [x] calendar follow-up では carryover された予定を従来どおり使える
+- [x] focused unit / ruff / diff check が通る
+
+## 2026-06-01 Calendar future 30-day prompt context
+
+会話 prompt の calendar context を直近 8 件だけに抑える方針は否定する。
+今日から未来30日の予定は、会話中に予定を聞かれた時の基本文脈として扱い、
+`ContextSnapshotBuilder(depth="deep")` が最大64件まで取得して prompt に渡す。
+
+### 完了条件
+
+- [x] deep context の calendar limit が未来30日分を載せられる件数になっている
+- [x] calendar read window が過去1日 + 14日先ではなく、今日から未来30日になっている
+- [x] 今日から30日分の予定が全件 snapshot に入る unit test がある
+- [x] 既存 calendar context test が実日付に依存せず固定時刻で通る
+- [x] focused unit / ruff が通る
+
 ## 2026-06-01 Research full-text follow-up speech
 
 tomoko-research-operator が `full_text` を返しているのに、Tomoko 側が `short_answer` だけを

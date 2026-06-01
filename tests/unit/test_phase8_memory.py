@@ -169,6 +169,7 @@ def test_deep_memory_selector_keeps_short_utterances_fast() -> None:
 def test_calendar_cue_is_separate_from_deep_memory_cue() -> None:
     assert has_calendar_cue("今日の予定ある？") is True
     assert has_calendar_cue("明日のスケジュール教えて") is True
+    assert has_calendar_cue("今何時") is False
     assert should_use_deep_memory("今日の予定ある？") is False
 
 
