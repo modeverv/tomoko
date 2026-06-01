@@ -1,3 +1,16 @@
+## 2026-06-01 Persona overlay test contract
+
+`persona_overlay.md` の本文を unit test で固定する方針は否定する。
+overlay は体感調整のために頻繁に変わる文面なので、test は存在する場合に UTF-8 で読めることと、
+既存の sibling overlay loading path が prompt に差し込むことだけを保証する。
+
+### 完了条件
+
+- [x] repo-local `persona_overlay.md` の具体語句を test で要求しない
+- [x] overlay file が存在する場合に読めることだけを確認する
+- [x] ThinkFastMode の sibling overlay injection test は維持する
+- [x] focused unit / full unit が通る
+
 ## 2026-06-01 Calendar prompt overload hotfix
 
 未来30日の calendar context を prompt に載せる判断は維持する。

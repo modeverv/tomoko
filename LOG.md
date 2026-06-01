@@ -1,3 +1,29 @@
+## 2026-06-01 セッション12
+
+### やること（開始時に書く）
+- `persona_overlay.md` の既存 unit failure の原因を確認する
+- overlay 本文の具体語句で壊れる test を、読み込み contract だけに薄くする
+
+### やったこと
+- `test_persona_overlay_describes_inspired_style_without_original_lines` が `原作台詞` という具体語句を期待していることを確認した
+- `persona_overlay.md` は体感調整で頻繁に変わる文面なので、repo-local overlay test を「存在する場合に UTF-8 で読める」だけに変更した
+- sibling overlay が `ThinkFastMode` の prompt に入る挙動の test は維持した
+- PLAN.md / MEMORY.md に persona overlay test 方針を追記した
+
+### 詰まったこと・解決したこと
+- overlay の安全ガード文を本文に戻す案もあったが、ユーザー方針どおり文言固定 test は壊れやすいためやめた
+- test の責務を「内容の審査」ではなく「overlay loading contract」に絞った
+
+### 検証
+- focused unit: `.venv/bin/pytest -m unit tests/unit/test_phase4_thinking.py::test_persona_overlay_file_is_readable_when_present tests/unit/test_phase4_thinking.py::test_think_fast_includes_persona_overlay_when_sibling_file_exists tests/unit/test_phase4_thinking.py::test_think_fast_omits_persona_overlay_when_sibling_file_is_missing -q`
+  - 3 passed
+- focused ruff: `.venv/bin/ruff check tests/unit/test_phase4_thinking.py`
+  - pass
+- diff check: `git diff --check`
+  - pass
+- full unit: `.venv/bin/pytest -m unit -q`
+  - 575 passed, 19 deselected
+
 ## 2026-06-01 セッション11
 
 ### やること（開始時に書く）
