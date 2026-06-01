@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 GESTURE_BACKCHANNEL_REACT_THRESHOLD = 0.50
 GESTURE_BACKCHANNEL_COOLDOWN_MS = 1500
-GESTURE_BACKCHANNEL_REACT_UTTERANCES = ("うん", "なるほど", "そっか")
+GESTURE_BACKCHANNEL_REACT_UTTERANCES = ("うん", "はい")
 
 
 @dataclass(frozen=True)
