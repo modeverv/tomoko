@@ -28,6 +28,7 @@ from server.shared.models import (
     PersonaPromptSlice,
     ResearchContextHit,
     SessionSummaryHit,
+    TaskLedgerEntry,
     TomokoContextSnapshot,
 )
 from server.shared.persona import PersonaSnapshotStore
@@ -124,6 +125,7 @@ class ContextSnapshotBuilder:
         "persona_slice": 10000,
         "calendar_events": 60000,
         "research_results": 30000,
+        "task_ledger": 2000,
     }
 
     def __init__(
@@ -136,6 +138,7 @@ class ContextSnapshotBuilder:
         persona_store: PersonaSnapshotStore | None = None,
         calendar_store: CalendarEventStore | None = None,
         research_result_store: Any | None = None,
+        task_ledger_store: Any | None = None,
         cache_ttl_ms: dict[str, int] | None = None,
         now_provider: Callable[[], datetime] | None = None,
     ) -> None:
@@ -146,6 +149,7 @@ class ContextSnapshotBuilder:
         self.persona_store = persona_store
         self.calendar_store = calendar_store
         self.research_result_store = research_result_store
+        self.task_ledger_store = task_ledger_store
         self._now_provider = now_provider or (lambda: datetime.now(UTC))
         self._cache_ttl_ms = {
             **self.DEFAULT_CACHE_TTL_MS,
@@ -402,6 +406,31 @@ class ContextSnapshotBuilder:
             skipped_sources.append("research_results")
             skipped_reasons["research_results"] = "missing_embedding_or_store"
 
+        if (
+            policy.allow_task_ledger
+            and policy.max_task_ledger_entries > 0
+            and self.task_ledger_store is not None
+        ):
+            tasks["task_ledger"] = asyncio.create_task(
+                self._timed(
+                    "task_ledger",
+                    stage_timings_ms,
+                    source_errors,
+                    source_semaphore,
+                    lambda: self._cached_source(
+                        source="task_ledger",
+                        key=("task_ledger", policy.depth, policy.max_task_ledger_entries),
+                        cache_entries=cache_entries,
+                        loader=lambda: self.task_ledger_store.read_active_tasks(
+                            limit=policy.max_task_ledger_entries,
+                        ),
+                    ),
+                )
+            )
+        elif policy.allow_task_ledger and policy.max_task_ledger_entries > 0:
+            skipped_sources.append("task_ledger")
+            skipped_reasons["task_ledger"] = "missing_task_ledger_store"
+
         if tasks:
             done, pending = await asyncio.wait(
                 set(tasks.values()),
@@ -483,6 +512,10 @@ class ContextSnapshotBuilder:
             cue_type=cue_type,
             traces=source_score_traces,
         )
+        task_ledger_entries = self._rank_task_ledger_entries(
+            results.get("task_ledger", []),
+            policy.max_task_ledger_entries,
+        )
         elapsed_ms = (time.perf_counter() - started_at) * 1000
         source_counts = {
             "recent_turns": len(recent_turns),
@@ -493,6 +526,7 @@ class ContextSnapshotBuilder:
             "persona_slice": 1 if persona_slice is not None else 0,
             "calendar_events": len(calendar_events),
             "research_results": len(research_results),
+            "task_ledger": len(task_ledger_entries),
         }
         trace = ContextBuildTrace(
             budget_ms=policy.max_build_ms,
@@ -516,7 +550,7 @@ class ContextSnapshotBuilder:
             "timed_out=%s recent_turns=%s session_summaries=%s memory_hits=%s "
             "restored_turn_snippets=%s lexicon_terms=%s cue_type=%s "
             "calendar_events=%s max_parallel_sources=%s cache_hits=%s stage_timings_ms=%s "
-            "research_results=%s "
+            "research_results=%s task_ledger=%s "
             "skipped_reasons=%s source_errors=%s source_scores=%s",
             policy.depth,
             elapsed_ms,
@@ -533,6 +567,7 @@ class ContextSnapshotBuilder:
             trace.cache_hits,
             trace.stage_timings_ms,
             source_counts["research_results"],
+            source_counts["task_ledger"],
             trace.skipped_reasons,
             trace.source_errors,
             [
@@ -560,6 +595,7 @@ class ContextSnapshotBuilder:
             trace=trace,
             calendar_events=calendar_events,
             research_results=research_results,
+            task_ledger_entries=task_ledger_entries,
         )
 
     async def _cached_source(
@@ -879,6 +915,21 @@ class ContextSnapshotBuilder:
         selected = self._select_by_quota(scored, traces=traces)
         selected.sort(key=lambda item: item.trace.final_score, reverse=True)
         return [item.item for item in selected]
+
+    def _rank_task_ledger_entries(
+        self,
+        entries: list[TaskLedgerEntry],
+        limit: int,
+    ) -> list[TaskLedgerEntry]:
+        sorted_entries = sorted(
+            entries,
+            key=lambda item: (
+                -item.priority,
+                item.due_at or datetime.max.replace(tzinfo=UTC),
+                -item.updated_at.timestamp(),
+            ),
+        )
+        return sorted_entries[:limit]
 
     def _select_by_quota(
         self,

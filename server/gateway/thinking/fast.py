@@ -12,7 +12,7 @@ from server.gateway.thinking.memory_prompt import format_long_term_memory_prompt
 from server.gateway.thinking.short_memory_prompt import format_short_memory_prompt
 from server.shared.inference.backends.base import InferenceBackend
 from server.shared.inference.trace import chat_stream_with_trace_role
-from server.shared.models import CalendarEvent, ThinkingEvent, ThinkingInput
+from server.shared.models import CalendarEvent, TaskLedgerEntry, ThinkingEvent, ThinkingInput
 from server.shared.persona_prompt import format_persona_prompt_slice_for_prompt
 
 EMOTION_PREFIX = "EMOTION:"
@@ -80,6 +80,7 @@ class ThinkFastMode(ThinkingMode):
                 _format_context_snapshot_prompt(thinking_input),
                 _format_calendar_context_prompt(thinking_input),
                 _format_research_context_prompt(thinking_input),
+                _format_task_context_prompt(thinking_input),
                 format_short_memory_prompt(thinking_input.short_memory_notes),
                 format_long_term_memory_prompt(thinking_input.long_term_memory),
             )
@@ -317,6 +318,37 @@ def _format_research_context_prompt(thinking_input: ThinkingInput) -> str:
             f"similarity={item.similarity:.3f}"
         )
     return "\n".join(lines)
+
+
+def _format_task_context_prompt(thinking_input: ThinkingInput) -> str:
+    snapshot = thinking_input.context_snapshot
+    if snapshot is None or not snapshot.task_ledger_entries:
+        return ""
+
+    lines = [
+        "## TASK CONTEXT",
+        (
+            "DB に保存された現在のタスク台帳です。"
+            "短期メモではなく structured task として扱い、"
+            "残タスクや優先順位を聞かれた時に参照する。"
+        ),
+    ]
+    for task in snapshot.task_ledger_entries:
+        lines.append(f"- {_format_task_ledger_entry(task)}")
+    return "\n".join(lines)
+
+
+def _format_task_ledger_entry(task: TaskLedgerEntry) -> str:
+    due_text = (
+        task.due_at.isoformat(timespec="minutes") if task.due_at is not None else "none"
+    )
+    tags = ", ".join(task.tags) if task.tags else "none"
+    details = f"; details={task.details}" if task.details else ""
+    return (
+        f"id={task.task_id}; title={task.title}; status={task.status}; "
+        f"priority={task.priority}; due_at={due_text}; source={task.source}; "
+        f"tags={tags}{details}"
+    )
 
 
 def _format_calendar_event(event: CalendarEvent) -> str:

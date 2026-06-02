@@ -21,6 +21,7 @@ from server.shared.models import (
     ParticipationMode,
     ResearchContextHit,
     SpeechSegment,
+    TaskLedgerEntry,
     ThinkingEvent,
     ThinkingInput,
     TomokoContextSnapshot,
@@ -502,6 +503,73 @@ async def test_think_fast_includes_research_summary_context_from_snapshot(tmp_pa
     assert backend.system_prompt is not None
     assert "RESEARCH CONTEXT" in backend.system_prompt
     assert "summary=OpenAIに関する外部調査の要約。" in backend.system_prompt
+
+
+@pytest.mark.unit
+async def test_think_fast_includes_task_context_from_snapshot(tmp_path) -> None:
+    persona = tmp_path / "persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend(["うん"])
+    mode = ThinkFastMode(
+        persona_path=persona,
+        prompt_log_path=None,
+        now_provider=fixed_now,
+    )
+    trace = ContextBuildTrace(
+        budget_ms=20,
+        elapsed_ms=1.0,
+        timed_out=False,
+        depth="fast",
+        included_counts={"task_ledger": 1},
+        skipped_sources=[],
+        stage_timings_ms={},
+        cache_hits={},
+        source_errors={},
+    )
+    snapshot = TomokoContextSnapshot(
+        depth="fast",
+        recent_turns=[],
+        session_summaries=[],
+        memory_hits=[],
+        lexicon_terms=[],
+        persona_slice=None,
+        token_budget_hint=1200,
+        build_elapsed_ms=1.0,
+        source_counts={"task_ledger": 1},
+        trace=trace,
+        task_ledger_entries=[
+            TaskLedgerEntry(
+                task_id="task-1",
+                title="server-debug の起動確認",
+                status="active",
+                priority=80,
+                created_at=datetime(2026, 6, 2, 9, 0, tzinfo=UTC),
+                updated_at=datetime(2026, 6, 2, 9, 5, tzinfo=UTC),
+                due_at=datetime(2026, 6, 3, 9, 0, tzinfo=UTC),
+                source="voice",
+            )
+        ],
+    )
+
+    [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="今残ってるタスクは？",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+                context_snapshot=snapshot,
+            ),
+        )
+    ]
+
+    assert backend.system_prompt is not None
+    assert "TASK CONTEXT" in backend.system_prompt
+    assert "server-debug の起動確認" in backend.system_prompt
+    assert "status=active" in backend.system_prompt
 
 
 @pytest.mark.unit

@@ -1090,6 +1090,20 @@ class ResearchContextHit:
 
 
 @dataclass(frozen=True)
+class TaskLedgerEntry:
+    task_id: str
+    title: str
+    status: Literal["active", "completed", "cancelled", "blocked"]
+    priority: int
+    created_at: datetime
+    updated_at: datetime
+    due_at: datetime | None = None
+    source: str = "unknown"
+    details: str = ""
+    tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class PersonaLexiconTerm:
     term: str
     meaning: str
@@ -1504,6 +1518,8 @@ class ContextBuildPolicy:
     allow_calendar_context: bool = False
     max_research_results: int = 0
     allow_research_results: bool = False
+    max_task_ledger_entries: int = 0
+    allow_task_ledger: bool = False
 
     @classmethod
     def for_depth(cls, depth: ContextDepth) -> ContextBuildPolicy:
@@ -1520,6 +1536,8 @@ class ContextBuildPolicy:
                     max_lexicon_terms=0,
                     allow_turn_memory_search=False,
                     allow_persona_slice=False,
+                    max_task_ledger_entries=10,
+                    allow_task_ledger=True,
                 )
             case "normal":
                 return cls(
@@ -1533,6 +1551,8 @@ class ContextBuildPolicy:
                     max_lexicon_terms=5,
                     allow_turn_memory_search=False,
                     allow_persona_slice=True,
+                    max_task_ledger_entries=10,
+                    allow_task_ledger=True,
                 )
             case "deep":
                 return cls(
@@ -1550,6 +1570,8 @@ class ContextBuildPolicy:
                     allow_calendar_context=True,
                     max_research_results=3,
                     allow_research_results=True,
+                    max_task_ledger_entries=25,
+                    allow_task_ledger=True,
                 )
             case "reflective":
                 return cls(
@@ -1567,6 +1589,8 @@ class ContextBuildPolicy:
                     allow_calendar_context=True,
                     max_research_results=8,
                     allow_research_results=True,
+                    max_task_ledger_entries=50,
+                    allow_task_ledger=True,
                 )
 
 
@@ -1625,6 +1649,7 @@ class TomokoContextSnapshot:
     trace: ContextBuildTrace
     calendar_events: list[CalendarEvent] = field(default_factory=list)
     research_results: list[ResearchContextHit] = field(default_factory=list)
+    task_ledger_entries: list[TaskLedgerEntry] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

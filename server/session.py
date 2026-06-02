@@ -121,6 +121,11 @@ from server.shared.models import (
     TurnTakingInput,
 )
 from server.shared.persona import PersonaSnapshotStore
+from server.shared.task_ledger import (
+    TaskLedgerIntent,
+    TaskLedgerIntentDetector,
+    TaskLedgerUpdateResult,
+)
 
 SessionState = Literal["idle", "listening", "processing"]
 OutputFloorPolicy = Literal["ambient_idle"]
@@ -148,6 +153,28 @@ def _research_wait_response_directive(request: ResearchRequest) -> str:
     )
 
 
+def _task_ledger_response_directive(intent: TaskLedgerIntent) -> str:
+    if intent.kind == "create":
+        return (
+            "ユーザーは新しいタスクの記録を依頼しています。"
+            "タスクとして受け取ったことだけを自然な短い日本語で伝えてください。"
+            "完了や実行を断言しないでください。"
+            f"タスク名: {intent.title}"
+        )
+    if intent.kind == "complete":
+        return (
+            "ユーザーは既存タスクの完了記録を依頼しています。"
+            "タスク完了として受け取ったことだけを自然な短い日本語で伝えてください。"
+            "DB更新の成功を断言しないでください。"
+            f"発話: {intent.raw_text}"
+        )
+    return (
+        "ユーザーはタスクの変更またはキャンセルを依頼しています。"
+        "今は変更とキャンセルは扱わず、終わらせてから新しく作り直してほしいことを"
+        "自然な短い日本語で伝えてください。"
+    )
+
+
 logger = logging.getLogger(__name__)
 
 class TomoroSession:
@@ -172,6 +199,7 @@ class TomoroSession:
         persona_store: PersonaSnapshotStore | None = None,
         calendar_store: CalendarEventStore | None = None,
         research_result_store: Any | None = None,
+        task_ledger_store: Any | None = None,
         context_snapshot_builder: ContextSnapshotBuilder | None = None,
         speech_normalizer: ReplySpeechNormalizer | None = None,
         barge_in_detector: BargeInDetector | None = None,
@@ -207,6 +235,7 @@ class TomoroSession:
         self.persona_store = persona_store
         self.calendar_store = calendar_store
         self.research_result_store = research_result_store
+        self.task_ledger_store = task_ledger_store
         self.context_snapshot_builder = context_snapshot_builder
         self.speech_normalizer = speech_normalizer
         self.barge_in_detector = barge_in_detector
@@ -266,6 +295,10 @@ class TomoroSession:
         self._research_intent_detector = ResearchIntentDetector()
         self._research_transition_handler: Callable[[TransitionResult], Any] | None = None
         self._research_transition_tasks: set[asyncio.Task[None]] = set()
+        self._task_ledger_intent_detector = TaskLedgerIntentDetector()
+        self._task_ledger_transition_handler: Callable[[TransitionResult], Any] | None = None
+        self._task_ledger_transition_tasks: set[asyncio.Task[None]] = set()
+        self._task_ledger_request_sequence = 0
 
     # Audio input and state snapshots.
 
@@ -276,6 +309,16 @@ class TomoroSession:
         self._research_transition_handler = handler
         logger.info(
             "TomoroSession research transition handler %s",
+            "attached" if handler is not None else "cleared",
+        )
+
+    def set_task_ledger_transition_handler(
+        self,
+        handler: Callable[[TransitionResult], Any] | None,
+    ) -> None:
+        self._task_ledger_transition_handler = handler
+        logger.info(
+            "TomoroSession task ledger transition handler %s",
             "attached" if handler is not None else "cleared",
         )
 
@@ -385,6 +428,10 @@ class TomoroSession:
             return self._reduce_research_result_ready(event)
         if event.type == "research_answer_requested":
             return self._reduce_research_answer_requested(event)
+        if event.type == "task_ledger_requested":
+            return self._reduce_task_ledger_requested(event)
+        if event.type == "task_ledger_update_finished":
+            return self._reduce_task_ledger_update_finished(event)
         if event.type == "stop_intent_classified":
             return self._reduce_stop_intent_classified(event)
         if event.type == "candidate_command_failed":
@@ -802,6 +849,10 @@ class TomoroSession:
         self._research_request_sequence += 1
         return f"research-{self._research_request_sequence}"
 
+    def _new_task_ledger_request_id(self) -> str:
+        self._task_ledger_request_sequence += 1
+        return f"task-ledger-{self._task_ledger_request_sequence}"
+
     def _reduce_research_requested(self, event: SessionEvent) -> TransitionResult:
         request = event.payload.get("request")
         if not isinstance(request, ResearchRequest):
@@ -829,6 +880,72 @@ class TomoroSession:
                     },
                 )
             ],
+        )
+
+    def _reduce_task_ledger_requested(self, event: SessionEvent) -> TransitionResult:
+        intent = event.payload.get("intent")
+        if not isinstance(intent, TaskLedgerIntent):
+            return self._transition_result(
+                "task_ledger_request_rejected",
+                payload={"reason": "invalid_intent"},
+            )
+        request_id = str(
+            event.payload.get("request_id") or self._new_task_ledger_request_id()
+        )
+        payload = {
+            "request_id": request_id,
+            "operation": intent.kind,
+            "title": intent.title,
+            "reason": intent.reason,
+        }
+        if intent.kind == "unsupported":
+            return self._transition_result(
+                "task_ledger_request_unsupported",
+                payload={
+                    **payload,
+                    "reason": intent.reason or "unsupported_operation",
+                },
+            )
+        return self._transition_result(
+            "task_ledger_request_accepted",
+            payload=payload,
+            commands=[
+                SessionCommand(
+                    type="submit_task_ledger_update",
+                    payload={
+                        "request_id": request_id,
+                        "intent": intent,
+                        "device_id": event.payload.get("device_id"),
+                    },
+                )
+            ],
+        )
+
+    def _reduce_task_ledger_update_finished(self, event: SessionEvent) -> TransitionResult:
+        result = event.payload.get("result")
+        if not isinstance(result, TaskLedgerUpdateResult):
+            return self._transition_result(
+                "task_ledger_update_ignored",
+                payload={"reason": "invalid_result"},
+            )
+        event_type = (
+            "task_ledger_update_recorded"
+            if result.status in {"created", "completed"}
+            else "task_ledger_update_needs_confirmation"
+            if result.status == "needs_confirmation"
+            else "task_ledger_update_skipped"
+        )
+        return self._transition_result(
+            event_type,
+            payload={
+                "request_id": event.payload.get("request_id"),
+                "status": result.status,
+                "operation": result.operation,
+                "task_id": result.task_id,
+                "title": result.title,
+                "reason": result.reason,
+                "candidate_ids": list(result.candidate_ids),
+            },
         )
 
     def _reduce_research_result_ready(self, event: SessionEvent) -> TransitionResult:
@@ -1119,6 +1236,12 @@ class TomoroSession:
             reset_audio_input=reset_audio_input,
         ):
             return
+        if await self._maybe_handle_task_ledger_request(
+            transcript,
+            previous_attention=previous_attention,
+            reset_audio_input=reset_audio_input,
+        ):
+            return
         turn_taking_action = await self._maybe_apply_turn_taking_decision(
             transcript,
             previous_attention=previous_attention,
@@ -1384,6 +1507,74 @@ class TomoroSession:
         await self._transition("idle")
         return True
 
+    async def _maybe_handle_task_ledger_request(
+        self,
+        transcript: Transcript,
+        *,
+        previous_attention: AttentionMode,
+        reset_audio_input: bool,
+    ) -> bool:
+        intent = self._task_ledger_intent_detector.detect(transcript.text)
+        if intent is None:
+            return False
+        participation_mode = "called" if previous_attention == "ambient" else "invited"
+        start_reason = _start_reason_from_participation_mode(participation_mode)
+        if self.ambient_log_writer is not None:
+            await self.ambient_log_writer.write(
+                transcript,
+                tomoko_participated=True,
+                attention_mode=previous_attention,
+                attended=True,
+                participation_mode=participation_mode,
+            )
+        self._set_start_reason(start_reason)
+        logger.info(
+            "TomoroSession task ledger request detected kind=%s title=%r reason=%s",
+            intent.kind,
+            intent.title,
+            intent.reason,
+        )
+        await self._ensure_conversation_session(
+            device_id=transcript.device_id,
+            start_reason=start_reason,
+        )
+        await self._transition_attention("engaged")
+        if self.conversation_log_writer is not None:
+            conversation_log_id = await self._write_user_turn(
+                transcript,
+                participation_mode=participation_mode,
+            )
+            if conversation_log_id is not None:
+                self._schedule_conversation_embedding(
+                    conversation_log_id=conversation_log_id,
+                    text=transcript.text,
+                )
+        await self._send_transcript_final_event(
+            transcript,
+            attention_mode=previous_attention,
+            participation_mode=participation_mode,
+            attended=True,
+            conversation_session_id=self.active_conversation_session_id,
+        )
+        await self._send_event({"type": "participation", "mode": participation_mode})
+        result = await self.post_event(
+            SessionEvent(
+                type="task_ledger_requested",
+                payload={"intent": intent, "device_id": transcript.device_id},
+            )
+        )
+        await self._dispatch_task_ledger_transition_result(result)
+        if self.router is not None and self.thinking_mode is not None:
+            await self._start_reply_task(
+                transcript,
+                response_directive=_task_ledger_response_directive(intent),
+            )
+        if reset_audio_input:
+            self.vad_processor.reset()
+            self._reset_transcriber_stream()
+        await self._transition("idle")
+        return True
+
     async def _dispatch_research_transition_result(self, result: TransitionResult) -> None:
         research_command_count = sum(
             1 for command in result.commands if command.type == "submit_research_request"
@@ -1446,6 +1637,81 @@ class TomoroSession:
                 "TomoroSession research transition task finished elapsed_ms=%.1f active_tasks=%d",
                 elapsed_ms,
                 len(self._research_transition_tasks),
+            )
+
+        task.add_done_callback(forget)
+
+    async def _dispatch_task_ledger_transition_result(
+        self,
+        result: TransitionResult,
+    ) -> None:
+        command_count = sum(
+            1 for command in result.commands if command.type == "submit_task_ledger_update"
+        )
+        if self._task_ledger_transition_handler is None:
+            if command_count:
+                logger.warning(
+                    "TomoroSession task ledger transition handler missing "
+                    "commands=%d emissions=%d",
+                    command_count,
+                    len(result.emissions),
+                )
+            await self.send_transition_emissions(result)
+            await self._run_internal_commands(result.commands)
+            return
+
+        maybe_awaitable = self._task_ledger_transition_handler(result)
+        if not inspect.isawaitable(maybe_awaitable):
+            if command_count:
+                logger.warning(
+                    "TomoroSession task ledger transition handler returned non-awaitable "
+                    "commands=%d emissions=%d",
+                    command_count,
+                    len(result.emissions),
+                )
+            await self.send_transition_emissions(result)
+            await self._run_internal_commands(result.commands)
+            return
+
+        await self.send_transition_emissions(result)
+        logger.info(
+            "TomoroSession scheduling task ledger transition handler commands=%d "
+            "emissions=%d active_tasks=%d",
+            command_count,
+            len(result.emissions),
+            len(self._task_ledger_transition_tasks),
+        )
+        started = time.monotonic()
+
+        async def run_handler() -> None:
+            await maybe_awaitable
+
+        task = asyncio.create_task(run_handler())
+        self._task_ledger_transition_tasks.add(task)
+
+        def forget(done_task: asyncio.Task[None]) -> None:
+            self._task_ledger_transition_tasks.discard(done_task)
+            elapsed_ms = (time.monotonic() - started) * 1000
+            if done_task.cancelled():
+                logger.warning(
+                    "TomoroSession task ledger transition task cancelled "
+                    "elapsed_ms=%.1f active_tasks=%d",
+                    elapsed_ms,
+                    len(self._task_ledger_transition_tasks),
+                )
+                return
+            exc = done_task.exception()
+            if exc is not None:
+                logger.error(
+                    "TomoroSession task ledger transition task failed",
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+                return
+            logger.info(
+                "TomoroSession task ledger transition task finished "
+                "elapsed_ms=%.1f active_tasks=%d",
+                elapsed_ms,
+                len(self._task_ledger_transition_tasks),
             )
 
         task.add_done_callback(forget)
@@ -2764,6 +3030,7 @@ class TomoroSession:
             persona_store=self.persona_store,
             calendar_store=self.calendar_store,
             research_result_store=self.research_result_store,
+            task_ledger_store=self.task_ledger_store,
         )
         return await builder.build(
             text=transcript.text,

@@ -1,3 +1,46 @@
+## 2026-06-02 Task ledger voice create/complete
+
+task ledger を prompt に復帰するだけで終える方針は否定する。
+会話 transcript から task の作成と完了だけを検出し、`task_ledger_entries` へ反映する。
+
+ただし初段では update / cancel は会話仕様から落とす。
+内容を変えたい場合は、既存 task を完了にして新しい task を作る運用を前提にする。
+完了対象の曖昧な照合は background の structured extractor へ逃がすが、
+DB 更新の最終判断は deterministic validator が持つ。
+main reply は「タスク更新として受け取った」ことだけを促し、未確定の DB 更新を断言しない。
+
+### 完了条件
+
+- [x] rule-first detector が create_task / complete_task っぽい transcript だけを拾う
+- [x] create_task は deterministic に task row を追加できる
+- [x] complete_task は active task 一覧から exact / normalized match できるものを完了にできる
+- [x] 曖昧な complete_task は structured extractor の候補 id を validator が検証して完了にできる
+- [x] 存在しない id / 低 confidence / 複数候補は DB 更新しない
+- [x] update / cancel 発話は未対応として task row を変更しない
+- [x] TomoroSession が task update command を background に渡し、通常 reply には task update acknowledgement directive を入れる
+- [x] focused unit / integration / ruff / full unit が通る
+
+## 2026-06-02 Persistent task ledger context
+
+タスク管理を short memory hint の再構成に任せる方針は否定する。
+重要な task-like working context は、DB 永続化された task-specific structured ledger として扱い、
+ContextSnapshotBuilder 上で一つの実体として prompt に復帰できるようにする。
+
+ただし、short / deep のどこでどの粒度まで復帰するかはまだ固定しない。
+初段では active task の軽量 slice を最大10件まで低コストで読む。
+タスク詳細を明示的に求める発話や deep / reflective context では、より多い active task を読める余地を残し、
+実測 latency を見て policy を広げる。
+
+### 完了条件
+
+- [x] `task_ledger_entries` table / store が active task を structured row として保存・取得できる
+- [x] ContextSnapshotBuilder が `task_ledger` source を読み、trace / counts / timeout に含める
+- [x] fast / normal では active task の先頭10件だけを軽量に取得できる
+- [x] deep / reflective ではより多い active task を取得できる policy 境界がある
+- [x] ThinkFastMode prompt に `TASK CONTEXT` として active task が復帰する
+- [x] focused unit / ruff / latency memo が通る
+- [x] full unit が通る
+
 ## 2026-06-01 Persona overlay test contract
 
 `persona_overlay.md` の本文を unit test で固定する方針は否定する。
@@ -7775,3 +7818,34 @@ engaged 中の follow-up を、低音量かつ 20 文字以下というだけで
 - [x] 既知 hallucination phrase / 短い noise は observer のまま維持する
 - [x] focused participation / attention unit と ruff が通る
 - [ ] full unit が通る
+
+## 2026-06-02 Timer/alarm foundation
+
+timer / alarm を client-local `setTimeout` や client asset 再生へ寄せる方針は否定する。
+Tomoko の UX と thin client 境界を維持するため、到来判断・鳴動可否・再試行・状態更新は
+server / DB / TomoroSession 側に置く。
+
+初段ではポモドーロや連鎖 timer は扱わない。
+単発の「N分後に知らせる」timer と「今日/明日/指定時刻に知らせる」alarm だけを扱う。
+通知音声は Tomoko の既存 TTS / audio chunk / playback telemetry 経路に載せ、
+client は従来どおり WebSocket から届いた音声を再生するだけにする。
+
+`task_ledger_entries` は「やること」の ledger として維持し、timer / alarm は別 table の
+期限付き通知 row として扱う。
+timer worker は別プロセスとして PostgreSQL の scheduled row を polling / claim し、
+due になった事実を realtime 側の `SessionEvent` として戻す。
+`TomoroSession` は playback / withdrawn / user speaking / audio target availability などの
+既存 gate を見て、発話可能な時だけ `start_precomputed_reply` へ進める。
+
+### 完了条件
+
+- [ ] timer / alarm 用 table が scheduled / due / notified / cancelled / failed の row state を持つ
+- [ ] timer と alarm の DTO / store が InMemory と PostgreSQL で同じ契約を持つ
+- [ ] transcript detector が単発 timer / alarm だけを拾い、ポモドーロや連鎖 timer は未対応として扱う
+- [ ] `create_timer` / `create_alarm` は `SessionCommand` と command runner 経由で DB に保存される
+- [ ] 作成 acknowledgement は通常 reply に一時 directive を入れ、未保存の通知を断言しない
+- [ ] timer worker は別プロセスとして scheduled due row を polling / claim できる
+- [ ] due row は `timer_due` / `alarm_due` 相当の `SessionEvent` として TomoroSession に戻る
+- [ ] TomoroSession が due 通知の最終 gate を持ち、client は鳴動判断を持たない
+- [ ] due 通知は既存 Tomoko TTS / audio chunk / playback telemetry 経路で再生される
+- [ ] focused unit / integration / ruff / full unit が通る

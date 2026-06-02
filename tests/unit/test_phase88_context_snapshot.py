@@ -18,6 +18,7 @@ from server.shared.models import (
     PersonaStateSnapshot,
     ResearchContextHit,
     SessionSummaryHit,
+    TaskLedgerEntry,
     ThinkingInput,
     Transcript,
 )
@@ -145,6 +146,16 @@ class FakeResearchResultStore:
     async def embed_missing_turns(self, **kwargs) -> int:
         del kwargs
         return 0
+
+
+class FakeTaskLedgerStore:
+    def __init__(self, entries: list[TaskLedgerEntry]) -> None:
+        self.entries = entries
+        self.calls: list[int] = []
+
+    async def read_active_tasks(self, *, limit: int) -> list[TaskLedgerEntry]:
+        self.calls.append(limit)
+        return self.entries[:limit]
 
 
 class FakeSummaryStore:
@@ -476,6 +487,67 @@ async def test_fast_snapshot_does_not_read_research_results() -> None:
     assert snapshot.research_results == []
     assert snapshot.trace.included_counts["research_results"] == 0
     assert "research_results" not in snapshot.trace.stage_timings_ms
+
+
+@pytest.mark.unit
+async def test_fast_snapshot_reads_top_active_task_ledger_entries() -> None:
+    entries = [
+        TaskLedgerEntry(
+            task_id=f"task-{index}",
+            title=f"タスク{index}",
+            status="active",
+            priority=100 - index,
+            created_at=datetime(2026, 6, 2, 9, index, tzinfo=UTC),
+            updated_at=datetime(2026, 6, 2, 9, index, tzinfo=UTC),
+        )
+        for index in range(12)
+    ]
+    store = FakeTaskLedgerStore(entries)
+    builder = ContextSnapshotBuilder(task_ledger_store=store)
+
+    snapshot = await builder.build(
+        text="今やることある？",
+        speaker=None,
+        device_id="browser",
+        active_session_id=None,
+        policy=ContextBuildPolicy.for_depth("fast"),
+    )
+
+    assert store.calls == [10]
+    assert [task.title for task in snapshot.task_ledger_entries] == [
+        f"タスク{index}" for index in range(10)
+    ]
+    assert snapshot.trace.included_counts["task_ledger"] == 10
+    assert "task_ledger" in snapshot.trace.stage_timings_ms
+
+
+@pytest.mark.unit
+async def test_deep_snapshot_can_read_more_active_task_ledger_entries() -> None:
+    entries = [
+        TaskLedgerEntry(
+            task_id=f"task-{index}",
+            title=f"深掘りタスク{index}",
+            status="active",
+            priority=50,
+            created_at=datetime(2026, 6, 2, 10, index, tzinfo=UTC),
+            updated_at=datetime(2026, 6, 2, 10, index, tzinfo=UTC),
+        )
+        for index in range(15)
+    ]
+    store = FakeTaskLedgerStore(entries)
+    builder = ContextSnapshotBuilder(task_ledger_store=store)
+
+    snapshot = await builder.build(
+        text="残っているタスクを詳しく教えて",
+        speaker=None,
+        device_id="browser",
+        active_session_id=None,
+        policy=ContextBuildPolicy.for_depth("deep"),
+    )
+
+    assert store.calls == [25]
+    assert len(snapshot.task_ledger_entries) == 15
+    assert snapshot.trace.included_counts["task_ledger"] == 15
 
 
 @pytest.mark.unit

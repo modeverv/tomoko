@@ -82,6 +82,7 @@ from server.shared.models import ConnectedOutputState, PlaybackTelemetry, Sessio
 from server.shared.persona import PostgresPersonaSnapshotStore
 from server.shared.presence import PostgresPresenceStore
 from server.shared.research_results import PostgresResearchResultStore
+from server.shared.task_ledger import PostgresTaskLedgerStore, TaskLedgerCommandRunner
 
 
 def _configure_app_logging() -> None:
@@ -237,6 +238,11 @@ def _create_default_research_result_store() -> PostgresResearchResultStore:
     return PostgresResearchResultStore(config.database.dsn)
 
 
+def _create_default_task_ledger_store() -> PostgresTaskLedgerStore:
+    config = _load_config()
+    return PostgresTaskLedgerStore(config.database.dsn)
+
+
 def _create_default_research_mcp_client() -> ResearchMcpClient:
     command_text = os.environ.get("TOMOKO_RESEARCH_MCP_COMMAND")
     if command_text:
@@ -343,6 +349,11 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         "research_result_store_factory",
         _create_default_research_result_store,
     )
+    task_ledger_store_factory = getattr(
+        app.state,
+        "task_ledger_store_factory",
+        _create_default_task_ledger_store,
+    )
     conversation_session_store_factory = getattr(
         app.state,
         "conversation_session_store_factory",
@@ -411,6 +422,7 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         persona_store=persona_store_factory(),
         calendar_store=calendar_store_factory(),
         research_result_store=research_result_store_factory(),
+        task_ledger_store=task_ledger_store_factory(),
         speech_normalizer=(
             speech_normalizer_factory()
             if speech_normalizer_factory is not None
@@ -445,6 +457,16 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         summarizer=ResearchResultSummarizer(backend=research_summary_backend),
     )
     session.set_research_transition_handler(research_runner.run_result)
+
+    async def task_ledger_backend_provider():
+        return await router.select("memory_extraction", "privacy")
+
+    task_ledger_runner = TaskLedgerCommandRunner(
+        session=session,
+        store=task_ledger_store_factory(),
+        backend_provider=task_ledger_backend_provider,
+    )
+    session.set_task_ledger_transition_handler(task_ledger_runner.run_result)
     gesture_audio_emitter = GestureAudioEmitter(
         state_provider=session.get_now_state,
         send_audio=send_audio,
@@ -719,7 +741,8 @@ def _create_gateway_text_session(
     send_event,
     connected_output_state: ConnectedOutputState | None = None,
 ) -> TomoroSession:
-    return TomoroSession(
+    router = _create_default_router()
+    session = TomoroSession(
         vad_processor=_create_default_vad_processor(),
         send_event=send_event,
         send_audio=None,
@@ -728,7 +751,7 @@ def _create_gateway_text_session(
         ambient_log_writer=_create_default_ambient_log_writer(),
         conversation_log_writer=_create_default_conversation_log_writer(),
         conversation_session_store=_create_default_conversation_session_store(),
-        router=_create_default_router(),
+        router=router,
         thinking_mode=_create_default_thinking_mode(),
         deep_thinking_mode=_create_default_deep_thinking_mode(),
         tts_backend=None,
@@ -738,6 +761,7 @@ def _create_gateway_text_session(
         persona_store=_create_default_persona_store(),
         calendar_store=_create_default_calendar_store(),
         research_result_store=_create_default_research_result_store(),
+        task_ledger_store=_create_default_task_ledger_store(),
         speech_normalizer=None,
         barge_in_detector=BargeInDetector(),
         turn_taking_judge=TurnTakingWorkerClient(
@@ -753,6 +777,17 @@ def _create_gateway_text_session(
         stop_ack_audio_provider=_create_default_stop_ack_audio_provider(),
         connected_output_state=connected_output_state,
     )
+
+    async def task_ledger_backend_provider():
+        return await router.select("memory_extraction", "privacy")
+
+    task_ledger_runner = TaskLedgerCommandRunner(
+        session=session,
+        store=_create_default_task_ledger_store(),
+        backend_provider=task_ledger_backend_provider,
+    )
+    session.set_task_ledger_transition_handler(task_ledger_runner.run_result)
+    return session
 
 
 def _load_config() -> NodeConfig:

@@ -71,6 +71,7 @@ TomoroSession
         |      session summaries
         |      memory hits
         |      calendar slice
+        |      task ledger
         |      lexicon / persona slices
         |
         +--> InferenceRouter
@@ -95,6 +96,7 @@ PostgreSQL
   stop_intent_observations
   world_observation_*
   calendar_events
+  task_ledger_entries
 
 background-process/
   summarize_pending_sessions.py
@@ -361,6 +363,19 @@ make gcal
 予定は PostgreSQL の `calendar_events` に保存され、会話中の deep context だけが DB から予定を読みます。
 deep context は今日から未来30日の予定を最大64件まで `CALENDAR CONTEXT` として prompt に渡します。
 
+## Task Ledger
+
+明示的なタスク管理は short memory hint ではなく `task_ledger_entries` に保存します。
+ContextSnapshotBuilder は active task の軽量 slice を prompt に復帰し、
+fast / normal では先頭10件、deep / reflective ではより多い件数を読めます。
+
+会話からの操作は create / complete のみに限定します。
+`タスクにして` などの明示 cue は active task を作り、
+`終わった` / `完了` などは active task の exact / normalized match を先に試します。
+曖昧な complete だけ background structured extractor に active task id 候補を出させますが、
+DB 更新の最終判断は validator が持ちます。
+update / cancel は unsupported として row を変更しません。
+
 ## Data And Logs
 
 重要な DB テーブル:
@@ -377,6 +392,7 @@ deep context は今日から未来30日の予定を最大64件まで `CALENDAR C
 - `stop_intent_observations`: stop / interrupt の観測
 - `world_observation_documents`, `world_observation_items`, `world_observation_interpretations`: 外部観察
 - `calendar_events`: iCal 由来の予定
+- `task_ledger_entries`: DB 永続化された active / completed task ledger
 
 主なログ:
 
