@@ -24,6 +24,7 @@ class AudioTurnController:
         self._recent_tomoko_text = ""
         self._tomoko_speaking_started_at: float | None = None
         self._tomoko_speaking_until = 0.0
+        self._last_tomoko_speech_at = 0.0
         self._active_audio_turn_id: str | None = None
         self._audio_turn_started = False
         self._audio_turn_ended = False
@@ -152,6 +153,12 @@ class AudioTurnController:
     def is_client_playback_active(self) -> bool:
         return bool(self._active_playback_chunks)
 
+    def time_since_last_tomoko_speech(self) -> float:
+        """Seconds elapsed since Tomoko last finished speaking (0 while still speaking)."""
+        if self._last_tomoko_speech_at == 0.0:
+            return float("inf")
+        return max(0.0, time.monotonic() - self._last_tomoko_speech_at)
+
     def _mark_tomoko_speaking(self, *, text: str, audio_data: bytes) -> None:
         now = time.monotonic()
         duration = _wav_duration_seconds(audio_data)
@@ -160,6 +167,7 @@ class AudioTurnController:
         self._recent_tomoko_text = _append_recent_text(self._recent_tomoko_text, text)
         self._tomoko_speaking_started_at = now
         self._tomoko_speaking_until = max(self._tomoko_speaking_until, now) + duration + 0.5
+        self._last_tomoko_speech_at = self._tomoko_speaking_until
 
 
 def _append_recent_text(previous: str, text: str, max_chars: int = 240) -> str:

@@ -1104,6 +1104,18 @@ class TaskLedgerEntry:
 
 
 @dataclass(frozen=True)
+class TimerAlarmEntry:
+    entry_id: str
+    kind: Literal["timer", "alarm"]
+    label: str
+    status: Literal["scheduled", "due", "notified", "cancelled", "failed"]
+    due_at: datetime
+    source: str = "voice"
+    created_at: datetime | None = None
+    notified_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class PersonaLexiconTerm:
     term: str
     meaning: str
@@ -1535,7 +1547,7 @@ class ContextBuildPolicy:
                     max_memory_hits=0,
                     max_lexicon_terms=0,
                     allow_turn_memory_search=False,
-                    allow_persona_slice=False,
+                    allow_persona_slice=True,
                     max_task_ledger_entries=10,
                     allow_task_ledger=True,
                 )

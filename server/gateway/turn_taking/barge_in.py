@@ -111,6 +111,26 @@ class BargeInDetector:
             reason="speech_while_tomoko_speaking",
         )
 
+    def is_recent_echo(
+        self,
+        transcript: str,
+        recent_tomoko_text: str,
+        *,
+        time_since_sec: float,
+        window_sec: float,
+    ) -> bool:
+        """Return True if transcript is an acoustic echo of recent Tomoko speech.
+
+        Timing-independent companion to the playback-window echo check.
+        Used when STT finalizes after the playback_echo_grace window has closed.
+        Hard interrupts are always allowed through regardless.
+        """
+        if time_since_sec > window_sec:
+            return False
+        if _contains_any(_normalize(transcript), self.HARD_INTERRUPTS):
+            return False
+        return self._is_echo(_normalize(transcript), _normalize(recent_tomoko_text))
+
     def _is_echo(self, transcript: str, recent_tomoko_text: str) -> bool:
         if (
             len(transcript) < self.MIN_ECHO_CHARS

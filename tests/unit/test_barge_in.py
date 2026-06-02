@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 
@@ -257,6 +258,114 @@ async def test_session_keeps_hard_interrupt_as_participation() -> None:
     assert len(stop_events) == 1
     assert stop_events[0]["action"] == "stop"
     assert stop_events[0]["turn_id"]
+
+
+# --- Recent speech text echo guard tests ---
+
+
+@pytest.mark.unit
+def test_is_recent_echo_detects_timer_notification_within_window() -> None:
+    detector = BargeInDetector()
+
+    result = detector.is_recent_echo(
+        "タイマーが鳴りました。1分タイマー。",
+        "タイマーが鳴りました。1分タイマー。",
+        time_since_sec=4.0,
+        window_sec=8.0,
+    )
+
+    assert result is True
+
+
+@pytest.mark.unit
+def test_is_recent_echo_ignores_after_window_expires() -> None:
+    detector = BargeInDetector()
+
+    result = detector.is_recent_echo(
+        "タイマーが鳴りました。1分タイマー。",
+        "タイマーが鳴りました。1分タイマー。",
+        time_since_sec=9.0,
+        window_sec=8.0,
+    )
+
+    assert result is False
+
+
+@pytest.mark.unit
+def test_is_recent_echo_passes_hard_interrupt_through() -> None:
+    detector = BargeInDetector()
+
+    result = detector.is_recent_echo(
+        "ストップ",
+        "タイマーが鳴りました。1分タイマー。",
+        time_since_sec=1.0,
+        window_sec=8.0,
+    )
+
+    assert result is False
+
+
+@pytest.mark.unit
+async def test_session_filters_timer_echo_after_playback_windows_expire() -> None:
+    """Echo arrives 4s after speech ends — timing guards gone, text guard catches it."""
+    events: list[dict[str, object]] = []
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.1]), silence_ms=400),
+        send_event=events.append,
+        barge_in_detector=BargeInDetector(),
+    )
+
+    # Simulate: Tomoko spoke a timer notification 4 seconds ago, windows now closed.
+    notice_text = "タイマーが鳴りました。1分タイマー。"
+    session.audio_turns._recent_tomoko_text = notice_text
+    session.audio_turns._last_tomoko_speech_at = time.monotonic() - 4.0
+    session.audio_turns._tomoko_speaking_until = 0.0
+    session.audio_turns._playback_echo_until = 0.0
+
+    echo_transcript = Transcript(
+        text=notice_text,
+        device_id="desk",
+        speaker=None,
+        audio_level_db=-20.0,
+        recorded_at=datetime.now(UTC),
+        is_final=True,
+    )
+    await session.process_transcript(echo_transcript)
+
+    barge_in_events = [e for e in events if e.get("type") == "barge_in"]
+    assert len(barge_in_events) == 1
+    assert barge_in_events[0]["kind"] == "echo"
+    assert barge_in_events[0]["action"] == "continue_speaking"
+
+
+@pytest.mark.unit
+async def test_session_hard_interrupt_passes_through_recent_echo_guard() -> None:
+    """Hard interrupt is never suppressed even within the text echo window."""
+    events: list[dict[str, object]] = []
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.1]), silence_ms=400),
+        send_event=events.append,
+        barge_in_detector=BargeInDetector(),
+        participation_judge=WakeWordJudge(),
+    )
+
+    session.audio_turns._recent_tomoko_text = "タイマーが鳴りました。1分タイマー。"
+    session.audio_turns._last_tomoko_speech_at = time.monotonic() - 2.0
+    session.audio_turns._tomoko_speaking_until = 0.0
+    session.audio_turns._playback_echo_until = 0.0
+
+    hard_interrupt = Transcript(
+        text="ストップ",
+        device_id="desk",
+        speaker=None,
+        audio_level_db=-20.0,
+        recorded_at=datetime.now(UTC),
+        is_final=True,
+    )
+    await session.process_transcript(hard_interrupt)
+
+    barge_in_events = [e for e in events if e.get("type") == "barge_in"]
+    assert not barge_in_events
 
 
 @pytest.mark.unit

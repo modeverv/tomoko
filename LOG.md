@@ -1,3 +1,37 @@
+## 2026-06-02 セッション6
+
+### やること（開始時に書く）
+- 未コミット変更をレビューし、問題がなければテスト確認後に commit / push する
+- `.gitignore.swp` のような一時ファイルが混ざっていないか確認する
+
+### やったこと
+- 未コミット差分をレビューし、timer/alarm foundation、recent speech echo guard、shared context warm-up の変更を確認した
+- `.gitignore.swp` が Vim swap file であることを確認し、コミット対象から削除した
+- `MEMORY.md` に timer/alarm の DB row / TomoroSession gate 方針を追記した
+- `_docs/latency.md` に今回の unit / integration 検証結果を追記した
+
+### 詰まったこと・解決したこと
+- edge gateway session は `tts_backend=None` だが、gateway は `reply_text` を edge browser へ送り、`EdgeReplyPlayer` が edge-local TTS/audio chunk 化するため due 通知の既存 audio lane 境界は維持されていると確認した
+- `.gitignore` の末尾空行で `git diff --check` が一度 failed したため修正した
+
+### 検証
+- focused ruff: `uv run ruff check server/shared/timer_alarm.py server/session.py server/edge/main.py server/gateway/audio_turn.py server/gateway/context.py server/gateway/turn_taking/barge_in.py tests/unit/test_timer_alarm_voice.py tests/unit/test_barge_in.py tests/integration/test_timer_alarm_db.py tests/integration/test_smoke_timer_alarm_session_flow.py _tools/smoke_timer_alarm_session_flow.py`
+  - pass
+- focused unit: `uv run pytest -m unit tests/unit/test_timer_alarm_voice.py tests/unit/test_barge_in.py -q`
+  - 37 passed
+- full unit: `uv run pytest -m unit -q`
+  - 611 passed, 23 deselected
+- timer/alarm integration: `uv run pytest -m integration tests/integration/test_timer_alarm_db.py tests/integration/test_smoke_timer_alarm_session_flow.py -q`
+  - 3 passed
+- global ruff: `uv run ruff check .`
+  - pass
+- diff check: `git diff --check`
+  - pass
+
+### 次のセッションでやること
+- 実ブラウザ会話で timer/alarm の作成 acknowledgement と due 通知音声を確認する
+- 必要なら timer worker を realtime process 内 polling から別プロセス運用に切り出す smoke / make target を追加する
+
 ## 2026-06-02 セッション3
 
 ### やること（開始時に書く）

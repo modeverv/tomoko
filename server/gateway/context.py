@@ -122,7 +122,7 @@ class ContextSnapshotBuilder:
         "restored_turn_snippets": 5000,
         "query_embedding": 5000,
         "lexicon_terms": 30000,
-        "persona_slice": 10000,
+        "persona_slice": 86_400_000,
         "calendar_events": 60000,
         "research_results": 30000,
         "task_ledger": 2000,
@@ -815,6 +815,27 @@ class ContextSnapshotBuilder:
         if lexicon is None:
             return []
         return lexicon.select_terms_for_prompt(query=text, limit=limit)
+
+    async def warm_up(self) -> None:
+        if self.persona_store is None:
+            return
+        started_at = time.perf_counter()
+        try:
+            slice_ = await self._read_persona_slice()
+            self._cache[("persona_slice",)] = _CacheEntry(
+                value=slice_,
+                cached_at=time.monotonic(),
+                ttl_ms=self._cache_ttl_ms["persona_slice"],
+            )
+        except Exception:
+            logger.exception("ContextSnapshotBuilder warm_up failed target=persona_slice")
+            return
+        logger.info(
+            "ContextSnapshotBuilder warm_up completed target=persona_slice "
+            "has_data=%s elapsed_ms=%.1f",
+            slice_ is not None,
+            (time.perf_counter() - started_at) * 1000,
+        )
 
     async def _read_persona_slice(self) -> PersonaPromptSlice | None:
         assert self.persona_store is not None

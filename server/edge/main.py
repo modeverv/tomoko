@@ -28,6 +28,7 @@ from server.edge.pipeline.vad import create_vad_processor
 from server.edge.remote import EdgeRemoteAudioSession, EdgeReplyPlayer
 from server.gateway.candidate_commands import CandidateCommandRunner
 from server.gateway.connections import ClientConnectionRegistry
+from server.gateway.context import ContextSnapshotBuilder
 from server.gateway.dedup import DuplicateSpeechFilter, PostgresRecentTranscriptReader
 from server.gateway.edge_adapter import GatewayEdgeProtocolHandler
 from server.gateway.gesture_audio import GestureAudioEmitter
@@ -83,6 +84,11 @@ from server.shared.persona import PostgresPersonaSnapshotStore
 from server.shared.presence import PostgresPresenceStore
 from server.shared.research_results import PostgresResearchResultStore
 from server.shared.task_ledger import PostgresTaskLedgerStore, TaskLedgerCommandRunner
+from server.shared.timer_alarm import (
+    PostgresTimerAlarmStore,
+    TimerAlarmCommandRunner,
+    TimerAlarmWorker,
+)
 
 
 def _configure_app_logging() -> None:
@@ -134,6 +140,7 @@ CONFIG_PATH = Path(
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await _warm_up_app()
+    await _warm_up_shared_context_builder()
     yield
 
 
@@ -241,6 +248,11 @@ def _create_default_research_result_store() -> PostgresResearchResultStore:
 def _create_default_task_ledger_store() -> PostgresTaskLedgerStore:
     config = _load_config()
     return PostgresTaskLedgerStore(config.database.dsn)
+
+
+def _create_default_timer_alarm_store() -> PostgresTimerAlarmStore:
+    config = _load_config()
+    return PostgresTimerAlarmStore(config.database.dsn)
 
 
 def _create_default_research_mcp_client() -> ResearchMcpClient:
@@ -354,6 +366,11 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         "task_ledger_store_factory",
         _create_default_task_ledger_store,
     )
+    timer_alarm_store_factory = getattr(
+        app.state,
+        "timer_alarm_store_factory",
+        _create_default_timer_alarm_store,
+    )
     conversation_session_store_factory = getattr(
         app.state,
         "conversation_session_store_factory",
@@ -423,6 +440,8 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         calendar_store=calendar_store_factory(),
         research_result_store=research_result_store_factory(),
         task_ledger_store=task_ledger_store_factory(),
+        timer_alarm_store=timer_alarm_store_factory(),
+        context_snapshot_builder=getattr(app.state, "shared_context_builder", None),
         speech_normalizer=(
             speech_normalizer_factory()
             if speech_normalizer_factory is not None
@@ -467,6 +486,11 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         backend_provider=task_ledger_backend_provider,
     )
     session.set_task_ledger_transition_handler(task_ledger_runner.run_result)
+    timer_alarm_runner = TimerAlarmCommandRunner(
+        session=session,
+        store=timer_alarm_store_factory(),
+    )
+    session.set_timer_alarm_transition_handler(timer_alarm_runner.run_result)
     gesture_audio_emitter = GestureAudioEmitter(
         state_provider=session.get_now_state,
         send_audio=send_audio,
@@ -506,6 +530,9 @@ async def _central_browser_session(websocket: WebSocket) -> None:
     )
     initiative_task = asyncio.create_task(
         _initiative_idle_loop(session, candidate_runner)
+    )
+    timer_alarm_task = asyncio.create_task(
+        _timer_alarm_poll_loop(session, worker_id=f"central:{connection_id}")
     )
     stop_intent_worker = StopIntentClassifierWorker(
         store=stop_intent_store,
@@ -551,6 +578,7 @@ async def _central_browser_session(websocket: WebSocket) -> None:
             )
         )
         initiative_task.cancel()
+        timer_alarm_task.cancel()
         stop_intent_worker.stop()
         stop_intent_task.cancel()
         if audio_interaction_tap is not None:
@@ -561,6 +589,8 @@ async def _central_browser_session(websocket: WebSocket) -> None:
                     await maybe_awaitable
         with suppress(asyncio.CancelledError):
             await initiative_task
+        with suppress(asyncio.CancelledError):
+            await timer_alarm_task
         with suppress(asyncio.CancelledError):
             await stop_intent_task
 
@@ -593,6 +623,9 @@ async def edge_gateway_session(websocket: WebSocket) -> None:
         device_id=device_id,
         feedback_store=_create_default_candidate_feedback_store(),
         llm_judge=InitiativeLLMJudge(_create_default_router()),
+    )
+    timer_alarm_task = asyncio.create_task(
+        _timer_alarm_poll_loop(session, worker_id=f"gateway:{connection_id}")
     )
     logger.info("edge gateway websocket connected")
     try:
@@ -635,6 +668,9 @@ async def edge_gateway_session(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         logger.info("edge gateway websocket disconnected device_id=%s", device_id)
     finally:
+        timer_alarm_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await timer_alarm_task
         output_state = _connection_registry.unregister(connection_id)
         await session.apply_client_lifecycle_event(
             SessionEvent(
@@ -762,6 +798,8 @@ def _create_gateway_text_session(
         calendar_store=_create_default_calendar_store(),
         research_result_store=_create_default_research_result_store(),
         task_ledger_store=_create_default_task_ledger_store(),
+        timer_alarm_store=_create_default_timer_alarm_store(),
+        context_snapshot_builder=getattr(app.state, "shared_context_builder", None),
         speech_normalizer=None,
         barge_in_detector=BargeInDetector(),
         turn_taking_judge=TurnTakingWorkerClient(
@@ -787,6 +825,11 @@ def _create_gateway_text_session(
         backend_provider=task_ledger_backend_provider,
     )
     session.set_task_ledger_transition_handler(task_ledger_runner.run_result)
+    timer_alarm_runner = TimerAlarmCommandRunner(
+        session=session,
+        store=_create_default_timer_alarm_store(),
+    )
+    session.set_timer_alarm_transition_handler(timer_alarm_runner.run_result)
     return session
 
 
@@ -802,6 +845,33 @@ def _create_default_transcriber() -> SpeechTranscriber:
     if config.inference.stt_backend is None:
         raise ValueError("stt_backend is not configured")
     return create_stt_transcriber(config.backends[config.inference.stt_backend])
+
+
+async def _warm_up_shared_context_builder() -> None:
+    if getattr(app.state, "skip_warm_up", False):
+        return
+    started_at = time.perf_counter()
+    logger.info("startup warm-up started target=context_builder")
+    try:
+        builder = ContextSnapshotBuilder(
+            conversation_log_reader=_create_default_conversation_log_writer(),
+            embedding_backend=_create_default_embedding_backend(),
+            memory_store=_create_default_memory_store(),
+            session_summary_store=_create_default_session_summary_store(),
+            persona_store=_create_default_persona_store(),
+            calendar_store=_create_default_calendar_store(),
+            research_result_store=_create_default_research_result_store(),
+            task_ledger_store=_create_default_task_ledger_store(),
+        )
+        await builder.warm_up()
+        app.state.shared_context_builder = builder
+    except Exception:
+        logger.exception("startup warm-up failed target=context_builder")
+        return
+    logger.info(
+        "startup warm-up completed target=context_builder elapsed_ms=%.1f",
+        (time.perf_counter() - started_at) * 1000,
+    )
 
 
 async def _warm_up_app() -> None:
@@ -960,6 +1030,42 @@ async def _initiative_idle_loop(
         await asyncio.sleep(45)
         result = await session.post_event(SessionEvent(type="idle_timer_elapsed"))
         await candidate_runner.run_result(result)
+
+
+async def _timer_alarm_poll_loop(
+    session: TomoroSession,
+    *,
+    worker_id: str,
+    poll_interval_sec: float = 5.0,
+) -> None:
+    if session.timer_alarm_store is None:
+        return
+    worker = TimerAlarmWorker(store=session.timer_alarm_store, worker_id=worker_id)
+    while True:
+        await asyncio.sleep(poll_interval_sec)
+        try:
+            claimed = await worker.poll_and_claim()
+        except Exception:
+            logger.exception("timer_alarm_poll_loop claim_due failed worker_id=%s", worker_id)
+            continue
+        for entry in claimed:
+            try:
+                transition = await session.post_event(
+                    SessionEvent(
+                        type="timer_due",
+                        payload={
+                            "entry_id": entry.entry_id,
+                            "label": entry.label,
+                            "kind": entry.kind,
+                        },
+                    )
+                )
+                await session.send_transition_emissions(transition)
+                await session._run_internal_commands(transition.commands)
+            except Exception:
+                logger.exception(
+                    "timer_alarm_poll_loop notify failed entry_id=%s", entry.entry_id
+                )
 
 
 async def _handle_client_text_event(

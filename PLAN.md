@@ -7839,13 +7839,13 @@ due になった事実を realtime 側の `SessionEvent` として戻す。
 
 ### 完了条件
 
-- [ ] timer / alarm 用 table が scheduled / due / notified / cancelled / failed の row state を持つ
-- [ ] timer と alarm の DTO / store が InMemory と PostgreSQL で同じ契約を持つ
-- [ ] transcript detector が単発 timer / alarm だけを拾い、ポモドーロや連鎖 timer は未対応として扱う
-- [ ] `create_timer` / `create_alarm` は `SessionCommand` と command runner 経由で DB に保存される
-- [ ] 作成 acknowledgement は通常 reply に一時 directive を入れ、未保存の通知を断言しない
-- [ ] timer worker は別プロセスとして scheduled due row を polling / claim できる
-- [ ] due row は `timer_due` / `alarm_due` 相当の `SessionEvent` として TomoroSession に戻る
-- [ ] TomoroSession が due 通知の最終 gate を持ち、client は鳴動判断を持たない
-- [ ] due 通知は既存 Tomoko TTS / audio chunk / playback telemetry 経路で再生される
-- [ ] focused unit / integration / ruff / full unit が通る
+- [x] timer / alarm 用 table が scheduled / due / notified / cancelled / failed の row state を持つ
+- [x] timer と alarm の DTO / store が InMemory と PostgreSQL で同じ契約を持つ
+- [x] transcript detector が単発 timer / alarm だけを拾い、ポモドーロや連鎖 timer は未対応として扱う
+- [x] `create_timer` / `create_alarm` は `SessionCommand` と command runner 経由で DB に保存される
+- [x] 作成 acknowledgement は通常 reply に一時 directive を入れ、未保存の通知を断言しない
+- [x] timer worker は別プロセスとして scheduled due row を polling / claim できる
+- [x] due row は `timer_due` / `alarm_due` 相当の `SessionEvent` として TomoroSession に戻る
+- [x] TomoroSession が due 通知の最終 gate を持ち、client は鳴動判断を持たない
+- [x] due 通知は既存 Tomoko TTS / audio chunk / playback telemetry 経路で再生される
+- [x] focused unit / integration / ruff / full unit が通る

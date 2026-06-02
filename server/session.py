@@ -126,11 +126,17 @@ from server.shared.task_ledger import (
     TaskLedgerIntentDetector,
     TaskLedgerUpdateResult,
 )
+from server.shared.timer_alarm import (
+    TimerAlarmCreateResult,
+    TimerAlarmIntent,
+    TimerAlarmIntentDetector,
+)
 
 SessionState = Literal["idle", "listening", "processing"]
 OutputFloorPolicy = Literal["ambient_idle"]
 DEFAULT_ENGAGED_TIMEOUT_MS = 20_000
 DEFAULT_COOLDOWN_TIMEOUT_MS = 8_000
+_SPEECH_ECHO_TEXT_WINDOW_SEC = 8.0
 
 _CONVERSATION_LOG_OUTPUT_LANES: tuple[OutputLane, ...] = (
     "reply_turn",
@@ -175,6 +181,34 @@ def _task_ledger_response_directive(intent: TaskLedgerIntent) -> str:
     )
 
 
+def _timer_alarm_response_directive(intent: TimerAlarmIntent) -> str:
+    if intent.kind == "create_timer":
+        return (
+            "ユーザーはタイマーのセットを依頼しています。"
+            "タイマーとして受け取ったことだけを自然な短い日本語で伝えてください。"
+            "完了や通知を断言しないでください。"
+            f"タイマー: {intent.label}"
+        )
+    if intent.kind == "create_alarm":
+        return (
+            "ユーザーはアラームのセットを依頼しています。"
+            "アラームとして受け取ったことだけを自然な短い日本語で伝えてください。"
+            "完了や通知を断言しないでください。"
+            f"アラーム: {intent.label}"
+        )
+    return (
+        "ユーザーはポモドーロや繰り返しタイマーを依頼しています。"
+        "今は単発のタイマーとアラームだけ対応していることを"
+        "自然な短い日本語で伝えてください。"
+    )
+
+
+def _timer_alarm_due_notice_text(*, kind: str, label: str) -> str:
+    if kind == "alarm":
+        return f"アラームの時間です。{label}。"
+    return f"タイマーが鳴りました。{label}。"
+
+
 logger = logging.getLogger(__name__)
 
 class TomoroSession:
@@ -200,6 +234,7 @@ class TomoroSession:
         calendar_store: CalendarEventStore | None = None,
         research_result_store: Any | None = None,
         task_ledger_store: Any | None = None,
+        timer_alarm_store: Any | None = None,
         context_snapshot_builder: ContextSnapshotBuilder | None = None,
         speech_normalizer: ReplySpeechNormalizer | None = None,
         barge_in_detector: BargeInDetector | None = None,
@@ -236,6 +271,7 @@ class TomoroSession:
         self.calendar_store = calendar_store
         self.research_result_store = research_result_store
         self.task_ledger_store = task_ledger_store
+        self.timer_alarm_store = timer_alarm_store
         self.context_snapshot_builder = context_snapshot_builder
         self.speech_normalizer = speech_normalizer
         self.barge_in_detector = barge_in_detector
@@ -299,6 +335,10 @@ class TomoroSession:
         self._task_ledger_transition_handler: Callable[[TransitionResult], Any] | None = None
         self._task_ledger_transition_tasks: set[asyncio.Task[None]] = set()
         self._task_ledger_request_sequence = 0
+        self._timer_alarm_intent_detector = TimerAlarmIntentDetector()
+        self._timer_alarm_transition_handler: Callable[[TransitionResult], Any] | None = None
+        self._timer_alarm_transition_tasks: set[asyncio.Task[None]] = set()
+        self._timer_alarm_request_sequence = 0
 
     # Audio input and state snapshots.
 
@@ -319,6 +359,16 @@ class TomoroSession:
         self._task_ledger_transition_handler = handler
         logger.info(
             "TomoroSession task ledger transition handler %s",
+            "attached" if handler is not None else "cleared",
+        )
+
+    def set_timer_alarm_transition_handler(
+        self,
+        handler: Callable[[TransitionResult], Any] | None,
+    ) -> None:
+        self._timer_alarm_transition_handler = handler
+        logger.info(
+            "TomoroSession timer alarm transition handler %s",
             "attached" if handler is not None else "cleared",
         )
 
@@ -432,6 +482,12 @@ class TomoroSession:
             return self._reduce_task_ledger_requested(event)
         if event.type == "task_ledger_update_finished":
             return self._reduce_task_ledger_update_finished(event)
+        if event.type == "timer_alarm_requested":
+            return self._reduce_timer_alarm_requested(event)
+        if event.type == "timer_alarm_create_finished":
+            return self._reduce_timer_alarm_create_finished(event)
+        if event.type in {"timer_due", "alarm_due"}:
+            return self._reduce_timer_alarm_due(event)
         if event.type == "stop_intent_classified":
             return self._reduce_stop_intent_classified(event)
         if event.type == "candidate_command_failed":
@@ -948,6 +1004,110 @@ class TomoroSession:
             },
         )
 
+    def _new_timer_alarm_request_id(self) -> str:
+        self._timer_alarm_request_sequence += 1
+        return f"timer-alarm-{self._timer_alarm_request_sequence}"
+
+    def _reduce_timer_alarm_requested(self, event: SessionEvent) -> TransitionResult:
+        intent = event.payload.get("intent")
+        if not isinstance(intent, TimerAlarmIntent):
+            return self._transition_result(
+                "timer_alarm_request_rejected",
+                payload={"reason": "invalid_intent"},
+            )
+        request_id = str(
+            event.payload.get("request_id") or self._new_timer_alarm_request_id()
+        )
+        payload = {
+            "request_id": request_id,
+            "operation": intent.kind,
+            "label": intent.label,
+            "reason": intent.reason,
+        }
+        if intent.kind == "unsupported":
+            return self._transition_result(
+                "timer_alarm_request_unsupported",
+                payload={**payload, "reason": intent.reason or "unsupported_operation"},
+            )
+        return self._transition_result(
+            "timer_alarm_request_accepted",
+            payload=payload,
+            commands=[
+                SessionCommand(
+                    type="submit_timer_alarm_create",
+                    payload={
+                        "request_id": request_id,
+                        "intent": intent,
+                        "device_id": event.payload.get("device_id"),
+                    },
+                )
+            ],
+        )
+
+    def _reduce_timer_alarm_create_finished(self, event: SessionEvent) -> TransitionResult:
+        result = event.payload.get("result")
+        if not isinstance(result, TimerAlarmCreateResult):
+            return self._transition_result(
+                "timer_alarm_create_ignored",
+                payload={"reason": "invalid_result"},
+            )
+        event_type = (
+            "timer_alarm_create_recorded"
+            if result.status == "created"
+            else "timer_alarm_create_skipped"
+        )
+        return self._transition_result(
+            event_type,
+            payload={
+                "request_id": event.payload.get("request_id"),
+                "status": result.status,
+                "kind": result.kind,
+                "entry_id": result.entry_id,
+                "label": result.label,
+                "due_at": result.due_at.isoformat() if result.due_at else None,
+                "reason": result.reason,
+            },
+        )
+
+    def _reduce_timer_alarm_due(self, event: SessionEvent) -> TransitionResult:
+        gate_reason = self._candidate_reply_gate_reason()
+        entry_id = str(event.payload.get("entry_id") or "")
+        label = str(event.payload.get("label") or "")
+        kind = str(event.payload.get("kind") or "timer")
+        if gate_reason is not None:
+            return self._transition_result(
+                "timer_alarm_due_skipped",
+                payload={
+                    "entry_id": entry_id,
+                    "label": label,
+                    "kind": kind,
+                    "gate_reason": gate_reason,
+                },
+                commands=[
+                    SessionCommand(
+                        type="mark_timer_alarm_failed",
+                        payload={"entry_id": entry_id, "reason": gate_reason},
+                    )
+                ],
+            )
+        notice_text = _timer_alarm_due_notice_text(kind=kind, label=label)
+        return self._transition_result(
+            "timer_alarm_due_speakable",
+            payload={"entry_id": entry_id, "label": label, "kind": kind},
+            commands=[
+                SessionCommand(
+                    type="start_timer_alarm_due_notice",
+                    payload={
+                        "entry_id": entry_id,
+                        "kind": kind,
+                        "label": label,
+                        "text": notice_text,
+                        "device_id": event.payload.get("device_id") or "",
+                    },
+                )
+            ],
+        )
+
     def _reduce_research_result_ready(self, event: SessionEvent) -> TransitionResult:
         result = event.payload.get("result")
         if not isinstance(result, ResearchResult):
@@ -1223,7 +1383,41 @@ class TomoroSession:
                 self._reset_transcriber_stream()
             await self._transition("idle")
             return
-        previous_attention = self.attention_mode
+        attention_before_handlers = self.attention_mode
+        recent_echo = self._classify_recent_speech_echo(transcript)
+        if recent_echo is not None:
+            await self._send_event(
+                {
+                    "type": "barge_in",
+                    "kind": recent_echo.kind,
+                    "action": recent_echo.action,
+                }
+            )
+            logger.info(
+                "TomoroSession recent-speech echo suppressed text=%r reason=%s",
+                transcript.text,
+                recent_echo.reason,
+            )
+            if self.ambient_log_writer is not None:
+                await self.ambient_log_writer.write(
+                    transcript,
+                    tomoko_participated=False,
+                    attention_mode=attention_before_handlers,
+                    attended=False,
+                    participation_mode="observer",
+                )
+            await self._send_transcript_final_event(
+                transcript,
+                attention_mode=attention_before_handlers,
+                participation_mode="observer",
+                attended=False,
+            )
+            if reset_audio_input:
+                self.vad_processor.reset()
+                self._reset_transcriber_stream()
+            await self._transition("idle")
+            return
+        previous_attention = attention_before_handlers
         if await self._maybe_handle_research_answer_request(
             transcript,
             previous_attention=previous_attention,
@@ -1237,6 +1431,12 @@ class TomoroSession:
         ):
             return
         if await self._maybe_handle_task_ledger_request(
+            transcript,
+            previous_attention=previous_attention,
+            reset_audio_input=reset_audio_input,
+        ):
+            return
+        if await self._maybe_handle_timer_alarm_request(
             transcript,
             previous_attention=previous_attention,
             reset_audio_input=reset_audio_input,
@@ -1575,6 +1775,74 @@ class TomoroSession:
         await self._transition("idle")
         return True
 
+    async def _maybe_handle_timer_alarm_request(
+        self,
+        transcript: Transcript,
+        *,
+        previous_attention: AttentionMode,
+        reset_audio_input: bool,
+    ) -> bool:
+        intent = self._timer_alarm_intent_detector.detect(transcript.text)
+        if intent is None:
+            return False
+        participation_mode = "called" if previous_attention == "ambient" else "invited"
+        start_reason = _start_reason_from_participation_mode(participation_mode)
+        if self.ambient_log_writer is not None:
+            await self.ambient_log_writer.write(
+                transcript,
+                tomoko_participated=True,
+                attention_mode=previous_attention,
+                attended=True,
+                participation_mode=participation_mode,
+            )
+        self._set_start_reason(start_reason)
+        logger.info(
+            "TomoroSession timer alarm request detected kind=%s label=%r reason=%s",
+            intent.kind,
+            intent.label,
+            intent.reason,
+        )
+        await self._ensure_conversation_session(
+            device_id=transcript.device_id,
+            start_reason=start_reason,
+        )
+        await self._transition_attention("engaged")
+        if self.conversation_log_writer is not None:
+            conversation_log_id = await self._write_user_turn(
+                transcript,
+                participation_mode=participation_mode,
+            )
+            if conversation_log_id is not None:
+                self._schedule_conversation_embedding(
+                    conversation_log_id=conversation_log_id,
+                    text=transcript.text,
+                )
+        await self._send_transcript_final_event(
+            transcript,
+            attention_mode=previous_attention,
+            participation_mode=participation_mode,
+            attended=True,
+            conversation_session_id=self.active_conversation_session_id,
+        )
+        await self._send_event({"type": "participation", "mode": participation_mode})
+        result = await self.post_event(
+            SessionEvent(
+                type="timer_alarm_requested",
+                payload={"intent": intent, "device_id": transcript.device_id},
+            )
+        )
+        await self._dispatch_timer_alarm_transition_result(result)
+        if self.router is not None and self.thinking_mode is not None:
+            await self._start_reply_task(
+                transcript,
+                response_directive=_timer_alarm_response_directive(intent),
+            )
+        if reset_audio_input:
+            self.vad_processor.reset()
+            self._reset_transcriber_stream()
+        await self._transition("idle")
+        return True
+
     async def _dispatch_research_transition_result(self, result: TransitionResult) -> None:
         research_command_count = sum(
             1 for command in result.commands if command.type == "submit_research_request"
@@ -1712,6 +1980,81 @@ class TomoroSession:
                 "elapsed_ms=%.1f active_tasks=%d",
                 elapsed_ms,
                 len(self._task_ledger_transition_tasks),
+            )
+
+        task.add_done_callback(forget)
+
+    async def _dispatch_timer_alarm_transition_result(
+        self,
+        result: TransitionResult,
+    ) -> None:
+        command_count = sum(
+            1 for command in result.commands if command.type == "submit_timer_alarm_create"
+        )
+        if self._timer_alarm_transition_handler is None:
+            if command_count:
+                logger.warning(
+                    "TomoroSession timer alarm transition handler missing "
+                    "commands=%d emissions=%d",
+                    command_count,
+                    len(result.emissions),
+                )
+            await self.send_transition_emissions(result)
+            await self._run_internal_commands(result.commands)
+            return
+
+        maybe_awaitable = self._timer_alarm_transition_handler(result)
+        if not inspect.isawaitable(maybe_awaitable):
+            if command_count:
+                logger.warning(
+                    "TomoroSession timer alarm transition handler returned non-awaitable "
+                    "commands=%d emissions=%d",
+                    command_count,
+                    len(result.emissions),
+                )
+            await self.send_transition_emissions(result)
+            await self._run_internal_commands(result.commands)
+            return
+
+        await self.send_transition_emissions(result)
+        logger.info(
+            "TomoroSession scheduling timer alarm transition handler commands=%d "
+            "emissions=%d active_tasks=%d",
+            command_count,
+            len(result.emissions),
+            len(self._timer_alarm_transition_tasks),
+        )
+        started = time.monotonic()
+
+        async def run_handler() -> None:
+            await maybe_awaitable
+
+        task = asyncio.create_task(run_handler())
+        self._timer_alarm_transition_tasks.add(task)
+
+        def forget(done_task: asyncio.Task[None]) -> None:
+            self._timer_alarm_transition_tasks.discard(done_task)
+            elapsed_ms = (time.monotonic() - started) * 1000
+            if done_task.cancelled():
+                logger.warning(
+                    "TomoroSession timer alarm transition task cancelled "
+                    "elapsed_ms=%.1f active_tasks=%d",
+                    elapsed_ms,
+                    len(self._timer_alarm_transition_tasks),
+                )
+                return
+            exc = done_task.exception()
+            if exc is not None:
+                logger.error(
+                    "TomoroSession timer alarm transition task failed",
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+                return
+            logger.info(
+                "TomoroSession timer alarm transition task finished "
+                "elapsed_ms=%.1f active_tasks=%d",
+                elapsed_ms,
+                len(self._timer_alarm_transition_tasks),
             )
 
         task.add_done_callback(forget)
@@ -2800,6 +3143,41 @@ class TomoroSession:
                     candidate_id=command.payload.get("request_id"),
                     output_lane="reply_turn",
                 )
+            elif command.type == "start_timer_alarm_due_notice":
+                text = str(command.payload.get("text") or "")
+                device_id = str(command.payload.get("device_id") or "unknown")
+                entry_id = str(command.payload.get("entry_id") or "")
+                await self.start_precomputed_reply(
+                    text=text,
+                    device_id=device_id,
+                    reason="timer_alarm_due",
+                    candidate_source="timer_alarm",
+                    candidate_id=entry_id,
+                    output_lane="initiative_turn",
+                )
+                if self.timer_alarm_store is not None and entry_id:
+                    try:
+                        await self.timer_alarm_store.mark_notified(entry_id=entry_id)
+                    except Exception:
+                        logger.warning(
+                            "TomoroSession timer alarm mark_notified failed entry_id=%s",
+                            entry_id,
+                            exc_info=True,
+                        )
+            elif command.type == "mark_timer_alarm_failed":
+                entry_id = str(command.payload.get("entry_id") or "")
+                reason = str(command.payload.get("reason") or "gate_blocked")
+                if self.timer_alarm_store is not None and entry_id:
+                    try:
+                        await self.timer_alarm_store.mark_failed(
+                            entry_id=entry_id, reason=reason
+                        )
+                    except Exception:
+                        logger.warning(
+                            "TomoroSession timer alarm mark_failed failed entry_id=%s",
+                            entry_id,
+                            exc_info=True,
+                        )
 
     async def _insert_stop_intent_observation(self, command: SessionCommand) -> None:
         if self.stop_intent_store is None:
@@ -2980,6 +3358,31 @@ class TomoroSession:
                 reason="playback_ended_grace",
             )
         return decision
+
+    def _classify_recent_speech_echo(self, transcript: Transcript) -> BargeInDecision | None:
+        """Timing-independent echo guard for when STT finalizes after playback windows close.
+
+        Covers the gap where Apple Speech takes 3-6s to confirm a transcript
+        that arrived after both is_tomoko_speaking() and echo_grace have expired.
+        """
+        if self.barge_in_detector is None:
+            return None
+        recent_text = self.audio_turns.recent_tomoko_text
+        if not recent_text:
+            return None
+        time_since = self.audio_turns.time_since_last_tomoko_speech()
+        if not self.barge_in_detector.is_recent_echo(
+            transcript.text,
+            recent_text,
+            time_since_sec=time_since,
+            window_sec=_SPEECH_ECHO_TEXT_WINDOW_SEC,
+        ):
+            return None
+        return BargeInDecision(
+            kind="echo",
+            action="continue_speaking",
+            reason="recent_speech_text_echo",
+        )
 
     def _is_reply_generation_active(self) -> bool:
         return bool(
