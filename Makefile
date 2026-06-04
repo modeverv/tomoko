@@ -98,7 +98,7 @@ session-summarizer:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(SESSION_SUMMARY_LOG_FILE) mise exec -- uv run python background-process/summarize_pending_sessions.py --config $(CENTRAL_CONFIG) --limit $(SESSION_SUMMARY_LIMIT) --watch --interval-sec $(SESSION_SUMMARY_INTERVAL_SEC)
 
 session-summarizer-once:
-	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(SESSION_SUMMARY_LOG_FILE) mise exec -- uv run python background-process/summarize_pending_sessions.py --config $(CENTRAL_CONFIG) --limit $(SESSION_SUMMARY_LIMIT)
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(SESSION_SUMMARY_LOG_FILE) mise exec -- uv run python background-process/summarize_pending_sessions.py --config $(CENTRAL_CONFIG) --limit 500
 
 turn-embedder:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TURN_EMBEDDER_LOG_FILE) mise exec -- uv run python background-process/embed_conversation_turns.py --config $(CENTRAL_CONFIG) --limit $(TURN_EMBEDDER_LIMIT) --watch --interval-sec $(TURN_EMBEDDER_INTERVAL_SEC)
@@ -298,5 +298,5 @@ lint:
 
 check: lint test-unit
 
-daily: gcal journalist-once persona-updater-once turn-embedder-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once
+daily: gcal journalist-once persona-updater-once turn-embedder-once session-summarizer-once
 
