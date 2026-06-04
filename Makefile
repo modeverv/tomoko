@@ -297,3 +297,6 @@ lint:
 	mise exec -- uv run ruff check .
 
 check: lint test-unit
+
+daily: gcal journalist-once persona-updater-once turn-embedder-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once session-summarizer-once
+

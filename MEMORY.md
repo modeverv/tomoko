@@ -18,6 +18,16 @@ due 通知は既存の precomputed reply / TTS / audio chunk 経路へ流し、
 client は WebSocket から届いた text/audio event を従来どおり処理するだけにする。
 初段ではポモドーロ、繰り返し、連鎖 timer は unsupported として扱う。
 
+### 確定した判断: timer / alarm due は Tomoko 発話を止めてでも鳴らす
+2026-06-02 時点では、timer / alarm due を candidate / arrival と同じ ambient-only gate に閉じ込める方針を否定する。
+timer / alarm はユーザーが明示した時刻通知なので、Tomoko 自身の通常 reply / initiative / research notice より優先する。
+
+ただし user が話している / listening 中には割り込まない。
+due event は TomoroSession 内で保持し、`idle` に戻った時に再投入する。
+Tomoko が発話・再生中なら `cancel_reply_generation` と server-driven `audio_control stop` を出してから
+既存 `start_precomputed_reply(reason="timer_alarm_due")` へ切り替える。
+output が未接続なら retry せず failed として DB row を確定する。
+
 ### 確定した判断: タスク管理は short memory hint ではなく DB 永続 task ledger として扱う
 2026-06-02 時点では、`short_memory` の task-like note を prompt hint として渡すだけでは、
 残タスク・完了・追加を安定して再構成できない。
@@ -4177,3 +4187,15 @@ active task id 候補を返させる。
 ただし DB 更新の最終判断は LLM ではなく validator が持つ。
 single candidate / active id / confidence threshold を満たす時だけ complete し、
 存在しない id、低 confidence、複数候補、unclear decision は needs_confirmation として DB を変更しない。
+
+### 確定した判断: VOICEVOX 出力は 16kHz に寄せて長尺発話の音程揺れを切り分ける
+2026-06-02 時点では、長めの Tomoko 発話で「前半 10 秒ほど音程が低く、
+後半から元の音程へ戻る」ように聞こえる現象がある。
+
+client の `AudioContext` と mic / VAD / STT hot path は 16kHz 前提なので、
+それらを 24kHz へ動かす方針は否定する。
+まず VOICEVOX の `outputSamplingRate` を 16kHz に寄せ、
+24kHz WAV を 16kHz AudioContext で decode / resample する影響を外して live 体感を確認する。
+
+この変更で揺れが消えるなら browser decode / resampling 経路が疑わしい。
+消えない場合は VOICEVOX の長文 prosody / accent phrase 生成そのものを第一候補として扱う。

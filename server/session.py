@@ -339,6 +339,7 @@ class TomoroSession:
         self._timer_alarm_transition_handler: Callable[[TransitionResult], Any] | None = None
         self._timer_alarm_transition_tasks: set[asyncio.Task[None]] = set()
         self._timer_alarm_request_sequence = 0
+        self._pending_timer_alarm_due_payloads: list[dict[str, Any]] = []
 
     # Audio input and state snapshots.
 
@@ -1070,42 +1071,73 @@ class TomoroSession:
         )
 
     def _reduce_timer_alarm_due(self, event: SessionEvent) -> TransitionResult:
-        gate_reason = self._candidate_reply_gate_reason()
         entry_id = str(event.payload.get("entry_id") or "")
         label = str(event.payload.get("label") or "")
         kind = str(event.payload.get("kind") or "timer")
-        if gate_reason is not None:
+        payload = {
+            "entry_id": entry_id,
+            "label": label,
+            "kind": kind,
+            "device_id": event.payload.get("device_id") or "",
+        }
+        if not self._connected_output_state.audio_target_available:
             return self._transition_result(
-                "timer_alarm_due_skipped",
+                "timer_alarm_due_failed",
                 payload={
                     "entry_id": entry_id,
                     "label": label,
                     "kind": kind,
-                    "gate_reason": gate_reason,
+                    "reason": "audio_target_unavailable",
                 },
                 commands=[
                     SessionCommand(
                         type="mark_timer_alarm_failed",
-                        payload={"entry_id": entry_id, "reason": gate_reason},
+                        payload={
+                            "entry_id": entry_id,
+                            "reason": "audio_target_unavailable",
+                        },
                     )
                 ],
             )
+        if self.state == "listening":
+            self._pending_timer_alarm_due_payloads.append(payload)
+            return self._transition_result(
+                "timer_alarm_due_deferred",
+                payload={
+                    "entry_id": entry_id,
+                    "label": label,
+                    "kind": kind,
+                    "reason": "user_listening",
+                },
+            )
         notice_text = _timer_alarm_due_notice_text(kind=kind, label=label)
+        commands: list[SessionCommand] = []
+        if self._is_reply_generation_active() or self.audio_turns.playback_state != "idle":
+            commands.extend(
+                [
+                    SessionCommand(
+                        type="cancel_reply_generation",
+                        payload={"status": "interrupted"},
+                    ),
+                    SessionCommand(type="send_audio_control_stop"),
+                ]
+            )
+        commands.append(
+            SessionCommand(
+                type="start_timer_alarm_due_notice",
+                payload={
+                    "entry_id": entry_id,
+                    "kind": kind,
+                    "label": label,
+                    "text": notice_text,
+                    "device_id": event.payload.get("device_id") or "",
+                },
+            )
+        )
         return self._transition_result(
             "timer_alarm_due_speakable",
             payload={"entry_id": entry_id, "label": label, "kind": kind},
-            commands=[
-                SessionCommand(
-                    type="start_timer_alarm_due_notice",
-                    payload={
-                        "entry_id": entry_id,
-                        "kind": kind,
-                        "label": label,
-                        "text": notice_text,
-                        "device_id": event.payload.get("device_id") or "",
-                    },
-                )
-            ],
+            commands=commands,
         )
 
     def _reduce_research_result_ready(self, event: SessionEvent) -> TransitionResult:
@@ -2780,6 +2812,8 @@ class TomoroSession:
         self.state = state  # type: ignore[assignment]
         logger.info("TomoroSession state changed to %s", state)
         await self._send_event({"type": "state", "state": state})
+        if state == "idle":
+            await self._flush_pending_timer_alarm_due()
 
     async def _transition_attention(self, mode: AttentionMode) -> None:
         if self.attention_mode == mode:
@@ -3113,7 +3147,13 @@ class TomoroSession:
 
     async def _run_internal_commands(self, commands: list[SessionCommand]) -> None:
         for command in commands:
-            if command.type == "apply_stop_intent_ack":
+            if command.type == "cancel_reply_generation":
+                await self._cancel_reply_generation(
+                    status=command.payload.get("status") or "cancelled",
+                )
+            elif command.type == "send_audio_control_stop":
+                await self._send_reserved_audio_stop()
+            elif command.type == "apply_stop_intent_ack":
                 await self._apply_stop_intent_ack()
             elif command.type == "insert_stop_intent_observation":
                 await self._insert_stop_intent_observation(command)
@@ -3178,6 +3218,14 @@ class TomoroSession:
                             entry_id,
                             exc_info=True,
                         )
+
+    async def _flush_pending_timer_alarm_due(self) -> None:
+        if not self._pending_timer_alarm_due_payloads:
+            return
+        payload = self._pending_timer_alarm_due_payloads.pop(0)
+        result = await self.post_event(SessionEvent(type="timer_due", payload=payload))
+        await self.send_transition_emissions(result)
+        await self._run_internal_commands(result.commands)
 
     async def _insert_stop_intent_observation(self, command: SessionCommand) -> None:
         if self.stop_intent_store is None:

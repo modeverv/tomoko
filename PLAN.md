@@ -7849,3 +7849,42 @@ due になった事実を realtime 側の `SessionEvent` として戻す。
 - [x] TomoroSession が due 通知の最終 gate を持ち、client は鳴動判断を持たない
 - [x] due 通知は既存 Tomoko TTS / audio chunk / playback telemetry 経路で再生される
 - [x] focused unit / integration / ruff / full unit が通る
+
+## 2026-06-02 VOICEVOX 16kHz output pitch check
+
+長めの Tomoko 発話で前半の音程が低く聞こえる現象について、
+Web Audio 側の `AudioContext({ sampleRate: 16000 })` と VOICEVOX WAV の `outputSamplingRate=24000`
+がずれている可能性を切り分ける。
+
+入力 mic / VAD / STT hot path を 24kHz へ動かす方針は否定する。
+まず VOICEVOX 側の `sample_rate` を 16kHz に寄せ、
+ブラウザ再生時の resampling 影響を外した状態で live 体感を確認する。
+
+### 完了条件
+
+- [x] central runtime の `voicevox_tsumugi` / `voicevox_tsumugi_stream` が 16kHz WAV を要求する
+- [x] edge runtime の `voicevox_tsumugi` / `voicevox_tsumugi_stream` が 16kHz WAV を要求する
+- [x] config contract test が VOICEVOX 16kHz を固定する
+- [x] focused config unit が通る
+- [x] full unit が通る
+- [ ] live browser で長めの Tomoko 発話の前半低音程感を再確認する
+
+## 2026-06-02 Timer/alarm preemptive notice policy
+
+timer / alarm due 通知を candidate / arrival と同じ ambient-only gate に閉じ込める方針は否定する。
+timer / alarm はユーザーが指定した時刻通知なので、Tomoko 自身の発話より優先してよい。
+
+ただし user が話している / listening 中の割り込みはしない。
+due event は TomoroSession 内で短く保持し、user 発話が終わって `idle` に戻った時に通知へ進める。
+Tomoko が通常 reply / initiative / research notice を話している場合は、
+server-driven `audio_control stop` 相当を出してから timer/alarm notice に切り替える。
+output が未接続の場合は retry せず failed として DB state を確定する。
+
+### 完了条件
+
+- [x] output 未接続の due は `timer_alarm_due_failed` になり、row を failed にする command を出す
+- [x] listening 中の due は `timer_alarm_due_deferred` になり、DB row を failed / notified にしない
+- [x] listening 後に idle へ戻ったら保持した due notice を発話経路へ流す
+- [x] Tomoko reply / initiative / research notice 中の due は `cancel_reply_generation` と `audio_control stop` を先に出す
+- [x] due notice は既存 `start_precomputed_reply` / TTS / audio chunk 経路を使う
+- [x] focused unit / integration / ruff / full unit が通る

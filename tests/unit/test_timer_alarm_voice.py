@@ -8,7 +8,13 @@ import pytest
 
 from server.edge.pipeline.vad import VADProcessor
 from server.session import TomoroSession
-from server.shared.models import ConnectedOutputState, SessionEvent, ThinkingEvent, Transcript
+from server.shared.models import (
+    AudioChunkOut,
+    ConnectedOutputState,
+    SessionEvent,
+    ThinkingEvent,
+    Transcript,
+)
 from server.shared.timer_alarm import (
     InMemoryTimerAlarmStore,
     TimerAlarmCommandRunner,
@@ -375,7 +381,7 @@ async def test_timer_alarm_unsupported_does_not_emit_command() -> None:
 
 
 @pytest.mark.unit
-async def test_timer_alarm_due_blocked_by_gate_emits_skipped() -> None:
+async def test_timer_alarm_due_fails_when_output_is_unavailable() -> None:
     session = TomoroSession(
         vad_processor=VADProcessor(vad=QuietVAD(), silence_ms=400),
         send_event=[].append,
@@ -393,8 +399,10 @@ async def test_timer_alarm_due_blocked_by_gate_emits_skipped() -> None:
         )
     )
 
-    assert result.emissions[0].type == "timer_alarm_due_skipped"
+    assert result.emissions[0].type == "timer_alarm_due_failed"
     assert result.emissions[0].payload["entry_id"] == "timer-001"
+    assert result.emissions[0].payload["reason"] == "audio_target_unavailable"
+    assert [command.type for command in result.commands] == ["mark_timer_alarm_failed"]
 
 
 @pytest.mark.unit
@@ -416,6 +424,65 @@ async def test_timer_alarm_due_speakable_emits_notice_command() -> None:
 
     assert result.emissions[0].type == "timer_alarm_due_speakable"
     assert any(c.type == "start_timer_alarm_due_notice" for c in result.commands)
+
+
+@pytest.mark.unit
+async def test_timer_alarm_due_defers_while_user_is_listening() -> None:
+    events: list[dict[str, object]] = []
+    session = _session(events)
+    await session._transition("listening")
+
+    result = await session.post_event(
+        SessionEvent(
+            type="timer_due",
+            payload={
+                "entry_id": "timer-001",
+                "label": "5分タイマー",
+                "kind": "timer",
+                "device_id": "desk",
+            },
+        )
+    )
+
+    assert result.emissions[0].type == "timer_alarm_due_deferred"
+    assert result.commands == []
+
+    await session._transition("idle")
+
+    assert any(event["type"] == "timer_alarm_due_speakable" for event in events)
+    assert any(event["type"] == "reply_text" for event in events)
+
+
+@pytest.mark.unit
+async def test_timer_alarm_due_preempts_current_tomoko_reply() -> None:
+    events: list[dict[str, object]] = []
+    session = _session(events)
+    session.audio_turns.begin_turn(lane="reply_turn")
+    await session.audio_turns.reserve_audio_chunk(
+        text="まだ話しています",
+        chunk=AudioChunkOut(data=b"not-a-wav", sequence=0, is_last=True),
+    )
+
+    result = await session.post_event(
+        SessionEvent(
+            type="timer_due",
+            payload={
+                "entry_id": "timer-001",
+                "label": "5分タイマー",
+                "kind": "timer",
+                "device_id": "desk",
+            },
+        )
+    )
+
+    assert result.emissions[0].type == "timer_alarm_due_speakable"
+    assert [command.type for command in result.commands][:2] == [
+        "cancel_reply_generation",
+        "send_audio_control_stop",
+    ]
+    assert any(
+        command.type == "start_timer_alarm_due_notice" for command in result.commands
+    )
 
 
 @pytest.mark.unit

@@ -98,13 +98,13 @@ def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation(
     assert voicevox_backend.type == "voicevox"
     assert voicevox_backend.url == "http://127.0.0.1:50021"
     assert voicevox_backend.voice == "8"
-    assert voicevox_backend.sample_rate == 24000
+    assert voicevox_backend.sample_rate == 16000
 
     voicevox_stream_backend = config.backends["voicevox_tsumugi_stream"]
     assert voicevox_stream_backend.type == "voicevox_stream"
     assert voicevox_stream_backend.url == "http://127.0.0.1:50021"
     assert voicevox_stream_backend.voice == "8"
-    assert voicevox_stream_backend.sample_rate == 24000
+    assert voicevox_stream_backend.sample_rate == 16000
 
     irodori_backend = config.backends["irodori_mlx"]
     assert irodori_backend.type == "irodori_mlx"
