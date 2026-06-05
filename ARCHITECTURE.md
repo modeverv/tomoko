@@ -631,6 +631,15 @@ TTS も `TTSBackend` 抽象を介して差し替え可能にする。
 **M1フェーズは `say`、完了後に `kokoro-mlx` に切り替える。**
 ダメなら VOICEVOX に切り替え可能。抽象があるのでコアは変わらない。
 
+2026-06-05 時点の central / edge default TTS は `voicevox_tsumugi_chunked` とする。
+これは VOICEVOX Engine の `/streaming_synthesis` multipart response を
+`chunk_min_accent_phrases=1` で呼び、各 part を `AudioChunkOut(data, sequence, is_last)` に変換する。
+central default URL は `~/by-llms/async-voicevox/run_streaming_voicevox.command` の既定に合わせて
+`http://127.0.0.1:50121` とする。
+各 `data` は browser が単体で decode できる complete WAV chunk のまま扱い、
+client は従来どおり WebSocket binary message を `decodeAudioData()` するだけにする。
+部分 PCM byte stream を client に解釈させる設計にはしない。
+
 ### TTSBackend 抽象
 
 ```python

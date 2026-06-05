@@ -178,14 +178,16 @@ TomoroSession が所有するもの:
 | STT 比較候補 | `local_whisper_mlx_large_turbo_q4` | MLX Whisper large turbo q4 |
 | STT 比較候補 | `local_whisperkit_serve_large_turbo_632m_cpu_ne` | WhisperKit serve + CPU/ANE |
 | VAD | `silero_vad` | 16kHz / 32ms chunk |
-| TTS | `voicevox_tsumugi` | VOICEVOX Engine speaker id 8 |
+| TTS | `voicevox_tsumugi_chunked` | VOICEVOX Engine speaker id 8 / `/streaming_synthesis` chunk_min_accent_phrases=1 |
 | TTS 比較候補 | `kokoro_mlx` | local MLX TTS |
 | embedding | `local_bge_m3` | `BAAI/bge-m3` / 1024 dimensions |
 
 LM Studio は `http://192.168.11.66:1234` の OpenAI 互換 API を想定しています。
 別マシンや別ポートで動かす場合は config の backend URL を変更してください。
 
-VOICEVOX を使う場合は、VOICEVOX Engine が `http://127.0.0.1:50021` で応答している必要があります。
+VOICEVOX を使う場合は、VOICEVOX Engine が応答している必要があります。
+通常 backend は `http://127.0.0.1:50021`、chunked default は `~/by-llms/async-voicevox/run_streaming_voicevox.command`
+の既定ポート `http://127.0.0.1:50121` を使います。
 Apple Speech STT を使う場合は macOS の Speech Recognition permission が必要です。
 
 ## Setup

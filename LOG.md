@@ -1,3 +1,39 @@
+## 2026-06-05 セッション1
+
+### やること（開始時に書く）
+- `~/by-llms/async-voicevox` の `/streaming_synthesis` multipart chunk contract を Tomoko 側 TTS backend に取り込む
+- `chunk_min_accent_phrases = 1` で叩ける VOICEVOX chunked backend を追加する
+- central / edge の default TTS を chunked backend に切り替え、config contract test と docs を同期する
+
+### やったこと
+- `VoicevoxChunkedBackend` を追加し、VOICEVOX Engine の `/streaming_synthesis` multipart response を `AudioChunkOut(data, sequence, is_last)` として yield できるようにした
+- `BackendSpec.chunk_min_accent_phrases` と `voicevox_chunked` factory branch を追加した
+- `config/central_realtime.toml` / `config/edge_kitchen.toml` の default TTS を `voicevox_tsumugi_chunked` に切り替えた
+- `make prepare` 相当の VOICEVOX readiness 対象に `voicevox_chunked` を含めた
+- README / ARCHITECTURE.md / PLAN.md / MEMORY.md / `_docs/latency.md` に chunked VOICEVOX default 方針を追記した
+
+### 詰まったこと・解決したこと
+- 既存 `voicevox_stream` は `/cancellable_synthesis` bytes を結合して 1 WAV にする backend だった
+  - 今回は別 backend として `/streaming_synthesis` を扱い、multipart part ごとの complete WAV chunk を preserve する形にした
+- `make prepare` は `voicevox` / `voicevox_stream` だけを VOICEVOX app readiness 対象にしていた
+  - `voicevox_chunked` も同じ外部 Engine 依存として扱うようにした
+
+### 検証
+- red/focused unit: `uv run pytest -m unit tests/unit/test_voicevox_tts.py tests/unit/test_phase0_config.py tests/unit/test_phase14_edge_split.py -q`
+  - 初回は `VoicevoxChunkedBackend` 未実装で collection error
+- focused unit: `uv run pytest -m unit tests/unit/test_voicevox_tts.py tests/unit/test_phase0_config.py tests/unit/test_phase14_edge_split.py tests/unit/test_prepare_runtime.py -q`
+  - 27 passed
+- focused ruff: `uv run ruff check server/shared/config.py server/shared/inference/tts/__init__.py server/shared/inference/tts/voicevox.py tests/unit/test_voicevox_tts.py tests/unit/test_phase0_config.py tests/unit/test_phase14_edge_split.py _tools/prepare_runtime.py`
+  - pass
+- full unit: `uv run pytest -m unit -q`
+  - 615 passed, 23 deselected
+- global ruff: `uv run ruff check .`
+  - pass
+
+### 次のセッションでやること
+- chunked VOICEVOX Engine を実起動した状態で `make server-debug` を走らせ、first chunk latency と live 音質を確認する
+- 必要なら `chunk_min_accent_phrases` を 1 / 2 / 4 で比較する
+
 ## 2026-06-02 セッション7
 
 ### やること（開始時に書く）

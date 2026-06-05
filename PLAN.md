@@ -1,3 +1,24 @@
+## 2026-06-05 VOICEVOX chunked TTS default
+
+通常 `/synthesis` の `voicevox_tsumugi` を default TTS として使い続ける方針は否定する。
+`~/by-llms/async-voicevox` で確認した VOICEVOX Engine の `/streaming_synthesis` multipart chunk contract を
+Tomoko 側の `TTSBackend` として取り込み、`chunk_min_accent_phrases=1` で最小単位の complete WAV chunk を受け取る。
+
+ただし browser client を PCM streaming decoder に作り替える方針は採らない。
+各 multipart part は complete WAV として `AudioChunkOut` に包み、既存 WebSocket binary / `decodeAudioData()` 経路に載せる。
+`voicevox_tsumugi` / `voicevox_tsumugi_stream` は比較・fallback 用に残す。
+
+### 完了条件
+
+- [x] `VoicevoxChunkedBackend` が `/streaming_synthesis` を呼ぶ
+- [x] `chunk_min_accent_phrases=1` を config から渡せる
+- [x] multipart part が `AudioChunkOut(data, sequence, is_last)` として複数 yield される
+- [x] central / edge の default `tts_backend` が `voicevox_tsumugi_chunked` になる
+- [x] `make prepare` 相当の VOICEVOX readiness 対象に `voicevox_chunked` が含まれる
+- [x] focused VOICEVOX / config unit が通る
+- [x] full unit / global ruff が通る
+- [ ] live browser で first chunk latency と自然さを確認する
+
 ## 2026-06-02 Task ledger voice create/complete
 
 task ledger を prompt に復帰するだけで終える方針は否定する。

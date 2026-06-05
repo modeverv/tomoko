@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from typing import Any
 from uuid import uuid4
 
@@ -285,6 +285,124 @@ class VoicevoxStreamBackend(VoicevoxBackend):
                 await client.aclose()
 
 
+class VoicevoxChunkedBackend(VoicevoxBackend):
+    name = "voicevox_chunked"
+
+    def __init__(
+        self,
+        *,
+        url: str = DEFAULT_VOICEVOX_URL,
+        speaker_id: int = KASUKABE_TSUMUGI_SPEAKER_ID,
+        sample_rate: int | None = None,
+        speed: float | None = None,
+        chunk_min_accent_phrases: int = 1,
+        client: httpx.AsyncClient | None = None,
+        timeout_sec: float = 30.0,
+    ) -> None:
+        super().__init__(
+            url=url,
+            speaker_id=speaker_id,
+            sample_rate=sample_rate,
+            speed=speed,
+            client=client,
+            timeout_sec=timeout_sec,
+        )
+        self.chunk_min_accent_phrases = chunk_min_accent_phrases
+
+    @classmethod
+    def from_spec(cls, spec: BackendSpec) -> VoicevoxChunkedBackend:
+        return cls(
+            url=spec.url or DEFAULT_VOICEVOX_URL,
+            speaker_id=_speaker_id_from_voice(spec.voice),
+            sample_rate=spec.sample_rate,
+            speed=spec.speed,
+            chunk_min_accent_phrases=spec.chunk_min_accent_phrases or 1,
+        )
+
+    async def synthesize(
+        self,
+        tts_input: TTSInput,
+    ) -> AsyncGenerator[AudioChunkOut, None]:
+        text = tts_input.text.strip()
+        if not text:
+            return
+
+        request_id = str(uuid4())
+        started_at = time.perf_counter()
+        trace_backend_call(
+            event="start",
+            kind="tts",
+            role="tts",
+            backend=self.name,
+            model="voicevox_engine",
+            request_id=request_id,
+            queue_key=f"voicevox:{self.url}",
+        )
+        speaker_id = _speaker_id_from_voice(tts_input.voice) if tts_input.voice else self.speaker_id
+        client = self._client or self._create_client()
+        close_client = self._client is None
+        chunk_count = 0
+        first_chunk_emitted = False
+        try:
+            audio_query = await self._audio_query(client, text, speaker_id, tts_input.style)
+
+            async with client.stream(
+                "POST",
+                f"{self.url}/streaming_synthesis",
+                params={
+                    "speaker": speaker_id,
+                    "chunk_min_accent_phrases": self.chunk_min_accent_phrases,
+                },
+                json=audio_query,
+            ) as response:
+                response.raise_for_status()
+                async for chunk in _iter_multipart_audio_chunks(response):
+                    if not first_chunk_emitted:
+                        first_chunk_emitted = True
+                        trace_backend_call(
+                            event="first_chunk",
+                            kind="tts",
+                            role="tts",
+                            backend=self.name,
+                            model="voicevox_engine",
+                            request_id=request_id,
+                            queue_key=f"voicevox:{self.url}",
+                            elapsed_ms=_elapsed_ms(started_at),
+                            bytes=len(chunk.data),
+                            sequence=chunk.sequence,
+                        )
+                    chunk_count += 1
+                    yield chunk
+        except Exception as exc:
+            trace_backend_call(
+                event="error",
+                kind="tts",
+                role="tts",
+                backend=self.name,
+                model="voicevox_engine",
+                request_id=request_id,
+                queue_key=f"voicevox:{self.url}",
+                total_ms=_elapsed_ms(started_at),
+                error=type(exc).__name__,
+            )
+            raise
+        else:
+            trace_backend_call(
+                event="done",
+                kind="tts",
+                role="tts",
+                backend=self.name,
+                model="voicevox_engine",
+                request_id=request_id,
+                queue_key=f"voicevox:{self.url}",
+                total_ms=_elapsed_ms(started_at),
+                chunk_count=chunk_count,
+            )
+        finally:
+            if close_client:
+                await client.aclose()
+
+
 def _speaker_id_from_voice(voice: str | None) -> int:
     if voice is None or not voice.strip():
         return KASUKABE_TSUMUGI_SPEAKER_ID
@@ -313,3 +431,98 @@ def _apply_style(
 
 def _elapsed_ms(started_at: float) -> float:
     return (time.perf_counter() - started_at) * 1000
+
+
+async def _iter_multipart_audio_chunks(
+    response: Any,
+) -> AsyncGenerator[AudioChunkOut, None]:
+    headers = getattr(response, "headers", {})
+    content_type = headers.get("content-type", "")
+    boundary = _parse_multipart_boundary(content_type)
+    if boundary is None:
+        raise ValueError(f"missing multipart boundary in content-type: {content_type!r}")
+
+    parser = _MultipartMixedParser(boundary)
+    async for data in response.aiter_bytes():
+        for part_headers, body in parser.feed(data):
+            yield _audio_chunk_from_part(part_headers, body)
+    for part_headers, body in parser.finish():
+        yield _audio_chunk_from_part(part_headers, body)
+
+
+def _parse_multipart_boundary(content_type: str) -> str | None:
+    for part in content_type.split(";"):
+        key, separator, value = part.strip().partition("=")
+        if separator and key.lower() == "boundary":
+            return value.strip('"')
+    return None
+
+
+def _audio_chunk_from_part(headers: Mapping[str, str], body: bytes) -> AudioChunkOut:
+    return AudioChunkOut(
+        data=body,
+        sequence=int(headers["x-sequence"]),
+        is_last=headers["x-is-last"].lower() == "true",
+    )
+
+
+class _MultipartMixedParser:
+    def __init__(self, boundary: str) -> None:
+        self._boundary_line = f"--{boundary}\r\n".encode("ascii")
+        self._closing_boundary_line = f"--{boundary}--\r\n".encode("ascii")
+        self._buffer = bytearray()
+        self._closed = False
+
+    def feed(self, data: bytes) -> list[tuple[dict[str, str], bytes]]:
+        self._buffer.extend(data)
+        return list(self._parse_available_parts())
+
+    def finish(self) -> list[tuple[dict[str, str], bytes]]:
+        parts = list(self._parse_available_parts())
+        if self._buffer and not self._closed:
+            raise ValueError("incomplete multipart response")
+        return parts
+
+    def _parse_available_parts(self) -> list[tuple[dict[str, str], bytes]]:
+        parts: list[tuple[dict[str, str], bytes]] = []
+        while True:
+            if self._closed:
+                return parts
+
+            if self._buffer.startswith(self._closing_boundary_line):
+                del self._buffer[: len(self._closing_boundary_line)]
+                self._closed = True
+                return parts
+
+            if not self._buffer.startswith(self._boundary_line):
+                return parts
+
+            header_start = len(self._boundary_line)
+            header_end = self._buffer.find(b"\r\n\r\n", header_start)
+            if header_end < 0:
+                return parts
+
+            headers = _parse_part_headers(bytes(self._buffer[header_start:header_end]))
+            content_length = int(headers["content-length"])
+            body_start = header_end + len(b"\r\n\r\n")
+            body_end = body_start + content_length
+            part_end = body_end + len(b"\r\n")
+            if len(self._buffer) < part_end:
+                return parts
+
+            body = bytes(self._buffer[body_start:body_end])
+            if self._buffer[body_end:part_end] != b"\r\n":
+                raise ValueError("multipart part body is not followed by CRLF")
+
+            del self._buffer[:part_end]
+            parts.append((headers, body))
+
+
+def _parse_part_headers(header_bytes: bytes) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    for line in header_bytes.decode("ascii").split("\r\n"):
+        key, separator, value = line.partition(":")
+        if not separator:
+            raise ValueError(f"invalid multipart header line: {line!r}")
+        headers[key.lower()] = value.strip()
+    return headers

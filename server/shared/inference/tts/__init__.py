@@ -9,7 +9,11 @@ from server.shared.inference.tts.kokoro_mlx import KokoroMLXBackend
 from server.shared.inference.tts.qwen3_mlx import Qwen3MLXTTSBackend
 from server.shared.inference.tts.say import SayBackend
 from server.shared.inference.tts.supertonic_coreml import SupertonicCoreMLBackend
-from server.shared.inference.tts.voicevox import VoicevoxBackend, VoicevoxStreamBackend
+from server.shared.inference.tts.voicevox import (
+    VoicevoxBackend,
+    VoicevoxChunkedBackend,
+    VoicevoxStreamBackend,
+)
 
 
 def create_tts_backend(spec: BackendSpec) -> TTSBackend:
@@ -31,4 +35,6 @@ def create_tts_backend(spec: BackendSpec) -> TTSBackend:
         return VoicevoxBackend.from_spec(spec)
     if spec.type == "voicevox_stream":
         return VoicevoxStreamBackend.from_spec(spec)
+    if spec.type == "voicevox_chunked":
+        return VoicevoxChunkedBackend.from_spec(spec)
     raise ValueError(f"unsupported TTS backend type: {spec.type}")

@@ -56,6 +56,7 @@ class BackendSpec:
     streaming: bool = False
     stream_interval_ms: int = 1000
     stream_min_audio_ms: int = 1000
+    chunk_min_accent_phrases: int | None = None
 
 
 @dataclass(frozen=True)

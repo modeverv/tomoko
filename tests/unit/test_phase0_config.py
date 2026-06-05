@@ -24,7 +24,7 @@ def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation(
     assert config.inference.persona_update_fallback == "local_gemma4_e2b_mlx"
     assert config.audio.vad_silence_ms == 800
     assert config.inference.stt_backend == "local_apple_speech_ja"
-    assert config.inference.tts_backend == "voicevox_tsumugi"
+    assert config.inference.tts_backend == "voicevox_tsumugi_chunked"
     assert config.inference.embedding_backend == "local_bge_m3"
     assert config.inference.speech_normalizer_enabled is False
 
@@ -105,6 +105,13 @@ def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation(
     assert voicevox_stream_backend.url == "http://127.0.0.1:50021"
     assert voicevox_stream_backend.voice == "8"
     assert voicevox_stream_backend.sample_rate == 16000
+
+    voicevox_chunked_backend = config.backends["voicevox_tsumugi_chunked"]
+    assert voicevox_chunked_backend.type == "voicevox_chunked"
+    assert voicevox_chunked_backend.url == "http://127.0.0.1:50121"
+    assert voicevox_chunked_backend.voice == "8"
+    assert voicevox_chunked_backend.sample_rate == 16000
+    assert voicevox_chunked_backend.chunk_min_accent_phrases == 1
 
     irodori_backend = config.backends["irodori_mlx"]
     assert irodori_backend.type == "irodori_mlx"

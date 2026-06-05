@@ -59,7 +59,7 @@ def prepare_tts_backend(
     launch_apps: bool = True,
     wait_s: float = 20.0,
 ) -> PrepareResult:
-    if spec.type not in {"voicevox", "voicevox_stream"}:
+    if spec.type not in {"voicevox", "voicevox_stream", "voicevox_chunked"}:
         return PrepareResult("tts", "skip", f"{spec.name} type={spec.type} needs no app prepare")
     if not spec.url:
         return PrepareResult("tts", "error", f"{spec.name} has no url")

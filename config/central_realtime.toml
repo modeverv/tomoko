@@ -24,7 +24,7 @@ diary_backend = "lmstudio_gemma4_26b_a4b"
 diary_fallback = "local_gemma4_e2b_mlx"
 stt_backend = "local_apple_speech_ja"
 vad_backend = "silero_vad"
-tts_backend = "voicevox_tsumugi"
+tts_backend = "voicevox_tsumugi_chunked"
 embedding_backend = "local_bge_m3"
 speech_normalizer_enabled = false
 
@@ -200,6 +200,16 @@ url = "http://127.0.0.1:50021"
 voice = "8"
 sample_rate = 16000
 speed = 1.0
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.voicevox_tsumugi_chunked]
+type = "voicevox_chunked"
+url = "http://127.0.0.1:50121"
+voice = "8"
+sample_rate = 16000
+speed = 1.0
+chunk_min_accent_phrases = 1
 max_latency_ms = 800
 privacy_allowed = true
 
