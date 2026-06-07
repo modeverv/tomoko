@@ -216,7 +216,9 @@ async def test_think_fast_includes_carried_long_term_memory_in_system_prompt(
     assert "長期コンテキスト" not in backend.system_prompt
     assert "長期コンテキスト" in backend.messages[-1]["content"]
     assert "生成AIと著作権の関係" in backend.messages[-1]["content"]
-    assert backend.messages[-1]["content"].endswith("詳しくはどんな話やったっけ")
+    assert backend.messages[-1]["content"].startswith(
+        "## CURRENT USER UTTERANCE\n\n詳しくはどんな話やったっけ"
+    )
 
 
 @pytest.mark.unit
@@ -326,7 +328,9 @@ async def test_think_deep_includes_long_term_memory_in_system_prompt(tmp_path) -
     assert "長期コンテキスト" not in backend.system_prompt
     assert "長期コンテキスト" in backend.messages[-1]["content"]
     assert "金曜にスパイスカレーを作った" in backend.messages[-1]["content"]
-    assert backend.messages[-1]["content"].endswith("この前のカレーの続きだけど")
+    assert backend.messages[-1]["content"].startswith(
+        "## CURRENT USER UTTERANCE\n\nこの前のカレーの続きだけど"
+    )
 
 
 @pytest.mark.unit

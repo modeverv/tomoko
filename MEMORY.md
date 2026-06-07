@@ -4560,3 +4560,34 @@ dflash log では live turn の 1338 / 1337 / 1155 token prompt がそれぞれ
 warm-up は固定 prefix を温める施策であり、live latency をさらに詰めるには
 prompt shape の固定化、dynamic context の後方移動、会話ログや日時 block の揺れ削減を
 引き続き測る必要がある。
+
+### 確定した判断: current user utterance を先に置き CURRENT LOCAL TIME は turn context の最後へ送る
+2026-06-07 に4 turn の `/ws` scenario で prompt order を比較した。
+入力は `トモコ、短く返事して。`、`うん、今の速度感はどう？`、
+`ところで、今何時？`、`ありがとう。さっきの速度の話に戻って、もう一言だけお願い。`。
+3 turn 目で時刻を聞き、4 turn 目で元の速度話題へ戻れるかを見る。
+
+baseline は `CURRENT LOCAL TIME` が最後の user message 内の `TURN CONTEXT` 先頭にあった。
+時刻質問は `今は午後1時19分だよ` と正しく答えたが、4 turn 目は
+`えー、また？笑何か特別なことでもあった？` で速度話題へ戻れなかった。
+平均 voice-end to first binary audio は 6257.6ms。
+
+current user utterance を先に置き、turn context の中でも `CURRENT LOCAL TIME` を最後へ送った
+after では、時刻質問は `今は午後1時22分だよ` と維持され、平均 first audio は 6002.1ms に小幅改善した。
+ただし 4 turn 目はまだ速度話題へ戻れなかった。
+
+したがって、時刻後置は意味論を壊さず、latency 的にも悪化しなかったため採用する。
+これは「時刻は相対時刻質問の補助情報であり、通常会話の先頭で読む必要は薄い」という判断に合う。
+
+### 気づき: 明示的な話題復帰 cue は dynamic hint が必要だが latency benefit は未確定
+同じ4 turn scenario で、`さっきの...話に戻って` を検出した時だけ
+`TOPIC RETURN HINT` を turn context に入れる変更も試した。
+固定 system rule だけでは効かなかったため、通常会話の current user utterance に近い dynamic hint とする。
+
+最終 after-v4 では4 turn 目が `あ、ごめんね。今のテンポ、ちょうどいい感じかな？` となり、
+時刻の脇道から速度話題へ戻れた。
+一方でこの単発 run の平均 first audio は 8522.9ms で baseline より悪かった。
+dflash log でも live prompt は引き続き `restored 0.0` の full prefill だった。
+
+したがって topic-return hint は意味論の修復としては有効だが、latency 改善とは扱わない。
+今後は scenario runner で複数回測り、hint の token 増加と会話品質のトレードオフを見る。

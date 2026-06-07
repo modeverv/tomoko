@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import AsyncGenerator, Callable
 from datetime import datetime
 from pathlib import Path
@@ -92,14 +93,15 @@ class ThinkFastMode(ThinkingMode):
         prompt_parts = [
             part
             for part in (
-                current_time_prompt,
                 _format_response_directive_prompt(thinking_input),
+                _format_topic_return_prompt(thinking_input),
                 _format_context_snapshot_prompt(thinking_input),
                 _format_calendar_context_prompt(thinking_input),
                 _format_research_context_prompt(thinking_input),
                 _format_task_context_prompt(thinking_input),
                 format_short_memory_prompt(thinking_input.short_memory_notes),
                 format_long_term_memory_prompt(thinking_input.long_term_memory),
+                current_time_prompt,
             )
             if part
         ]
@@ -111,10 +113,10 @@ class ThinkFastMode(ThinkingMode):
             return thinking_input.text
         return "\n\n".join(
             [
-                "## TURN CONTEXT",
-                turn_context_prompt,
                 "## CURRENT USER UTTERANCE",
                 thinking_input.text,
+                "## TURN CONTEXT",
+                turn_context_prompt,
             ]
         )
 
@@ -307,6 +309,37 @@ def _format_response_directive_prompt(thinking_input: ThinkingInput) -> str:
             thinking_input.response_directive.strip(),
         ]
     )
+
+
+def _format_topic_return_prompt(thinking_input: ThinkingInput) -> str:
+    topic = _extract_topic_return_cue(thinking_input.text)
+    if topic is None:
+        return ""
+    if topic:
+        directive = (
+            f"ユーザーは「{topic}」の話に戻るよう明示しています。"
+            "直前の脇道の質問ではなく、その元の話題について一言で補足してください。"
+            "追加質問だけで返答を終えないでください。"
+        )
+    else:
+        directive = (
+            "ユーザーはさっきの話題に戻るよう明示しています。"
+            "直前の脇道の質問ではなく、元の話題について一言で補足してください。"
+            "追加質問だけで返答を終えないでください。"
+        )
+    return "\n".join(["## TOPIC RETURN HINT", directive])
+
+
+def _extract_topic_return_cue(text: str) -> str | None:
+    normalized = re.sub(r"\s+", "", text)
+    if "戻" not in normalized:
+        return None
+    match = re.search(r"さっきの(.{0,20}?)話", normalized)
+    if match is None:
+        return "" if "さっきの話" in normalized else None
+    topic = match.group(1)
+    topic = topic.removesuffix("の")
+    return topic
 
 
 def _format_calendar_context_prompt(thinking_input: ThinkingInput) -> str:

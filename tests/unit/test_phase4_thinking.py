@@ -279,12 +279,12 @@ async def test_think_fast_wraps_streamed_tokens_in_thinking_events(tmp_path) -> 
         {
             "role": "user",
             "content": (
+                "## CURRENT USER UTTERANCE\n\n"
+                "トモコ、聞こえる？\n\n"
                 "## TURN CONTEXT\n\n"
                 "## CURRENT LOCAL TIME\n"
                 "現在日時: 2026-05-30 12:34:56 JST\n"
-                "曜日: 土曜日\n\n"
-                "## CURRENT USER UTTERANCE\n\n"
-                "トモコ、聞こえる？"
+                "曜日: 土曜日"
             ),
         }
     ]
@@ -330,12 +330,12 @@ async def test_think_fast_includes_recent_conversation_context(tmp_path) -> None
         {
             "role": "user",
             "content": (
+                "## CURRENT USER UTTERANCE\n\n"
+                "さっき言ったカレーの続きだけど\n\n"
                 "## TURN CONTEXT\n\n"
                 "## CURRENT LOCAL TIME\n"
                 "現在日時: 2026-05-30 12:34:56 JST\n"
-                "曜日: 土曜日\n\n"
-                "## CURRENT USER UTTERANCE\n\n"
-                "さっき言ったカレーの続きだけど"
+                "曜日: 土曜日"
             ),
         },
     ]
@@ -642,6 +642,49 @@ async def test_think_fast_includes_response_directive(tmp_path) -> None:
 
 
 @pytest.mark.unit
+async def test_think_fast_includes_topic_return_hint_after_current_utterance(
+    tmp_path,
+) -> None:
+    persona = tmp_path / "persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend(["うん"])
+    mode = ThinkFastMode(
+        persona_path=persona,
+        prompt_log_path=None,
+        now_provider=fixed_now,
+    )
+
+    [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="ありがとう。さっきの速度の話に戻って、もう一言だけお願い。",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+            ),
+        )
+    ]
+
+    content = backend.messages[-1]["content"]
+    assert content.startswith(
+        "## CURRENT USER UTTERANCE\n\n"
+        "ありがとう。さっきの速度の話に戻って、もう一言だけお願い。"
+    )
+    assert "## TOPIC RETURN HINT" in content
+    assert "ユーザーは「速度」の話に戻るよう明示しています。" in content
+    assert "追加質問だけで返答を終えないでください。" in content
+    assert content.index("## CURRENT USER UTTERANCE") < content.index(
+        "## TOPIC RETURN HINT"
+    )
+    assert content.index("## TOPIC RETURN HINT") < content.index(
+        "## CURRENT LOCAL TIME"
+    )
+
+
+@pytest.mark.unit
 async def test_think_fast_extracts_emotion_line_before_text(tmp_path) -> None:
     persona = tmp_path / "persona.md"
     persona.write_text("あなたはトモコです。", encoding="utf-8")
@@ -826,7 +869,9 @@ async def test_session_passes_recent_conversation_context_to_thinking_mode() -> 
     ]
     assert backend.messages[-1]["role"] == "user"
     assert "## TURN CONTEXT" in backend.messages[-1]["content"]
-    assert backend.messages[-1]["content"].endswith("トモコ、聞こえる？")
+    assert backend.messages[-1]["content"].startswith(
+        "## CURRENT USER UTTERANCE\n\nトモコ、聞こえる？"
+    )
 
 
 @pytest.mark.unit
@@ -863,7 +908,9 @@ async def test_session_includes_last_initiative_text_when_user_asks_followup() -
     }
     assert backend.messages[-1]["role"] == "user"
     assert "## TURN CONTEXT" in backend.messages[-1]["content"]
-    assert backend.messages[-1]["content"].endswith("トモコ、聞こえる？")
+    assert backend.messages[-1]["content"].startswith(
+        "## CURRENT USER UTTERANCE\n\nトモコ、聞こえる？"
+    )
 
 
 @pytest.mark.unit
