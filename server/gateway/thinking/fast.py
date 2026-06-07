@@ -87,7 +87,7 @@ class ThinkFastMode(ThinkingMode):
             return f"{persona}\n\n{STATIC_CONTEXT_USAGE_RULES}"
         return f"{persona}\n\n{overlay}\n\n{STATIC_CONTEXT_USAGE_RULES}"
 
-    def _build_system_prompt(self, thinking_input: ThinkingInput) -> str:
+    def _build_turn_context_prompt(self, thinking_input: ThinkingInput) -> str:
         current_time_prompt = _format_current_time_prompt(self.now_provider())
         prompt_parts = [
             part
@@ -103,7 +103,20 @@ class ThinkFastMode(ThinkingMode):
             )
             if part
         ]
-        return f"{self.system_prompt}\n\n" + "\n\n".join(prompt_parts)
+        return "\n\n".join(prompt_parts)
+
+    def _build_current_user_message(self, thinking_input: ThinkingInput) -> str:
+        turn_context_prompt = self._build_turn_context_prompt(thinking_input)
+        if not turn_context_prompt:
+            return thinking_input.text
+        return "\n\n".join(
+            [
+                "## TURN CONTEXT",
+                turn_context_prompt,
+                "## CURRENT USER UTTERANCE",
+                thinking_input.text,
+            ]
+        )
 
     def _append_prompt_log(
         self,
@@ -144,8 +157,10 @@ class ThinkFastMode(ThinkingMode):
             }
             for turn in thinking_input.context
         ]
-        messages.append({"role": "user", "content": thinking_input.text})
-        system_prompt = self._build_system_prompt(thinking_input)
+        messages.append(
+            {"role": "user", "content": self._build_current_user_message(thinking_input)}
+        )
+        system_prompt = self.system_prompt
         self._append_prompt_log(
             backend_name=backend.name,
             system_prompt=system_prompt,

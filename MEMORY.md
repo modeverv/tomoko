@@ -4480,3 +4480,23 @@ proposed は全6 turn で first content が速く、平均 first content は 618
 6 turn の流れでは文脈の取り違え、人格崩壊、前 turn 忘れのような意味破綻は見られなかった。
 したがって、dynamic turn metadata を user 側へ移すことは有力な次候補である。
 ただしこれは raw payload simulation であり、Tomoko 実装としてはまだ反映していない。
+
+### 確定した判断: ThinkFastMode の dynamic turn metadata は current user message 側へ寄せる
+2026-06-07 の本番 runtime simulation で、raw payload だけでなく実 `ThinkFastMode` /
+実 config / 実 PostgreSQL context / 実 dflash 26B でも user-side metadata 構造を確認した。
+
+`ThinkFastMode.system_prompt` は persona / persona_overlay / `STATIC CONTEXT_USAGE_RULES` の
+固定 prefix に留める。
+`CURRENT LOCAL TIME`、persona slice、`RESPONSE DIRECTIVE`、`CALENDAR CONTEXT`、
+`RESEARCH CONTEXT`、`TASK CONTEXT`、short / long memory prompt、現在 user utterance は
+最後の user message に `## TURN CONTEXT` と `## CURRENT USER UTTERANCE` として包む。
+
+実装前後で dflash をそれぞれ再起動し、専用 `conversation_sessions` と
+`conversation_logs` に書き込む `_tools/bench_runtime_thinkfast_conversation.py` で6 turn を測った。
+before は avg first content 5142.1ms / avg total 7715.7ms、
+after は avg first content 4697.1ms / avg total 7064.3ms だった。
+平均では first content が 445.0ms、total が 651.4ms 改善した。
+
+turn 別では after が遅い箇所もあり、dflash の生成長・scheduler・cache 状態による揺れは残る。
+それでも応答は全 turn で話題に沿っており、人格崩壊、文脈取り違え、意味破綻は見られなかった。
+したがって本番コードへ取り入れる。

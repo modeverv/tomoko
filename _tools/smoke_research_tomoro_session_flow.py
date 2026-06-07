@@ -233,6 +233,11 @@ def _summary(
         if conversation_backend.calls
         else ""
     )
+    wait_messages_text = json.dumps(
+        conversation_backend.calls[0]["messages"] if conversation_backend.calls else [],
+        ensure_ascii=False,
+    )
+    wait_prompt_payload = f"{wait_prompt}\n{wait_messages_text}"
     return {
         "ok": bool(ready.get("speakable")) and bool(answer_reply_text),
         "speech_text": speech_text,
@@ -253,8 +258,11 @@ def _summary(
         "answer_reply_text": answer_reply_text,
         "reply_done_count": sum(1 for event in events if event.get("type") == "reply_done"),
         "conversation_llm_call_count": len(conversation_backend.calls),
-        "wait_prompt_has_response_directive": "RESPONSE DIRECTIVE" in wait_prompt,
-        "wait_prompt_forbids_answering": "今は調査結果を答えず" in wait_prompt,
+        "wait_prompt_has_response_directive": (
+            "RESPONSE DIRECTIVE" in wait_prompt_payload
+        ),
+        "wait_prompt_forbids_answering": "今は調査結果を答えず"
+        in wait_prompt_payload,
         "ingested_research_count": len(research_store.rows),
         "deep_research_summaries": deep_summaries,
     }

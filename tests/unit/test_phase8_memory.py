@@ -213,9 +213,10 @@ async def test_think_fast_includes_carried_long_term_memory_in_system_prompt(
         ThinkingEvent(type="done", value=""),
     ]
     assert backend.system_prompt is not None
-    assert "長期コンテキスト" in backend.system_prompt
-    assert "生成AIと著作権の関係" in backend.system_prompt
-    assert backend.messages == [{"role": "user", "content": "詳しくはどんな話やったっけ"}]
+    assert "長期コンテキスト" not in backend.system_prompt
+    assert "長期コンテキスト" in backend.messages[-1]["content"]
+    assert "生成AIと著作権の関係" in backend.messages[-1]["content"]
+    assert backend.messages[-1]["content"].endswith("詳しくはどんな話やったっけ")
 
 
 @pytest.mark.unit
@@ -252,10 +253,11 @@ async def test_think_fast_keeps_calendar_long_term_memory_compact(tmp_path) -> N
     ]
 
     assert backend.system_prompt is not None
-    assert "- 2026-05-30 13:00-14:15: 光莉 水泳wear" in backend.system_prompt
-    assert "参照情報: カレンダー" not in backend.system_prompt
-    assert "similarity=1.000" not in backend.system_prompt
-    assert "[2026-05-30T04:00:00+00:00]" not in backend.system_prompt
+    current_user_message = backend.messages[-1]["content"]
+    assert "- 2026-05-30 13:00-14:15: 光莉 水泳wear" in current_user_message
+    assert "参照情報: カレンダー" not in current_user_message
+    assert "similarity=1.000" not in current_user_message
+    assert "[2026-05-30T04:00:00+00:00]" not in current_user_message
 
 
 @pytest.mark.unit
@@ -281,8 +283,9 @@ async def test_think_fast_omits_long_term_memory_block_when_empty(tmp_path) -> N
 
     assert backend.system_prompt is not None
     assert backend.system_prompt.startswith("あなたはトモコです。")
-    assert "現在日時: 2026-05-30 12:34:56 JST" in backend.system_prompt
-    assert "曜日: 土曜日" in backend.system_prompt
+    assert "現在日時: 2026-05-30 12:34:56 JST" not in backend.system_prompt
+    assert "現在日時: 2026-05-30 12:34:56 JST" in backend.messages[-1]["content"]
+    assert "曜日: 土曜日" in backend.messages[-1]["content"]
 
 
 @pytest.mark.unit
@@ -320,9 +323,10 @@ async def test_think_deep_includes_long_term_memory_in_system_prompt(tmp_path) -
         ThinkingEvent(type="done", value=""),
     ]
     assert backend.system_prompt is not None
-    assert "長期コンテキスト" in backend.system_prompt
-    assert "金曜にスパイスカレーを作った" in backend.system_prompt
-    assert backend.messages == [{"role": "user", "content": "この前のカレーの続きだけど"}]
+    assert "長期コンテキスト" not in backend.system_prompt
+    assert "長期コンテキスト" in backend.messages[-1]["content"]
+    assert "金曜にスパイスカレーを作った" in backend.messages[-1]["content"]
+    assert backend.messages[-1]["content"].endswith("この前のカレーの続きだけど")
 
 
 @pytest.mark.unit

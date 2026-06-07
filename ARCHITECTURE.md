@@ -2936,3 +2936,16 @@ proposed user-side metadata 構造が avg first content 3053.7ms / avg total 517
 ただしこの構造はまだ Tomoko 実装へ反映していない。
 実装する場合は `ThinkFastMode` の prompt assembly test を先に追加し、
 system prompt の static prefix、conversation history、current turn metadata の順序を固定する。
+
+2026-06-07 追加追記:
+この候補は `ThinkFastMode` の本番実装へ反映した。
+`system_prompt` は persona / persona_overlay / `STATIC CONTEXT USAGE RULES` の固定 prefix に留める。
+現在時刻、response directive、persona slice、calendar / research / task context、
+short / long memory、現在発話は、最後の user message 内の `## TURN CONTEXT` と
+`## CURRENT USER UTTERANCE` に包む。
+
+実 config / 実 PostgreSQL context / 実 dflash 26B の runtime simulation では、
+before avg first content 5142.1ms / total 7715.7ms に対し、
+after avg first content 4697.1ms / total 7064.3ms だった。
+意味破綻は見られなかったため、この構造を 26B conversation hot path の既定とする。
+ただし turn 別 latency は揺れるため、最終体感は `make server-debug` の first audio で確認する。

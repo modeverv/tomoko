@@ -207,7 +207,8 @@ async def test_think_fast_includes_persona_overlay_when_sibling_file_exists(
     assert "## PERSONA OVERLAY" in backend.system_prompt
     assert "少し茶目っ気のある後輩として短く助ける。" in backend.system_prompt
     assert "## STATIC CONTEXT USAGE RULES" in backend.system_prompt
-    assert "現在日時: 2026-05-30 12:34:56 JST" in backend.system_prompt
+    assert "現在日時: 2026-05-30 12:34:56 JST" not in backend.system_prompt
+    assert "現在日時: 2026-05-30 12:34:56 JST" in backend.messages[-1]["content"]
 
 
 @pytest.mark.unit
@@ -271,12 +272,22 @@ async def test_think_fast_wraps_streamed_tokens_in_thinking_events(tmp_path) -> 
     assert backend.system_prompt is not None
     assert backend.system_prompt.startswith("あなたはトモコです。")
     assert "## STATIC CONTEXT USAGE RULES" in backend.system_prompt
-    assert "現在日時: 2026-05-30 12:34:56 JST" in backend.system_prompt
-    assert "曜日: 土曜日" in backend.system_prompt
-    assert backend.system_prompt.index("## STATIC CONTEXT USAGE RULES") < (
-        backend.system_prompt.index("## CURRENT LOCAL TIME")
-    )
-    assert backend.messages == [{"role": "user", "content": "トモコ、聞こえる？"}]
+    assert "## CURRENT LOCAL TIME" not in backend.system_prompt
+    assert "現在日時: 2026-05-30 12:34:56 JST" in backend.messages[-1]["content"]
+    assert "曜日: 土曜日" in backend.messages[-1]["content"]
+    assert backend.messages == [
+        {
+            "role": "user",
+            "content": (
+                "## TURN CONTEXT\n\n"
+                "## CURRENT LOCAL TIME\n"
+                "現在日時: 2026-05-30 12:34:56 JST\n"
+                "曜日: 土曜日\n\n"
+                "## CURRENT USER UTTERANCE\n\n"
+                "トモコ、聞こえる？"
+            ),
+        }
+    ]
 
 
 @pytest.mark.unit
@@ -316,7 +327,17 @@ async def test_think_fast_includes_recent_conversation_context(tmp_path) -> None
     assert backend.messages == [
         {"role": "user", "content": "昨日カレーを作ったよ"},
         {"role": "assistant", "content": "いいね、少し寝かせるとおいしいよ。"},
-        {"role": "user", "content": "さっき言ったカレーの続きだけど"},
+        {
+            "role": "user",
+            "content": (
+                "## TURN CONTEXT\n\n"
+                "## CURRENT LOCAL TIME\n"
+                "現在日時: 2026-05-30 12:34:56 JST\n"
+                "曜日: 土曜日\n\n"
+                "## CURRENT USER UTTERANCE\n\n"
+                "さっき言ったカレーの続きだけど"
+            ),
+        },
     ]
 
 
@@ -370,7 +391,8 @@ async def test_think_fast_logs_llm_prompt_payload(
     assert "現在日時: 2026-05-30 12:34:56 JST" in payload
     assert "曜日: 土曜日" in payload
     assert '"role": "assistant", "content": "うん、準備できてるよ。"' in payload
-    assert '"role": "user", "content": "トモコ、今のプロンプト見せて"' in payload
+    assert "CURRENT USER UTTERANCE" in payload
+    assert "トモコ、今のプロンプト見せて" in payload
     assert '"device_id": "browser"' in payload
 
     prompt_log_lines = prompt_log_path.read_text(encoding="utf-8").splitlines()
@@ -381,7 +403,8 @@ async def test_think_fast_logs_llm_prompt_payload(
         '"system_prompt": "あなたはトモコです。\\n\\n## STATIC CONTEXT USAGE RULES'
         in prompt_log_payload
     )
-    assert '"role": "user", "content": "トモコ、今のプロンプト見せて"' in prompt_log_payload
+    assert "CURRENT USER UTTERANCE" in prompt_log_payload
+    assert "トモコ、今のプロンプト見せて" in prompt_log_payload
 
 
 @pytest.mark.unit
@@ -445,8 +468,11 @@ async def test_think_fast_includes_calendar_context_from_snapshot(tmp_path) -> N
     ]
 
     assert backend.system_prompt is not None
-    assert "CALENDAR CONTEXT" in backend.system_prompt
-    assert "2026-05-30 13:00-14:00: 家族の予定 @ Kitchen" in backend.system_prompt
+    assert "## CALENDAR CONTEXT" not in backend.system_prompt
+    assert "CALENDAR CONTEXT" in backend.messages[-1]["content"]
+    assert "2026-05-30 13:00-14:00: 家族の予定 @ Kitchen" in backend.messages[-1][
+        "content"
+    ]
 
 
 @pytest.mark.unit
@@ -510,8 +536,9 @@ async def test_think_fast_includes_research_summary_context_from_snapshot(tmp_pa
     ]
 
     assert backend.system_prompt is not None
-    assert "RESEARCH CONTEXT" in backend.system_prompt
-    assert "summary=OpenAIに関する外部調査の要約。" in backend.system_prompt
+    assert "## RESEARCH CONTEXT" not in backend.system_prompt
+    assert "RESEARCH CONTEXT" in backend.messages[-1]["content"]
+    assert "summary=OpenAIに関する外部調査の要約。" in backend.messages[-1]["content"]
 
 
 @pytest.mark.unit
@@ -576,9 +603,10 @@ async def test_think_fast_includes_task_context_from_snapshot(tmp_path) -> None:
     ]
 
     assert backend.system_prompt is not None
-    assert "TASK CONTEXT" in backend.system_prompt
-    assert "server-debug の起動確認" in backend.system_prompt
-    assert "status=active" in backend.system_prompt
+    assert "## TASK CONTEXT" not in backend.system_prompt
+    assert "TASK CONTEXT" in backend.messages[-1]["content"]
+    assert "server-debug の起動確認" in backend.messages[-1]["content"]
+    assert "status=active" in backend.messages[-1]["content"]
 
 
 @pytest.mark.unit
@@ -608,8 +636,9 @@ async def test_think_fast_includes_response_directive(tmp_path) -> None:
     ]
 
     assert backend.system_prompt is not None
-    assert "RESPONSE DIRECTIVE" in backend.system_prompt
-    assert "調査結果を答えず、調べ始めたことだけを伝える。" in backend.system_prompt
+    assert "## RESPONSE DIRECTIVE" not in backend.system_prompt
+    assert "RESPONSE DIRECTIVE" in backend.messages[-1]["content"]
+    assert "調査結果を答えず、調べ始めたことだけを伝える。" in backend.messages[-1]["content"]
 
 
 @pytest.mark.unit
@@ -791,11 +820,13 @@ async def test_session_passes_recent_conversation_context_to_thinking_mode() -> 
         await session.process_audio_chunk(np.ones(512, dtype=np.float32).tobytes())
     await session._wait_for_reply_task()
 
-    assert backend.messages == [
+    assert backend.messages[:2] == [
         {"role": "user", "content": "昨日カレーを作ったよ"},
         {"role": "assistant", "content": "明日は少し味がなじむかも。"},
-        {"role": "user", "content": "トモコ、聞こえる？"},
     ]
+    assert backend.messages[-1]["role"] == "user"
+    assert "## TURN CONTEXT" in backend.messages[-1]["content"]
+    assert backend.messages[-1]["content"].endswith("トモコ、聞こえる？")
 
 
 @pytest.mark.unit
@@ -830,7 +861,9 @@ async def test_session_includes_last_initiative_text_when_user_asks_followup() -
         "role": "assistant",
         "content": "さっきの話とは別で、ハードウェアの進化が少し気になってるんだ。",
     }
-    assert backend.messages[-1] == {"role": "user", "content": "トモコ、聞こえる？"}
+    assert backend.messages[-1]["role"] == "user"
+    assert "## TURN CONTEXT" in backend.messages[-1]["content"]
+    assert backend.messages[-1]["content"].endswith("トモコ、聞こえる？")
 
 
 @pytest.mark.unit

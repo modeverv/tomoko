@@ -18,6 +18,27 @@ wrapper は `mise` を含む PATH を明示し、repo root を自分の場所か
 - [x] copy / bootstrap / kickstart / bootout 手順が repo-local README に残る
 - [x] focused unit が wrapper / plist / README contract を固定する
 
+## 2026-06-07 dflash prompt cache turn metadata placement
+
+dflash の prompt cache を活かすため、turn ごとに変わる日時・task context・memory context を
+system prompt に積み続ける方針は否定する。
+`ThinkFastMode` の system prompt は persona / overlay / static rules の固定 prefix にし、
+現在 turn だけの metadata は最後の user message 側へ寄せる。
+
+この変更は prompt assembly のみで、`TomoroSession`、ContextSnapshotBuilder のDB読み取り、
+InferenceRouter、WebSocket protocol、conversation log の保存内容は変えない。
+DBに保存する user transcript は従来どおり生発話であり、LLMへ渡す current user message だけを
+`## TURN CONTEXT` と `## CURRENT USER UTTERANCE` で包む。
+
+### 完了条件
+
+- [x] 実装前に実 config / 実 PostgreSQL context / 実 dflash 26B で6 turn runtime simulationを測る
+- [x] `ThinkFastMode.system_prompt` が固定 prefix だけになる
+- [x] CURRENT LOCAL TIME / response directive / calendar / research / task / memory context が最後の user message 側へ移る
+- [x] conversation history の過去 user / assistant message は従来どおり raw text のまま送られる
+- [x] prompt assembly unit test が新しい順序を固定する
+- [x] 実装後に同じ runtime simulation を測り、意味破綻がないことと平均 latency 改善を確認する
+
 ## 2026-06-06 VOICEVOX PR1823 first chunk latency reduction
 
 PR1823 `audio/wav` stream を complete WAV chunk に包み直す方針は維持する。
