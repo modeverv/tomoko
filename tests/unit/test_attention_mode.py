@@ -235,16 +235,16 @@ async def test_engaged_filters_low_confidence_followup_without_extending_attenti
 
 
 @pytest.mark.unit
-async def test_default_engaged_timeout_waits_twenty_seconds_before_cooldown() -> None:
+async def test_default_engaged_timeout_waits_two_minutes_before_cooldown() -> None:
     events: list[dict[str, str]] = []
     session = TomoroSession(
-        vad_processor=VADProcessor(vad=SequenceVAD([0.0] * 625), silence_ms=400),
+        vad_processor=VADProcessor(vad=SequenceVAD([0.0] * 3750), silence_ms=400),
         send_event=events.append,
         participation_judge=WakeWordJudge(),
     )
     await session._transition_attention("engaged")
 
-    for _ in range(624):
+    for _ in range(3749):
         await session.process_audio_chunk(np.zeros(512, dtype=np.float32).tobytes())
     assert session.attention_mode == "engaged"
 
@@ -252,6 +252,26 @@ async def test_default_engaged_timeout_waits_twenty_seconds_before_cooldown() ->
 
     assert session.attention_mode == "cooldown"
     assert {"type": "attention", "mode": "cooldown"} in events
+
+
+@pytest.mark.unit
+async def test_default_cooldown_timeout_waits_one_minute_before_ambient() -> None:
+    events: list[dict[str, str]] = []
+    session = TomoroSession(
+        vad_processor=VADProcessor(vad=SequenceVAD([0.0] * 1875), silence_ms=400),
+        send_event=events.append,
+        participation_judge=WakeWordJudge(),
+    )
+    await session._transition_attention("cooldown")
+
+    for _ in range(1874):
+        await session.process_audio_chunk(np.zeros(512, dtype=np.float32).tobytes())
+    assert session.attention_mode == "cooldown"
+
+    await session.process_audio_chunk(np.zeros(512, dtype=np.float32).tobytes())
+
+    assert session.attention_mode == "ambient"
+    assert {"type": "attention", "mode": "ambient"} in events
 
 
 @pytest.mark.unit

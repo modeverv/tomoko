@@ -32,6 +32,9 @@ WORLD_OBSERVATION_LOG_FILE ?= logs/world-observations.log
 WORLD_OBSERVATION_WORK ?= informations/work
 WORLD_OBSERVATION_ARCHIVED ?= informations/archived
 WORLD_OBSERVATION_FAILED ?= informations/failed
+WORLD_OBSERVATION_DATE ?= $(shell date +%Y-%m-%d)
+WORLD_OBSERVATION_MCP_TIMEOUT_SEC ?= 600
+WORLD_OBSERVATION_PROVIDER_TIMEOUT_SEC ?= 600
 WORLD_OBSERVATION_INTERPRET_LIMIT ?= 10
 WORLD_OBSERVATION_INTERPRET_INTERVAL_SEC ?= 300
 GCAL_URLS_FILE ?= config/gcal_urls.txt
@@ -56,7 +59,7 @@ SCREEN_SHELL ?= zsh
 .PHONY: deps prepare download-models download-optional-models server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
 .PHONY: session-summarizer session-summarizer-once turn-embedder turn-embedder-once
 .PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
-.PHONY: information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
+.PHONY: information-collect-world information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
 .PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list
 .PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material smoke-research-mcp smoke-research-session log-report monitor system-monitor lint check
 
@@ -154,6 +157,11 @@ turn-taking-worker-once:
 		--disable-llm \
 		--sample-text "うん"
 
+information-collect-world:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(WORLD_OBSERVATION_LOG_FILE) TOMOKO_WORLD_OBSERVATION_MCP_TIMEOUT_SEC=$(WORLD_OBSERVATION_MCP_TIMEOUT_SEC) TOMOKO_WORLD_OBSERVATION_PROVIDER_TIMEOUT_SEC=$(WORLD_OBSERVATION_PROVIDER_TIMEOUT_SEC) mise exec -- uv run python _tools/collect_world_observation.py \
+		--date $(WORLD_OBSERVATION_DATE) \
+		--output-dir $(WORLD_OBSERVATION_WORK)
+
 information-ingest-once:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(WORLD_OBSERVATION_LOG_FILE) mise exec -- uv run python background-process/ingest_world_observations.py \
 		--config $(CENTRAL_CONFIG) \
@@ -207,7 +215,7 @@ background-watch:
 	@echo "  make gcal"
 
 background-dry-run:
-	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once turn-embedder turn-embedder-once persona-seed-initial persona-updater persona-updater-once information-ingest-dry-run information-ingest-once information-interpret-once information-interpret gcal thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
+	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once turn-embedder turn-embedder-once persona-seed-initial persona-updater persona-updater-once information-collect-world information-ingest-dry-run information-ingest-once information-interpret-once information-interpret gcal thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
 
 screen-runtime:
 	@command -v screen >/dev/null || { echo "screen is required"; exit 1; }
@@ -298,5 +306,13 @@ lint:
 
 check: lint test-unit
 
-daily: gcal journalist-once persona-updater-once turn-embedder-once session-summarizer-once
+daily: gcal journalist-once persona-updater-once turn-embedder-once session-summarizer-once information-collect-world information-ingest-once information-interpret-once
 
+llm-run:
+	bash _tools/run_llm.sh
+
+llm-stop:
+	bash _tools/run_llm_stop.sh
+
+voicevox-run:
+	bash _tools/run_voicevox.sh

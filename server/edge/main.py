@@ -60,7 +60,7 @@ from server.gateway.turn_taking.worker_client import TurnTakingWorkerClient
 from server.session import TomoroSession
 from server.shared.calendar import PostgresCalendarEventStore
 from server.shared.candidate import PostgresCandidateStore
-from server.shared.config import NodeConfig
+from server.shared.config import BackendSpec, NodeConfig
 from server.shared.db import (
     PostgresAmbientLogWriter,
     PostgresConversationLogWriter,
@@ -970,6 +970,8 @@ async def _warm_up_app() -> None:
             elapsed_ms,
         )
 
+    await _warm_up_dflash_prompt_prefixes(config, router_factory())
+
     if not config.inference.speech_normalizer_enabled:
         logger.info("startup warm-up skipped target=tts_text_normalizer disabled=true")
         return
@@ -986,6 +988,83 @@ async def _warm_up_app() -> None:
         "startup warm-up completed target=tts_text_normalizer elapsed_ms=%.1f",
         elapsed_ms,
     )
+
+
+async def _warm_up_dflash_prompt_prefixes(
+    config: NodeConfig,
+    router: InferenceRouter,
+) -> None:
+    warmup_targets = _dflash_prompt_warmup_targets(config)
+    if not warmup_targets:
+        return
+
+    think_fast_factory = getattr(app.state, "think_fast_factory", ThinkFastMode)
+    system_prompt = think_fast_factory().system_prompt
+    warmed_backends: set[str] = set()
+    for role, backend_name in warmup_targets:
+        started_at = time.perf_counter()
+        try:
+            backend = await router.select(role, "privacy")
+            if backend.name in warmed_backends:
+                continue
+            warmed_backends.add(backend.name)
+            logger.info(
+                "startup warm-up started target=dflash_prompt_prefix "
+                "role=%s backend=%s model=%s",
+                role,
+                backend.name,
+                getattr(backend, "model", None),
+            )
+            async for _ in backend.chat_stream(
+                system_prompt,
+                [{"role": "user", "content": "起動時 warm-up です。短く返事して。"}],
+                max_tokens=4,
+                trace_role=f"startup_dflash_prompt_prefix_{role}",
+            ):
+                pass
+        except Exception:
+            logger.exception(
+                "startup warm-up failed target=dflash_prompt_prefix "
+                "role=%s backend=%s",
+                role,
+                backend_name,
+            )
+            continue
+        logger.info(
+            "startup warm-up completed target=dflash_prompt_prefix "
+            "role=%s backend=%s elapsed_ms=%.1f",
+            role,
+            backend.name,
+            (time.perf_counter() - started_at) * 1000,
+        )
+
+
+def _dflash_prompt_warmup_targets(config: NodeConfig) -> list[tuple[str, str]]:
+    role_backend_names = [
+        ("conversation", config.inference.conversation_backend),
+        ("session_summary", config.inference.session_summary_backend),
+        ("memory_extraction", config.inference.memory_extraction_backend),
+        ("persona_update", config.inference.persona_update_backend),
+        ("candidate_gen", config.inference.candidate_gen_backend),
+        ("diary", config.inference.diary_backend),
+    ]
+    targets: list[tuple[str, str]] = []
+    seen_backend_names: set[str] = set()
+    for role, backend_name in role_backend_names:
+        if backend_name is None or backend_name in seen_backend_names:
+            continue
+        spec = config.backends.get(backend_name)
+        if spec is None or not _is_dflash_no_think_backend(spec):
+            continue
+        seen_backend_names.add(backend_name)
+        targets.append((role, backend_name))
+    return targets
+
+
+def _is_dflash_no_think_backend(spec: BackendSpec) -> bool:
+    if spec.type != "lm_studio" or not spec.chat_template_kwargs:
+        return False
+    return spec.chat_template_kwargs.get("enable_thinking") is False
 
 
 def _create_default_ambient_log_writer() -> PostgresAmbientLogWriter:

@@ -68,6 +68,7 @@ class LMStudioBackend(InferenceBackend):
         privacy_allowed: bool = True,
         timeout_sec: float = 60.0,
         max_tokens: int = 180,
+        chat_template_kwargs: dict[str, Any] | None = None,
         client_factory: Callable[[], AbstractAsyncContextManager[Any]] | None = None,
     ) -> None:
         self.name = name
@@ -76,6 +77,7 @@ class LMStudioBackend(InferenceBackend):
         self.privacy_allowed = privacy_allowed
         self.timeout_sec = timeout_sec
         self.max_tokens = max_tokens
+        self.chat_template_kwargs = dict(chat_template_kwargs or {})
         self._client_factory = client_factory
 
     async def warm_up(self) -> None:
@@ -160,6 +162,8 @@ class LMStudioBackend(InferenceBackend):
             "max_tokens": max_tokens,
             "temperature": 0.0,
         }
+        if self.chat_template_kwargs:
+            payload["chat_template_kwargs"] = dict(self.chat_template_kwargs)
         if response_format is not None:
             payload["response_format"] = response_format
 

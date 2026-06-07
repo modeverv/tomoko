@@ -172,6 +172,112 @@ collection_prompt_version: daily_world_observation_v1
     assert any(issue.severity == "warning" for issue in batch.trace.issues)
 
 
+async def test_normalizer_uses_rendered_text_fallback_after_llm_parse_failure() -> None:
+    document = parse_raw_markdown(
+        """\
+---
+schema_version: 1
+kind: world_observation_batch
+generated_by: sample
+observed_at: 2026-06-05T09:00:00+09:00
+language: ja
+topics: [news, economy, technology, culture, local_life, ai, local_inference]
+source_policy: public_web_summary_only
+collection_prompt_version: daily_world_observation_v1
+---
+外界観測レポート 2026-06-05
+news
+観測1：米・イラン停戦交渉、覚書案で前進
+
+事実：停戦交渉に関する公開情報だけから作った観測。
+
+推測・含意：原油価格や家計への影響をあとで会話材料にできる。
+
+source_hint：JETRO / BBC
+
+economy
+観測2：6月から電気・ガス料金が上昇
+
+事実：料金補助終了と再エネ賦課金の影響が公開情報で確認できる。
+
+推測・含意：生活費の話題としてユーザーに関係する可能性がある。
+
+source_hint：NRI / 帝国データバンク
+"""
+    )
+    normalizer = WorldObservationNormalizer(
+        backend=FakeBackend("not json"),
+        max_retries=0,
+    )
+
+    batch = await normalizer.normalize(document)
+
+    assert [item.title for item in batch.items] == [
+        "米・イラン停戦交渉、覚書案で前進",
+        "6月から電気・ガス料金が上昇",
+    ]
+    assert [item.topic for item in batch.items] == ["news", "economy"]
+    assert batch.items[0].source_hint == "JETRO / BBC"
+    assert batch.trace.model == "fake-normalizer:deterministic_fallback"
+
+
+async def test_normalizer_uses_numbered_rendered_text_fallback_after_llm_failure() -> None:
+    document = parse_raw_markdown(
+        """\
+---
+schema_version: 1
+kind: world_observation_batch
+generated_by: sample
+observed_at: 2026-06-05T09:00:00+09:00
+language: ja
+topics: [news, economy]
+source_policy: public_web_summary_only
+collection_prompt_version: daily_world_observation_v1
+---
+外界観測レポート 2026-06-05
+news
+1. ガザ情勢：停戦合意の形骸化
+
+事実: 公開情報だけから作った観測。
+
+推測・含意: 地政学リスクとして扱う。
+
+source_hint: Al Jazeera
+
+2. 米・イラン停戦延長交渉
+
+事実: 暫定合意報道がある。
+
+推測・含意: 原油価格への影響がある。
+
+source_hint: MSNBC
+
+economy
+1. 日経平均株価：史上最高値を更新
+
+事実: 株式市場の公開情報。
+
+推測・含意: AI関連株への期待がある。
+
+source_hint: SBI証券
+"""
+    )
+    normalizer = WorldObservationNormalizer(
+        backend=FakeBackend("not json"),
+        max_retries=0,
+    )
+
+    batch = await normalizer.normalize(document)
+
+    assert [item.title for item in batch.items] == [
+        "ガザ情勢：停戦合意の形骸化",
+        "米・イラン停戦延長交渉",
+        "日経平均株価：史上最高値を更新",
+    ]
+    assert [item.topic for item in batch.items] == ["news", "news", "economy"]
+    assert batch.items[0].source_hint == "Al Jazeera"
+
+
 async def test_normalizer_timeout_uses_heading_fallback() -> None:
     document = parse_raw_markdown(
         """\

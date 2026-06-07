@@ -1,3 +1,104 @@
+## 2026-06-06 macOS LaunchAgent daily automation
+
+`make daily` の日次実行を root LaunchDaemon や cron に寄せる方針は否定する。
+world observation collection はログイン済み Chrome / Perplexity / CDP 経路に依存するため、
+macOS user session の LaunchAgent として起動する。
+
+repo 配下には人間がコピーできる plist template と wrapper script だけを置き、
+実際の `~/Library/LaunchAgents` への導入は人間が行う。
+wrapper は `mise` を含む PATH を明示し、repo root を自分の場所から解決し、
+`make daily` の重複起動を atomic lock directory で防ぐ。
+
+### 完了条件
+
+- [x] repo-local wrapper が `make daily` を実行できる
+- [x] wrapper が `logs/daily-launchagent.log` に詳細ログを残す
+- [x] wrapper が macOS 標準環境に依存しやすい `flock` ではなく atomic directory lock で重複起動を防ぐ
+- [x] LaunchAgent plist template が user LaunchAgent として wrapper を一日一回起動する
+- [x] copy / bootstrap / kickstart / bootout 手順が repo-local README に残る
+- [x] focused unit が wrapper / plist / README contract を固定する
+
+## 2026-06-06 VOICEVOX PR1823 first chunk latency reduction
+
+PR1823 `audio/wav` stream を complete WAV chunk に包み直す方針は維持する。
+ただし Tomoko backend 側で 1 chunk を pending として保持し、次 chunk 到着まで初回音声を遅らせる方針は否定する。
+first chunk は `is_last=False` で即 yield し、最後の残り chunk だけ `is_last=True` として確定する。
+
+また、PR1823 default の `segment_length=0.6` は first audio 到着を太くしすぎる可能性が高いため、
+Tomoko の default は `segment_length=0.2` へ短縮して比較する。
+client は引き続き WebSocket binary ごとの complete WAV を `decodeAudioData()` するだけにし、
+raw PCM decoding や playback 判断を持たせない。
+
+### 完了条件
+
+- [x] `audio/wav` stream で最初の complete WAV chunk が次 chunk 到着を待たずに yield される
+- [x] multipart legacy path でも最後の chunk だけ `is_last=True` になる
+- [x] central / edge の `voicevox_tsumugi_chunked.segment_length` が 0.2 秒になる
+- [x] focused VOICEVOX / config unit が通る
+- [x] PR1823 launcher 直叩き smoke で first chunk / total / chunk count / 音質メモを `_docs/latency.md` に記録する
+
+## 2026-06-06 VOICEVOX PR1823 streaming_synthesis contract
+
+`voicevox_tsumugi_chunked` を旧 multipart `/streaming_synthesis` contract 専用に固定し続ける方針は否定する。
+隣 repo `async-voicevox` の PR1823 launcher は `http://127.0.0.1:50122` で起動し、
+`/streaming_synthesis` は単一 `audio/wav` response として WAV header 後の PCM を逐次流す。
+
+Tomoko のブラウザ再生境界は引き続き WebSocket binary ごとの `decodeAudioData()` なので、
+raw PCM をそのまま流さない。
+`VoicevoxChunkedBackend` は legacy multipart complete-WAV parts と PR1823 `audio/wav` stream の両方を受け、
+PR1823 では受信した PCM 区間を complete WAV に包み直して `AudioChunkOut` として yield する。
+
+### 完了条件
+
+- [x] `voicevox_chunked` が `multipart/mixed` と `audio/wav` streaming response の両方を処理できる
+- [x] PR1823 向けに `segment_length=0.6` を config から渡せる
+- [x] PR1823 の 24kHz-only contract に合わせ、`voicevox_tsumugi_chunked` の `sample_rate` を 24kHz にする
+- [x] central / edge の `voicevox_tsumugi_chunked` が `http://127.0.0.1:50122` を向く
+- [x] focused VOICEVOX / config unit が通る
+- [x] PR1823 launcher と Tomoko backend の直叩き smoke で実 `audio/wav` stream を確認する
+- [ ] `make server-debug` で実ブラウザ再生を確認する
+
+## 2026-06-06 Attention timeout extension
+
+`engaged -> cooldown` 20 秒、`cooldown -> ambient` 8 秒で attention を落とす方針は否定する。
+live 体感では follow-up や外部調査の待ち時間に対して短すぎるため、
+既定値を `engaged -> cooldown` 120 秒、`cooldown -> ambient` 60 秒へ延長する。
+
+ただし timeout の進行条件は変えない。
+TomoroSession が authoritative に、`state == "idle"` かつ
+`playback_state == "idle"` の無音 chunk だけを attention idle として積算する。
+再生中、listening 中、発話終了待ちの silence chunk では attention timeout を進めない。
+
+### 完了条件
+
+- [x] 既定の engaged timeout が 120 秒相当であることを unit test で固定する
+- [x] 120 秒未満の無音では engaged のままである
+- [x] 120 秒相当の無音で cooldown へ遷移する
+- [x] 既定の cooldown timeout が 60 秒相当であることを unit test で固定する
+- [x] 60 秒未満の無音では cooldown のままである
+- [x] 60 秒相当の無音で ambient へ遷移する
+- [x] focused attention unit が通る
+
+## 2026-06-05 World observation operator collection
+
+world observation の raw Markdown 収集を Codex / Computer Use の手動 UI 操作に頼る方針は否定する。
+隣 repo `tomoko-research-operator` の Chrome CDP / Perplexity automation を外部 capability として使い、
+Tomoko 側は subprocess JSON-RPC tool call、frontmatter normalization、`informations/work` 保存だけを担当する。
+
+この収集は `/ws` / `TomoroSession` / 会話 hot path へ入れない。
+保存後の validator / normalizer / DB ingest / interpretation は既存
+`information-ingest-*` / `information-interpret-*` flow を使う。
+
+### 完了条件
+
+- [x] operator が `world.observe` tool を `tomoko-research-mcp` で公開する
+- [x] Tomoko 側に `WorldObservationMcpClient` を追加し、subprocess JSON-RPC tool call を固定する
+- [x] `informations/prompts/daily_world_observation.md` を指定日付 / observed_at へ差し替えて送れる
+- [x] operator から返った provider text に Tomoko 側で validated frontmatter を付け直して `informations/work/YYYY-MM-DD-world-observation.md` に保存できる
+- [x] `make information-collect-world` で収集入口を実行できる
+- [x] focused operator unit / Tomoko unit / ruff が通る
+- [ ] live Chrome / Perplexity で `make information-collect-world` を実行し、strict validator と dry-run ingest を確認する
+
 ## 2026-06-05 VOICEVOX chunked TTS default
 
 通常 `/synthesis` の `voicevox_tsumugi` を default TTS として使い続ける方針は否定する。

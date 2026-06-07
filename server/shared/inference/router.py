@@ -45,6 +45,7 @@ class InferenceRouter:
                         url=spec.url,
                         model=spec.model,
                         privacy_allowed=spec.privacy_allowed,
+                        chat_template_kwargs=spec.chat_template_kwargs,
                     )
             elif spec.type == "mlx_lm":
                 if spec.model:

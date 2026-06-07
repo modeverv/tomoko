@@ -309,17 +309,16 @@ def _build_deterministic_fallback_items(
         current_lines = []
 
     for line in document.body.splitlines():
-        topic_match = re.match(r"^##\s+(.+?)\s*$", line)
-        if topic_match and not line.startswith("###"):
+        topic_match = _match_topic_heading(line, allowed_topics)
+        if topic_match is not None:
             flush()
-            topic = topic_match.group(1).strip().lower()
-            current_topic = topic if topic in allowed_topics else "other"
+            current_topic = topic_match
             continue
 
-        title_match = re.match(r"^###\s+(.+?)\s*$", line)
-        if title_match:
+        title = _match_observation_title(line)
+        if title is not None:
             flush()
-            current_title = re.sub(r"^\d+[.)]\s*", "", title_match.group(1).strip())
+            current_title = title
             continue
 
         if current_title is not None:
@@ -332,13 +331,45 @@ def _build_deterministic_fallback_items(
     return items[:8]
 
 
+def _match_topic_heading(line: str, allowed_topics: set[str]) -> str | None:
+    stripped = line.strip()
+    markdown_match = re.match(r"^##\s+(.+?)\s*$", stripped)
+    if markdown_match and not stripped.startswith("###"):
+        topic = markdown_match.group(1).strip().lower()
+        return topic if topic in allowed_topics else "other"
+    lowered = stripped.lower()
+    if lowered in allowed_topics:
+        return lowered
+    return None
+
+
+def _match_observation_title(line: str) -> str | None:
+    stripped = line.strip()
+    markdown_match = re.match(r"^###\s+(.+?)\s*$", stripped)
+    if markdown_match:
+        title = markdown_match.group(1).strip()
+    else:
+        rendered_match = re.match(
+            r"^(?:観測(?:項目)?\s*)?\d+\s*[.)、:：]\s*(.+?)\s*$",
+            stripped,
+        )
+        if rendered_match is None:
+            return None
+        title = rendered_match.group(1).strip()
+    return re.sub(r"^\d+[.)]\s*", "", title).strip()
+
+
 def _compact_markdown_text(text: str) -> str:
     lines = [line.strip() for line in text.splitlines()]
     return re.sub(r"\s+", " ", " ".join(line for line in lines if line)).strip()
 
 
 def _extract_source_hint(text: str) -> str:
-    match = re.search(r"(出典|source|参考)[:：]\s*([^。,\n]{1,120})", text, re.IGNORECASE)
+    match = re.search(
+        r"(出典|source_hint|source|参考)[:：]\s*([^。,\n]{1,120})",
+        text,
+        re.IGNORECASE,
+    )
     if match:
         return match.group(2).strip()
     return "markdown_heading_excerpt"

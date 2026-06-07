@@ -30,27 +30,29 @@ def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation(
 
     backend = config.backends["lmstudio_gemma4_26b_a4b"]
     assert backend.type == "lm_studio"
-    assert backend.url == "http://192.168.11.66:1234"
+    assert backend.url == "http://localhost:8082"
     assert backend.model == "gemma-4-26b-a4b-it-mlx"
+    assert backend.chat_template_kwargs == {"enable_thinking": False}
     assert backend.max_latency_ms == 5000
     assert backend.privacy_allowed is True
 
     e4b_backend = config.backends["lmstudio_gemma4_e4b"]
     assert e4b_backend.type == "lm_studio"
-    assert e4b_backend.url == "http://192.168.11.66:1234"
+    assert e4b_backend.url == "http://localhost:1234"
     assert e4b_backend.model == "gemma-4-e4b-it-mlx"
     assert e4b_backend.privacy_allowed is True
 
     memory_backend = config.backends["lmstudio_gemma4_31b"]
     assert memory_backend.type == "lm_studio"
-    assert memory_backend.url == "http://192.168.11.66:1234"
+    assert memory_backend.url == "http://localhost:8081"
     assert memory_backend.model == "gemma-4-31b-it-mlx"
+    assert memory_backend.chat_template_kwargs == {"enable_thinking": False}
     assert memory_backend.max_latency_ms == 60000
     assert memory_backend.privacy_allowed is True
 
     lm_studio_backend = config.backends["lmstudio_gemma4_e2b"]
     assert lm_studio_backend.type == "lm_studio"
-    assert lm_studio_backend.url == "http://192.168.11.66:1234"
+    assert lm_studio_backend.url == "http://localhost:1234"
     assert lm_studio_backend.model == "gemma-4-e2b-it-mlx"
     assert lm_studio_backend.privacy_allowed is True
 
@@ -108,10 +110,11 @@ def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation(
 
     voicevox_chunked_backend = config.backends["voicevox_tsumugi_chunked"]
     assert voicevox_chunked_backend.type == "voicevox_chunked"
-    assert voicevox_chunked_backend.url == "http://127.0.0.1:50121"
+    assert voicevox_chunked_backend.url == "http://127.0.0.1:50122"
     assert voicevox_chunked_backend.voice == "8"
-    assert voicevox_chunked_backend.sample_rate == 16000
+    assert voicevox_chunked_backend.sample_rate == 24000
     assert voicevox_chunked_backend.chunk_min_accent_phrases == 1
+    assert voicevox_chunked_backend.segment_length == 0.2
 
     irodori_backend = config.backends["irodori_mlx"]
     assert irodori_backend.type == "irodori_mlx"

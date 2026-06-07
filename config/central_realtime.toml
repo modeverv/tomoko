@@ -55,29 +55,31 @@ privacy_allowed = true
 
 [backends.lmstudio_gemma4_e2b]
 type = "lm_studio"
-url = "http://192.168.11.66:1234"
+url = "http://localhost:1234"
 model = "gemma-4-e2b-it-mlx"
 max_latency_ms = 800
 privacy_allowed = true
 
 [backends.lmstudio_gemma4_e4b]
 type = "lm_studio"
-url = "http://192.168.11.66:1234"
+url = "http://localhost:1234"
 model = "gemma-4-e4b-it-mlx"
 max_latency_ms = 800
 privacy_allowed = true
 
 [backends.lmstudio_gemma4_31b]
 type = "lm_studio"
-url = "http://192.168.11.66:1234"
+url = "http://localhost:8081"
 model = "gemma-4-31b-it-mlx"
+chat_template_kwargs = { enable_thinking = false }
 max_latency_ms = 60000
 privacy_allowed = true
 
 [backends.lmstudio_gemma4_26b_a4b]
 type = "lm_studio"
-url = "http://192.168.11.66:1234"
+url = "http://localhost:8082"
 model = "gemma-4-26b-a4b-it-mlx"
+chat_template_kwargs = { enable_thinking = false }
 max_latency_ms = 5000
 privacy_allowed = true
 
@@ -205,11 +207,12 @@ privacy_allowed = true
 
 [backends.voicevox_tsumugi_chunked]
 type = "voicevox_chunked"
-url = "http://127.0.0.1:50121"
+url = "http://127.0.0.1:50122"
 voice = "8"
-sample_rate = 16000
+sample_rate = 24000
 speed = 1.0
 chunk_min_accent_phrases = 1
+segment_length = 0.2
 max_latency_ms = 800
 privacy_allowed = true
 

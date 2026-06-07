@@ -139,11 +139,12 @@ privacy_allowed = true
 
 [backends.voicevox_tsumugi_chunked]
 type = "voicevox_chunked"
-url = "http://127.0.0.1:50021"
+url = "http://127.0.0.1:50122"
 voice = "8"
-sample_rate = 16000
+sample_rate = 24000
 speed = 1.0
 chunk_min_accent_phrases = 1
+segment_length = 0.2
 max_latency_ms = 800
 privacy_allowed = true
 

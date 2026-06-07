@@ -631,14 +631,23 @@ TTS も `TTSBackend` 抽象を介して差し替え可能にする。
 **M1フェーズは `say`、完了後に `kokoro-mlx` に切り替える。**
 ダメなら VOICEVOX に切り替え可能。抽象があるのでコアは変わらない。
 
-2026-06-05 時点の central / edge default TTS は `voicevox_tsumugi_chunked` とする。
-これは VOICEVOX Engine の `/streaming_synthesis` multipart response を
-`chunk_min_accent_phrases=1` で呼び、各 part を `AudioChunkOut(data, sequence, is_last)` に変換する。
-central default URL は `~/by-llms/async-voicevox/run_streaming_voicevox.command` の既定に合わせて
-`http://127.0.0.1:50121` とする。
-各 `data` は browser が単体で decode できる complete WAV chunk のまま扱い、
-client は従来どおり WebSocket binary message を `decodeAudioData()` するだけにする。
+2026-06-06 時点の central / edge default TTS は `voicevox_tsumugi_chunked` とする。
+これは `~/by-llms/async-voicevox/run_streaming_voicevox.command` の PR1823 launcher
+`http://127.0.0.1:50122` を前提に、VOICEVOX Engine の `/streaming_synthesis` を
+`chunk_min_accent_phrases=1` / `segment_length=0.2` / 24kHz mono で呼ぶ。
+
+PR1823 は single `audio/wav` response として WAV header 後の 24kHz mono PCM を逐次流す。
+24kHz 以外の `outputSamplingRate` は 422 で拒否されるため、
+`voicevox_tsumugi_chunked` だけ PR1823 contract に合わせて 24kHz にする。
+Tomoko はこの PCM 区間を backend 側で complete WAV chunk に包み直し、
+`AudioChunkOut(data, sequence, is_last)` に変換する。
+legacy multipart complete-WAV parts も同じ backend で受ける。
+client は従来どおり WebSocket binary message を `decodeAudioData()` するだけにし、
 部分 PCM byte stream を client に解釈させる設計にはしない。
+
+2026-06-06 の latency reduction では、Tomoko backend 側の 1 chunk pending delay を否定した。
+PR1823 `audio/wav` stream では、受信 PCM が complete WAV chunk 1 個分に達した時点で
+`is_last=False` として即 yield し、stream 終了時に残った final chunk だけ `is_last=True` とする。
 
 ### TTSBackend 抽象
 
@@ -2868,3 +2877,23 @@ TomoroSession は `task_ledger_requested` / `task_ledger_update_finished` を re
 `submit_task_ledger_update` command を background handler に渡す。
 main reply は task update を「受け取った」ことだけを短く促し、
 未確定の DB 更新成功を断言しない。
+
+## 2026-06-07 追記: dflash startup prompt prefix warm-up
+
+dflash は長文 prompt の warm run で first content が大きく改善する一方、
+cold first run は重い。
+そのため central startup では、通常の短い LLM warm-up だけでなく、
+Tomoko の固定 persona / overlay system prompt prefix を dflash no-think backend へ投げる。
+
+この warm-up は runtime の会話判断ではなく、起動時 adapter の責務である。
+対象は `lm_studio` backend のうち `chat_template_kwargs.enable_thinking=false` を持つものだけにする。
+通常の LM Studio backend や local MLX backend には追加 prompt prefix warm-up をかけない。
+
+conversation / session_summary / memory_extraction / persona_update / candidate_gen / diary の configured backend を見て、
+同じ backend は一度だけ warm-up する。
+warm-up prompt は `ThinkFastMode.system_prompt` の固定部分と短い user message にし、
+`max_tokens=4` で返答生成を抑える。
+
+目的は dflash の prefix cache / snapshot を温めることであり、
+現在時刻、calendar、task、memory など turn ごとに変わる context を完全一致 cache へ載せることではない。
+失敗しても server startup は落とさず、ログに残して通常起動を継続する。

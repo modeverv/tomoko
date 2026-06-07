@@ -35,6 +35,8 @@ def test_makefile_exposes_config_and_log_vars_for_separate_processes() -> None:
         "BACKEND_TRACE_LOG_FILE ?= logs/backend-trace.jsonl",
         "SYSTEM_METRICS_LOG_FILE ?= logs/system-metrics.jsonl",
         "WORLD_OBSERVATION_LOG_FILE ?= logs/world-observations.log",
+        "WORLD_OBSERVATION_MCP_TIMEOUT_SEC ?= 600",
+        "WORLD_OBSERVATION_PROVIDER_TIMEOUT_SEC ?= 600",
         "GCAL_URLS_FILE ?= config/gcal_urls.txt",
     ]
 
@@ -90,6 +92,7 @@ def test_makefile_has_grouped_background_maintenance_entries() -> None:
         "thinker-once",
         "journalist",
         "journalist-once",
+        "information-collect-world",
         "information-ingest-dry-run",
         "information-ingest-once",
         "information-interpret-once",
@@ -161,3 +164,17 @@ def test_makefile_exposes_research_session_smoke_tool() -> None:
     body = _target_body("smoke-research-session")
 
     assert "_tools/smoke_research_tomoro_session_flow.py" in body
+
+
+@pytest.mark.unit
+def test_makefile_exposes_world_observation_operator_collection() -> None:
+    body = _target_body("information-collect-world")
+
+    assert "_tools/collect_world_observation.py" in body
+    assert "--date $(WORLD_OBSERVATION_DATE)" in body
+    assert "--output-dir $(WORLD_OBSERVATION_WORK)" in body
+    assert "TOMOKO_WORLD_OBSERVATION_MCP_TIMEOUT_SEC=$(WORLD_OBSERVATION_MCP_TIMEOUT_SEC)" in body
+    assert (
+        "TOMOKO_WORLD_OBSERVATION_PROVIDER_TIMEOUT_SEC=$(WORLD_OBSERVATION_PROVIDER_TIMEOUT_SEC)"
+        in body
+    )

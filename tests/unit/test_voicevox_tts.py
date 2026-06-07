@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import wave
 from collections.abc import AsyncIterator
@@ -84,6 +85,28 @@ class FakeMultipartStreamResponse(FakeStreamResponse):
         }
 
 
+class FakeWavStreamResponse(FakeStreamResponse):
+    def __init__(self, chunks: list[bytes]) -> None:
+        super().__init__(chunks)
+        self.headers = {"content-type": "audio/wav"}
+
+
+class GatedFakeWavStreamResponse(FakeWavStreamResponse):
+    def __init__(self, chunks: list[bytes]) -> None:
+        super().__init__(chunks)
+        self.first_chunk_sent = asyncio.Event()
+        self.allow_remaining_chunks = asyncio.Event()
+
+    async def aiter_bytes(self) -> AsyncIterator[bytes]:
+        if not self._chunks:
+            return
+        yield self._chunks[0]
+        self.first_chunk_sent.set()
+        await self.allow_remaining_chunks.wait()
+        for chunk in self._chunks[1:]:
+            yield chunk
+
+
 class FakeStreamContext:
     def __init__(self, response: FakeStreamResponse) -> None:
         self._response = response
@@ -123,9 +146,10 @@ class FakeVoicevoxStreamClient(FakeVoicevoxClient):
 
 
 class FakeVoicevoxChunkedClient(FakeVoicevoxClient):
-    def __init__(self, stream_bytes: list[bytes]) -> None:
+    def __init__(self, stream_bytes: list[bytes], *, content_type: str = "multipart") -> None:
         super().__init__(b"")
         self.stream_bytes = stream_bytes
+        self.content_type = content_type
 
     def stream(
         self,
@@ -143,7 +167,33 @@ class FakeVoicevoxChunkedClient(FakeVoicevoxClient):
                 "json": json,
             }
         )
+        if self.content_type == "audio/wav":
+            return FakeStreamContext(FakeWavStreamResponse(self.stream_bytes))
         return FakeStreamContext(FakeMultipartStreamResponse(self.stream_bytes))
+
+
+class GatedFakeVoicevoxChunkedClient(FakeVoicevoxChunkedClient):
+    def __init__(self, stream_bytes: list[bytes]) -> None:
+        super().__init__(stream_bytes, content_type="audio/wav")
+        self.stream_response = GatedFakeWavStreamResponse(stream_bytes)
+
+    def stream(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, Any],
+        json: dict[str, Any],
+    ) -> FakeStreamContext:
+        self.requests.append(
+            {
+                "method": method,
+                "url": url,
+                "params": params,
+                "json": json,
+            }
+        )
+        return FakeStreamContext(self.stream_response)
 
 
 class FakeVoicevoxStreamFallbackClient(FakeVoicevoxStreamClient):
@@ -275,11 +325,77 @@ async def test_voicevox_chunked_backend_yields_multipart_wav_chunks() -> None:
     assert stream_request["params"] == {
         "speaker": 8,
         "chunk_min_accent_phrases": 1,
+        "segment_length": 0.6,
     }
     assert stream_request["json"]["speedScale"] == 1.08
     assert stream_request["json"]["intonationScale"] == 1.08
     assert stream_request["json"]["outputSamplingRate"] == 16000
     assert stream_request["json"]["outputStereo"] is False
+
+
+@pytest.mark.unit
+async def test_voicevox_chunked_backend_wraps_pr1823_wav_stream_chunks() -> None:
+    source_wav = _wav_bytes(frame_count=12_100, sample_rate=24_000)
+    client = FakeVoicevoxChunkedClient(
+        [source_wav[:31], source_wav[31:10_000], source_wav[10_000:]],
+        content_type="audio/wav",
+    )
+    backend = VoicevoxChunkedBackend(
+        url="http://127.0.0.1:50122",
+        speaker_id=8,
+        sample_rate=16000,
+        chunk_min_accent_phrases=1,
+        segment_length=0.25,
+        client=client,  # type: ignore[arg-type]
+    )
+
+    chunks = [
+        chunk
+        async for chunk in backend.synthesize(TTSInput(text="こんにちは。", style="happy"))
+    ]
+
+    assert len(chunks) == 3
+    assert [chunk.sequence for chunk in chunks] == [0, 1, 2]
+    assert [chunk.is_last for chunk in chunks] == [False, False, True]
+    assert all(chunk.data.startswith(b"RIFF") for chunk in chunks)
+    assert [_wav_frame_count(chunk.data) for chunk in chunks] == [6000, 6000, 100]
+    stream_request = client.requests[1]
+    assert stream_request["url"] == "http://127.0.0.1:50122/streaming_synthesis"
+    assert stream_request["params"] == {
+        "speaker": 8,
+        "chunk_min_accent_phrases": 1,
+        "segment_length": 0.25,
+    }
+
+
+@pytest.mark.unit
+async def test_voicevox_chunked_backend_yields_first_pr1823_wav_chunk_immediately() -> None:
+    source_wav = _wav_bytes(frame_count=9700, sample_rate=24_000)
+    client = GatedFakeVoicevoxChunkedClient(
+        [source_wav[:4844], source_wav[4844:9644], source_wav[9644:]],
+    )
+    backend = VoicevoxChunkedBackend(
+        url="http://127.0.0.1:50122",
+        speaker_id=8,
+        sample_rate=24_000,
+        chunk_min_accent_phrases=1,
+        segment_length=0.1,
+        client=client,  # type: ignore[arg-type]
+    )
+
+    stream = backend.synthesize(TTSInput(text="こんにちは。", style="happy"))
+
+    first_chunk_task = asyncio.create_task(anext(stream))
+    first_chunk = await asyncio.wait_for(first_chunk_task, timeout=0.1)
+    assert first_chunk.sequence == 0
+    assert first_chunk.is_last is False
+    assert _wav_frame_count(first_chunk.data) == 2400
+
+    client.stream_response.allow_remaining_chunks.set()
+    remaining_chunks = [chunk async for chunk in stream]
+    assert [chunk.sequence for chunk in remaining_chunks] == [1, 2, 3, 4]
+    assert [chunk.is_last for chunk in remaining_chunks] == [False, False, False, True]
+    assert [_wav_frame_count(chunk.data) for chunk in remaining_chunks] == [2400, 2400, 2400, 100]
 
 
 @pytest.mark.unit
@@ -344,6 +460,7 @@ def test_tts_factory_creates_voicevox_chunked_backend() -> None:
             voice="8",
             sample_rate=16000,
             chunk_min_accent_phrases=1,
+            segment_length=0.2,
         )
     )
 
@@ -352,16 +469,22 @@ def test_tts_factory_creates_voicevox_chunked_backend() -> None:
     assert backend.speaker_id == 8
     assert backend.sample_rate == 16000
     assert backend.chunk_min_accent_phrases == 1
+    assert backend.segment_length == 0.2
 
 
-def _wav_bytes() -> bytes:
+def _wav_bytes(*, frame_count: int = 2, sample_rate: int = 24000) -> bytes:
     output = io.BytesIO()
     with wave.open(output, "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
-        wav.setframerate(24000)
-        wav.writeframes(b"\x00\x00\x01\x00")
+        wav.setframerate(sample_rate)
+        wav.writeframes(b"\x00\x00" * frame_count)
     return output.getvalue()
+
+
+def _wav_frame_count(data: bytes) -> int:
+    with wave.open(io.BytesIO(data), "rb") as wav:
+        return wav.getnframes()
 
 
 def _multipart_stream_bytes(parts: list[tuple[int, bool, bytes]]) -> list[bytes]:

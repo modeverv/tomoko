@@ -57,6 +57,8 @@ class BackendSpec:
     stream_interval_ms: int = 1000
     stream_min_audio_ms: int = 1000
     chunk_min_accent_phrases: int | None = None
+    segment_length: float | None = None
+    chat_template_kwargs: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

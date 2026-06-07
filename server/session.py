@@ -134,8 +134,8 @@ from server.shared.timer_alarm import (
 
 SessionState = Literal["idle", "listening", "processing"]
 OutputFloorPolicy = Literal["ambient_idle"]
-DEFAULT_ENGAGED_TIMEOUT_MS = 20_000
-DEFAULT_COOLDOWN_TIMEOUT_MS = 8_000
+DEFAULT_ENGAGED_TIMEOUT_MS = 120_000
+DEFAULT_COOLDOWN_TIMEOUT_MS = 60_000
 _SPEECH_ECHO_TEXT_WINDOW_SEC = 8.0
 
 _CONVERSATION_LOG_OUTPUT_LANES: tuple[OutputLane, ...] = (

@@ -66,6 +66,12 @@ def test_parse_sse_content_extracts_openai_delta_content() -> None:
     assert parse_sse_content(line) == "こんにちは"
     assert parse_sse_content("data: [DONE]") is None
     assert parse_sse_content('data: {"choices":[{"delta":{"role":"assistant"}}]}') is None
+    assert (
+        parse_sse_content(
+            'data: {"choices":[{"delta":{"reasoning_content":"考え中"}}]}'
+        )
+        is None
+    )
 
 
 @pytest.mark.unit
@@ -135,6 +141,36 @@ async def test_lm_studio_backend_streams_openai_compatible_sse() -> None:
             },
         }
     ]
+
+
+@pytest.mark.unit
+async def test_lm_studio_backend_can_pass_chat_template_kwargs() -> None:
+    fake_client = FakeClient(
+        [
+            'data: {"choices":[{"delta":{"content":"了解"}}]}',
+            "data: [DONE]",
+        ]
+    )
+    backend = LMStudioBackend(
+        name="dflash_gemma4_26b",
+        url="http://localhost:8082",
+        model="gemma-4-26b-a4b-it-mlx",
+        chat_template_kwargs={"enable_thinking": False},
+        client_factory=lambda: fake_client,
+    )
+
+    chunks = [
+        chunk
+        async for chunk in backend.chat_stream(
+            "日本語だけで返して。",
+            [{"role": "user", "content": "返事して。"}],
+        )
+    ]
+
+    assert chunks == ["了解"]
+    assert fake_client.requests[0]["json"]["chat_template_kwargs"] == {
+        "enable_thinking": False
+    }
 
 
 @pytest.mark.unit
