@@ -8053,6 +8053,20 @@ ThinkFastMode / InferenceRouter だけの内部 bench を、人間体感 latency
 - [x] focused unit / ruff が通る
 - [x] full unit が通る
 
+## 2026-06-07 Remove topic-return hint from time-last probe
+
+`TOPIC RETURN HINT` で話題復帰の意味論を上げる方針は否定する。
+今回の目的は semantic steering ではなく、baseline と概ね同等の意味論で、
+`CURRENT LOCAL TIME` を後ろへ置いた時の latency 変化を観測すること。
+
+### 完了条件
+
+- [x] `TOPIC RETURN HINT` のコードと unit test を削除する
+- [x] current user utterance first / `CURRENT LOCAL TIME` last の order は維持する
+- [x] 同じ4 turn `/ws` scenario を再測する
+- [x] `_docs/latency.md` に topic hint 撤去後の実測を追記する
+- [x] full unit が通る
+
 ## 2026-06-07 Multi-turn `/ws` voice latency smoke
 
 単発 utterance の `/ws` smoke だけを人間体感 latency の代表値にする方針は否定する。

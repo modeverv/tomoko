@@ -642,49 +642,6 @@ async def test_think_fast_includes_response_directive(tmp_path) -> None:
 
 
 @pytest.mark.unit
-async def test_think_fast_includes_topic_return_hint_after_current_utterance(
-    tmp_path,
-) -> None:
-    persona = tmp_path / "persona.md"
-    persona.write_text("あなたはトモコです。", encoding="utf-8")
-    backend = FakeBackend(["うん"])
-    mode = ThinkFastMode(
-        persona_path=persona,
-        prompt_log_path=None,
-        now_provider=fixed_now,
-    )
-
-    [
-        event
-        async for event in mode.think(
-            backend,
-            ThinkingInput(
-                text="ありがとう。さっきの速度の話に戻って、もう一言だけお願い。",
-                speaker=None,
-                context=[],
-                emotion="neutral",
-                device_id="browser",
-            ),
-        )
-    ]
-
-    content = backend.messages[-1]["content"]
-    assert content.startswith(
-        "## CURRENT USER UTTERANCE\n\n"
-        "ありがとう。さっきの速度の話に戻って、もう一言だけお願い。"
-    )
-    assert "## TOPIC RETURN HINT" in content
-    assert "ユーザーは「速度」の話に戻るよう明示しています。" in content
-    assert "追加質問だけで返答を終えないでください。" in content
-    assert content.index("## CURRENT USER UTTERANCE") < content.index(
-        "## TOPIC RETURN HINT"
-    )
-    assert content.index("## TOPIC RETURN HINT") < content.index(
-        "## CURRENT LOCAL TIME"
-    )
-
-
-@pytest.mark.unit
 async def test_think_fast_extracts_emotion_line_before_text(tmp_path) -> None:
     persona = tmp_path / "persona.md"
     persona.write_text("あなたはトモコです。", encoding="utf-8")
