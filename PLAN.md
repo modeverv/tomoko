@@ -8031,3 +8031,24 @@ output が未接続の場合は retry せず failed として DB state を確定
 - [x] Tomoko reply / initiative / research notice 中の due は `cancel_reply_generation` と `audio_control stop` を先に出す
 - [x] due notice は既存 `start_precomputed_reply` / TTS / audio chunk 経路を使う
 - [x] focused unit / integration / ruff / full unit が通る
+
+## 2026-06-07 Human-perceived `/ws` voice latency smoke
+
+ThinkFastMode / InferenceRouter だけの内部 bench を、人間体感 latency の代替値として扱う方針は否定する。
+今後は実 `/ws` に音声 chunk と trailing silence を流し、VAD/STT/participation/context/LLM/TTS/WebSocket audio を
+まとめて通した値も継続的に見る。
+
+ブラウザ側に測定専用ロジックを増やす方針は取らない。
+測定は `_tools/smoke_ws_voice_latency.py` の外部 client で行い、
+本番 client は従来どおり raw float32 mic chunk を送って audio chunk を再生するだけに保つ。
+
+### 完了条件
+
+- [x] macOS `say` で生成した入力音声を 16kHz mono float32 に変換できる
+- [x] `/ws` へ 512 samples の raw float32 binary chunk を realtime pacing で送れる
+- [x] 発話後に trailing silence chunk を送って VAD speech end を起こせる
+- [x] `transcript_final` / `reply_text` / `audio_start` / first binary audio / `reply_done` を記録できる
+- [x] `last_voice_chunk_sent` から first binary audio までを artifact に残せる
+- [x] `make smoke-ws-voice-latency` で同じ smoke を手元実行できる
+- [x] focused unit / ruff が通る
+- [x] full unit が通る

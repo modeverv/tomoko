@@ -28,6 +28,9 @@ SYSTEM_METRICS_LOG_FILE ?= logs/system-metrics.jsonl
 SYSTEM_METRICS_PROVIDER ?= mactop
 SYSTEM_METRICS_COMMAND ?= mactop
 SYSTEM_METRICS_INTERVAL_SEC ?= 2
+WS_LATENCY_URL ?= ws://$(HOST):$(PORT)/ws
+WS_LATENCY_TEXT ?= トモコ、短く返事して。
+WS_LATENCY_SILENCE_MS ?= 1200
 WORLD_OBSERVATION_LOG_FILE ?= logs/world-observations.log
 WORLD_OBSERVATION_WORK ?= informations/work
 WORLD_OBSERVATION_ARCHIVED ?= informations/archived
@@ -61,7 +64,7 @@ SCREEN_SHELL ?= zsh
 .PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
 .PHONY: information-collect-world information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
 .PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list
-.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material smoke-research-mcp smoke-research-session log-report monitor system-monitor lint check
+.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material smoke-research-mcp smoke-research-session smoke-ws-voice-latency log-report monitor system-monitor lint check
 
 deps:
 	mise exec -- uv sync
@@ -291,6 +294,9 @@ smoke-research-mcp:
 
 smoke-research-session:
 	mise exec -- uv run python _tools/smoke_research_tomoro_session_flow.py
+
+smoke-ws-voice-latency:
+	mise exec -- uv run python _tools/smoke_ws_voice_latency.py --url $(WS_LATENCY_URL) --text "$(WS_LATENCY_TEXT)" --silence-ms $(WS_LATENCY_SILENCE_MS)
 
 log-report:
 	mise exec -- uv run python _tools/analyze_server_debug_log.py --input $(TOMOKO_DEBUG_LOG_FILE) --output logs/server-debug-report.html

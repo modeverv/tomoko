@@ -4500,3 +4500,23 @@ after は avg first content 4697.1ms / avg total 7064.3ms だった。
 turn 別では after が遅い箇所もあり、dflash の生成長・scheduler・cache 状態による揺れは残る。
 それでも応答は全 turn で話題に沿っており、人格崩壊、文脈取り違え、意味破綻は見られなかった。
 したがって本番コードへ取り入れる。
+
+### 確定した判断: 人間体感 latency は `/ws` に say 音声と無音チャンクを流して継続実測する
+2026-06-07 に `_tools/smoke_ws_voice_latency.py` を追加した。
+この tool は macOS `say` で作った音声を 16kHz mono float32 に変換し、
+ブラウザと同じ `/ws` raw binary chunk contract で 512 samples ずつ送る。
+発話後は trailing silence chunk を送り、VAD の speech end を実際に起こす。
+
+測定基準は `last_voice_chunk_sent` から `transcript_final` / `first_reply_text` /
+`first_binary_audio` までを主値にする。
+これにより、VAD silence window、STT、participation、ContextSnapshotBuilder、
+dflash 26B、VOICEVOX chunked TTS、WebSocket binary audio までをまとめて測れる。
+ブラウザの decode / playback scheduling は含まないが、人間が「話し終わってから最初の音が返る」
+までに近い値として継続比較に使う。
+
+初回 smoke は `トモコ、短く返事して。` を `Kyoko` で生成し、1200ms silence を付けて実行した。
+STT は `智子短く返事して`、reply は `了解。短くいくね。`。
+tool-side voice-end to first binary audio は 7821.3ms だった。
+server-side first audio は speech-end から 6989.7ms で、dflash log では 1532-token prompt が
+prefix-cache miss になり prefill 約5.0s だった。
+この回の支配要因は VAD/STT/TTS ではなく LLM prefill と判断する。
