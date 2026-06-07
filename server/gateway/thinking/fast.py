@@ -95,18 +95,33 @@ class ThinkFastMode(ThinkingMode):
             return f"{persona}\n\n{STATIC_CONTEXT_USAGE_RULES}"
         return f"{persona}\n\n{overlay}\n\n{STATIC_CONTEXT_USAGE_RULES}"
 
-    def _build_turn_context_prompt(self, thinking_input: ThinkingInput) -> str:
+    def _build_session_stable_structured_context_prompt(
+        self,
+        thinking_input: ThinkingInput,
+    ) -> str:
+        prompt_parts = [
+            part
+            for part in (
+                _format_context_snapshot_prompt(thinking_input),
+                _format_calendar_context_prompt(thinking_input),
+                _format_task_context_prompt(thinking_input),
+            )
+            if part
+        ]
+        return "\n\n".join(prompt_parts)
+
+    def _build_turn_dynamic_recall_context_prompt(
+        self,
+        thinking_input: ThinkingInput,
+    ) -> str:
         current_time_prompt = _format_current_time_prompt(self.now_provider())
         prompt_parts = [
             part
             for part in (
                 _format_response_directive_prompt(thinking_input),
-                _format_context_snapshot_prompt(thinking_input),
-                _format_calendar_context_prompt(thinking_input),
-                _format_research_context_prompt(thinking_input),
-                _format_task_context_prompt(thinking_input),
                 format_short_memory_prompt(thinking_input.short_memory_notes),
                 format_long_term_memory_prompt(thinking_input.long_term_memory),
+                _format_research_context_prompt(thinking_input),
                 current_time_prompt,
             )
             if part
@@ -114,17 +129,34 @@ class ThinkFastMode(ThinkingMode):
         return "\n\n".join(prompt_parts)
 
     def _build_current_user_message(self, thinking_input: ThinkingInput) -> str:
-        turn_context_prompt = self._build_turn_context_prompt(thinking_input)
-        if not turn_context_prompt:
-            return thinking_input.text
-        return "\n\n".join(
+        stable_context_prompt = self._build_session_stable_structured_context_prompt(
+            thinking_input
+        )
+        dynamic_context_prompt = self._build_turn_dynamic_recall_context_prompt(
+            thinking_input
+        )
+        prompt_parts = []
+        if stable_context_prompt:
+            prompt_parts.extend(
+                [
+                    "## SESSION STABLE STRUCTURED CONTEXT",
+                    stable_context_prompt,
+                ]
+            )
+        prompt_parts.extend(
             [
                 "## CURRENT USER UTTERANCE",
                 thinking_input.text,
-                "## TURN CONTEXT",
-                turn_context_prompt,
             ]
         )
+        if dynamic_context_prompt:
+            prompt_parts.extend(
+                [
+                    "## TURN DYNAMIC / RECALL CONTEXT",
+                    dynamic_context_prompt,
+                ]
+            )
+        return "\n\n".join(prompt_parts)
 
     def prepare_prompt(self, thinking_input: ThinkingInput) -> PreparedFastPrompt:
         messages = [

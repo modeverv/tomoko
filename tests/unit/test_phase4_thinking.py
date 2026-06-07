@@ -298,7 +298,7 @@ async def test_think_fast_wraps_streamed_tokens_in_thinking_events(tmp_path) -> 
             "content": (
                 "## CURRENT USER UTTERANCE\n\n"
                 "トモコ、聞こえる？\n\n"
-                "## TURN CONTEXT\n\n"
+                "## TURN DYNAMIC / RECALL CONTEXT\n\n"
                 "## CURRENT LOCAL TIME\n"
                 "現在日時: 2026-05-30 12:34:56 JST\n"
                 "曜日: 土曜日"
@@ -349,7 +349,7 @@ async def test_think_fast_includes_recent_conversation_context(tmp_path) -> None
             "content": (
                 "## CURRENT USER UTTERANCE\n\n"
                 "さっき言ったカレーの続きだけど\n\n"
-                "## TURN CONTEXT\n\n"
+                "## TURN DYNAMIC / RECALL CONTEXT\n\n"
                 "## CURRENT LOCAL TIME\n"
                 "現在日時: 2026-05-30 12:34:56 JST\n"
                 "曜日: 土曜日"
@@ -370,7 +370,7 @@ async def test_think_fast_uses_saved_llm_prompt_content_for_user_history(
     saved_prompt_content = (
         "## CURRENT USER UTTERANCE\n\n"
         "昨日カレーを作ったよ\n\n"
-        "## TURN CONTEXT\n\n"
+        "## TURN DYNAMIC / RECALL CONTEXT\n\n"
         "## CURRENT LOCAL TIME\n"
         "現在日時: 2026-05-29 09:00:00 JST\n"
         "曜日: 金曜日"
@@ -898,10 +898,8 @@ async def test_session_passes_recent_conversation_context_to_thinking_mode() -> 
         {"role": "assistant", "content": "明日は少し味がなじむかも。"},
     ]
     assert backend.messages[-1]["role"] == "user"
-    assert "## TURN CONTEXT" in backend.messages[-1]["content"]
-    assert backend.messages[-1]["content"].startswith(
-        "## CURRENT USER UTTERANCE\n\nトモコ、聞こえる？"
-    )
+    assert "## TURN DYNAMIC / RECALL CONTEXT" in backend.messages[-1]["content"]
+    assert "## CURRENT USER UTTERANCE\n\nトモコ、聞こえる？" in backend.messages[-1]["content"]
     assert conversation_logs.user_turn_ids
     saved_prompt = conversation_logs.llm_prompt_updates[conversation_logs.user_turn_ids[0]]
     assert saved_prompt == backend.messages[-1]["content"]
@@ -940,10 +938,8 @@ async def test_session_includes_last_initiative_text_when_user_asks_followup() -
         "content": "さっきの話とは別で、ハードウェアの進化が少し気になってるんだ。",
     }
     assert backend.messages[-1]["role"] == "user"
-    assert "## TURN CONTEXT" in backend.messages[-1]["content"]
-    assert backend.messages[-1]["content"].startswith(
-        "## CURRENT USER UTTERANCE\n\nトモコ、聞こえる？"
-    )
+    assert "## TURN DYNAMIC / RECALL CONTEXT" in backend.messages[-1]["content"]
+    assert "## CURRENT USER UTTERANCE\n\nトモコ、聞こえる？" in backend.messages[-1]["content"]
 
 
 @pytest.mark.unit

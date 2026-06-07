@@ -8168,3 +8168,20 @@ session_id が変わったら cache miss にする。
 - [x] 実DB context microbench で same session hit と new session miss を確認する
 - [x] `_docs/latency.md` / `MEMORY.md` / `ARCHITECTURE.md` / `LOG.md` に実測と判断を追記する
 - [x] focused unit / perf / ruff / full unit が通る
+
+## 2026-06-07 Stable structured context prompt ordering
+
+`calendar_events` / `task_ledger` / persona slice を current user utterance の後ろへ置き続ける方針は更新する。
+session 中に安定しやすい structured context は current user utterance の前へ寄せ、
+memory / research / current time は発話の後ろへ残す。
+
+### 完了条件
+
+- [x] 現行 prompt order の fast runtime baseline を取る
+- [x] `SESSION STABLE STRUCTURED CONTEXT -> CURRENT USER UTTERANCE -> TURN DYNAMIC / RECALL CONTEXT` order を実装する
+- [x] proposed order の fast runtime を測る
+- [x] calendar を含む deep runtime で current / proposed を比較する
+- [x] temporary task を含む deep runtime で current / proposed を比較し、task row を cleanup する
+- [x] 応答の意味破綻がないか turn ごとに確認する
+- [x] `_docs/latency.md` / `MEMORY.md` / `ARCHITECTURE.md` / `LOG.md` に実測と判断を追記する
+- [x] focused unit / perf / ruff / full unit が通る
