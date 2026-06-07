@@ -8052,3 +8052,24 @@ ThinkFastMode / InferenceRouter だけの内部 bench を、人間体感 latency
 - [x] `make smoke-ws-voice-latency` で同じ smoke を手元実行できる
 - [x] focused unit / ruff が通る
 - [x] full unit が通る
+
+## 2026-06-07 Multi-turn `/ws` voice latency smoke
+
+単発 utterance の `/ws` smoke だけを人間体感 latency の代表値にする方針は否定する。
+実運用では user / Tomoko の応答が積み上がり、playback telemetry、barge-in grace、
+会話ログ、DB context、dflash prompt cache の状態が turn ごとに変わる。
+
+そのため、標準 smoke は3 turn程度の連続会話も測れるようにする。
+Tomoko 側の応答は不定なので、入力は「短く返事して」->「今の速度感はどう」->「もう一言だけ」
+という、返答内容に強く依存しない無難な follow-up にする。
+
+### 完了条件
+
+- [x] `_tools/smoke_ws_voice_latency.py` が同一 `/ws` session で複数 utterance を送れる
+- [x] `--scenario three-turn` と複数 `--turn-text` を指定できる
+- [x] turn ごとに `transcript_final` / `reply_text` / first binary audio / `reply_done` を artifact に残せる
+- [x] playback telemetry を emulation し、inter-turn pause を指定できる
+- [x] `make smoke-ws-voice-latency` の既定を three-turn smoke にする
+- [x] 3 turn の実測結果と dflash prefill / prefix cache の観測を `_docs/latency.md` に残す
+- [x] focused unit / ruff が通る
+- [x] full unit が通る

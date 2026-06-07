@@ -5,10 +5,12 @@ import pytest
 
 from _tools.smoke_ws_voice_latency import (
     CHUNK_SAMPLES,
+    DEFAULT_THREE_TURN_TEXTS,
     SAMPLE_RATE,
     WsLatencyRecorder,
     build_audio_chunks,
     build_metrics_ms,
+    conversation_texts_from_args,
 )
 
 
@@ -79,3 +81,26 @@ def test_silence_chunk_default_matches_browser_sample_rate_contract() -> None:
     assert SAMPLE_RATE == 16000
     assert CHUNK_SAMPLES == 512
     assert sum(1 for chunk in chunks if not chunk.is_voice) == 38
+
+
+@pytest.mark.unit
+def test_conversation_texts_from_args_supports_three_turn_scenario() -> None:
+    class Args:
+        turn_text: list[str] = []
+        scenario = "three-turn"
+        text = "ignored"
+
+    assert conversation_texts_from_args(Args()) == list(DEFAULT_THREE_TURN_TEXTS)
+
+
+@pytest.mark.unit
+def test_conversation_texts_from_args_prefers_explicit_turn_texts() -> None:
+    class Args:
+        turn_text = ["トモコ、聞こえる？", "うん、続けて。"]
+        scenario = "single"
+        text = "ignored"
+
+    assert conversation_texts_from_args(Args()) == [
+        "トモコ、聞こえる？",
+        "うん、続けて。",
+    ]

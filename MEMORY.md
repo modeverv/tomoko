@@ -4520,3 +4520,43 @@ tool-side voice-end to first binary audio は 7821.3ms だった。
 server-side first audio は speech-end から 6989.7ms で、dflash log では 1532-token prompt が
 prefix-cache miss になり prefill 約5.0s だった。
 この回の支配要因は VAD/STT/TTS ではなく LLM prefill と判断する。
+
+### 確定した判断: `/ws` latency smoke は3 turn会話を標準シナリオとして測る
+2026-06-07 に `_tools/smoke_ws_voice_latency.py` を3 turn の連続会話へ拡張した。
+同一 WebSocket session のまま、macOS `say` で生成した複数 utterance を順番に送り、
+turn ごとの `transcript_final` / `reply_text` / first binary audio / `reply_done` を
+個別 artifact に残す。
+
+標準入力は `トモコ、短く返事して。`、`うん、今の速度感はどう？`、
+`ありがとう。もう一言だけお願い。` とする。
+Tomoko 側の返答が不定でも、速度確認 -> 短い追加依頼として会話が破綻しにくいため。
+`make smoke-ws-voice-latency` はこの three-turn scenario を既定にし、
+単発比較が必要な場合は `WS_LATENCY_SCENARIO=single` を指定する。
+
+実測 artifact `logs/ws-voice-latency-20260607-three-turn-final.json` では、
+STT は `智子短く返事して` / `うん今の速度感はどう` /
+`ありがとうもう一言だけお願い`、reply は
+`了解。これくらいでいい感じ？` /
+`んー、今の感じはどうかな？ちょっと速すぎた？` /
+`えー、そんなに急いでどうしたの？何かお手伝いする？` だった。
+意味的な破綻は見られなかった。
+
+tool-side voice-end to first binary audio は 7819.0ms / 8030.0ms / 9359.6ms。
+playback telemetry と 1500ms の inter-turn pause を入れても turn 2 / 3 に `barge_in` が残った。
+これは latency 主値を無効にするほどではないが、人間の「完全に聞き終わってから次を話す」条件を
+厳密に見る場合は `WS_LATENCY_INTER_TURN_PAUSE_MS=3000` 以上でも比較する。
+
+### 気づき: startup warm-up は full live prompt の prefill を完全には解消しない
+2026-06-07 の three-turn `/ws` smoke では、dflash startup warm-up request 自体は
+固定 prefix cache に乗っていた。
+起動後ログでは 808 token prompt が 804/808 token restore され、短い warm-up request は効いていた。
+
+一方で実会話 turn の prompt は、現在時刻、persona slice、DB context、直近会話ログ、
+現在 utterance などが混ざるため、同じ session 内の3 turn でも完全一致 prefix にならなかった。
+dflash log では live turn の 1338 / 1337 / 1155 token prompt がそれぞれ
+`prefill restored 0.0 tok/s` で、約4.9-5.3s の prefill を払っていた。
+
+したがって「warm-up したので prefill 問題は解消済み」とは扱わない。
+warm-up は固定 prefix を温める施策であり、live latency をさらに詰めるには
+prompt shape の固定化、dynamic context の後方移動、会話ログや日時 block の揺れ削減を
+引き続き測る必要がある。

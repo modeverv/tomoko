@@ -24,6 +24,11 @@ if str(ROOT) not in sys.path:
 SAMPLE_RATE = 16000
 CHUNK_SAMPLES = 512
 DEFAULT_TEXT = "トモコ、短く返事して。"
+DEFAULT_THREE_TURN_TEXTS = (
+    "トモコ、短く返事して。",
+    "うん、今の速度感はどう？",
+    "ありがとう。もう一言だけお願い。",
+)
 
 
 @dataclass(frozen=True)
@@ -33,6 +38,13 @@ class AudioChunk:
 
     def to_wire_bytes(self) -> bytes:
         return np.asarray(self.samples, dtype="<f4").tobytes()
+
+
+@dataclass(frozen=True)
+class VoiceTurn:
+    index: int
+    text: str
+    chunks: list[AudioChunk]
 
 
 @dataclass
@@ -107,6 +119,30 @@ class WsLatencyRecorder:
             "metrics_ms": self.metrics_ms(),
             "events": self.events,
         }
+
+
+@dataclass
+class ConversationLatencyRecorder:
+    started_at: float
+    events: list[dict[str, Any]] = field(default_factory=list)
+
+    def observe_session_json(self, payload: dict[str, Any], *, now: float) -> None:
+        self.events.append(
+            {
+                "elapsed_ms": _elapsed_ms(self.started_at, now),
+                "type": str(payload.get("type", "")),
+                "payload": payload,
+            }
+        )
+
+    def observe_connection_closed(self, *, code: int | None, reason: str, now: float) -> None:
+        self.events.append(
+            {
+                "elapsed_ms": _elapsed_ms(self.started_at, now),
+                "type": "connection_closed",
+                "payload": {"code": code, "reason": reason},
+            }
+        )
 
 
 def build_audio_chunks(
@@ -208,40 +244,118 @@ async def run_ws_voice_latency(
     realtime: bool,
     timeout_sec: float,
     output_path: Path | None,
+    playback_telemetry: bool = True,
+    inter_turn_pause_ms: int = 0,
+    chunk_samples: int = CHUNK_SAMPLES,
+    sample_rate: int = SAMPLE_RATE,
+) -> dict[str, Any]:
+    conversation = await run_ws_voice_conversation_latency(
+        url=url,
+        turns=[
+            VoiceTurn(
+                index=1,
+                text=text,
+                chunks=chunks,
+            )
+        ],
+        voice=voice,
+        realtime=realtime,
+        timeout_sec=timeout_sec,
+        output_path=output_path,
+        playback_telemetry=playback_telemetry,
+        inter_turn_pause_ms=inter_turn_pause_ms,
+        chunk_samples=chunk_samples,
+        sample_rate=sample_rate,
+    )
+    return conversation["turns"][0]
+
+
+async def run_ws_voice_conversation_latency(
+    *,
+    url: str,
+    turns: list[VoiceTurn],
+    voice: str,
+    realtime: bool,
+    timeout_sec: float,
+    output_path: Path | None,
+    playback_telemetry: bool = True,
+    inter_turn_pause_ms: int = 0,
     chunk_samples: int = CHUNK_SAMPLES,
     sample_rate: int = SAMPLE_RATE,
 ) -> dict[str, Any]:
     import websockets
 
     started_at = time.perf_counter()
-    recorder = WsLatencyRecorder(started_at=started_at)
+    conversation_recorder = ConversationLatencyRecorder(started_at=started_at)
+    active_recorder: WsLatencyRecorder | None = None
+    turn_done = asyncio.Event()
+    turn_summaries: list[dict[str, Any]] = []
     request = {
         "url": url,
-        "text": text,
         "voice": voice,
         "realtime": realtime,
         "timeout_sec": timeout_sec,
+        "playback_telemetry": playback_telemetry,
+        "inter_turn_pause_ms": inter_turn_pause_ms,
         "sample_rate": sample_rate,
         "chunk_samples": chunk_samples,
-        "voice_chunks": sum(1 for chunk in chunks if chunk.is_voice),
-        "silence_chunks": sum(1 for chunk in chunks if not chunk.is_voice),
+        "turn_count": len(turns),
+        "turns": [
+            {
+                "index": turn.index,
+                "text": turn.text,
+                "voice_chunks": sum(1 for chunk in turn.chunks if chunk.is_voice),
+                "silence_chunks": sum(1 for chunk in turn.chunks if not chunk.is_voice),
+            }
+            for turn in turns
+        ],
     }
 
     async with websockets.connect(url, max_size=None) as websocket:
-        recorder.mark("connected", time.perf_counter())
-        done = asyncio.Event()
+        connected_at = time.perf_counter()
 
         async def receive_loop() -> None:
+            nonlocal active_recorder
+            active_audio_turn_id: str | None = None
+            next_playback_chunk_id = 1
+            started_playback_chunk_ids: list[int] = []
             try:
                 async for message in websocket:
                     now = time.perf_counter()
+                    recorder = active_recorder
                     if isinstance(message, bytes):
-                        recorder.observe_binary_audio(message, now=now)
+                        if recorder is not None:
+                            recorder.observe_binary_audio(message, now=now)
+                        else:
+                            conversation_recorder.events.append(
+                                {
+                                    "elapsed_ms": _elapsed_ms(started_at, now),
+                                    "type": "orphan_binary_audio",
+                                    "payload": {"bytes": len(message)},
+                                }
+                            )
+                        if playback_telemetry and active_audio_turn_id is not None:
+                            chunk_id = next_playback_chunk_id
+                            next_playback_chunk_id += 1
+                            started_playback_chunk_ids.append(chunk_id)
+                            await _send_playback_telemetry(
+                                websocket,
+                                event_type="playback_started",
+                                turn_id=active_audio_turn_id,
+                                chunk_id=chunk_id,
+                                started_at=started_at,
+                                now=now,
+                            )
                         continue
                     try:
                         payload = json.loads(message)
                     except json.JSONDecodeError:
-                        recorder.events.append(
+                        target_events = (
+                            recorder.events
+                            if recorder is not None
+                            else conversation_recorder.events
+                        )
+                        target_events.append(
                             {
                                 "elapsed_ms": _elapsed_ms(started_at, now),
                                 "type": "invalid_json",
@@ -250,45 +364,94 @@ async def run_ws_voice_latency(
                         )
                         continue
                     if isinstance(payload, dict):
-                        recorder.observe_json(payload, now=now)
-                        if payload.get("type") == "reply_done":
-                            done.set()
+                        if recorder is not None:
+                            recorder.observe_json(payload, now=now)
+                            event_type = payload.get("type")
+                            if event_type == "audio_start":
+                                turn_id = payload.get("turn_id")
+                                active_audio_turn_id = turn_id if isinstance(turn_id, str) else None
+                                next_playback_chunk_id = 1
+                                started_playback_chunk_ids = []
+                            elif (
+                                event_type == "audio_end"
+                                and playback_telemetry
+                                and active_audio_turn_id is not None
+                            ):
+                                for chunk_id in started_playback_chunk_ids:
+                                    await _send_playback_telemetry(
+                                        websocket,
+                                        event_type="playback_ended",
+                                        turn_id=active_audio_turn_id,
+                                        chunk_id=chunk_id,
+                                        started_at=started_at,
+                                        now=now,
+                                    )
+                                active_audio_turn_id = None
+                                started_playback_chunk_ids = []
+                            if payload.get("type") == "reply_done":
+                                turn_done.set()
+                        else:
+                            conversation_recorder.observe_session_json(payload, now=now)
             except websockets.exceptions.ConnectionClosed as exc:
-                recorder.events.append(
-                    {
-                        "elapsed_ms": _elapsed_ms(started_at, time.perf_counter()),
-                        "type": "connection_closed",
-                        "payload": {"code": exc.code, "reason": exc.reason},
-                    }
+                conversation_recorder.observe_connection_closed(
+                    code=exc.code,
+                    reason=exc.reason,
+                    now=time.perf_counter(),
                 )
-                done.set()
+                turn_done.set()
 
         receive_task = asyncio.create_task(receive_loop())
-        recorder.mark("audio_send_started", time.perf_counter())
         try:
-            last_chunk_was_voice = False
-            for chunk in chunks:
-                if last_chunk_was_voice and not chunk.is_voice:
+            for turn_position, turn in enumerate(turns):
+                turn_done.clear()
+                recorder = WsLatencyRecorder(started_at=started_at)
+                recorder.mark("connected", connected_at)
+                recorder.mark("turn_started", time.perf_counter())
+                active_recorder = recorder
+                recorder.mark("audio_send_started", time.perf_counter())
+                last_chunk_was_voice = False
+                for chunk in turn.chunks:
+                    if last_chunk_was_voice and not chunk.is_voice:
+                        recorder.mark("last_voice_chunk_sent", time.perf_counter())
+                    await websocket.send(chunk.to_wire_bytes())
+                    last_chunk_was_voice = chunk.is_voice
+                    if realtime:
+                        await asyncio.sleep(chunk.samples.size / sample_rate)
+                if last_chunk_was_voice:
                     recorder.mark("last_voice_chunk_sent", time.perf_counter())
-                await websocket.send(chunk.to_wire_bytes())
-                last_chunk_was_voice = chunk.is_voice
-                if realtime:
-                    await asyncio.sleep(chunk.samples.size / sample_rate)
-            if last_chunk_was_voice:
-                recorder.mark("last_voice_chunk_sent", time.perf_counter())
-            recorder.mark("silence_send_completed", time.perf_counter())
-            try:
-                await asyncio.wait_for(done.wait(), timeout=timeout_sec)
-            except TimeoutError:
-                recorder.mark("timeout", time.perf_counter())
+                recorder.mark("silence_send_completed", time.perf_counter())
+                try:
+                    await asyncio.wait_for(turn_done.wait(), timeout=timeout_sec)
+                except TimeoutError:
+                    recorder.mark("timeout", time.perf_counter())
+                turn_request = {
+                    **request,
+                    "turn_index": turn.index,
+                    "text": turn.text,
+                    "voice_chunks": sum(1 for chunk in turn.chunks if chunk.is_voice),
+                    "silence_chunks": sum(1 for chunk in turn.chunks if not chunk.is_voice),
+                }
+                turn_summaries.append(recorder.to_summary(request=turn_request))
+                active_recorder = None
+                if recorder.timestamps.get("timeout") is not None:
+                    break
+                if inter_turn_pause_ms > 0 and turn_position < len(turns) - 1:
+                    await asyncio.sleep(inter_turn_pause_ms / 1000)
         finally:
+            active_recorder = None
             with suppress(websockets.exceptions.ConnectionClosed):
                 await websocket.send(json.dumps({"type": "client_stop"}))
             receive_task.cancel()
             with suppress(asyncio.CancelledError):
                 await receive_task
 
-    summary = recorder.to_summary(request=request)
+    summary = {
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "request": request,
+        "ok": all(turn.get("ok") for turn in turn_summaries) and bool(turn_summaries),
+        "turns": turn_summaries,
+        "session_events": conversation_recorder.events,
+    }
     if output_path is not None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(
@@ -313,6 +476,31 @@ def _elapsed_ms(started_at: float, now: float) -> float:
     return round((now - started_at) * 1000, 1)
 
 
+async def _send_playback_telemetry(
+    websocket,
+    *,
+    event_type: str,
+    turn_id: str,
+    chunk_id: int,
+    started_at: float,
+    now: float,
+) -> None:
+    elapsed_sec = now - started_at
+    await websocket.send(
+        json.dumps(
+            {
+                "type": event_type,
+                "turn_id": turn_id,
+                "chunk_id": chunk_id,
+                "scheduled_audio_time": elapsed_sec,
+                "sent_audio_time": elapsed_sec,
+                "audio_context_time": elapsed_sec,
+                "performance_now_ms": _elapsed_ms(started_at, now),
+            }
+        )
+    )
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -322,9 +510,22 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--url", default="ws://127.0.0.1:8000/ws")
     parser.add_argument("--text", default=DEFAULT_TEXT)
+    parser.add_argument(
+        "--scenario",
+        choices=("single", "three-turn"),
+        default="single",
+        help="Use a built-in conversation scenario unless --turn-text is provided.",
+    )
+    parser.add_argument(
+        "--turn-text",
+        action="append",
+        default=[],
+        help="One user utterance for a conversation turn. Repeat for multi-turn smoke.",
+    )
     parser.add_argument("--voice", default="Kyoko")
     parser.add_argument("--rate", type=int, default=180)
     parser.add_argument("--silence-ms", type=int, default=1200)
+    parser.add_argument("--inter-turn-pause-ms", type=int, default=1500)
     parser.add_argument("--timeout-sec", type=float, default=90.0)
     parser.add_argument("--output", type=Path, default=_default_output_path())
     parser.add_argument(
@@ -338,30 +539,63 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Optional path to keep the generated 16kHz mono WAV input.",
     )
+    parser.add_argument(
+        "--no-playback-telemetry",
+        action="store_true",
+        help="Do not emulate browser playback_started/playback_ended telemetry.",
+    )
     return parser.parse_args()
+
+
+def conversation_texts_from_args(args: argparse.Namespace) -> list[str]:
+    if args.turn_text:
+        return [str(text) for text in args.turn_text]
+    if args.scenario == "three-turn":
+        return list(DEFAULT_THREE_TURN_TEXTS)
+    return [str(args.text)]
 
 
 async def _amain() -> int:
     args = _parse_args()
+    texts = conversation_texts_from_args(args)
     with tempfile.TemporaryDirectory(prefix="tomoko-ws-latency-") as temp_dir:
-        wav_path = args.keep_input_wav or Path(temp_dir) / "input.wav"
-        generate_say_wav(text=args.text, voice=args.voice, rate=args.rate, output_path=wav_path)
-        samples = load_wav_float32(wav_path)
-        chunks = build_audio_chunks(samples, silence_ms=args.silence_ms)
-        summary = await run_ws_voice_latency(
+        turns: list[VoiceTurn] = []
+        for index, text in enumerate(texts, start=1):
+            wav_path = _turn_wav_path(args.keep_input_wav, temp_dir=Path(temp_dir), index=index)
+            generate_say_wav(text=text, voice=args.voice, rate=args.rate, output_path=wav_path)
+            samples = load_wav_float32(wav_path)
+            turns.append(
+                VoiceTurn(
+                    index=index,
+                    text=text,
+                    chunks=build_audio_chunks(samples, silence_ms=args.silence_ms),
+                )
+            )
+        summary = await run_ws_voice_conversation_latency(
             url=args.url,
-            chunks=chunks,
-            text=args.text,
+            turns=turns,
             voice=args.voice,
             realtime=not args.no_realtime,
             timeout_sec=args.timeout_sec,
             output_path=args.output,
+            playback_telemetry=not args.no_playback_telemetry,
+            inter_turn_pause_ms=args.inter_turn_pause_ms,
         )
-    print(json.dumps(summary["metrics_ms"], ensure_ascii=False, indent=2))
+    for turn in summary["turns"]:
+        print(f"turn {turn['request']['turn_index']}: {turn['request']['text']}")
+        print(json.dumps(turn["metrics_ms"], ensure_ascii=False, indent=2))
+        print(f"  transcript: {turn.get('transcript_text')}")
+        print(f"  reply: {turn.get('reply_text')}")
     print(f"artifact: {args.output}")
-    print(f"transcript: {summary.get('transcript_text')}")
-    print(f"reply: {summary.get('reply_text')}")
     return 0 if summary["ok"] else 1
+
+
+def _turn_wav_path(base_path: Path | None, *, temp_dir: Path, index: int) -> Path:
+    if base_path is None:
+        return temp_dir / f"input-{index}.wav"
+    if index == 1:
+        return base_path
+    return base_path.with_name(f"{base_path.stem}-turn-{index}{base_path.suffix}")
 
 
 def main() -> None:

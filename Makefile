@@ -30,7 +30,9 @@ SYSTEM_METRICS_COMMAND ?= mactop
 SYSTEM_METRICS_INTERVAL_SEC ?= 2
 WS_LATENCY_URL ?= ws://$(HOST):$(PORT)/ws
 WS_LATENCY_TEXT ?= トモコ、短く返事して。
+WS_LATENCY_SCENARIO ?= three-turn
 WS_LATENCY_SILENCE_MS ?= 1200
+WS_LATENCY_INTER_TURN_PAUSE_MS ?= 1500
 WORLD_OBSERVATION_LOG_FILE ?= logs/world-observations.log
 WORLD_OBSERVATION_WORK ?= informations/work
 WORLD_OBSERVATION_ARCHIVED ?= informations/archived
@@ -296,7 +298,7 @@ smoke-research-session:
 	mise exec -- uv run python _tools/smoke_research_tomoro_session_flow.py
 
 smoke-ws-voice-latency:
-	mise exec -- uv run python _tools/smoke_ws_voice_latency.py --url $(WS_LATENCY_URL) --text "$(WS_LATENCY_TEXT)" --silence-ms $(WS_LATENCY_SILENCE_MS)
+	mise exec -- uv run python _tools/smoke_ws_voice_latency.py --url $(WS_LATENCY_URL) --text "$(WS_LATENCY_TEXT)" --scenario $(WS_LATENCY_SCENARIO) --silence-ms $(WS_LATENCY_SILENCE_MS) --inter-turn-pause-ms $(WS_LATENCY_INTER_TURN_PAUSE_MS)
 
 log-report:
 	mise exec -- uv run python _tools/analyze_server_debug_log.py --input $(TOMOKO_DEBUG_LOG_FILE) --output logs/server-debug-report.html
