@@ -4659,3 +4659,26 @@ dflash prefix cache hit も turn3 以降で継続した。
 context elapsed は 10 recent turns 付近で 20.28〜21.17ms と境界を少し越えることがある。
 ただし recent turns は落ちていないため、現時点では 20ms policy を維持し、
 必要なら schema ensure の migration 化や startup pool warm-up で初回 jitter をさらに削る。
+
+### 確定した判断: calendar/task context は active session 中だけ session scoped cache する
+2026-06-07 に `calendar_events` と `task_ledger` を session scoped cache にした。
+これは通常の TTL cache ではなく、`active_session_id` が存在する時だけ session_id を key に含めて保持する cache である。
+
+`active_session_id=None` の ambient / startup warm-up / session 外 context build では、従来の TTL cache を使う。
+会話外の calendar/task snapshot を無期限に持たないためである。
+active session 中は `calendar_events` / `task_ledger` を session cache から読む。
+session_id が変わると session cache は prune され、key にも session_id が含まれるため、
+await 中に別 session の build が走っても別 session の値を誤用しない。
+
+`same_session_turns` は引き続き cache しない。
+会話中に毎 turn 増え、dflash prefix cache と意味論の両方に直結するためである。
+`task_ledger` は会話中に Tomoko 自身が作成/完了することがあるので、
+`task_ledger_update_finished` が `created` / `completed` になった時に
+`task_ledger` session cache を invalidate する。
+
+実DB microbench では、同一 session の deep context build で
+1回目 19.317ms、2回目 0.117ms、3回目 0.090ms になった。
+2回目以降は `calendar_events=True` / `task_ledger=True` の cache hit である。
+session_id を変えると 10.487ms に戻り、両 source とも cache miss になった。
+これにより「会話中は予定/タスクを持つ」体感 latency benefit と、
+session boundary を越えない安全性を両立する。

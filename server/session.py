@@ -902,6 +902,15 @@ class TomoroSession:
     def _set_start_reason(self, reason: StartReason) -> None:
         self._last_start_reason = reason
 
+    def _invalidate_context_session_cache_source(self, source: str) -> None:
+        builder = self.context_snapshot_builder
+        if builder is None:
+            return
+        invalidate = getattr(builder, "invalidate_session_cache_source", None)
+        if invalidate is None:
+            return
+        invalidate(source, session_id=self.active_conversation_session_id)
+
     def _new_research_request_id(self) -> str:
         self._research_request_sequence += 1
         return f"research-{self._research_request_sequence}"
@@ -992,6 +1001,8 @@ class TomoroSession:
             if result.status == "needs_confirmation"
             else "task_ledger_update_skipped"
         )
+        if event_type == "task_ledger_update_recorded":
+            self._invalidate_context_session_cache_source("task_ledger")
         return self._transition_result(
             event_type,
             payload={

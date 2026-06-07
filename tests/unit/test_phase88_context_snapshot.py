@@ -158,6 +158,28 @@ class FakeTaskLedgerStore:
         return self.entries[:limit]
 
 
+class CountingCalendarStore(InMemoryCalendarEventStore):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[tuple[datetime, int]] = []
+
+    async def read_context_events(
+        self,
+        *,
+        now: datetime,
+        days_before: int,
+        days_ahead: int,
+        limit: int,
+    ) -> list[CalendarEvent]:
+        self.calls.append((now, limit))
+        return await super().read_context_events(
+            now=now,
+            days_before=days_before,
+            days_ahead=days_ahead,
+            limit=limit,
+        )
+
+
 class FakeSummaryStore:
     def __init__(self) -> None:
         self.session_id = uuid4()
@@ -447,6 +469,80 @@ async def test_deep_snapshot_reads_all_future_30_day_calendar_context() -> None:
 
 
 @pytest.mark.unit
+async def test_calendar_context_is_cached_for_active_session() -> None:
+    now = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
+    session_id = uuid4()
+    calendar_store = CountingCalendarStore()
+    await calendar_store.replace_source_events(
+        source_id="gcal",
+        events=[_calendar_event("セッション中の予定", start_time=now + timedelta(hours=9))],
+    )
+    builder = ContextSnapshotBuilder(
+        calendar_store=calendar_store,
+        now_provider=lambda: now,
+    )
+    policy = ContextBuildPolicy.for_depth("deep")
+
+    first_snapshot = await builder.build(
+        text="今日の予定ある？",
+        speaker=None,
+        device_id="local",
+        active_session_id=session_id,
+        policy=policy,
+    )
+    second_snapshot = await builder.build(
+        text="さっきの予定もう一回",
+        speaker=None,
+        device_id="local",
+        active_session_id=session_id,
+        policy=policy,
+    )
+
+    assert len(calendar_store.calls) == 1
+    assert [event.summary for event in second_snapshot.calendar_events] == [
+        "セッション中の予定"
+    ]
+    assert first_snapshot.trace.cache_hits["calendar_events"] is False
+    assert second_snapshot.trace.cache_hits["calendar_events"] is True
+    assert second_snapshot.trace.cache_entries["calendar_events"].ttl_ms == -1
+
+
+@pytest.mark.unit
+async def test_session_context_cache_misses_after_session_id_changes() -> None:
+    now = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
+    first_session_id = uuid4()
+    second_session_id = uuid4()
+    calendar_store = CountingCalendarStore()
+    await calendar_store.replace_source_events(
+        source_id="gcal",
+        events=[_calendar_event("別セッションの予定", start_time=now + timedelta(hours=9))],
+    )
+    builder = ContextSnapshotBuilder(
+        calendar_store=calendar_store,
+        now_provider=lambda: now,
+    )
+    policy = ContextBuildPolicy.for_depth("deep")
+
+    await builder.build(
+        text="今日の予定ある？",
+        speaker=None,
+        device_id="local",
+        active_session_id=first_session_id,
+        policy=policy,
+    )
+    second_snapshot = await builder.build(
+        text="新しい会話で予定ある？",
+        speaker=None,
+        device_id="local",
+        active_session_id=second_session_id,
+        policy=policy,
+    )
+
+    assert len(calendar_store.calls) == 2
+    assert second_snapshot.trace.cache_hits["calendar_events"] is False
+
+
+@pytest.mark.unit
 async def test_deep_snapshot_reads_research_result_summaries() -> None:
     builder = ContextSnapshotBuilder(
         embedding_backend=FakeEmbeddingBackend(),  # type: ignore[arg-type]
@@ -518,6 +614,70 @@ async def test_fast_snapshot_reads_top_active_task_ledger_entries() -> None:
     ]
     assert snapshot.trace.included_counts["task_ledger"] == 10
     assert "task_ledger" in snapshot.trace.stage_timings_ms
+
+
+@pytest.mark.unit
+async def test_task_ledger_is_cached_for_active_session_until_invalidated() -> None:
+    session_id = uuid4()
+    entries = [
+        TaskLedgerEntry(
+            task_id="task-1",
+            title="最初のタスク",
+            status="active",
+            priority=10,
+            created_at=datetime(2026, 6, 2, 9, 0, tzinfo=UTC),
+            updated_at=datetime(2026, 6, 2, 9, 0, tzinfo=UTC),
+        )
+    ]
+    store = FakeTaskLedgerStore(entries)
+    builder = ContextSnapshotBuilder(task_ledger_store=store)
+    policy = ContextBuildPolicy.for_depth("fast")
+
+    first_snapshot = await builder.build(
+        text="タスクある？",
+        speaker=None,
+        device_id="browser",
+        active_session_id=session_id,
+        policy=policy,
+    )
+    store.entries = [
+        TaskLedgerEntry(
+            task_id="task-2",
+            title="更新後のタスク",
+            status="active",
+            priority=20,
+            created_at=datetime(2026, 6, 2, 9, 1, tzinfo=UTC),
+            updated_at=datetime(2026, 6, 2, 9, 1, tzinfo=UTC),
+        )
+    ]
+    cached_snapshot = await builder.build(
+        text="もう一回タスクある？",
+        speaker=None,
+        device_id="browser",
+        active_session_id=session_id,
+        policy=policy,
+    )
+    builder.invalidate_session_cache_source("task_ledger", session_id=session_id)
+    refreshed_snapshot = await builder.build(
+        text="更新後のタスクある？",
+        speaker=None,
+        device_id="browser",
+        active_session_id=session_id,
+        policy=policy,
+    )
+
+    assert store.calls == [10, 10]
+    assert [task.title for task in first_snapshot.task_ledger_entries] == [
+        "最初のタスク"
+    ]
+    assert [task.title for task in cached_snapshot.task_ledger_entries] == [
+        "最初のタスク"
+    ]
+    assert [task.title for task in refreshed_snapshot.task_ledger_entries] == [
+        "更新後のタスク"
+    ]
+    assert cached_snapshot.trace.cache_hits["task_ledger"] is True
+    assert refreshed_snapshot.trace.cache_hits["task_ledger"] is False
 
 
 @pytest.mark.unit

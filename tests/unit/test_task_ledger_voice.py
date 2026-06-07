@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import numpy as np
 import pytest
@@ -14,6 +15,7 @@ from server.shared.task_ledger import (
     TaskLedgerCommandRunner,
     TaskLedgerIntent,
     TaskLedgerIntentDetector,
+    TaskLedgerUpdateResult,
     make_task_id,
 )
 
@@ -55,6 +57,19 @@ class FakeThinkingMode:
         yield ThinkingEvent(type="emotion", value="thinking")
         yield ThinkingEvent(type="text_delta", value="了解。")
         yield ThinkingEvent(type="done", value="")
+
+
+class RecordingContextBuilder:
+    def __init__(self) -> None:
+        self.invalidated: list[tuple[str, object]] = []
+
+    def invalidate_session_cache_source(
+        self,
+        source: str,
+        *,
+        session_id: object = None,
+    ) -> None:
+        self.invalidated.append((source, session_id))
 
 
 def _transcript(text: str) -> Transcript:
@@ -257,4 +272,31 @@ async def test_voice_task_ledger_request_dispatches_background_command_and_ack_r
     assert "タスクとして受け取った" in thinking_mode.response_directives[0]
     assert [task.title for task in await store.read_active_tasks(limit=10)] == [
         "ログ確認"
+    ]
+
+
+@pytest.mark.unit
+async def test_task_ledger_update_recorded_invalidates_context_cache() -> None:
+    context_builder = RecordingContextBuilder()
+    session = _session(context_snapshot_builder=context_builder)
+    session.active_conversation_session_id = uuid4()
+
+    result = await session.post_event(
+        SessionEvent(
+            type="task_ledger_update_finished",
+            payload={
+                "request_id": "task-ledger-1",
+                "result": TaskLedgerUpdateResult(
+                    status="created",
+                    operation="create",
+                    task_id="task-1",
+                    title="ログ確認",
+                ),
+            },
+        )
+    )
+
+    assert result.emissions[0].type == "task_ledger_update_recorded"
+    assert context_builder.invalidated == [
+        ("task_ledger", session.active_conversation_session_id)
     ]

@@ -127,6 +127,8 @@ class ContextSnapshotBuilder:
         "research_results": 30000,
         "task_ledger": 2000,
     }
+    SESSION_SCOPED_CACHE_SOURCES = frozenset({"calendar_events", "task_ledger"})
+    SESSION_SCOPED_TTL_MS = -1
 
     def __init__(
         self,
@@ -156,6 +158,8 @@ class ContextSnapshotBuilder:
             **(cache_ttl_ms or {}),
         }
         self._cache: dict[tuple[Any, ...], _CacheEntry] = {}
+        self._session_cache: dict[tuple[Any, ...], _CacheEntry] = {}
+        self._session_cache_session_id: UUID | None = None
 
     async def build(
         self,
@@ -167,6 +171,8 @@ class ContextSnapshotBuilder:
         policy: ContextBuildPolicy | None = None,
     ) -> TomokoContextSnapshot:
         del speaker, device_id
+        session_id_at_start = active_session_id
+        self._sync_session_cache_scope(session_id_at_start)
         policy = policy or ContextBuildPolicy.for_depth("fast")
         started_at = time.perf_counter()
         stage_timings_ms: dict[str, float] = {}
@@ -365,6 +371,7 @@ class ContextSnapshotBuilder:
                             policy.max_calendar_events,
                             calendar_now.date().isoformat(),
                         ),
+                        session_id=session_id_at_start,
                         cache_entries=cache_entries,
                         loader=lambda: self.calendar_store.read_context_events(
                             now=calendar_now,
@@ -420,6 +427,7 @@ class ContextSnapshotBuilder:
                     lambda: self._cached_source(
                         source="task_ledger",
                         key=("task_ledger", policy.depth, policy.max_task_ledger_entries),
+                        session_id=session_id_at_start,
                         cache_entries=cache_entries,
                         loader=lambda: self.task_ledger_store.read_active_tasks(
                             limit=policy.max_task_ledger_entries,
@@ -598,6 +606,38 @@ class ContextSnapshotBuilder:
             task_ledger_entries=task_ledger_entries,
         )
 
+    def invalidate_session_cache_source(
+        self,
+        source: str,
+        *,
+        session_id: UUID | None = None,
+    ) -> None:
+        if source not in self.SESSION_SCOPED_CACHE_SOURCES:
+            return
+        prefix = ("session", session_id, source) if session_id is not None else None
+        self._session_cache = {
+            key: entry
+            for key, entry in self._session_cache.items()
+            if not (
+                key[0] == "session"
+                and key[2] == source
+                and (prefix is None or key[:3] == prefix)
+            )
+        }
+
+    def _sync_session_cache_scope(self, active_session_id: UUID | None) -> None:
+        if active_session_id == self._session_cache_session_id:
+            return
+        self._session_cache_session_id = active_session_id
+        if active_session_id is None:
+            self._session_cache.clear()
+            return
+        self._session_cache = {
+            key: entry
+            for key, entry in self._session_cache.items()
+            if key[:2] == ("session", active_session_id)
+        }
+
     async def _cached_source(
         self,
         *,
@@ -605,7 +645,17 @@ class ContextSnapshotBuilder:
         key: tuple[Any, ...],
         cache_entries: dict[str, ContextCacheTrace],
         loader: Callable[[], Awaitable[Any]],
+        session_id: UUID | None = None,
     ) -> Any:
+        if source in self.SESSION_SCOPED_CACHE_SOURCES and session_id is not None:
+            return await self._session_cached_source(
+                source=source,
+                key=key,
+                session_id=session_id,
+                cache_entries=cache_entries,
+                loader=loader,
+            )
+
         ttl_ms = self._cache_ttl_ms[source]
         if ttl_ms <= 0:
             cache_entries[source] = ContextCacheTrace(
@@ -637,6 +687,39 @@ class ContextSnapshotBuilder:
             value=value,
             cached_at=time.monotonic(),
             ttl_ms=ttl_ms,
+        )
+        return value
+
+    async def _session_cached_source(
+        self,
+        *,
+        source: str,
+        key: tuple[Any, ...],
+        session_id: UUID,
+        cache_entries: dict[str, ContextCacheTrace],
+        loader: Callable[[], Awaitable[Any]],
+    ) -> Any:
+        cache_key = ("session", session_id, *key)
+        now = time.monotonic()
+        entry = self._session_cache.get(cache_key)
+        if entry is not None:
+            cache_entries[source] = ContextCacheTrace(
+                hit=True,
+                age_ms=(now - entry.cached_at) * 1000,
+                ttl_ms=self.SESSION_SCOPED_TTL_MS,
+            )
+            return entry.value
+
+        cache_entries[source] = ContextCacheTrace(
+            hit=False,
+            age_ms=None,
+            ttl_ms=self.SESSION_SCOPED_TTL_MS,
+        )
+        value = await loader()
+        self._session_cache[cache_key] = _CacheEntry(
+            value=value,
+            cached_at=time.monotonic(),
+            ttl_ms=self.SESSION_SCOPED_TTL_MS,
         )
         return value
 
