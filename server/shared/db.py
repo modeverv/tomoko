@@ -3,8 +3,7 @@ from __future__ import annotations
 from typing import Protocol
 from uuid import UUID
 
-import psycopg
-
+from server.shared.db_pool import pooled_connection
 from server.shared.models import (
     AttentionMode,
     ConversationLogStatus,
@@ -81,7 +80,7 @@ class PostgresAmbientLogWriter:
         attended: bool,
         participation_mode: ParticipationMode,
     ) -> None:
-        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+        async with pooled_connection(self.dsn) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -137,7 +136,7 @@ class PostgresConversationLogWriter:
     async def _ensure_prompt_content_schema(self) -> None:
         if self.dsn in self._prompt_content_schema_ensured_dsns:
             return
-        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+        async with pooled_connection(self.dsn) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -154,7 +153,7 @@ class PostgresConversationLogWriter:
         participation_mode: ParticipationMode,
         conversation_session_id: UUID | None = None,
     ) -> UUID | None:
-        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+        async with pooled_connection(self.dsn) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -192,7 +191,7 @@ class PostgresConversationLogWriter:
         llm_prompt_content: str,
     ) -> None:
         await self._ensure_prompt_content_schema()
-        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+        async with pooled_connection(self.dsn) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -213,7 +212,7 @@ class PostgresConversationLogWriter:
         status: ConversationLogStatus = "completed",
         conversation_session_id: UUID | None = None,
     ) -> UUID | None:
-        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+        async with pooled_connection(self.dsn) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -246,7 +245,7 @@ class PostgresConversationLogWriter:
 
     async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]:
         await self._ensure_prompt_content_schema()
-        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+        async with pooled_connection(self.dsn) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -282,7 +281,7 @@ class PostgresConversationLogWriter:
         limit: int,
     ) -> list[ConversationTurn]:
         await self._ensure_prompt_content_schema()
-        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+        async with pooled_connection(self.dsn) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -318,7 +317,7 @@ class PostgresConversationSessionStore:
         self.dsn = dsn
 
     async def create_session(self, *, device_id: str, start_reason: str) -> UUID:
-        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+        async with pooled_connection(self.dsn) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -338,7 +337,7 @@ class PostgresConversationSessionStore:
                 return row[0]
 
     async def close_session(self, session_id: UUID, *, end_reason: str) -> None:
-        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+        async with pooled_connection(self.dsn) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """

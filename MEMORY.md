@@ -4635,3 +4635,27 @@ same-session turns は会話中に毎 turn 増える source なので process-lo
 また fast context budget は 20ms から 50ms へ広げる。
 これは DB read を数十 ms 許容してでも baseline 文脈を落とさないためであり、
 dflash prefill で数秒を削る施策とのトレードオフとして妥当と判断する。
+
+### 確定した判断: PostgreSQL hot path は psycopg_pool で connection reuse する
+2026-06-07 に same-session context read の遅さを切り分けた。
+`conversation_logs_session_recorded_at_idx` は使われており、SQL execution は 0.077ms、
+同じ connection を再利用した query でも avg 0.469ms / max 1.899ms だった。
+
+このため「DB query が遅い」「index が効いていない」という見方を否定する。
+既存の `PostgresConversationLogWriter.read_recent_turns_for_session()` は毎回
+`psycopg.AsyncConnection.connect()` していたため、初回 24.525ms、
+以後も 7.2〜9.6ms が app 側 connection cost として context build に見えていた。
+
+今後の PostgreSQL hot path は、自前 pool ではなく公式の `psycopg_pool.AsyncConnectionPool` を使う。
+Tomoko では DSN ごとに process-local pool を共有し、stores は `pooled_connection(dsn)` 経由で connection を借りる。
+これは権威ある状態を cache するものではなく、DB connection の再利用だけを行う。
+
+pool 化後の同じ writer microbench は、初回 pool open 込み 16.378ms、
+warm avg 0.936ms / max 1.217ms になった。
+この結果を受け、直前に 50ms へ広げた fast context budget は 20ms へ戻す。
+runtime 6 turn simulation でも same-session recent turns は 12 / 2 / 4 / 6 / 8 / 10 と維持され、
+dflash prefix cache hit も turn3 以降で継続した。
+
+context elapsed は 10 recent turns 付近で 20.28〜21.17ms と境界を少し越えることがある。
+ただし recent turns は落ちていないため、現時点では 20ms policy を維持し、
+必要なら schema ensure の migration 化や startup pool warm-up で初回 jitter をさらに削る。

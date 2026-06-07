@@ -2983,3 +2983,18 @@ same-session turns は会話中に毎 turn 増えるため、process-local TTL c
 fast context の目標 budget は 20ms から 50ms へ広げる。
 baseline 文脈を timeout で落とすと意味論と prefix cache の両方を壊すため、
 DB read の数十 ms より dflash prefill の秒単位削減を優先する。
+
+## 2026-06-07 追記: PostgreSQL hot path は connection pool を使う
+
+毎回 `psycopg.AsyncConnection.connect()` して context build / conversation log write を行う方針は否定する。
+same-session context read の SQL は index scan で sub-ms だが、connection 作成込みでは 7〜10ms 程度まで膨らむ。
+
+PostgreSQL stores は公式 `psycopg_pool.AsyncConnectionPool` を DSN ごとに共有し、
+`pooled_connection(dsn)` から connection を借りる。
+これは DB query result や TomoroSession state を cache する仕組みではない。
+権威ある状態は引き続き PostgreSQL / TomoroSession が持ち、pool は transport cost だけを減らす。
+
+pool 化後の same-session writer read は warm avg 0.936ms / max 1.217ms まで下がった。
+そのため fast context budget は 50ms 方針を更新し、20ms に戻す。
+もし今後 20ms 境界で occasional timeout が出る場合は、budget を広げる前に
+schema ensure の migration 化、startup pool warm-up、stage timing の分解を優先する。
