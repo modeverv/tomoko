@@ -42,6 +42,9 @@ CREATE TABLE IF NOT EXISTS conversation_logs (
 ALTER TABLE conversation_logs
     ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed';
 
+ALTER TABLE conversation_logs
+    ADD COLUMN IF NOT EXISTS llm_prompt_content TEXT NULL;
+
 CREATE INDEX IF NOT EXISTS conversation_logs_recorded_at_idx
     ON conversation_logs (recorded_at DESC);
 

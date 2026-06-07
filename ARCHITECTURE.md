@@ -2949,3 +2949,37 @@ before avg first content 5142.1ms / total 7715.7ms に対し、
 after avg first content 4697.1ms / total 7064.3ms だった。
 意味破綻は見られなかったため、この構造を 26B conversation hot path の既定とする。
 ただし turn 別 latency は揺れるため、最終体感は `make server-debug` の first audio で確認する。
+
+## 2026-06-07 追記: dflash prefix cache のため LLM user prompt content を派生保存する
+
+dflash の prefix cache は OpenAI-compatible payload そのものではなく、
+chat template 展開後の token prefix が一致した時に効く。
+Tomoko では current user message を `CURRENT USER UTTERANCE` / `TURN CONTEXT` で包む一方、
+次 turn の履歴では同じ user 発話を raw transcript として送っていたため、
+前回 prompt が次回 prompt の prefix にならなかった。
+
+この状態を否定する。
+`conversation_logs.transcript` は会話原本として raw transcript のまま保持し、
+LLM に実際に渡した user message content は `conversation_logs.llm_prompt_content` へ
+派生データとして保存する。
+`ThinkFastMode` は過去 user turn に `llm_prompt_content` がある場合だけそれを履歴 content に使う。
+古い row や未保存 row では従来どおり raw transcript を使う。
+
+`llm_prompt_content` は会話原本、embedding 入力、ユーザー表示、記憶の source of truth ではない。
+目的は dflash prefix cache と prompt replayability であり、
+原本の意味論は `conversation_logs.transcript` が持つ。
+
+## 2026-06-07 追記: active session context は same-session を安定 prefix として扱う
+
+active conversation session の prompt context では、same-session turns を優先し、
+global recent turns による補完で prompt 先頭を揺らさない。
+補完数が turn ごとに 12 -> 10 -> 8 のように変化すると、
+前 turn prompt が次 turn prompt の prefix ではなくなり、dflash cache が外れるためである。
+
+session 開始直後など same-session turns が空の時だけ global recent turns を補助として使う。
+same-session turns が存在するなら、それだけを `ContextSnapshotBuilder.recent_turns` として返す。
+same-session turns は会話中に毎 turn 増えるため、process-local TTL cache の対象から外す。
+
+fast context の目標 budget は 20ms から 50ms へ広げる。
+baseline 文脈を timeout で落とすと意味論と prefix cache の両方を壊すため、
+DB read の数十 ms より dflash prefill の秒単位削減を優先する。

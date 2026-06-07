@@ -115,7 +115,7 @@ class ContextSnapshotBuilder:
         },
     }
     DEFAULT_CACHE_TTL_MS = {
-        "same_session_turns": 1000,
+        "same_session_turns": 0,
         "recent_turns": 3000,
         "session_summaries": 10000,
         "memory_hits": 5000,
@@ -607,6 +607,14 @@ class ContextSnapshotBuilder:
         loader: Callable[[], Awaitable[Any]],
     ) -> Any:
         ttl_ms = self._cache_ttl_ms[source]
+        if ttl_ms <= 0:
+            cache_entries[source] = ContextCacheTrace(
+                hit=False,
+                age_ms=None,
+                ttl_ms=ttl_ms,
+            )
+            return await loader()
+
         now = time.monotonic()
         entry = self._cache.get(key)
         if entry is not None:

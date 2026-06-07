@@ -10,6 +10,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -48,6 +49,19 @@ def _json_default(value: object) -> str:
     if isinstance(value, datetime):
         return value.isoformat()
     return str(value)
+
+
+async def _update_user_prompt_content(
+    log_writer: PostgresConversationLogWriter,
+    conversation_log_id: UUID | None,
+    content: str,
+) -> None:
+    if conversation_log_id is None:
+        return
+    await log_writer.update_user_turn_llm_prompt_content(
+        conversation_log_id,
+        llm_prompt_content=content,
+    )
 
 
 async def _run(args: argparse.Namespace) -> dict[str, Any]:
@@ -114,7 +128,24 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
             emotion: str | None = None
             reply_parts: list[str] = []
             started = time.perf_counter()
-            async for event in thinking_mode.think(backend, thinking_input):
+            user_conversation_log_id = await log_writer.write_user_turn(
+                transcript,
+                participation_mode="invited",
+                conversation_session_id=session_id,
+            )
+            async for event in thinking_mode.think_with_prompt_audit(
+                backend,
+                thinking_input,
+                current_user_content_audit=(
+                    lambda content, conversation_log_id=user_conversation_log_id: (
+                        _update_user_prompt_content(
+                            log_writer,
+                            conversation_log_id,
+                            content,
+                        )
+                    )
+                ),
+            ):
                 elapsed_ms = (time.perf_counter() - started) * 1000
                 if first_event_ms is None:
                     first_event_ms = elapsed_ms
@@ -130,11 +161,6 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
             reply_text = "".join(reply_parts).strip()
             emotion = emotion or "neutral"
 
-            await log_writer.write_user_turn(
-                transcript,
-                participation_mode="invited",
-                conversation_session_id=session_id,
-            )
             await log_writer.write_tomoko_turn(
                 text=reply_text,
                 emotion=emotion,

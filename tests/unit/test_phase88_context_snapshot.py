@@ -310,7 +310,7 @@ def _calendar_event(
 
 
 @pytest.mark.unit
-async def test_fast_snapshot_prefers_same_session_then_supplements_recent() -> None:
+async def test_fast_snapshot_uses_same_session_without_recent_supplement() -> None:
     old_turn = ConversationTurn(
         speaker="user",
         text="前の会話の話",
@@ -342,11 +342,10 @@ async def test_fast_snapshot_prefers_same_session_then_supplements_recent() -> N
     )
 
     assert [turn.text for turn in snapshot.recent_turns] == [
-        "前の会話の話",
         "今の会話の続き",
     ]
     assert snapshot.depth == "fast"
-    assert snapshot.trace.included_counts["recent_turns"] == 2
+    assert snapshot.trace.included_counts["recent_turns"] == 1
     assert snapshot.trace.timed_out is False
 
 

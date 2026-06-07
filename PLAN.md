@@ -8109,3 +8109,26 @@ live prompt の揺れを減らすため、current user utterance を先に置き
 - [x] 速度への影響を `_docs/latency.md` に記録する
 - [x] focused unit / ruff が通る
 - [x] full unit が通る
+
+## 2026-06-07 dflash live prefix cache restoration
+
+前 turn の user message を次 turn 履歴で raw transcript に戻す方針は否定する。
+会話原本の `transcript` は raw のまま残すが、LLM に実際に渡した user content は
+派生列 `llm_prompt_content` として保存し、次 turn の prompt 履歴で優先利用する。
+
+また active session 中に global recent turns を補完して prompt 先頭を揺らす方針も否定する。
+same-session turns が存在する時はそれだけを recent context として使い、
+session 内 prompt が turn ごとに前回 prompt の延長になる状態を狙う。
+
+### 完了条件
+
+- [x] raw dflash A/B で履歴 raw transcript が cache miss、wrapped history が cache hit になることを確認する
+- [x] `conversation_logs.llm_prompt_content` を追加し、既存 DB でも初回 read/update 時に列を ensure する
+- [x] `ThinkFastMode` が prior user turn の `llm_prompt_content` を履歴 content として使う
+- [x] `TomoroSession` が LLM 送信直前に current user content を同じ user log row へ保存する
+- [x] active session に same-session turns がある時は global recent turns で補完しない
+- [x] same-session turns は process-local TTL cache しない
+- [x] fast context budget を 50ms に広げ、baseline 文脈 timeout を避ける
+- [x] 実 config / 実 PostgreSQL / 実 dflash 26B runtime simulation で turn3以降の prefix cache hit を確認する
+- [x] 実 `/ws` three-turn smoke で意味破綻がなく turn3 の first audio が改善することを確認する
+- [x] focused unit / perf / ruff / full unit が通る

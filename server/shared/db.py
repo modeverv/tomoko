@@ -45,6 +45,13 @@ class ConversationLogWriter(Protocol):
         conversation_session_id: UUID | None = None,
     ) -> UUID | None: ...
 
+    async def update_user_turn_llm_prompt_content(
+        self,
+        conversation_log_id: UUID,
+        *,
+        llm_prompt_content: str,
+    ) -> None: ...
+
     async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]: ...
 
     async def read_recent_turns_for_session(
@@ -122,8 +129,23 @@ class NullAmbientLogWriter:
 
 
 class PostgresConversationLogWriter:
+    _prompt_content_schema_ensured_dsns: set[str] = set()
+
     def __init__(self, dsn: str) -> None:
         self.dsn = dsn
+
+    async def _ensure_prompt_content_schema(self) -> None:
+        if self.dsn in self._prompt_content_schema_ensured_dsns:
+            return
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    ALTER TABLE conversation_logs
+                    ADD COLUMN IF NOT EXISTS llm_prompt_content TEXT NULL
+                    """
+                )
+        self._prompt_content_schema_ensured_dsns.add(self.dsn)
 
     async def write_user_turn(
         self,
@@ -162,6 +184,25 @@ class PostgresConversationLogWriter:
                 )
                 row = await cur.fetchone()
                 return row[0] if row is not None else None
+
+    async def update_user_turn_llm_prompt_content(
+        self,
+        conversation_log_id: UUID,
+        *,
+        llm_prompt_content: str,
+    ) -> None:
+        await self._ensure_prompt_content_schema()
+        async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE conversation_logs
+                    SET llm_prompt_content = %s
+                    WHERE id = %s
+                      AND role = 'user'
+                    """,
+                    (llm_prompt_content, conversation_log_id),
+                )
 
     async def write_tomoko_turn(
         self,
@@ -204,11 +245,12 @@ class PostgresConversationLogWriter:
                 return row[0] if row is not None else None
 
     async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]:
+        await self._ensure_prompt_content_schema()
         async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT role, transcript, recorded_at, emotion
+                    SELECT role, transcript, recorded_at, emotion, llm_prompt_content
                     FROM conversation_logs
                     WHERE status = 'completed'
                     ORDER BY recorded_at DESC
@@ -219,7 +261,7 @@ class PostgresConversationLogWriter:
                 rows = await cur.fetchall()
 
         turns: list[ConversationTurn] = []
-        for role, transcript, recorded_at, emotion in reversed(rows):
+        for role, transcript, recorded_at, emotion, llm_prompt_content in reversed(rows):
             if role not in {"user", "tomoko"}:
                 continue
             turns.append(
@@ -228,6 +270,7 @@ class PostgresConversationLogWriter:
                     text=transcript,
                     timestamp=recorded_at,
                     emotion=emotion,
+                    llm_prompt_content=llm_prompt_content,
                 )
             )
         return turns
@@ -238,11 +281,12 @@ class PostgresConversationLogWriter:
         conversation_session_id: UUID,
         limit: int,
     ) -> list[ConversationTurn]:
+        await self._ensure_prompt_content_schema()
         async with await psycopg.AsyncConnection.connect(self.dsn) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT role, transcript, recorded_at, emotion
+                    SELECT role, transcript, recorded_at, emotion, llm_prompt_content
                     FROM conversation_logs
                     WHERE status = 'completed'
                       AND conversation_session_id = %s
@@ -254,7 +298,7 @@ class PostgresConversationLogWriter:
                 rows = await cur.fetchall()
 
         turns: list[ConversationTurn] = []
-        for role, transcript, recorded_at, emotion in reversed(rows):
+        for role, transcript, recorded_at, emotion, llm_prompt_content in reversed(rows):
             if role not in {"user", "tomoko"}:
                 continue
             turns.append(
@@ -263,6 +307,7 @@ class PostgresConversationLogWriter:
                     text=transcript,
                     timestamp=recorded_at,
                     emotion=emotion,
+                    llm_prompt_content=llm_prompt_content,
                 )
             )
         return turns
@@ -331,6 +376,15 @@ class NullConversationLogWriter:
         conversation_session_id: UUID | None = None,
     ) -> UUID | None:
         del text, emotion, device_id, status, conversation_session_id
+        return None
+
+    async def update_user_turn_llm_prompt_content(
+        self,
+        conversation_log_id: UUID,
+        *,
+        llm_prompt_content: str,
+    ) -> None:
+        del conversation_log_id, llm_prompt_content
         return None
 
     async def read_recent_turns(self, *, limit: int) -> list[ConversationTurn]:

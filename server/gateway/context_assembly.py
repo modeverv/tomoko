@@ -11,7 +11,7 @@ def assemble_recent_turns(
     limit: int,
 ) -> list[ConversationTurn]:
     same_session = drop_current_user_turn(same_session_turns, current_user_text)
-    if len(same_session) >= limit:
+    if same_session:
         return same_session[-limit:]
     recent = drop_current_user_turn(recent_turns, current_user_text)
     supplement_limit = limit - len(same_session)

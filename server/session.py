@@ -1571,6 +1571,7 @@ class TomoroSession:
                 start_reason=start_reason,
             )
             await self._transition_attention("engaged")
+            conversation_log_id: UUID | None = None
             if self.conversation_log_writer is not None:
                 conversation_log_id = await self._write_user_turn(
                     transcript,
@@ -1591,7 +1592,10 @@ class TomoroSession:
             await self._send_event({"type": "participation", "mode": decision.mode})
 
             if self.router is not None and self.thinking_mode is not None:
-                await self._start_reply_task(transcript)
+                await self._start_reply_task(
+                    transcript,
+                    user_conversation_log_id=conversation_log_id,
+                )
         else:
             if decision is not None:
                 logger.info(
@@ -1703,6 +1707,7 @@ class TomoroSession:
             start_reason=start_reason,
         )
         await self._transition_attention("engaged")
+        conversation_log_id: UUID | None = None
         if self.conversation_log_writer is not None:
             conversation_log_id = await self._write_user_turn(
                 transcript,
@@ -1732,6 +1737,7 @@ class TomoroSession:
             await self._start_reply_task(
                 transcript,
                 response_directive=_research_wait_response_directive(request),
+                user_conversation_log_id=conversation_log_id,
             )
         if reset_audio_input:
             self.vad_processor.reset()
@@ -1771,6 +1777,7 @@ class TomoroSession:
             start_reason=start_reason,
         )
         await self._transition_attention("engaged")
+        conversation_log_id: UUID | None = None
         if self.conversation_log_writer is not None:
             conversation_log_id = await self._write_user_turn(
                 transcript,
@@ -1800,6 +1807,7 @@ class TomoroSession:
             await self._start_reply_task(
                 transcript,
                 response_directive=_task_ledger_response_directive(intent),
+                user_conversation_log_id=conversation_log_id,
             )
         if reset_audio_input:
             self.vad_processor.reset()
@@ -1839,6 +1847,7 @@ class TomoroSession:
             start_reason=start_reason,
         )
         await self._transition_attention("engaged")
+        conversation_log_id: UUID | None = None
         if self.conversation_log_writer is not None:
             conversation_log_id = await self._write_user_turn(
                 transcript,
@@ -1868,6 +1877,7 @@ class TomoroSession:
             await self._start_reply_task(
                 transcript,
                 response_directive=_timer_alarm_response_directive(intent),
+                user_conversation_log_id=conversation_log_id,
             )
         if reset_audio_input:
             self.vad_processor.reset()
@@ -2468,6 +2478,7 @@ class TomoroSession:
         transcript: Transcript,
         *,
         response_directive: str | None = None,
+        user_conversation_log_id: UUID | None = None,
     ) -> None:
         if self.router is None or self.thinking_mode is None:
             return
@@ -2608,7 +2619,29 @@ class TomoroSession:
         self._tts_queue = tts_queue
         self._tts_worker_task = tts_worker
         try:
-            async for event in thinking_mode.think(backend, thinking_input):
+            think_with_prompt_audit = getattr(
+                thinking_mode,
+                "think_with_prompt_audit",
+                None,
+            )
+            if (
+                think_with_prompt_audit is not None
+                and user_conversation_log_id is not None
+            ):
+                event_stream = think_with_prompt_audit(
+                    backend,
+                    thinking_input,
+                    current_user_content_audit=lambda content: (
+                        self._update_user_turn_llm_prompt_content(
+                            user_conversation_log_id,
+                            llm_prompt_content=content,
+                        )
+                    ),
+                )
+            else:
+                event_stream = thinking_mode.think(backend, thinking_input)
+
+            async for event in event_stream:
                 for command in reply.handle_event(event):
                     if command.action == "emotion":
                         assert command.image is not None
@@ -3092,11 +3125,16 @@ class TomoroSession:
         transcript: Transcript,
         *,
         response_directive: str | None = None,
+        user_conversation_log_id: UUID | None = None,
     ) -> None:
         await self._cancel_reply_generation(status="cancelled")
         self._reply_cancel_status = None
         self._reply_task = asyncio.create_task(
-            self._run_reply_task(transcript, response_directive=response_directive)
+            self._run_reply_task(
+                transcript,
+                response_directive=response_directive,
+                user_conversation_log_id=user_conversation_log_id,
+            )
         )
 
     async def _run_reply_task(
@@ -3104,9 +3142,14 @@ class TomoroSession:
         transcript: Transcript,
         *,
         response_directive: str | None = None,
+        user_conversation_log_id: UUID | None = None,
     ) -> None:
         try:
-            await self._reply_to(transcript, response_directive=response_directive)
+            await self._reply_to(
+                transcript,
+                response_directive=response_directive,
+                user_conversation_log_id=user_conversation_log_id,
+            )
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -3575,6 +3618,26 @@ class TomoroSession:
         return await write_user_turn(
             transcript,
             participation_mode=participation_mode,
+        )
+
+    async def _update_user_turn_llm_prompt_content(
+        self,
+        conversation_log_id: UUID,
+        *,
+        llm_prompt_content: str,
+    ) -> None:
+        if self.conversation_log_writer is None:
+            return
+        update_prompt_content = getattr(
+            self.conversation_log_writer,
+            "update_user_turn_llm_prompt_content",
+            None,
+        )
+        if update_prompt_content is None:
+            return
+        await update_prompt_content(
+            conversation_log_id,
+            llm_prompt_content=llm_prompt_content,
         )
 
     async def _write_tomoko_turn(

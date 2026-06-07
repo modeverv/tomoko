@@ -1035,6 +1035,7 @@ class ConversationTurn:
     text: str
     timestamp: datetime
     emotion: str | None = None
+    llm_prompt_content: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1539,7 +1540,7 @@ class ContextBuildPolicy:
             case "fast":
                 return cls(
                     depth=depth,
-                    max_build_ms=20,
+                    max_build_ms=50,
                     max_prompt_tokens=1200,
                     max_same_session_turns=12,
                     max_recent_turns=12,

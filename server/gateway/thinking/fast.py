@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -47,6 +48,13 @@ STATIC_CONTEXT_USAGE_RULES = "\n".join(
         ),
     ]
 )
+
+
+@dataclass(frozen=True)
+class PreparedFastPrompt:
+    system_prompt: str
+    messages: list[dict[str, str]]
+    current_user_content: str
 
 
 class ThinkFastMode(ThinkingMode):
@@ -118,6 +126,26 @@ class ThinkFastMode(ThinkingMode):
             ]
         )
 
+    def prepare_prompt(self, thinking_input: ThinkingInput) -> PreparedFastPrompt:
+        messages = [
+            {
+                "role": "assistant" if turn.speaker == "tomoko" else "user",
+                "content": (
+                    turn.llm_prompt_content
+                    if turn.speaker == "user" and turn.llm_prompt_content
+                    else turn.text
+                ),
+            }
+            for turn in thinking_input.context
+        ]
+        current_user_content = self._build_current_user_message(thinking_input)
+        messages.append({"role": "user", "content": current_user_content})
+        return PreparedFastPrompt(
+            system_prompt=self.system_prompt,
+            messages=messages,
+            current_user_content=current_user_content,
+        )
+
     def _append_prompt_log(
         self,
         *,
@@ -150,17 +178,40 @@ class ThinkFastMode(ThinkingMode):
     async def think(
         self, backend: InferenceBackend, thinking_input: ThinkingInput
     ) -> AsyncGenerator[ThinkingEvent, None]:
-        messages = [
-            {
-                "role": "assistant" if turn.speaker == "tomoko" else "user",
-                "content": turn.text,
-            }
-            for turn in thinking_input.context
-        ]
-        messages.append(
-            {"role": "user", "content": self._build_current_user_message(thinking_input)}
-        )
-        system_prompt = self.system_prompt
+        prepared_prompt = self.prepare_prompt(thinking_input)
+        async for event in self._think_prepared(
+            backend,
+            thinking_input,
+            prepared_prompt,
+        ):
+            yield event
+
+    async def think_with_prompt_audit(
+        self,
+        backend: InferenceBackend,
+        thinking_input: ThinkingInput,
+        *,
+        current_user_content_audit: Callable[[str], object | Awaitable[object]],
+    ) -> AsyncGenerator[ThinkingEvent, None]:
+        prepared_prompt = self.prepare_prompt(thinking_input)
+        audit_result = current_user_content_audit(prepared_prompt.current_user_content)
+        if hasattr(audit_result, "__await__"):
+            await audit_result
+        async for event in self._think_prepared(
+            backend,
+            thinking_input,
+            prepared_prompt,
+        ):
+            yield event
+
+    async def _think_prepared(
+        self,
+        backend: InferenceBackend,
+        thinking_input: ThinkingInput,
+        prepared_prompt: PreparedFastPrompt,
+    ) -> AsyncGenerator[ThinkingEvent, None]:
+        messages = prepared_prompt.messages
+        system_prompt = prepared_prompt.system_prompt
         self._append_prompt_log(
             backend_name=backend.name,
             system_prompt=system_prompt,

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
+from uuid import UUID, uuid4
 
 import numpy as np
 import pytest
@@ -79,14 +80,18 @@ class InMemoryConversationLogWriter:
         self.history = history or []
         self.user_turns: list[tuple[Transcript, ParticipationMode]] = []
         self.tomoko_turns: list[tuple[str, str, str]] = []
+        self.user_turn_ids: list[UUID] = []
+        self.llm_prompt_updates: dict[UUID, str] = {}
 
     async def write_user_turn(
         self,
         transcript: Transcript,
         *,
         participation_mode: ParticipationMode,
-    ) -> None:
+    ) -> UUID:
+        conversation_log_id = uuid4()
         self.user_turns.append((transcript, participation_mode))
+        self.user_turn_ids.append(conversation_log_id)
         self.history.append(
             ConversationTurn(
                 speaker="user",
@@ -94,6 +99,18 @@ class InMemoryConversationLogWriter:
                 timestamp=transcript.recorded_at,
             )
         )
+        return conversation_log_id
+
+    async def update_user_turn_llm_prompt_content(
+        self,
+        conversation_log_id: UUID,
+        *,
+        llm_prompt_content: str,
+    ) -> None:
+        self.llm_prompt_updates[conversation_log_id] = llm_prompt_content
+        if not self.history:
+            return
+        self.history[-1].llm_prompt_content = llm_prompt_content
 
     async def write_tomoko_turn(
         self,
@@ -339,6 +356,62 @@ async def test_think_fast_includes_recent_conversation_context(tmp_path) -> None
             ),
         },
     ]
+
+
+@pytest.mark.unit
+async def test_think_fast_uses_saved_llm_prompt_content_for_user_history(
+    tmp_path,
+) -> None:
+    persona = tmp_path / "persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend(["うん"])
+    mode = ThinkFastMode(persona_path=persona, now_provider=fixed_now)
+
+    saved_prompt_content = (
+        "## CURRENT USER UTTERANCE\n\n"
+        "昨日カレーを作ったよ\n\n"
+        "## TURN CONTEXT\n\n"
+        "## CURRENT LOCAL TIME\n"
+        "現在日時: 2026-05-29 09:00:00 JST\n"
+        "曜日: 金曜日"
+    )
+
+    events = [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="その続きだけど",
+                speaker=None,
+                context=[
+                    ConversationTurn(
+                        speaker="user",
+                        text="昨日カレーを作ったよ",
+                        timestamp=datetime(2026, 5, 29, 9, 0, tzinfo=UTC),
+                        llm_prompt_content=saved_prompt_content,
+                    ),
+                    ConversationTurn(
+                        speaker="tomoko",
+                        text="いいね、少し寝かせるとおいしいよ。",
+                        timestamp=datetime(2026, 5, 29, 9, 1, tzinfo=UTC),
+                        emotion="happy",
+                    ),
+                ],
+                emotion="neutral",
+                device_id="browser",
+            ),
+        )
+    ]
+
+    assert events[-1] == ThinkingEvent(type="done", value="")
+    assert backend.messages[0] == {
+        "role": "user",
+        "content": saved_prompt_content,
+    }
+    assert backend.messages[1] == {
+        "role": "assistant",
+        "content": "いいね、少し寝かせるとおいしいよ。",
+    }
 
 
 @pytest.mark.unit
@@ -829,6 +902,9 @@ async def test_session_passes_recent_conversation_context_to_thinking_mode() -> 
     assert backend.messages[-1]["content"].startswith(
         "## CURRENT USER UTTERANCE\n\nトモコ、聞こえる？"
     )
+    assert conversation_logs.user_turn_ids
+    saved_prompt = conversation_logs.llm_prompt_updates[conversation_logs.user_turn_ids[0]]
+    assert saved_prompt == backend.messages[-1]["content"]
 
 
 @pytest.mark.unit

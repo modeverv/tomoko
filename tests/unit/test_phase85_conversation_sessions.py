@@ -274,7 +274,7 @@ async def test_cooldown_to_ambient_closes_active_session_as_pending_summary() ->
 
 
 @pytest.mark.unit
-async def test_recent_context_prefers_same_session_then_supplements_recent_turns() -> None:
+async def test_recent_context_uses_same_session_without_recent_supplement() -> None:
     old_turn = ConversationTurn(
         speaker="user",
         text="前の会話のカレーの話",
@@ -309,7 +309,6 @@ async def test_recent_context_prefers_same_session_then_supplements_recent_turns
 
     assert mode.inputs
     assert [turn.text for turn in mode.inputs[0].context] == [
-        "前の会話のカレーの話",
         "今の会話では予定の話をしていたよ。",
     ]
 
