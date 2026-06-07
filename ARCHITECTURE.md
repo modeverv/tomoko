@@ -2897,3 +2897,42 @@ warm-up prompt は `ThinkFastMode.system_prompt` の固定部分と短い user m
 目的は dflash の prefix cache / snapshot を温めることであり、
 現在時刻、calendar、task、memory など turn ごとに変わる context を完全一致 cache へ載せることではない。
 失敗しても server startup は落とさず、ログに残して通常起動を継続する。
+
+## 2026-06-07 追記: prompt cache のため固定 prefix を日時より前に置く
+
+OpenAI-compatible chat payload でも、dflash 側では chat template 展開後の token prefix が cache の単位になる。
+そのため system prompt は、先頭からできるだけ長く完全一致するように組む。
+
+`base_persona.md` / `persona_overlay.md` の直後に `STATIC CONTEXT USAGE RULES` を置き、
+CURRENT LOCAL TIME、RESPONSE DIRECTIVE、CALENDAR CONTEXT、RESEARCH CONTEXT、TASK CONTEXT、
+LONG TERM MEMORY の扱い方を固定文としてまとめる。
+日時や予定、タスク、記憶など turn ごとに変わるデータは、その後ろへ置く。
+
+動的 context block 側には、毎回同じ説明文を繰り返さない。
+`CALENDAR CONTEXT` / `RESEARCH CONTEXT` / `TASK CONTEXT` は見出しと実データ中心にし、
+使い方の説明は固定 prefix 側に集約する。
+
+この構造は prompt cache に有利だが、生 raw call の単発比較では差が小さい場合がある。
+2回目以降は full prompt 自体が cache に載るため、固定 prefix の効果だけを分離しにくい。
+運用判断は startup 後の first live conversation と first audio を `make server-debug` で測って行う。
+
+## 2026-06-07 追記: turn metadata を user 側へ寄せる候補
+
+日時、turn metadata、task context など毎 turn 変わる情報を system prompt に置き続ける方針は、
+dflash の prefix cache 最大化という観点では弱い。
+system prompt の固定 prefix はできるだけ長く保ち、現在 turn だけに必要な metadata は
+現在 user message の直前へ寄せる構造を候補にする。
+
+OpenAI-compatible chat payload では system message の方が instruction priority は強い。
+そのため人格、出力形式、context usage rules など守るべきルールは system prompt に残す。
+一方で「現在時刻」「この turn の task context」「現在発話」は、命令ではなく入力事実として扱い、
+user message 側へ移してよい。
+
+2026-06-07 の dflash 26B raw simulation では、
+current dynamic-system 構造が avg first content 3671.6ms / avg total 6056.7ms、
+proposed user-side metadata 構造が avg first content 3053.7ms / avg total 5178.0ms だった。
+6 turn の順次会話でも意味破綻は見られなかった。
+
+ただしこの構造はまだ Tomoko 実装へ反映していない。
+実装する場合は `ThinkFastMode` の prompt assembly test を先に追加し、
+system prompt の static prefix、conversation history、current turn metadata の順序を固定する。

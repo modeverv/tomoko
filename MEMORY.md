@@ -4438,3 +4438,45 @@ warm-up request は `ThinkFastMode.system_prompt` の固定部分と
 目的は返答本文ではなく dflash prefix cache / snapshot を温めることなので、
 失敗しても server startup は落とさず log に残して継続する。
 現在時刻、calendar、task、memory など毎 turn 変わる prompt 部分は完全一致 cache の対象にしない。
+
+### 気づき: 固定 prompt prefix 拡張は有用だが生コール差はまだ小さい
+2026-06-07 に `_tools/run_llm_stop.sh` / `_tools/run_llm.sh` で dflash を再起動し、
+OpenAI-compatible raw call で prompt 構造差を測った。
+
+手組み 26B prompt では、persona だけを warm-up する baseline が
+warm-up 後初回 medium call first 5781.8ms / total 8040.5ms、
+persona + static context rules を warm-up する proposed が
+first 4535.2ms / total 6394.1ms で、小幅に改善した。
+
+ただし実装後の `ThinkFastMode` prompt では、再起動後初回 medium call が
+first 5924.1ms / total 8142.2ms、再測で first 4857.2ms / total 7259.2ms だった。
+変更前 baseline に対して、小幅改善から同等程度であり、この raw probe だけでは有意差とは断定しない。
+2回目以降は full prompt 自体が cache に載るため、26B first は 218.9〜352.8ms まで落ちた。
+
+31B は単発比較で baseline first 25103.4ms / total 30826.2ms、
+proposed first 28152.6ms / total 34293.2ms となり、ばらつきが大きく改善は確認できなかった。
+
+それでも固定 context usage rules を `CURRENT LOCAL TIME` より前へ置く判断は維持する。
+理由は、startup warm-up で温められる完全一致 prefix が長くなり、
+turn ごとに変わる日時・calendar・task・memory の前に、安定した prompt prefix を最大化できるため。
+ただし実運用 benefit は `make server-debug` の first content / first audio と、
+複数回 restart の統計で確認する必要がある。
+
+### 気づき: dflash 26B は turn metadata を user 側へ寄せても会話意味は壊れなかった
+2026-06-07 に no-think dflash 26B で、6 turn のサンプル会話を current prompt 構造と
+proposed user-side metadata 構造で比較した。
+
+current 構造は、日時や task context などの dynamic block を system prompt 側に置く。
+proposed raw payload は、system prompt を固定し、turn metadata / current time / task context /
+current utterance を現在 user message の content にまとめる。
+これにより、会話履歴が積み上がる実運用でも system prompt の固定 prefix をより長く保つ。
+
+実測では current が avg first content 3671.6ms / avg total 6056.7ms、
+proposed が avg first content 3053.7ms / avg total 5178.0ms だった。
+proposed は全6 turn で first content が速く、平均 first content は 618.0ms 改善、
+平均 total は 878.8ms 改善した。
+
+応答内容は dflash / Gemma らしく短い follow-up question を返す傾向はあるが、
+6 turn の流れでは文脈の取り違え、人格崩壊、前 turn 忘れのような意味破綻は見られなかった。
+したがって、dynamic turn metadata を user 側へ移すことは有力な次候補である。
+ただしこれは raw payload simulation であり、Tomoko 実装としてはまだ反映していない。

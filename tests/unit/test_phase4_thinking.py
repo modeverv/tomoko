@@ -206,6 +206,7 @@ async def test_think_fast_includes_persona_overlay_when_sibling_file_exists(
     assert backend.system_prompt.startswith("あなたはトモコです。")
     assert "## PERSONA OVERLAY" in backend.system_prompt
     assert "少し茶目っ気のある後輩として短く助ける。" in backend.system_prompt
+    assert "## STATIC CONTEXT USAGE RULES" in backend.system_prompt
     assert "現在日時: 2026-05-30 12:34:56 JST" in backend.system_prompt
 
 
@@ -238,6 +239,7 @@ async def test_think_fast_omits_persona_overlay_when_sibling_file_is_missing(
 
     assert backend.system_prompt is not None
     assert "PERSONA OVERLAY" not in backend.system_prompt
+    assert "## STATIC CONTEXT USAGE RULES" in backend.system_prompt
 
 
 @pytest.mark.unit
@@ -268,8 +270,12 @@ async def test_think_fast_wraps_streamed_tokens_in_thinking_events(tmp_path) -> 
     ]
     assert backend.system_prompt is not None
     assert backend.system_prompt.startswith("あなたはトモコです。")
+    assert "## STATIC CONTEXT USAGE RULES" in backend.system_prompt
     assert "現在日時: 2026-05-30 12:34:56 JST" in backend.system_prompt
     assert "曜日: 土曜日" in backend.system_prompt
+    assert backend.system_prompt.index("## STATIC CONTEXT USAGE RULES") < (
+        backend.system_prompt.index("## CURRENT LOCAL TIME")
+    )
     assert backend.messages == [{"role": "user", "content": "トモコ、聞こえる？"}]
 
 
@@ -360,7 +366,7 @@ async def test_think_fast_logs_llm_prompt_payload(
     assert message == "ThinkFastMode llm_prompt backend=%s payload=%s"
     assert args[0] == "fake"
     payload = str(args[1])
-    assert '"system_prompt": "あなたはトモコです。\\n\\n## CURRENT LOCAL TIME' in payload
+    assert '"system_prompt": "あなたはトモコです。\\n\\n## STATIC CONTEXT USAGE RULES' in payload
     assert "現在日時: 2026-05-30 12:34:56 JST" in payload
     assert "曜日: 土曜日" in payload
     assert '"role": "assistant", "content": "うん、準備できてるよ。"' in payload
@@ -371,7 +377,10 @@ async def test_think_fast_logs_llm_prompt_payload(
     assert len(prompt_log_lines) == 1
     prompt_log_payload = prompt_log_lines[0]
     assert '"backend": "fake"' in prompt_log_payload
-    assert '"system_prompt": "あなたはトモコです。\\n\\n## CURRENT LOCAL TIME' in prompt_log_payload
+    assert (
+        '"system_prompt": "あなたはトモコです。\\n\\n## STATIC CONTEXT USAGE RULES'
+        in prompt_log_payload
+    )
     assert '"role": "user", "content": "トモコ、今のプロンプト見せて"' in prompt_log_payload
 
 

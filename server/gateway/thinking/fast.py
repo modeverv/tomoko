@@ -30,6 +30,23 @@ EMOTIONS = {
 }
 WEEKDAYS_JA = ("月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日")
 CALENDAR_TIMEZONE = ZoneInfo("Asia/Tokyo")
+STATIC_CONTEXT_USAGE_RULES = "\n".join(
+    [
+        "## STATIC CONTEXT USAGE RULES",
+        "- CURRENT LOCAL TIME は今日・明日・昨日などの相対表現を解釈する基準として使う。",
+        "- RESPONSE DIRECTIVE はこの turn だけの最優先応答方針として使う。",
+        "- CALENDAR CONTEXT は予定の有無や時刻を答える時だけ参照し、ユーザー発話として扱わない。",
+        "- RESEARCH CONTEXT は外部調査結果の要約として扱い、会話記憶と混同しない。",
+        (
+            "- TASK CONTEXT は DB に保存された structured task として扱い、"
+            "短期メモではなく作業状態として参照する。"
+        ),
+        (
+            "- LONG TERM MEMORY は必要な時だけ使い、"
+            "現在の user turn と矛盾する場合は現在の発話を優先する。"
+        ),
+    ]
+)
 
 
 class ThinkFastMode(ThinkingMode):
@@ -67,8 +84,8 @@ class ThinkFastMode(ThinkingMode):
         persona = self._load_persona().rstrip()
         overlay = self._load_persona_overlay()
         if not overlay:
-            return persona
-        return f"{persona}\n\n{overlay}"
+            return f"{persona}\n\n{STATIC_CONTEXT_USAGE_RULES}"
+        return f"{persona}\n\n{overlay}\n\n{STATIC_CONTEXT_USAGE_RULES}"
 
     def _build_system_prompt(self, thinking_input: ThinkingInput) -> str:
         current_time_prompt = _format_current_time_prompt(self.now_provider())
@@ -251,7 +268,6 @@ def _format_current_time_prompt(now: datetime) -> str:
                 f"{local_now.strftime('%Y-%m-%d %H:%M:%S')} {timezone}"
             ),
             f"曜日: {WEEKDAYS_JA[local_now.weekday()]}",
-            "この日時と曜日を、今日・明日・昨日などの相対表現を解釈する基準にする。",
         ]
     )
 
@@ -283,14 +299,7 @@ def _format_calendar_context_prompt(thinking_input: ThinkingInput) -> str:
     if snapshot is None or not snapshot.calendar_events:
         return ""
 
-    lines = [
-        "## CALENDAR CONTEXT",
-        (
-            "Google Calendar から取り込んだ予定です。"
-            "予定の有無や時刻を答える時だけ参照し、"
-            "これ自体をユーザー発話として扱わない。"
-        ),
-    ]
+    lines = ["## CALENDAR CONTEXT"]
     for event in snapshot.calendar_events:
         lines.append(f"- {_format_calendar_event(event)}")
     return "\n".join(lines)
@@ -301,13 +310,7 @@ def _format_research_context_prompt(thinking_input: ThinkingInput) -> str:
     if snapshot is None or not snapshot.research_results:
         return ""
 
-    lines = [
-        "## RESEARCH CONTEXT",
-        (
-            "外部調査結果の要約です。ユーザーに必要な時だけ参照し、"
-            "会話記憶と混同しない。必要なら provider / fetched_at / citations を手がかりにする。"
-        ),
-    ]
+    lines = ["## RESEARCH CONTEXT"]
     for item in snapshot.research_results:
         citations = ", ".join(item.citation_urls[:3]) if item.citation_urls else "none"
         lines.append(
@@ -325,14 +328,7 @@ def _format_task_context_prompt(thinking_input: ThinkingInput) -> str:
     if snapshot is None or not snapshot.task_ledger_entries:
         return ""
 
-    lines = [
-        "## TASK CONTEXT",
-        (
-            "DB に保存された現在のタスク台帳です。"
-            "短期メモではなく structured task として扱い、"
-            "残タスクや優先順位を聞かれた時に参照する。"
-        ),
-    ]
+    lines = ["## TASK CONTEXT"]
     for task in snapshot.task_ledger_entries:
         lines.append(f"- {_format_task_ledger_entry(task)}")
     return "\n".join(lines)
