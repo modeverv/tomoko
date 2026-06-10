@@ -162,11 +162,7 @@ class ThinkFastMode(ThinkingMode):
         messages = [
             {
                 "role": "assistant" if turn.speaker == "tomoko" else "user",
-                "content": (
-                    turn.llm_prompt_content
-                    if turn.speaker == "user" and turn.llm_prompt_content
-                    else turn.text
-                ),
+                "content": turn.text,
             }
             for turn in thinking_input.context
         ]

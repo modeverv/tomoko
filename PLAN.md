@@ -1,3 +1,14 @@
+## 2026-06-11 fix prompt bloat raw text history
+
+dflash prompt cache のために `llm_prompt_content` を過去履歴として送信し続ける方針は否定する。これにより過去のコンテキスト（カレンダー予定やタスク等）が重複して蓄積され、プロンプトが自己増殖的に肥大化するためである。
+過去の会話履歴（user メッセージ）は `turn.text`（生発話）として送る方針に戻す。
+
+### 完了条件
+
+- [x] `ThinkFastMode` の過去 user メッセージ履歴で `llm_prompt_content` を使わず `turn.text` を使うように変更する
+- [x] 関連するテスト（`test_think_fast_uses_saved_llm_prompt_content_for_user_history` 等）を raw text を用いる形に修正する
+- [x] unit テストがすべてパスする
+
 ## 2026-06-06 macOS LaunchAgent daily automation
 
 `make daily` の日次実行を root LaunchDaemon や cron に寄せる方針は否定する。

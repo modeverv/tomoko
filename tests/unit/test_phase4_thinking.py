@@ -359,7 +359,7 @@ async def test_think_fast_includes_recent_conversation_context(tmp_path) -> None
 
 
 @pytest.mark.unit
-async def test_think_fast_uses_saved_llm_prompt_content_for_user_history(
+async def test_think_fast_uses_raw_text_for_user_history_ignoring_saved_llm_prompt_content(
     tmp_path,
 ) -> None:
     persona = tmp_path / "persona.md"
@@ -406,7 +406,7 @@ async def test_think_fast_uses_saved_llm_prompt_content_for_user_history(
     assert events[-1] == ThinkingEvent(type="done", value="")
     assert backend.messages[0] == {
         "role": "user",
-        "content": saved_prompt_content,
+        "content": "昨日カレーを作ったよ",
     }
     assert backend.messages[1] == {
         "role": "assistant",
