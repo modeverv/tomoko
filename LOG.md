@@ -1,3 +1,24 @@
+## 2026-06-11 セッション2
+
+### やること（開始時に書く）
+- 最新の動的コンテキスト（タスク、長期メモリ、短期メモリ、検索結果）を圧縮表現に変更する
+- 関連するテストコードを更新し、すべてのユニットテストがパスすることを確認する
+
+### やったこと
+- 最新の動的コンテキストのフォーマットを、プレフィルトークン削減のために以下の通り圧縮表現に変更した：
+  - タスク: `## TASKS` (`-[task-id] 優先: title (期限) : details`)
+  - 長期メモリ: `## MEMORIES` (`-[MM/DD HH:MM] speaker: text`)
+  - 短期メモリ: 指示英文をカットした `## SHORT MEMORY` (`- 暗記: text`)
+  - 検索結果: `## RESEARCH` (`-[MM/DD HH:MM] クエリ -> summary (ソース)`)
+- `server/gateway/thinking/fast.py` (タスク・検索結果のフォーマッタ), `server/gateway/thinking/memory_prompt.py` (長期メモリ), `server/gateway/thinking/short_memory_prompt.py` & `server/session_short_memory.py` (短期メモリ) を修正。
+- 関連するユニットテスト (`test_phase4_thinking.py`, `test_phase8_memory.py`, `test_short_memory.py`) の期待値を新しい圧縮フォーマットに合わせて更新。
+
+### 詰まったこと・解決したこと
+- 短期メモリのフォーマッタが `gateway` 側と `session` 側の両方に重複定義されており、`test_short_memory.py` で落ちる問題が発生した。両方の実装を同じ圧縮形式に合わせることで解決した。
+
+### 次のセッションでやること
+- 実ブラウザ上で会話を動かし、圧縮後の最新コンテキストがプロンプトとして正しく渡り、LLMの応答性能やトークン消費量が削減されていることを確認する
+
 ## 2026-06-11 セッション1
 
 ### やること（開始時に書く）

@@ -112,13 +112,7 @@ def format_short_memory_prompt(notes: list[ShortMemoryNote]) -> str:
         unique_notes[_dedupe_key(note)] = note
     lines = "\n".join(_format_note_for_prompt(note) for note in unique_notes.values())
     return (
-        "SHORT WORKING MEMORY\n"
-        "These are recent working notes extracted from previous turns.\n"
-        "They are not permanent facts. Use them only when relevant.\n\n"
-        "When a note says Remember verbatim, reproduce that text exactly if the "
-        "user asks for it.\n\n"
-        "When the notes describe task lists, completed tasks, and added tasks, "
-        "infer the remaining tasks from those recent notes when the user asks.\n\n"
+        "## SHORT MEMORY\n"
         f"{lines}"
     )
 
@@ -224,5 +218,5 @@ def _dedupe_key(note: ShortMemoryNote) -> tuple[str, str]:
 
 def _format_note_for_prompt(note: ShortMemoryNote) -> str:
     if note.kind == "verbatim":
-        return f"- Remember verbatim: {note.text}"
+        return f"- 暗記: {note.text}"
     return f"- {note.text}"

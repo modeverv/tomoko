@@ -404,15 +404,13 @@ def _format_research_context_prompt(thinking_input: ThinkingInput) -> str:
     if snapshot is None or not snapshot.research_results:
         return ""
 
-    lines = ["## RESEARCH CONTEXT"]
+    lines = ["## RESEARCH"]
     for item in snapshot.research_results:
         citations = ", ".join(item.citation_urls[:3]) if item.citation_urls else "none"
+        local_ts = item.fetched_at.astimezone(CALENDAR_TIMEZONE) if item.fetched_at.tzinfo is not None else item.fetched_at
+        timestamp = local_ts.strftime("%m/%d %H:%M")
         lines.append(
-            "- "
-            f"[{item.fetched_at.isoformat(timespec='seconds')}] "
-            f"query={item.query}; provider={item.provider}; "
-            f"summary={item.summary_text}; citations={citations}; "
-            f"similarity={item.similarity:.3f}"
+            f"- [{timestamp}] クエリ: {item.query} -> {item.summary_text} (ソース: {citations})"
         )
     return "\n".join(lines)
 
@@ -422,22 +420,20 @@ def _format_task_context_prompt(thinking_input: ThinkingInput) -> str:
     if snapshot is None or not snapshot.task_ledger_entries:
         return ""
 
-    lines = ["## TASK CONTEXT"]
+    lines = ["## TASKS"]
     for task in snapshot.task_ledger_entries:
         lines.append(f"- {_format_task_ledger_entry(task)}")
     return "\n".join(lines)
 
 
 def _format_task_ledger_entry(task: TaskLedgerEntry) -> str:
-    due_text = (
-        task.due_at.isoformat(timespec="minutes") if task.due_at is not None else "none"
-    )
-    tags = ", ".join(task.tags) if task.tags else "none"
-    details = f"; details={task.details}" if task.details else ""
+    due_text = ""
+    if task.due_at is not None:
+        local_due = task.due_at.astimezone(CALENDAR_TIMEZONE) if task.due_at.tzinfo is not None else task.due_at
+        due_text = f" (期限: {local_due.strftime('%m/%d %H:%M')})"
+    details = f" : {task.details}" if task.details else ""
     return (
-        f"id={task.task_id}; title={task.title}; status={task.status}; "
-        f"priority={task.priority}; due_at={due_text}; source={task.source}; "
-        f"tags={tags}{details}"
+        f"[{task.task_id}] 優先{task.priority}: {task.title}{due_text}{details}"
     )
 
 

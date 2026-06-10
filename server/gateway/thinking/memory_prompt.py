@@ -11,8 +11,7 @@ def format_long_term_memory_prompt(memories: list[MemoryHit]) -> str:
 
     formatted_memories = "\n".join(_format_memory(memory) for memory in memories)
     return (
-        "長期コンテキストとして関連しそうな過去会話や参照情報を渡します。"
-        "必要な時だけ自然に使い、断定しすぎず、短く返答してください。\n"
+        "## MEMORIES\n"
         f"{formatted_memories}"
     )
 
@@ -21,13 +20,12 @@ def _format_memory(memory: MemoryHit) -> str:
     if _is_calendar_memory(memory):
         return f"- {_format_calendar_memory_text(memory.text)}"
 
-    timestamp = _format_timestamp(memory.timestamp)
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Asia/Tokyo")
+    local_ts = memory.timestamp.astimezone(tz) if memory.timestamp.tzinfo is not None else memory.timestamp
+    timestamp = local_ts.strftime("%m/%d %H:%M")
     speaker = _format_speaker(memory)
-    emotion = f", emotion={memory.emotion}" if memory.emotion else ""
-    return (
-        f"- [{timestamp}] {speaker}: {memory.text} "
-        f"(similarity={memory.similarity:.3f}{emotion})"
-    )
+    return f"- [{timestamp}] {speaker}: {memory.text}"
 
 
 def _format_speaker(memory: MemoryHit) -> str:

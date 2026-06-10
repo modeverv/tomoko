@@ -170,9 +170,7 @@ def test_short_memory_buffer_expires_by_turn_ttl() -> None:
 def test_short_memory_prompt_marks_notes_as_non_permanent_hints() -> None:
     prompt = format_short_memory_prompt([_note("hot path を待たせない")])
 
-    assert "SHORT WORKING MEMORY" in prompt
-    assert "not permanent facts" in prompt
-    assert "reproduce that text exactly" in prompt
+    assert "## SHORT MEMORY" in prompt
     assert "- hot path を待たせない" in prompt
 
 
@@ -190,7 +188,7 @@ def test_short_memory_prompt_formats_verbatim_notes_deterministically() -> None:
 
     prompt = format_short_memory_prompt([note, note])
 
-    assert prompt.count("Remember verbatim: ABC") == 1
+    assert prompt.count("暗記: ABC") == 1
 
 
 @pytest.mark.unit
@@ -207,7 +205,7 @@ def test_gateway_short_memory_prompt_formats_verbatim_notes() -> None:
 
     prompt = format_gateway_short_memory_prompt([note, note])
 
-    assert prompt.count("Remember verbatim: 123") == 1
+    assert prompt.count("暗記: 123") == 1
 
 
 @pytest.mark.unit

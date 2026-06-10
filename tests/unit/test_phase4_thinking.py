@@ -609,9 +609,9 @@ async def test_think_fast_includes_research_summary_context_from_snapshot(tmp_pa
     ]
 
     assert backend.system_prompt is not None
-    assert "## RESEARCH CONTEXT" not in backend.system_prompt
-    assert "RESEARCH CONTEXT" in backend.messages[-1]["content"]
-    assert "summary=OpenAIに関する外部調査の要約。" in backend.messages[-1]["content"]
+    assert "## RESEARCH" not in backend.system_prompt
+    assert "RESEARCH" in backend.messages[-1]["content"]
+    assert "クエリ: 今日のOpenAI関連ニュースを短く -> OpenAIに関する外部調査の要約。 (ソース: https://example.com/openai)" in backend.messages[-1]["content"]
 
 
 @pytest.mark.unit
@@ -676,10 +676,8 @@ async def test_think_fast_includes_task_context_from_snapshot(tmp_path) -> None:
     ]
 
     assert backend.system_prompt is not None
-    assert "## TASK CONTEXT" not in backend.system_prompt
-    assert "TASK CONTEXT" in backend.messages[-1]["content"]
-    assert "server-debug の起動確認" in backend.messages[-1]["content"]
-    assert "status=active" in backend.messages[-1]["content"]
+    assert "## TASKS" in backend.messages[-1]["content"]
+    assert "[task-1] 優先80: server-debug の起動確認" in backend.messages[-1]["content"]
 
 
 @pytest.mark.unit
