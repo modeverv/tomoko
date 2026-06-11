@@ -5,6 +5,7 @@ const latencyEl = document.querySelector("#latency");
 const bytesEl = document.querySelector("#bytes");
 const startButton = document.querySelector("#start");
 const stopButton = document.querySelector("#stop");
+const speechEndMarkerButton = document.querySelector("#speech-end-marker");
 const audioInputDeviceSelect = document.querySelector("#audio-input-device");
 const audioOutputDeviceSelect = document.querySelector("#audio-output-device");
 const deviceStatusEl = document.querySelector("#device-status");
@@ -583,6 +584,7 @@ async function startSession() {
   websocket.addEventListener("open", () => {
     setStatus("connected");
     stopButton.disabled = false;
+    speechEndMarkerButton.disabled = false;
     updateDebugButtons();
   });
   websocket.addEventListener("message", (event) => {
@@ -651,6 +653,7 @@ async function stopSession() {
   activeDebugRecording = null;
   clearRecordingTimer();
   stopButton.disabled = true;
+  speechEndMarkerButton.disabled = true;
   updateDebugButtons();
 }
 
@@ -711,6 +714,45 @@ navigator.mediaDevices?.addEventListener?.("devicechange", () => {
     console.error(error);
     setDeviceStatus("device list error");
   });
+});
+
+function sendUserSpeechEndMarker() {
+  if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  websocket.send(
+    JSON.stringify({
+      type: "debug_user_speech_end",
+      client_timestamp_ms: Date.now(),
+    }),
+  );
+  const originalColor = speechEndMarkerButton.style.backgroundColor;
+  speechEndMarkerButton.style.backgroundColor = "#2ecc71";
+  setTimeout(() => {
+    speechEndMarkerButton.style.backgroundColor = originalColor;
+  }, 200);
+}
+
+speechEndMarkerButton.addEventListener("click", () => {
+  sendUserSpeechEndMarker();
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.code === "Space") {
+    const active = document.activeElement;
+    if (
+      active &&
+      (active.tagName === "INPUT" ||
+        active.tagName === "TEXTAREA" ||
+        active.tagName === "SELECT")
+    ) {
+      return;
+    }
+    event.preventDefault();
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+      sendUserSpeechEndMarker();
+    }
+  }
 });
 
 renderReadPrompt();

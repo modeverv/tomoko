@@ -1202,6 +1202,16 @@ async def _handle_client_text_event(
             )
         )
         return
+    if event_type == "debug_user_speech_end":
+        await session.post_event(
+            SessionEvent(
+                type="debug_user_speech_end",
+                payload={
+                    "client_timestamp_ms": payload.get("client_timestamp_ms"),
+                },
+            )
+        )
+        return
     if event_type not in {"playback_started", "playback_ended"}:
         logger.warning("ignored unknown websocket text event type=%s", event_type)
         return

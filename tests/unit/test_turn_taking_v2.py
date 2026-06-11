@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
@@ -106,10 +105,11 @@ async def test_session_saves_observation_on_partial_transcript() -> None:
 
 @pytest.mark.unit
 async def test_session_triggers_provisional_inference_on_would_start_inference_advisory() -> None:
-    from unittest.mock import patch, AsyncMock
+    from datetime import UTC, datetime
+    from unittest.mock import AsyncMock, patch
     from uuid import uuid4
-    from server.shared.models import TurnTakingV2Advisory, PartialTranscriptObservation
-    from datetime import datetime, UTC
+
+    from server.shared.models import PartialTranscriptObservation, TurnTakingV2Advisory
 
     # Mock dependencies
     vad = MagicMock()
@@ -184,10 +184,15 @@ async def test_session_triggers_provisional_inference_on_would_start_inference_a
 
 @pytest.mark.unit
 async def test_session_provisional_inference_completes_successfully() -> None:
-    from unittest.mock import patch, AsyncMock
+    from datetime import UTC, datetime
+    from unittest.mock import AsyncMock, patch
     from uuid import uuid4
-    from server.shared.models import TurnTakingV2Advisory, PartialTranscriptObservation, ThinkingEvent
-    from datetime import datetime, UTC
+
+    from server.shared.models import (
+        PartialTranscriptObservation,
+        ThinkingEvent,
+        TurnTakingV2Advisory,
+    )
 
     # Mock dependencies
     vad = MagicMock()
@@ -288,10 +293,11 @@ async def test_session_provisional_inference_completes_successfully() -> None:
 
 @pytest.mark.unit
 async def test_session_provisional_inference_discarded_on_divergence_in_advisory() -> None:
-    from unittest.mock import patch, AsyncMock
+    from datetime import UTC, datetime
+    from unittest.mock import AsyncMock, patch
     from uuid import uuid4
-    from server.shared.models import TurnTakingV2Advisory, PartialTranscriptObservation
-    from datetime import datetime, UTC
+
+    from server.shared.models import PartialTranscriptObservation, TurnTakingV2Advisory
 
     # Mock dependencies
     vad = MagicMock()
@@ -418,10 +424,11 @@ async def test_session_provisional_inference_discarded_on_divergence_in_advisory
 
 @pytest.mark.unit
 async def test_session_provisional_inference_validated_on_final_transcript_matching() -> None:
-    from unittest.mock import patch, AsyncMock
+    from datetime import UTC, datetime
+    from unittest.mock import AsyncMock, patch
     from uuid import uuid4
+
     from server.shared.models import Transcript
-    from datetime import datetime, UTC
 
     # Mock dependencies
     vad = MagicMock()
@@ -469,3 +476,41 @@ async def test_session_provisional_inference_validated_on_final_transcript_match
         assert kwargs["event"] == "provisional_inference_validated"
         assert kwargs["text"] == "こんにちは"
         assert "matched final transcript" in kwargs["reason"]
+
+
+@pytest.mark.unit
+async def test_session_records_user_speech_end_marker() -> None:
+    from unittest.mock import patch
+    from uuid import uuid4
+
+    from server.shared.models import SessionEvent
+
+    session_id = uuid4()
+    turn_id = uuid4()
+
+    session = TomoroSession(
+        vad_processor=MagicMock(),
+        send_event=MagicMock(),
+    )
+    # mock state values
+    session.get_now_state = MagicMock()
+    mock_state = MagicMock()
+    mock_state.active_conversation_session_id = session_id
+    mock_state.active_turn_id = turn_id
+    session.get_now_state.return_value = mock_state
+
+    event = SessionEvent(
+        type="debug_user_speech_end",
+        payload={"client_timestamp_ms": 1234567890},
+    )
+
+    with patch("server.shared.turn_taking_logger.log_user_speech_end_marker") as mock_log_marker:
+        await session.post_event(event)
+
+        mock_log_marker.assert_called_once()
+        kwargs = mock_log_marker.call_args.kwargs
+        assert kwargs["conversation_session_id"] == session_id
+        assert kwargs["turn_id"] == turn_id
+        assert kwargs["client_timestamp_ms"] == 1234567890
+        assert kwargs["reason"] == "ui_button_or_space"
+

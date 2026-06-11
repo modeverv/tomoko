@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -163,3 +163,24 @@ def log_provisional_inference_start(
         text=stable_text,
         reason=reason,
     )
+
+
+def log_user_speech_end_marker(
+    *,
+    ts_ms: int,
+    conversation_session_id: UUID | None,
+    turn_id: UUID | None,
+    client_timestamp_ms: int | None = None,
+    reason: str = "ui_button_or_space",
+) -> None:
+    record = {
+        "ts_ms": ts_ms,
+        "conversation_session_id": conversation_session_id,
+        "turn_id": turn_id,
+        "lane": "main",
+        "event": "user_speech_end_marker",
+        "client_timestamp_ms": client_timestamp_ms,
+        "reason": reason,
+    }
+    _write(_main_log_path(), record)
+

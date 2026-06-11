@@ -519,12 +519,35 @@ class TomoroSession:
             return self._reduce_timer_alarm_due(event)
         if event.type == "stop_intent_classified":
             return self._reduce_stop_intent_classified(event)
+        if event.type == "debug_user_speech_end":
+            return self._reduce_debug_user_speech_end(event)
         if event.type == "candidate_command_failed":
             return self._transition_result(
                 "candidate_command_failed",
                 payload=dict(event.payload),
             )
         return TransitionResult(state=self.get_now_state())
+
+    def _reduce_debug_user_speech_end(self, event: SessionEvent) -> TransitionResult:
+        from server.shared.turn_taking_logger import log_user_speech_end_marker
+
+        state = self.get_now_state()
+        client_timestamp_ms = event.payload.get("client_timestamp_ms")
+        log_user_speech_end_marker(
+            ts_ms=int(time.time() * 1000),
+            conversation_session_id=state.active_conversation_session_id,
+            turn_id=state.active_turn_id,
+            client_timestamp_ms=client_timestamp_ms,
+            reason="ui_button_or_space",
+        )
+        return self._transition_result(
+            "debug_user_speech_end_recorded",
+            payload={
+                "client_timestamp_ms": client_timestamp_ms,
+                "conversation_session_id": state.active_conversation_session_id,
+                "turn_id": state.active_turn_id,
+            },
+        )
 
     def _reduce_idle_timer_elapsed(self, event: SessionEvent) -> TransitionResult:
         gate_reason = self._candidate_reply_gate_reason()
