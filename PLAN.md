@@ -1,3 +1,15 @@
+## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.1: shadow advisory
+
+前フェーズの初期 scaffold が無事動作することを確認した。
+本フェーズでは、v2.md に基づき、v2 worker が単なるダミーではなく、hallucination check, stable prefix extraction, semantic saturation, speech decision score, safe_response_level の推定ロジックを実際に計算し、それを `turn_taking_v2_advisories` テーブルに書き戻す処理を実装する。
+
+### 完了条件
+
+- [ ] `v2_shadow_advisory` 計算モジュール（またはクラス）を実装し、部分テキスト入力から意味的完了度・発話意欲等を評価できるようにする
+- [ ] v2 worker（`TurnTakingV2Worker`）が、受信した observation に紐づく同一セッションの過去の observation 履歴を DB から取得し、それらを元に stable prefix やリビジョンごとの状態変遷を計算する処理を実装する
+- [ ] 判定したスコア（`semantic_saturation`, `speech_decision_score` 等）を `turn_taking_v2_advisories` テーブルに正しく格納し、NOTIFY する
+- [ ] 新しい判定処理に対応する単体テストと結合テストが通過する
+
 ## 2026-06-11 Turn-taking v2 shadow lane initial scaffold
 
 従来の VAD と final transcript のみに依存した直列的な発話制御方式（v1）による会話状態決定プロセスを否定する。この構成では、VAD時間を短くすると息継ぎ等で発話が細切れになり、長くすると体感応答速度（TTFT）が遅くなるジレンマを解決できないためである。

@@ -76,8 +76,8 @@ async def test_turn_taking_v2_integration_flow() -> None:
                 revision=2,
                 vad_state="listening",
                 attention_mode="engaged",
-                raw_text="二回目の発話テキストです。長いテキストテスト。",
-                filtered_text="二回目の発話テキストです。長いテキストテスト。",
+                raw_text="二回目の発話テキストですが、どうですか？",
+                filtered_text="二回目の発話テキストですが、どうですか？",
                 stable_text=None,
                 unstable_tail=None,
                 audio_level_db=-15.0,
@@ -99,7 +99,20 @@ async def test_turn_taking_v2_integration_flow() -> None:
 
             assert advisory_row is not None, "Worker failed to generate advisory for observation"
             assert advisory_row[1] == "prepare_only"
-            assert advisory_row[2] == f"scaffold dummy for obs {obs_id2}"
+            assert "valid_speech" in advisory_row[2]
+
+            # Verify stable prefix split was updated in the DB
+            async with await psycopg.AsyncConnection.connect(dsn) as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "SELECT stable_text, unstable_tail FROM partial_transcript_observations WHERE id = %s",
+                        (obs_id2,),
+                    )
+                    obs_row = await cur.fetchone()
+
+            assert obs_row is not None
+            assert obs_row[0] == ""
+            assert obs_row[1] == "二回目の発話テキストですが、どうですか？"
 
         finally:
             worker._stop_event.set()

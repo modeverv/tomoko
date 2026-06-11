@@ -93,24 +93,89 @@ class TurnTakingV2Worker:
 
         logger.info("Processing observation %s: raw_text=%r", observation_id, obs.raw_text)
 
-        proposal = "silence"
-        if obs.raw_text and len(obs.raw_text.strip()) > 5:
-            proposal = "prepare_only"
+        from server.gateway.turn_taking.v2_evaluator import (
+            TranscriptValidity,
+            StablePrefixExtractor,
+            SemanticFinishJudge,
+            SpeechMotivationEvaluator,
+        )
+
+        is_valid = TranscriptValidity.evaluate(obs.raw_text)
+        if not is_valid:
+            logger.info("Observation %s ignored as hallucination/noise: raw_text=%r", observation_id, obs.raw_text)
+            await self.store.save_advisory(
+                observation_id=observation_id,
+                conversation_session_id=obs.conversation_session_id,
+                turn_id=obs.turn_id,
+                semantic_saturation=0.0,
+                remaining_info_risk=1.0,
+                semantic_split_risk=0.0,
+                speech_decision_score=0.0,
+                safe_response_level=0,
+                proposal="silence",
+                confidence=0.0,
+                reason="hallucination_or_noise",
+            )
+            return
+
+        history_before = await self.store.get_turn_history(
+            conversation_session_id=obs.conversation_session_id,
+            turn_id=obs.turn_id,
+            before_revision=obs.revision,
+        )
+
+        stable_text, unstable_tail = StablePrefixExtractor.split_stable_unstable(
+            history_before, obs.raw_text
+        )
+
+        async with pooled_connection(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE partial_transcript_observations
+                    SET stable_text = %s,
+                        unstable_tail = %s
+                    WHERE id = %s
+                    """,
+                    (stable_text, unstable_tail, observation_id),
+                )
+
+        semantic_result = SemanticFinishJudge.evaluate(obs.raw_text)
+
+        motivation_result = SpeechMotivationEvaluator.evaluate(
+            semantic_saturation=semantic_result["semantic_saturation"],
+            remaining_info_risk=semantic_result["remaining_info_risk"],
+            semantic_split_risk=semantic_result["semantic_split_risk"],
+            vad_state=obs.vad_state,
+            attention_mode=obs.attention_mode,
+            audio_level_db=obs.audio_level_db,
+        )
+
+        reason = (
+            f"valid_speech: saturation={semantic_result['semantic_saturation']}, "
+            f"split_risk={semantic_result['semantic_split_risk']}, score={motivation_result['speech_decision_score']}"
+        )
 
         await self.store.save_advisory(
             observation_id=observation_id,
             conversation_session_id=obs.conversation_session_id,
             turn_id=obs.turn_id,
-            semantic_saturation=0.5,
-            remaining_info_risk=0.5,
-            semantic_split_risk=0.1,
-            speech_decision_score=0.3,
-            safe_response_level=1,
-            proposal=proposal,
-            confidence=0.5,
-            reason=f"scaffold dummy for obs {observation_id}",
+            semantic_saturation=semantic_result["semantic_saturation"],
+            remaining_info_risk=semantic_result["remaining_info_risk"],
+            semantic_split_risk=semantic_result["semantic_split_risk"],
+            speech_decision_score=motivation_result["speech_decision_score"],
+            safe_response_level=semantic_result["safe_response_level"],
+            proposal=motivation_result["proposal"],
+            confidence=semantic_result["confidence"],
+            reason=reason,
         )
-        logger.info("Saved dummy advisory for observation %s. Proposal: %s", observation_id, proposal)
+        logger.info(
+            "Saved advisory for observation %s. Proposal: %s, Score: %s, Stable: %r",
+            observation_id,
+            motivation_result["proposal"],
+            motivation_result["speech_decision_score"],
+            stable_text,
+        )
 
     async def _recovery_loop(self, interval_sec: float) -> None:
         while not self._stop_event.is_set():

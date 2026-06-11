@@ -59,6 +59,14 @@ class TurnTakingV2Store(Protocol):
         advisory_id: UUID,
     ) -> TurnTakingV2Advisory | None: ...
 
+    async def get_turn_history(
+        self,
+        *,
+        conversation_session_id: UUID | None,
+        turn_id: UUID | None,
+        before_revision: int | None = None,
+    ) -> list[str]: ...
+
 
 class PostgresTurnTakingV2Store:
     def __init__(self, dsn: str) -> None:
@@ -256,6 +264,41 @@ class PostgresTurnTakingV2Store:
                     reason=row[12],
                 )
 
+    async def get_turn_history(
+        self,
+        *,
+        conversation_session_id: UUID | None,
+        turn_id: UUID | None,
+        before_revision: int | None = None,
+    ) -> list[str]:
+        if conversation_session_id is None or turn_id is None:
+            return []
+        async with pooled_connection(self.dsn) as conn:
+            async with conn.cursor() as cur:
+                if before_revision is not None:
+                    await cur.execute(
+                        """
+                        SELECT raw_text FROM partial_transcript_observations
+                        WHERE conversation_session_id = %s
+                          AND turn_id = %s
+                          AND revision < %s
+                        ORDER BY revision ASC
+                        """,
+                        (conversation_session_id, turn_id, before_revision),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        SELECT raw_text FROM partial_transcript_observations
+                        WHERE conversation_session_id = %s
+                          AND turn_id = %s
+                        ORDER BY revision ASC
+                        """,
+                        (conversation_session_id, turn_id),
+                    )
+                rows = await cur.fetchall()
+                return [row[0] for row in rows]
+
 
 class NullTurnTakingV2Store:
     async def save_observation(self, **kwargs) -> UUID:
@@ -271,3 +314,12 @@ class NullTurnTakingV2Store:
 
     async def get_advisory(self, advisory_id: UUID) -> TurnTakingV2Advisory | None:
         return None
+
+    async def get_turn_history(
+        self,
+        *,
+        conversation_session_id: UUID | None,
+        turn_id: UUID | None,
+        before_revision: int | None = None,
+    ) -> list[str]:
+        return []

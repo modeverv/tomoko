@@ -1,3 +1,16 @@
+## 2026-06-11 セッション20
+
+### やること（開始時に書く）
+- `v2.md` の `Phase TT-v2.1: shadow advisory` の実装
+  - v2 worker において、ダミーアドバイザリーの代わりに実際の判定ロジックを実装する
+    - hallucination check (不自然な文字列、反復、無意味な短文などの検出・フィルタ)
+    - stable prefix extraction (partial STT の履歴から安定している prefix 部分の抽出)
+    - semantic saturation (意味的飽和度・完了度の推定)
+    - speech decision score (発話決意スコアの計算)
+    - safe_response_level (安全な応答レベルの分類)
+  - 判定結果を `turn_taking_v2_advisories` テーブルに正しく格納する
+  - 関連するユニットテストおよびインテグレーションテストを記述し、動作を検証する
+
 ## 2026-06-11 セッション19
 
 ### やること（開始時に書く）
