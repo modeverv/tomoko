@@ -11,10 +11,14 @@
 - `test_response.py` を更新し、`minimal_persona.md` の内容＋静的ルールを組み合わせた「Minimal Prompt（Flag ON + Minimal Persona）」のテストケースを追加して測定・実行した。
 - 検証結果を評価し、意味の崩壊がないことを確認。
 - `minimal_persona.md` を使用したプロンプト（全体で約500文字程度）でも、焼き込まれたLoRAが適切にトリガーされ、トモコとしての口調（生意気な後輩、タメ口）および感情出力（`[EMOTION:smug]` 等）が完全に復活することを確認した。
+- ポート8082のdflashサーバーを一時的にベースモデル（`mlx-community/gemma-4-26b-a4b-it-4bit`）で立ち上げ直し、「フルプロンプト＋ベースモデル」の応答品質とTTFTを測定。
+- 「ミニマルプロンプト＋LoRAフューズモデル」の組み合わせが、応答品質・キャラクター性を維持したままでTTFTを約1秒以上（約58%）劇的に高速化できることを実証・比較した。
+- 測定完了後、dflashサーバーを元の `lora/fused_model` で再起動し稼働状態を復旧。
 - `MEMORY.md` と `LOG.md` を更新。
 
 ### 詰まったこと・解決したこと
 - `write_to_file` で `prompts/minimal_persona.md` を作成する際、`ArtifactMetadata` を誤って付与したためにアーティファクトパス検証エラーが発生した。`ArtifactMetadata` を削除することで通常ファイルとして正常に作成・保存できた。
+- ベースモデルでのdflash起動の際、`z-lab/gemma-4-26B-A4B-it-DFlash` をメインモデルに指定したためパラメータ不整合エラーで起動失敗した。ローカルキャッシュにある正しいベースモデル `mlx-community/gemma-4-26b-a4b-it-4bit` を指定し、ドラフトモデルとして `-DFlash` を割り当てることで正常起動に成功した。
 
 ### 次のセッションでやること
 - 実際の対話システム（FastAPIサーバー側）において、このミニマルプロンプトまたは設定削減オプションを稼働させ、E2E動作を確認する。
