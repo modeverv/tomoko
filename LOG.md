@@ -1,3 +1,22 @@
+## 2026-06-11 セッション7
+
+### やること（開始時に書く）
+- 学習したLoRAアダプタモデルをTomokoの動作に適用する方法をユーザーへ回答する
+- `InferenceRouter` が `MLXLMBackend` 初期化時に `adapter_path` を引き渡すように修正し、学習したLoRAアダプタがロードされることを保証する
+
+### やったこと
+- `server/shared/inference/router.py` 内の `spec.type == "mlx_lm"` 処理部を修正し、`MLXLMBackend` の初期化時に `adapter_path=spec.adapter_path` を伝搬するように改修
+- `tests/unit/test_mlx_lm_backend.py` のモック関数 `load_model` の引数リストを修正し、`adapter_path` 導入による型エラー（TypeError）を解消
+- MLXLMBackendが `adapter_path` を正しく受け取ってロードを行うことを検証するユニットテスト `test_mlx_lm_backend_loads_with_adapter` を追加
+- `pytest -m unit` （655 passed）がすべてパスすることを確認
+
+### 詰まったこと・解決したこと
+- `tests/unit/test_mlx_lm_backend.py` 内のモック関数が `adapter_path` を受け取るように設計されていなかったため、シグネチャ不整合でユニットテストが2件失敗した。モック関数の引数を修正することで解決。
+- RuffによるE501（行の長さが100文字超過）エラーが発生したため、追加したテストコード内の引数リストを改行して整形
+
+### 次のセッションでやること
+- LoRA適用によるプレフィルレイテンシーの改善効果の実測および評価
+
 ## 2026-06-11 セッション6
 
 ### やること（開始時に書く）
