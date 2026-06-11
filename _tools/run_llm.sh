@@ -30,13 +30,21 @@ screen -dmS "${SESSION_26B}" bash -lc '
   echo "[start] dflash-gemma-26b at $(date)"
   dflash serve \
     --chat-template-args '\''{"enable_thinking": false}'\'' \
-    --model mlx-community/gemma-4-26b-a4b-it-4bit \
+    --model lora/fused_model \
     --draft z-lab/gemma-4-26B-A4B-it-DFlash \
     --port 8082 \
     2>&1 | tee -a logs/dflash-26b.log
 '
   echo "started: ${SESSION_26B}"
 fi
+
+#  dflash serve \
+#    --chat-template-args '\''{"enable_thinking": false}'\'' \
+#    --model mlx-community/gemma-4-26b-a4b-it-4bit \
+#    --draft z-lab/gemma-4-26B-A4B-it-DFlash \
+#    --port 8082 \
+#    2>&1 | tee -a logs/dflash-26b.log
+
 
 echo
 screen -ls

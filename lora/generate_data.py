@@ -4,10 +4,76 @@ import argparse
 import json
 import os
 import random
+import re
 from typing import Any
 
 import httpx
 from tqdm import tqdm
+
+# 有効な emotion と禁止 emotion のリマップ
+VALID_EMOTIONS = {"neutral", "happy", "surprised", "sad", "thinking", "gentle", "excited"}
+EMOTION_REMAP = {
+    "playful": "happy",
+    "angry": "neutral",
+    "embarrassed": "gentle",
+    "confused": "thinking",
+    "curious": "thinking",
+    "anxious": "sad",
+    "bored": "neutral",
+    "tired": "gentle",
+}
+
+
+def strip_thinking_block(text: str) -> str:
+    """<|channel|>thought ... ブロックを除去し、実際の応答だけを返す。"""
+    # <|channel|>thought で始まるブロックを削除
+    # パターン: <|channel|>thought\n...\n<|channel|> or end
+    text = re.sub(r'<\|channel\|>thought.*?(?=<\|channel\|>(?!thought)|\Z)', '', text, flags=re.DOTALL)
+    text = re.sub(r'<\|channel\|>', '', text)
+    return text.strip()
+
+
+def extract_final_response(text: str) -> str:
+    """thinking ブロック混じりのテキストから最終的な EMOTION:xxx \n 本文 を抽出する。"""
+    cleaned = strip_thinking_block(text)
+    if cleaned and cleaned.startswith("EMOTION:"):
+        return cleaned
+
+    # thinking ブロックが strip できなかった場合: EMOTION: から始まる最後のブロックを探す
+    lines = text.split("\n")
+    for i in range(len(lines) - 1, -1, -1):
+        stripped = lines[i].strip().lstrip("* \t")
+        if stripped.startswith("EMOTION:"):
+            # ここから後続の本文行を集める
+            body_lines = [stripped]
+            for j in range(i + 1, min(i + 5, len(lines))):
+                next_line = lines[j].strip().lstrip("* \t")
+                if next_line and not next_line.startswith("EMOTION:") and not next_line.startswith("*"):
+                    body_lines.append(next_line)
+                else:
+                    break
+            candidate = "\n".join(body_lines)
+            if candidate.split("\n")[0].replace("EMOTION:", "").strip() in VALID_EMOTIONS | set(EMOTION_REMAP):
+                return candidate
+    return ""
+
+
+def sanitize_emotion(response: str) -> str:
+    """EMOTION: 行の emotion を有効な値に修正する。無効なら None を返す。"""
+    lines = response.strip().split("\n")
+    if not lines:
+        return ""
+    first = lines[0].strip()
+    if not first.startswith("EMOTION:"):
+        return ""  # EMOTION 行なし → 無効サンプル
+    emotion = first.replace("EMOTION:", "").strip()
+    if emotion in VALID_EMOTIONS:
+        return response  # そのまま OK
+    if emotion in EMOTION_REMAP:
+        lines[0] = f"EMOTION:{EMOTION_REMAP[emotion]}"
+        return "\n".join(lines)
+    return ""  # リマップ不可の emotion → 破棄
+
 
 # シードとなるユーザー発話リスト
 SEED_PROMPTS = [
@@ -196,6 +262,32 @@ def get_assistant_response_ollama(
         print(f"Error calling Ollama chat for user prompt '{user_prompt}': {e}")
         return ""
 
+def get_assistant_response_openai_compat(
+    base_url: str, model: str, system_prompt: str, user_prompt: str
+) -> str:
+    """OpenAI 互換エンドポイント（LM Studio / dflash 等）を使って応答を生成する。"""
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "temperature": 0.7,
+        "max_tokens": 256,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    try:
+        url = base_url.rstrip("/") + "/v1/chat/completions"
+        resp = httpx.post(url, json=payload, timeout=60.0)
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        print(f"Error calling openai_compat for '{user_prompt}': {e}")
+        return ""
+
+
 def get_assistant_response_mlx(
     model: Any, tokenizer: Any, system_prompt: str, user_prompt: str
 ) -> str:
@@ -204,24 +296,32 @@ def get_assistant_response_mlx(
         from mlx_lm import generate
     except ImportError:
         return ""
-        
+
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt}
+        {"role": "user", "content": user_prompt},
     ]
-    
-    # チャットテンプレートの適用
+
+    # チャットテンプレートの適用（enable_thinking=False で thinking ブロックを無効化）
     if hasattr(tokenizer, "apply_chat_template"):
-        prompt = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
+        try:
+            prompt = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+                chat_template_kwargs={"enable_thinking": False},
+            )
+        except TypeError:
+            prompt = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
     else:
         prompt = (
             f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
             f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
             f"<|im_start|>assistant\n"
         )
-        
+
     try:
         from mlx_lm.sample_utils import make_sampler
         sampler = make_sampler(temp=0.7)
@@ -229,14 +329,16 @@ def get_assistant_response_mlx(
     except ImportError:
         gen_kwargs = {"temperature": 0.7}
 
-    response = generate(
+    raw = generate(
         model,
         tokenizer,
         prompt=prompt,
         max_tokens=512,
-        **gen_kwargs
+        **gen_kwargs,
     )
-    return response.strip()
+    # thinking ブロックを除去して最終応答だけを返す
+    return extract_final_response(raw)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -248,12 +350,14 @@ def main():
                         help="Directory to save train.jsonl and valid.jsonl.")
     parser.add_argument("--num-samples", type=int, default=100,
                         help="Target number of dialogue samples.")
-    parser.add_argument("--backend", type=str, choices=["ollama", "mlx"], default="ollama",
-                        help="LLM backend to use for generating dataset.")
+    parser.add_argument("--backend", type=str, choices=["ollama", "mlx", "openai_compat"], default="ollama",
+                        help="LLM backend (ollama / mlx / openai_compat).")
     parser.add_argument("--model", type=str, default="qwen2.5:7b",
-                        help="Model name (e.g. qwen2.5:7b for Ollama, or MLX model folder path).")
+                        help="Model name or path. For openai_compat, the model id on the server.")
     parser.add_argument("--ollama-url", type=str, default="http://localhost:11434",
                         help="Ollama base URL.")
+    parser.add_argument("--openai-url", type=str, default="http://localhost:8082",
+                        help="Base URL for openai_compat backend (e.g. dflash / LM Studio).")
     parser.add_argument(
         "--overlay-path", type=str, default=None,
         help=(
@@ -291,7 +395,7 @@ def main():
             extra_prompts = generate_user_prompts_ollama(
                 args.ollama_url,
                 args.model,
-                needed_extra * 2,  # 少し多めに生成する
+                needed_extra * 2,
                 SEED_PROMPTS
             )
             user_prompts.extend(extra_prompts)
@@ -302,6 +406,9 @@ def main():
                 SEED_PROMPTS
             )
             user_prompts.extend(extra_prompts)
+        elif args.backend == "openai_compat":
+            # openai_compat は seed プロンプトをそのまま使用（ユーザー発話生成は Ollama と同じロジックを拡張予定）
+            pass
             
     # 重複排除と目標数へのクリップ
     user_prompts = list(set(user_prompts))
@@ -326,22 +433,42 @@ def main():
             return
             
     # 応答生成ループ
+    skipped = 0
     for u_prompt in tqdm(user_prompts, desc="Generating responses"):
         if args.backend == "ollama":
             response = get_assistant_response_ollama(
                 args.ollama_url,
                 args.model,
                 system_prompt,
-                u_prompt
+                u_prompt,
             )
-        else: # mlx
+        elif args.backend == "openai_compat":
+            response = get_assistant_response_openai_compat(
+                args.openai_url,
+                args.model,
+                system_prompt,
+                u_prompt,
+            )
+        else:  # mlx
             response = get_assistant_response_mlx(
                 mlx_model,
                 mlx_tokenizer,
                 system_prompt,
-                u_prompt
+                u_prompt,
             )
-            
+
+        if not response:
+            skipped += 1
+            continue
+
+        # thinking ブロックが混入していたら抗出す
+        response = extract_final_response(response) or response
+        # emotion を有効値にサニタイズ（無効ならスキップ）
+        response = sanitize_emotion(response)
+        if not response:
+            skipped += 1
+            continue
+
         if response:
             sample = {
                 "messages": [
@@ -352,7 +479,7 @@ def main():
             }
             dataset.append(sample)
             
-    print(f"Generated {len(dataset)} valid dialogue samples.")
+    print(f"Generated {len(dataset)} valid dialogue samples. (skipped {skipped} invalid)")
     
     if not dataset:
         print("Error: No data was generated. Dataset is empty.")

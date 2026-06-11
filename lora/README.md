@@ -122,3 +122,32 @@ python lora/evaluate.py \
 - **システムプロンプトの削除**: 学習した LoRA アダプタを使用する際は、プロンプト構築時に元のシステムプロンプトを省略するか、極めて簡潔なメタ指示のみに縮小することができます。これにより毎回のコンテキスト読み込み時間（Time-To-First-Token）を大きく削減できます。
 - **過学習（Overfitting）**: イテレーション数が多すぎると、モデルが生成データと全く同じ文言しか返さなくなる（過学習）可能性があります。その場合は、`--iters` を小さくするか、`--lr`（学習率）を下げてください。
 - **データの質**: Self-Instruct で生成されるデータの質が重要です。生成した `train.jsonl` を学習前に一度手動で確認し、意図しない応答や破綻した日本語が含まれていないかチェックすることをお勧めします。
+
+### dflash でのマージと起動
+```bash
+python -m mlx_lm fuse \
+  --model mlx-community/gemma-4-26b-a4b-it-4bit \
+  --adapter-path lora/adapters \
+  --save-path lora/fused_model
+
+
+dflash serve \
+  --chat-template-args '\''{"enable_thinking": false}'\'' \
+  --model lora/fused_model \
+  --draft z-lab/gemma-4-26B-A4B-it-DFlash \
+  --port 8082 
+
+```
+
+│ [!NOTE]
+│ これにより、 lora/fused_model/  にシステムプロンプトが焼き込まれた完全な状態のモデルファイル一式（ weights  や  tokenizer
+│ など）が新しく生成されます。
+
+  #### 2.  dflash  でマージ済みモデルをロードして起動する
+
+   dflash  を起動する際のモデル指定に、先ほど出力したマージ後のディレクトリパス（ lora/fused_model ）を指定します。
+
+    dflash serve \
+      --model lora/fused_model \
+      --port 8082 \
+      --enable-thinking
