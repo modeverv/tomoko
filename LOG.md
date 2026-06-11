@@ -17,12 +17,13 @@
 - システムプロンプトを焼き込みできるプログラム一式を作成する
 - 人格の overlay プロンプトの取り込み機能を追加する
 - MLX-LM（mlx_lm.generate）の引数における互換性エラーを修正する
+- `train.sh` のコマンド呼び出しと引数不整合エラーを修正する
 
 ### やったこと
 - lora/ ディレクトリを作成し、以下の一式を開発完了：
   - `requirements.txt`: 依存パッケージを明示
   - `generate_data.py`: 指定されたシステムプロンプトに沿ったデータセット（チャット対話 JSONL）を自動生成するスクリプト（Ollama / MLX-LM 両対応）。**人格オーバーレイ（persona_overlay.md）の自動検索・結合および明示的指定機能を追加**
-  - `train.sh`: mlx-lm を使った LoRA ファインチューニング実行用のシェルスクリプト
+  - `train.sh`: mlx-lm を使った LoRA ファインチューニング実行用のシェルスクリプト。**非推奨化された `python -m mlx_lm.lora` の代わりに `python3 -m mlx_lm lora` コマンドを使用するようにし、`--lora-layers` 引数を新仕様の `--num-layers` に修正**
   - `evaluate.py`: 学習済み LoRA モデルのバッチ評価およびインタラクティブチャットモード
   - `README.md`: 使用方法のドキュメント
 - `tests/unit/test_lora_programs.py` に新規追加機能（データ生成、学習、評価、**およびオーバーレイ結合ロジック**）に対するユニットテストを追加
@@ -32,7 +33,8 @@
 ### 詰まったこと・解決したこと
 - `evaluate.py` でアダプタの存在判定に `os.path.exists()` を使用しているため、ユニットテスト中で実際のファイルシステムに依存して失敗する箇所が発生した。テスト内で `os.path.exists` を適切にパッチ（モック）することで解決した。
 - `generate_data.py` に `--overlay-path` の引数を追加した際、helpメッセージ長が 100 文字を超えて Ruff の E501 エラーが発生した。メッセージを複数行に分割することで解決した。
-- **`mlx_lm.generate` において `temp` もしくは `temperature` を直接渡すと、内部の `generate_step` がサンプリング引数をキーワード引数として直接受け付けず `TypeError` になる問題を解決（最新の MLX-LM API 仕様）。`from mlx_lm.sample_utils import make_sampler` を用いて `sampler` オブジェクトを作成し、`sampler=sampler` 引数として `generate` に引き渡すように修正した（古いバージョン向けには直接 temperature を渡すフォールバックも構築）。**
+- **`mlx_lm.generate` において `temp` もしくは `temperature` を直接渡すと、内部 of `generate_step` がサンプリング引数をキーワード引数として直接受け付けず `TypeError` になる問題を解決（最新の MLX-LM API 仕様）。`from mlx_lm.sample_utils import make_sampler` を用いて `sampler` オブジェクトを作成し、`sampler=sampler` 引数として `generate` に引き渡すように修正した（古いバージョン向けには直接 temperature を渡すフォールバックも構築）。**
+- **`mlx-lm` の新バージョンにおいて `python -m mlx_lm.lora` が非推奨化された警告への対応、および `--lora-layers` が廃止され `--num-layers` に名称変更されたことによる引数未認識エラー（`unrecognized arguments`）を `train.sh` の呼び出し部分および引数定義を変更することで解決。**
 
 ### 次のセッションでやること
 - ローカル環境で Ollama などを使い、実データでの焼き込み検証を試行する

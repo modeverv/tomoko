@@ -23,7 +23,7 @@ show_help() {
   echo "  -a, --adapter <path>      Directory to save LoRA adapters (default: $ADAPTER_PATH)"
   echo "  -i, --iters <num>         Number of training iterations (default: $ITERS)"
   echo "  -b, --batch-size <num>    Batch size for training (default: $BATCH_SIZE)"
-  echo "  -l, --layers <num>        Number of layers to apply LoRA (default: $LORA_LAYERS)"
+  echo "  -l, --layers <num>        Number of layers to fine-tune (default: $LORA_LAYERS)"
   echo "  --lr <rate>               Learning rate (default: $LR)"
   echo "  -h, --help                Show this help message"
 }
@@ -52,7 +52,7 @@ echo "Data Dir:     $DATA_DIR"
 echo "Adapter Path: $ADAPTER_PATH"
 echo "Iterations:   $ITERS"
 echo "Batch Size:   $BATCH_SIZE"
-echo "Lora Layers:  $LORA_LAYERS"
+echo "Fine-tune Layers:  $LORA_LAYERS"
 echo "Learning Rate: $LR"
 echo "========================================="
 
@@ -72,13 +72,13 @@ fi
 
 # LoRAの実行
 # mlx_lm.lora は python -m mlx_lm.lora または mlx_lm.lora コマンドで実行可能
-python3 -m mlx_lm.lora \
+python3 -m mlx_lm lora \
   --model "$MODEL" \
   --data "$DATA_DIR" \
   --train \
   --iters "$ITERS" \
   --batch-size "$BATCH_SIZE" \
-  --lora-layers "$LORA_LAYERS" \
+  --num-layers "$LORA_LAYERS" \
   --learning-rate "$LR" \
   --adapter-path "$ADAPTER_PATH" \
   --save-every "$SAVE_EVERY"
