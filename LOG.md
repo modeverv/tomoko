@@ -1,3 +1,31 @@
+## 2026-06-11 セッション24
+
+### やること（開始時に書く）
+- `v2.md` の `Phase TT-v2.4: provisional inference` の実装
+  - `would_start_inference = True` でトリガーされる非同期の LLM 仮推論バックグラウンドタスクの実装
+  - 生成された仮返答（Provisional Reply）の一時状態保持とライフサイクル管理
+  - 新しい partial/final transcript の到着に伴うインテント乖離や、`semantic_split_risk` 上昇時に仮返答を無効化（stale discard）する判定ロジックの実装
+  - 無効化や整合確認のイベントを `logs/turn-taking-main.jsonl` に記録する
+  - ユニットテストおよびインテグレーションテストの追加とパス確認
+- 全てのユニットテストが通過することを確認する
+
+### やったこと
+- `TomoroSession` に非同期の仮推論タスク `_run_provisional_inference` を実装し、`would_start_inference = True` となる advisory 検知時にバックグラウンドで LLM の推論を実行するようにした。
+- 仮推論の結果を `self._provisional_replies` に一時的な状態（`pending`, `valid`, `validated`, `discarded`）として保持する仕組みを構築した。
+- 新しい advisory（または partial observation）の受信時、および final transcript の確定時点で、現在進行中の仮返答と最新発話内容とのインテント乖離（prefix matching）や `semantic_split_risk` 上昇を検知し、タスクを `cancel()` して状態を `discarded` にするライフサイクル管理（Stale Discard）を実装した。
+- final transcript 確定時にインテントが整合している場合は `provisional_inference_validated` を、そうでない場合は `provisional_inference_discarded` イベントを `logs/turn-taking-main.jsonl` に記録する仕組みを追加した。
+- `tests/unit/test_turn_taking_v2.py` に、仮推論の正常完了、advisory 受信時のインテント乖離判定、final transcript との整合/乖離判定、および会話不参加判定時のライフサイクルを検証するユニットテスト（合計 3 個）を追加した。
+- `make test-unit` が 675 個のユニットテストすべてにおいて正常にパスすることを確認した。
+- `tests/integration/test_turn_taking_v2_db.py` のインテグレーションテストが正常にパスすることを確認した。
+
+### 詰まったこと・解決したこと
+- `ReplyPipeline` インポートの問題： `server/shared/models` からインポートを試みてエラーが発生したため、グローバルスコープから既にインポートされている `server.gateway.reply` 由来の `ReplyPipeline` を参照するように修正した。
+- `ReplyPipeline.text` 属性の問題： 生成されたテキストは `reply.text` ではなく `reply.reply_text` に格納されているため、属性の取得先を `reply.reply_text` に変更してテキストが正しく抽出されるよう修正した。
+- `MagicMock` の `done()` の挙動： テスト内のダミータスクモックで `done()` メソッドが真値（Mock）を返し、キャンセル処理がバイパスされる現象が発生した。モック定義に `dummy_task.done.return_value = False` を明示して解決した。
+
+### 次のセッションでやること
+- `Phase TT-v2.5` 以降の検討（backchannel only, short confirmation, full response candidate を TomoroSession final gate に統合するかどうかなど、必要に応じた実装準備）
+
 ## 2026-06-11 セッション23
 
 ### やること（開始時に書く）

@@ -8,11 +8,11 @@
 
 ### 完了条件
 
-- [ ] `would_start_inference = True` になったタイミングで、実際に `provisional_inference` をバックグラウンドタスクとして非同期に実行する機構を追加する。
-- [ ] 生成された仮の返答を `provisional_replies`（一時的な状態）として保持する。
-- [ ] 新しい partial transcript や final transcript が到着した際、インテントが乖離しているか、または semantic_split_risk が上昇している場合に、保持している仮返答を無効化（status = 'stale' / 'discarded'）するライフサイクルロジックを実装する。
-- [ ] 仮推論結果の無効化や整合確認のトランジションイベントを `logs/turn-taking-main.jsonl` に記録する。
-- [ ] 関連するライフサイクルと無効化挙動を検証するユニットテストおよびインテグレーションテストを追加し、通過することを確認する。
+- [x] `would_start_inference = True` になったタイミングで、実際に `provisional_inference` をバックグラウンドタスクとして非同期に実行する機構を追加する。
+- [x] 生成された仮の返答を `provisional_replies`（一時的な状態）として保持する。
+- [x] 新しい partial transcript や final transcript が到着した際、インテントが乖離しているか、または semantic_split_risk が上昇している場合に、保持している仮返答を無効化（status = 'stale' / 'discarded'）するライフサイクルロジックを実装する。
+- [x] 仮推論結果の無効化や整合確認のトランジションイベントを `logs/turn-taking-main.jsonl` に記録する。
+- [x] 関連するライフサイクルと無効化挙動を検証するユニットテストおよびインテグレーションテストを追加し、通過することを確認する。
 
 ## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.3: prepare-only dry run
 

@@ -345,11 +345,13 @@ class TomoroSession:
         self._pending_timer_alarm_due_payloads: list[dict[str, Any]] = []
         self.turn_taking_v2_store = turn_taking_v2_store or NullTurnTakingV2Store()
         self._v2_provisional_inference_started_at: dict[UUID, int] = {}
+        self._provisional_replies: dict[UUID, dict[str, Any]] = {}
         self._last_active_turn_id = None
         self._partial_revision = 0
-        if hasattr(self.turn_taking_v2_store, "dsn") and getattr(self.turn_taking_v2_store, "dsn"):
+        dsn = getattr(self.turn_taking_v2_store, "dsn", None)
+        if dsn and isinstance(dsn, str):
             self._v2_advisory_listener_task = asyncio.create_task(
-                self._listen_v2_advisories(getattr(self.turn_taking_v2_store, "dsn"))
+                self._listen_v2_advisories(dsn)
             )
         else:
             self._v2_advisory_listener_task = None
@@ -1485,18 +1487,36 @@ class TomoroSession:
             previous_attention=previous_attention,
             reset_audio_input=reset_audio_input,
         ):
+            if self.audio_turns.active_turn_id:
+                await self._evaluate_and_cleanup_provisional_reply(
+                    self.audio_turns.active_turn_id,
+                    transcript,
+                    should_participate=False,
+                )
             return
         if await self._maybe_handle_task_ledger_request(
             transcript,
             previous_attention=previous_attention,
             reset_audio_input=reset_audio_input,
         ):
+            if self.audio_turns.active_turn_id:
+                await self._evaluate_and_cleanup_provisional_reply(
+                    self.audio_turns.active_turn_id,
+                    transcript,
+                    should_participate=False,
+                )
             return
         if await self._maybe_handle_timer_alarm_request(
             transcript,
             previous_attention=previous_attention,
             reset_audio_input=reset_audio_input,
         ):
+            if self.audio_turns.active_turn_id:
+                await self._evaluate_and_cleanup_provisional_reply(
+                    self.audio_turns.active_turn_id,
+                    transcript,
+                    should_participate=False,
+                )
             return
         turn_taking_action = await self._maybe_apply_turn_taking_decision(
             transcript,
@@ -1504,6 +1524,12 @@ class TomoroSession:
             reset_audio_input=reset_audio_input,
         )
         if turn_taking_action == "consumed":
+            if self.audio_turns.active_turn_id:
+                await self._evaluate_and_cleanup_provisional_reply(
+                    self.audio_turns.active_turn_id,
+                    transcript,
+                    should_participate=False,
+                )
             return
         barge_in_decision = (
             None
@@ -1511,6 +1537,12 @@ class TomoroSession:
             else self._classify_barge_in(transcript)
         )
         if barge_in_decision is not None:
+            if self.audio_turns.active_turn_id:
+                await self._evaluate_and_cleanup_provisional_reply(
+                    self.audio_turns.active_turn_id,
+                    transcript,
+                    should_participate=False,
+                )
             await self._record_stop_intent_observation(
                 transcript,
                 rule_kind=barge_in_decision.kind,
@@ -1567,6 +1599,12 @@ class TomoroSession:
         )
 
         should_participate = bool(decision and decision.should_participate)
+        if self.audio_turns.active_turn_id:
+            await self._evaluate_and_cleanup_provisional_reply(
+                self.audio_turns.active_turn_id,
+                transcript,
+                should_participate=should_participate,
+            )
         participation_mode = decision.mode if decision is not None else "observer"
         attended = should_participate
         if self.ambient_log_writer is not None:
@@ -2224,6 +2262,47 @@ class TomoroSession:
                 advisory.confidence,
                 advisory.reason,
             )
+
+            # 後続 partial による破棄判定
+            if advisory.turn_id and advisory.turn_id in self._provisional_replies:
+                prov = self._provisional_replies[advisory.turn_id]
+                if prov["status"] in ("pending", "valid"):
+                    obs = await self.turn_taking_v2_store.get_observation(advisory.observation_id)
+                    new_stable = obs.stable_text if obs else None
+                    old_stable = prov["stable_text"]
+
+                    diverged = False
+                    reason = ""
+                    if new_stable and old_stable and not new_stable.startswith(old_stable):
+                        diverged = True
+                        reason = f"intent diverged: old_stable={old_stable!r}, new_stable={new_stable!r}"
+                    elif advisory.semantic_split_risk is not None and advisory.semantic_split_risk >= 0.3:
+                        diverged = True
+                        reason = f"semantic split risk rose: {advisory.semantic_split_risk}"
+
+                    if diverged:
+                        task = prov["task"]
+                        if not task.done():
+                            task.cancel()
+                        prov["status"] = "discarded"
+
+                        import time
+                        now_ms = int(time.time() * 1000)
+                        from server.shared.turn_taking_logger import log_provisional_inference_event
+                        log_provisional_inference_event(
+                            ts_ms=now_ms,
+                            conversation_session_id=advisory.conversation_session_id,
+                            turn_id=advisory.turn_id,
+                            event="provisional_inference_discarded",
+                            text=None,
+                            reason=reason,
+                        )
+                        logger.info(
+                            "[v2_shadow] provisional_inference_discarded internally: turn_id=%s reason=%s",
+                            advisory.turn_id,
+                            reason,
+                        )
+
             if advisory.would_start_inference and advisory.turn_id:
                 if advisory.turn_id not in self._v2_provisional_inference_started_at:
                     import time
@@ -2231,6 +2310,7 @@ class TomoroSession:
                     self._v2_provisional_inference_started_at[advisory.turn_id] = now_ms
                     obs = await self.turn_taking_v2_store.get_observation(advisory.observation_id)
                     stable_text = obs.stable_text if obs else None
+
                     from server.shared.turn_taking_logger import log_provisional_inference_start
                     log_provisional_inference_start(
                         ts_ms=now_ms,
@@ -2240,10 +2320,219 @@ class TomoroSession:
                         reason=f"v2 shadow lane would_start_inference=True. saturation={advisory.semantic_saturation}",
                     )
                     logger.info(
-                        "[v2_shadow] provisional_inference_started (dry-run): turn_id=%s stable_text=%r",
+                        "[v2_shadow] provisional_inference_started: turn_id=%s stable_text=%r",
                         advisory.turn_id,
                         stable_text,
                     )
+
+                    # 実際の仮推論タスクを非同期に起動
+                    task = asyncio.create_task(
+                        self._run_provisional_inference(
+                            turn_id=advisory.turn_id,
+                            conversation_session_id=advisory.conversation_session_id,
+                            stable_text=stable_text or "",
+                            device_id=obs.source if obs else None,
+                            speaker="user",
+                        )
+                    )
+                    self._provisional_replies[advisory.turn_id] = {
+                        "status": "pending",
+                        "response_text": "",
+                        "task": task,
+                        "stable_text": stable_text or "",
+                    }
+
+    async def _run_provisional_inference(
+        self,
+        turn_id: UUID,
+        conversation_session_id: UUID | None,
+        stable_text: str,
+        device_id: str | None,
+        speaker: str,
+    ) -> None:
+        import time
+        from server.shared.models import Transcript, ThinkingInput
+        from server.shared.turn_taking_logger import log_provisional_inference_event
+
+        logger.info("[v2_shadow] _run_provisional_inference start for turn_id=%s, text=%r", turn_id, stable_text)
+
+        try:
+            if self.router is None or self.thinking_mode is None:
+                return
+
+            transcript = Transcript(
+                text=stable_text,
+                device_id=device_id or "default",
+                speaker=speaker,
+                audio_level_db=-20.0,
+                recorded_at=datetime.now(UTC),
+                is_final=False,
+            )
+
+            base_deep_memory = should_use_deep_memory(transcript.text)
+            calendar_cue = has_calendar_cue(transcript.text)
+            memory_plan = self.memory_gate.plan_retrieval(
+                text=transcript.text,
+                base_deep_memory=base_deep_memory,
+                calendar_cue=calendar_cue,
+            )
+            explicit_memory_cue = (
+                has_deep_memory_cue(transcript.text) and memory_plan.retrieve_long_term
+            )
+            depth = "deep" if (
+                memory_plan.retrieve_long_term or memory_plan.retrieve_calendar
+            ) else "fast"
+
+            context_snapshot = await self._build_context_snapshot(
+                transcript,
+                depth=depth,
+                explicit_memory_cue=explicit_memory_cue,
+            )
+
+            short_memory_notes = self._short_memory_buffer.read_for_prompt(
+                current_turn=self._short_memory_turn
+            )
+
+            recent_turns = self._recent_turns_with_precomputed_topic(
+                context_snapshot.recent_turns
+            )
+
+            fresh_long_term_memory = context_snapshot_long_term_memory(context_snapshot)
+            fresh_calendar_memory = context_snapshot_calendar_memory(context_snapshot)
+            raw_memory_candidates = [
+                *fresh_long_term_memory,
+                *fresh_calendar_memory,
+            ]
+            merged_memory_candidates = self._merge_carried_long_term_memory(
+                raw_memory_candidates
+            )
+            memory_gate_decision = self.memory_gate.filter_for_prompt(
+                MemoryGateRequest(
+                    text=transcript.text,
+                    intent=memory_plan.intent,
+                    memories=merged_memory_candidates,
+                )
+            )
+            long_term_memory = memory_gate_decision.exposed_memories
+
+            thinking_input = ThinkingInput(
+                text=transcript.text,
+                speaker=transcript.speaker,
+                context=recent_turns,
+                emotion="neutral",
+                device_id=transcript.device_id,
+                long_term_memory=long_term_memory,
+                short_memory_notes=short_memory_notes,
+                context_snapshot=context_snapshot,
+                response_directive=None,
+            )
+
+            backend = await self.router.select("conversation", "privacy")
+            reply = ReplyPipeline(initial_emotion=thinking_input.emotion)
+
+            event_stream = self.thinking_mode.think(backend, thinking_input)
+
+            async for event in event_stream:
+                reply.handle_event(event)
+
+            response_text = reply.reply_text
+
+            if turn_id in self._provisional_replies:
+                self._provisional_replies[turn_id]["status"] = "valid"
+                self._provisional_replies[turn_id]["response_text"] = response_text
+
+            now_ms = int(time.time() * 1000)
+            log_provisional_inference_event(
+                ts_ms=now_ms,
+                conversation_session_id=conversation_session_id,
+                turn_id=turn_id,
+                event="provisional_inference_complete",
+                text=response_text,
+                reason="provisional inference successfully finished",
+            )
+            logger.info("[v2_shadow] provisional_inference_complete for turn_id=%s response_text=%r", turn_id, response_text)
+
+        except asyncio.CancelledError:
+            if turn_id in self._provisional_replies:
+                self._provisional_replies[turn_id]["status"] = "discarded"
+
+            now_ms = int(time.time() * 1000)
+            log_provisional_inference_event(
+                ts_ms=now_ms,
+                conversation_session_id=conversation_session_id,
+                turn_id=turn_id,
+                event="provisional_inference_discarded",
+                text=None,
+                reason="cancelled by subsequent events",
+            )
+            logger.info("[v2_shadow] provisional_inference_discarded (cancelled) for turn_id=%s", turn_id)
+            raise
+        except Exception as e:
+            logger.error("[v2_shadow] Error in _run_provisional_inference: %s", e, exc_info=True)
+            if turn_id in self._provisional_replies:
+                self._provisional_replies[turn_id]["status"] = "discarded"
+
+    async def _evaluate_and_cleanup_provisional_reply(
+        self,
+        turn_id: UUID,
+        transcript: Transcript,
+        should_participate: bool,
+    ) -> None:
+        if turn_id not in self._provisional_replies:
+            return
+
+        prov = self._provisional_replies[turn_id]
+        status = prov["status"]
+        stable_text = prov["stable_text"]
+        task = prov["task"]
+
+        if not task.done():
+            task.cancel()
+
+        import time
+        from server.shared.turn_taking_logger import log_provisional_inference_event
+        now_ms = int(time.time() * 1000)
+
+        if status in ("pending", "valid"):
+            if should_participate:
+                is_valid = False
+                if stable_text:
+                    if transcript.text.startswith(stable_text):
+                        is_valid = True
+
+                if is_valid:
+                    prov["status"] = "validated"
+                    log_provisional_inference_event(
+                        ts_ms=now_ms,
+                        conversation_session_id=self.active_conversation_session_id,
+                        turn_id=turn_id,
+                        event="provisional_inference_validated",
+                        text=prov["response_text"] or None,
+                        reason=f"matched final transcript: stable_text={stable_text!r}, final={transcript.text!r}",
+                    )
+                    logger.info("[v2_shadow] provisional_inference_validated for turn_id=%s", turn_id)
+                else:
+                    prov["status"] = "discarded"
+                    log_provisional_inference_event(
+                        ts_ms=now_ms,
+                        conversation_session_id=self.active_conversation_session_id,
+                        turn_id=turn_id,
+                        event="provisional_inference_discarded",
+                        text=None,
+                        reason=f"intent diverged at final transcript: stable_text={stable_text!r}, final={transcript.text!r}",
+                    )
+                    logger.info("[v2_shadow] provisional_inference_discarded due to divergence at final: turn_id=%s", turn_id)
+            else:
+                prov["status"] = "discarded"
+                log_provisional_inference_event(
+                    ts_ms=now_ms,
+                    conversation_session_id=self.active_conversation_session_id,
+                    turn_id=turn_id,
+                    event="provisional_inference_discarded",
+                    text=None,
+                    reason="turn-taking decision: should_participate=False",
+                )
+                logger.info("[v2_shadow] provisional_inference_discarded due to should_participate=False: turn_id=%s", turn_id)
 
     def _filter_transcript(self, transcript: Transcript, *, is_partial: bool):
         if self.transcript_filter is None:

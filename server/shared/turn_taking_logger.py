@@ -126,6 +126,27 @@ def log_v2_shadow_advisory(
     _write(_v2_log_path(), record)
 
 
+def log_provisional_inference_event(
+    *,
+    ts_ms: int,
+    conversation_session_id: UUID | None,
+    turn_id: UUID | None,
+    event: str,
+    text: str | None,
+    reason: str,
+) -> None:
+    record = {
+        "ts_ms": ts_ms,
+        "conversation_session_id": conversation_session_id,
+        "turn_id": turn_id,
+        "lane": "main",
+        "event": event,
+        "text": text or "",
+        "reason": reason,
+    }
+    _write(_main_log_path(), record)
+
+
 def log_provisional_inference_start(
     *,
     ts_ms: int,
@@ -134,13 +155,11 @@ def log_provisional_inference_start(
     stable_text: str | None,
     reason: str,
 ) -> None:
-    record = {
-        "ts_ms": ts_ms,
-        "conversation_session_id": conversation_session_id,
-        "turn_id": turn_id,
-        "lane": "main",
-        "event": "provisional_inference_start",
-        "text": stable_text or "",
-        "reason": reason,
-    }
-    _write(_main_log_path(), record)
+    log_provisional_inference_event(
+        ts_ms=ts_ms,
+        conversation_session_id=conversation_session_id,
+        turn_id=turn_id,
+        event="provisional_inference_start",
+        text=stable_text,
+        reason=reason,
+    )
