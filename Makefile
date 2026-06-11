@@ -14,6 +14,7 @@ PERSONA_UPDATE_LOG_FILE ?= logs/persona-updater.log
 THINKER_LOG_FILE ?= logs/thinker.log
 JOURNALIST_LOG_FILE ?= logs/journalist.log
 TURN_TAKING_LOG_FILE ?= logs/turn-taking-worker.log
+TURN_TAKING_V2_LOG_FILE ?= logs/turn-taking-v2-worker.log
 TURN_TAKING_HOST ?= 127.0.0.1
 TURN_TAKING_PORT ?= 8765
 TURN_TAKING_MODEL ?= mlx-community/gemma-4-e2b-it-4bit
@@ -63,10 +64,10 @@ SCREEN_SHELL ?= zsh
 
 .PHONY: deps prepare download-models download-optional-models server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
 .PHONY: session-summarizer session-summarizer-once turn-embedder turn-embedder-once
-.PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
+.PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once turn-taking-v2-worker
 .PHONY: information-collect-world information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
 .PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list
-.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material smoke-research-mcp smoke-research-session smoke-ws-voice-latency log-report monitor system-monitor lint check analyze-v2
+.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material smoke-research-mcp smoke-research-session smoke-ws-voice-latency log-report monitor system-monitor lint check analyze-v2 analyze-v2-latest analyze-v2-list analyze-v2-html
 
 deps:
 	mise exec -- uv sync
@@ -161,6 +162,10 @@ turn-taking-worker-once:
 		--once \
 		--disable-llm \
 		--sample-text "うん"
+
+turn-taking-v2-worker:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TURN_TAKING_V2_LOG_FILE) mise exec -- uv run python background-process/run_turn_taking_v2_worker.py \
+		--config $(CENTRAL_CONFIG)
 
 information-collect-world:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(WORLD_OBSERVATION_LOG_FILE) TOMOKO_WORLD_OBSERVATION_MCP_TIMEOUT_SEC=$(WORLD_OBSERVATION_MCP_TIMEOUT_SEC) TOMOKO_WORLD_OBSERVATION_PROVIDER_TIMEOUT_SEC=$(WORLD_OBSERVATION_PROVIDER_TIMEOUT_SEC) mise exec -- uv run python _tools/collect_world_observation.py \
@@ -325,6 +330,35 @@ llm-stop:
 voicevox-run:
 	bash _tools/run_voicevox.sh
 
-shadow-worker:
+analyze-v2:
 	mise exec -- uv run python -m server.tools.analyze_turn_taking_v2 --session-id "$(SESSION_ID)" $(if $(MAIN_LOG),--main $(MAIN_LOG),) $(if $(V2_LOG),--v2 $(V2_LOG),) $(if $(OUT_REPORT),--out $(OUT_REPORT),)
 
+## Turn-taking v2 分析: 最新セッションを自動取得して分析レポートを生成する
+## 使い方: make analyze-v2-latest
+analyze-v2-latest:
+	mise exec -- uv run python -m server.tools.analyze_turn_taking_v2_latest $(if $(MAIN_LOG),--main $(MAIN_LOG),) $(if $(V2_LOG),--v2 $(V2_LOG),) $(if $(OUT_DIR),--out-dir $(OUT_DIR),)
+
+## Turn-taking v2 ログに含まれる全セッションIDを一覧表示する
+## 使い方: make analyze-v2-list
+analyze-v2-list:
+	mise exec -- uv run python -m server.tools.analyze_turn_taking_v2_latest --list-sessions $(if $(MAIN_LOG),--main $(MAIN_LOG),) $(if $(V2_LOG),--v2 $(V2_LOG),)
+
+## Turn-taking v2: HTMLインタラクティブタイムライン生成
+## 発話ごとに メイン推論開始 vs シャドウワーカーLLMシグナル のタイミングを可視化する
+## 使い方:
+##   make analyze-v2-html               # 最新セッション (MD + HTML)
+##   make analyze-v2-html TOP=3         # 最新3セッション
+##   make analyze-v2-html SESSION_ID=<id>  # 指定セッション
+analyze-v2-html:
+	$(if $(SESSION_ID),\
+	  mise exec -- uv run python -m server.tools.analyze_turn_taking_v2 \
+	    --session-id "$(SESSION_ID)" --html \
+	    $(if $(MAIN_LOG),--main $(MAIN_LOG),) \
+	    $(if $(V2_LOG),--v2 $(V2_LOG),) \
+	    $(if $(OUT_REPORT),--out $(OUT_REPORT),),\
+	  mise exec -- uv run python -m server.tools.analyze_turn_taking_v2_latest \
+	    --html \
+	    $(if $(TOP),--top $(TOP),) \
+	    $(if $(MAIN_LOG),--main $(MAIN_LOG),) \
+	    $(if $(V2_LOG),--v2 $(V2_LOG),) \
+	    $(if $(OUT_DIR),--out-dir $(OUT_DIR),))

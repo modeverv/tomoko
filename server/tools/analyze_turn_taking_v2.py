@@ -21,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--main", type=str, default="logs/turn-taking-main.jsonl", help="Path to main decision log.")
     parser.add_argument("--v2", type=str, default="logs/turn-taking-v2-shadow.jsonl", help="Path to v2 shadow advisory log.")
     parser.add_argument("--out", type=str, help="Path to save the output markdown report.")
+    parser.add_argument("--html", action="store_true", help="HTMLタイムラインも同時に生成する")
     return parser.parse_args()
 
 
@@ -235,6 +236,13 @@ def main() -> None:
         f.write(report_md)
 
     print(f"Analysis report generated successfully at: {out_path}")
+
+    if args.html:
+        from server.tools.generate_timeline_html import generate_html_timeline
+        html_path = out_path.with_suffix(".html")
+        html_content = generate_html_timeline(args.session_id, main_recs, v2_recs)
+        html_path.write_text(html_content, encoding="utf-8")
+        print(f"HTML timeline generated at: {html_path}")
 
 
 if __name__ == "__main__":
