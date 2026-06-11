@@ -8,6 +8,10 @@ dsn = "postgresql://tomoko:tomoko@localhost:5432/tomoko"
 sample_rate = 16000
 chunk_ms = 32
 vad_silence_ms = 400
+vap_hybrid_enabled = true
+vap_hybrid_min_silence_ms = 150
+vap_hybrid_delta_silence_ms = 650
+vap_hybrid_threshold_probability = 0.90
 
 [inference]
 conversation_backend = "lmstudio_gemma4_26b_a4b"

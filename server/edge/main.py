@@ -419,7 +419,7 @@ async def _central_browser_session(websocket: WebSocket) -> None:
     stop_intent_store = stop_intent_store_factory()
     router = router_factory()
     embedding_backend = embedding_backend_factory()
-    audio_interaction_tap = audio_interaction_tap_factory()
+    audio_interaction_tap = audio_interaction_tap_factory(config_audio=config.audio)
     tts_backend = tts_backend_factory()
     output_state = _connection_registry.register(
         connection_id=connection_id,

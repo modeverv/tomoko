@@ -68,6 +68,11 @@ class AudioSection:
     sample_rate: int
     chunk_ms: int
     vad_silence_ms: int
+    vap_hybrid_enabled: bool = False
+    vap_hybrid_min_silence_ms: int = 150
+    vap_hybrid_delta_silence_ms: int = 650
+    vap_hybrid_max_silence_ms: int = 800
+    vap_hybrid_threshold_probability: float = 0.90
 
 
 @dataclass(frozen=True)
@@ -92,11 +97,27 @@ class NodeConfig:
             for name, spec in data.get("backends", {}).items()
         }
 
+        audio_data = dict(data["audio"])
+        if (
+            "vap_hybrid_max_silence_ms" in audio_data
+            and "vap_hybrid_delta_silence_ms" not in audio_data
+        ):
+            min_s = audio_data.get("vap_hybrid_min_silence_ms", 150)
+            max_s = audio_data["vap_hybrid_max_silence_ms"]
+            audio_data["vap_hybrid_delta_silence_ms"] = max_s - min_s
+        elif (
+            "vap_hybrid_delta_silence_ms" in audio_data
+            and "vap_hybrid_max_silence_ms" not in audio_data
+        ):
+            min_s = audio_data.get("vap_hybrid_min_silence_ms", 150)
+            delta_s = audio_data["vap_hybrid_delta_silence_ms"]
+            audio_data["vap_hybrid_max_silence_ms"] = min_s + delta_s
+
         return cls(
             node=NodeSection(**data["node"]),
             inference=InferenceSection(**data["inference"]),
             backends=backends,
-            audio=AudioSection(**data["audio"]),
+            audio=AudioSection(**audio_data),
             database=DatabaseSection(**data["database"]),
         )
 

@@ -103,3 +103,59 @@ async def test_tomoko_audio_tap_failure_does_not_block_audio_send() -> None:
     await session._send_audio_chunk(chunk)
 
     assert sent_audio == [b"pcm"]
+
+
+class MockVAPAudioTap:
+    def __init__(self, recommended_ms: int | None = None) -> None:
+        self.recommended_ms = recommended_ms
+
+    def observe_user_audio(self, chunk: np.ndarray, *, observed_at: datetime) -> None:
+        pass
+
+    def observe_tomoko_audio(self, chunk: bytes, *, observed_at: datetime) -> None:
+        pass
+
+    def get_recommended_silence_ms(self) -> int | None:
+        return self.recommended_ms
+
+
+@pytest.mark.unit
+async def test_session_applies_recommended_silence_from_audio_tap() -> None:
+    tap = MockVAPAudioTap(recommended_ms=250)
+    session = _session(audio_interaction_tap=tap)
+
+    assert session.vad_processor.silence_ms == 400
+
+    chunk = np.zeros(512, dtype=np.float32)
+    await session.process_audio_chunk(chunk.tobytes())
+
+    assert session.vad_processor.silence_ms == 250
+
+
+@pytest.mark.unit
+def test_create_maai_backchannel_tap_from_config() -> None:
+    from server.gateway.maai_backchannel import create_maai_backchannel_tap_from_env
+    from server.shared.config import AudioSection
+
+    # 1. Delta config
+    audio_cfg = AudioSection(
+        sample_rate=16000,
+        chunk_ms=32,
+        vad_silence_ms=400,
+        vap_hybrid_enabled=True,
+        vap_hybrid_min_silence_ms=120,
+        vap_hybrid_delta_silence_ms=580,
+        vap_hybrid_threshold_probability=0.85,
+    )
+    # mock maai module so it doesn't fail on import
+    mock_maai = object()
+    tap = create_maai_backchannel_tap_from_env(
+        maai_module=mock_maai,
+        config_audio=audio_cfg,
+    )
+    assert tap is not None
+    assert tap.config.vap_hybrid_enabled is True
+    assert tap.config.min_silence_ms == 120
+    assert tap.config.delta_silence_ms == 580
+    assert tap.config.threshold_probability == 0.85
+

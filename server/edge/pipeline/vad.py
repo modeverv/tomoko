@@ -54,6 +54,7 @@ class VADProcessor:
         device_id: str = "local",
     ) -> None:
         self.vad = vad
+        self.default_silence_ms = silence_ms
         self.silence_ms = silence_ms
         self.sample_rate = sample_rate
         self.speech_threshold = speech_threshold
@@ -121,6 +122,7 @@ class VADProcessor:
         self._silent_samples = 0
         self._started_at = None
         self._max_speech_probability = 0.0
+        self.silence_ms = self.default_silence_ms
 
 
 def create_vad_processor(silence_ms: int = 400) -> VADProcessor:

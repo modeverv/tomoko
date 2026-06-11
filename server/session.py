@@ -395,6 +395,19 @@ class TomoroSession:
     async def process_audio_chunk(self, chunk_bytes: bytes) -> SpeechSegment | None:
         chunk = np.frombuffer(chunk_bytes, dtype=np.float32)
         self._observe_user_audio(chunk)
+
+        if self.audio_interaction_tap is not None:
+            get_rec_ms = getattr(self.audio_interaction_tap, "get_recommended_silence_ms", None)
+            if get_rec_ms is not None:
+                rec_ms = get_rec_ms()
+                if rec_ms is not None and self.vad_processor.silence_ms != rec_ms:
+                    logger.debug(
+                        "VAP dynamic VAD threshold shift: silence_ms %d -> %d",
+                        self.vad_processor.silence_ms,
+                        rec_ms,
+                    )
+                    self.vad_processor.silence_ms = rec_ms
+
         result = self.vad_processor.process_chunk(chunk)
         if result.state_changed_to is not None:
             await self._transition(result.state_changed_to)

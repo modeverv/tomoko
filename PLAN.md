@@ -1,3 +1,17 @@
+## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.5: VAP hybrid dynamic silence control
+
+前フェーズ（Phase TT-v2.4）の仮推論ライフサイクル実装とテストを完了した。これにより、`would_start_inference = True` をトリガーとした非同期な仮返答生成および整合・破棄ライフサイクルが構築された。
+
+これまでの段階では、発話の終了判定（VAD）は固定値（`vad_silence_ms = 400`）の決め打ちで動作しており、ユーザーの発話意欲や完了確率に応じた動的な間合いの伸縮は行えなかった。この固定の無音待機時間設定のみに依存する方針を否定し、本フェーズでは VAP (Voice Activity Projection) 予測モデルを追加で動かし、その予測確度（`p_future[1]`: ターン譲渡確率）に応じて VAD の無音判定時間（`silence_ms`）を逆数的（反比例・負の相関）に動的変更するハイブリッド制御を実装する。
+
+### 完了条件
+
+- [x] VAPのしきい値・パラメータ群（`min_silence_ms = 150`, `delta_silence_ms = 650`, `threshold_probability = 90%`）を config ファイル（`[audio]` セクション）に外だしする。
+- [x] `MaaiBackchannelTap` において `bc_2type` モデルと並行して `vap` 予測モデルを追加で動かし、ポーリング結果から推奨の無音時間（`recommended_silence_ms`）を計算・提供する仕組みを実装する。
+- [x] `TomoroSession` の音声処理ホットパス（`process_audio_chunk`）において、VAPの推奨値を VAD 判定の直前に動的適用するロジックを実装する。
+- [x] VADProcessor がリセットされるたびにデフォルトの無音判定値に戻る（`default_silence_ms`）堅牢性を保証する。
+- [x] VAPの動的無音制御の契約と動作を保証するユニットテストを追加し、通過することを確認する。
+
 ## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.4: provisional inference
 
 前フェーズ（Phase TT-v2.3）の prepare-only dry run の実装とテストを完了した。これにより、v2 shadow レーンからの `would_start_inference = True` イベントを契機に、TomoroSession が仮の推論開始をトリガーしてログ出力する仕組みが構築された。

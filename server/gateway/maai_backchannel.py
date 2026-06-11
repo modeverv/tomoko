@@ -32,10 +32,14 @@ class MaaiBackchannelConfig:
     react_threshold: float = 0.50
     emo_threshold: float = 0.35
     cooldown_ms: int = 900
+    vap_hybrid_enabled: bool = False
+    min_silence_ms: int = 150
+    delta_silence_ms: int = 650
+    threshold_probability: float = 0.90
 
 
 class MaaiBackchannelTap:
-    """AudioInteractionTap implementation backed by MaAI bc_2type."""
+    """AudioInteractionTap implementation backed by MaAI bc_2type and VAP hybrid."""
 
     def __init__(
         self,
@@ -53,6 +57,13 @@ class MaaiBackchannelTap:
         self._poll_task: asyncio.Task[None] | None = None
         self._running = False
         self._last_suggestion_at: datetime | None = None
+
+        # VAP Hybrid fields
+        self._maai_vap: Any | None = None
+        self._poll_vap_task: asyncio.Task[None] | None = None
+        self._audio_ch1_vap: Any | None = None
+        self._audio_ch2_vap: Any | None = None
+        self._recommended_silence_ms: int | None = None
 
     def set_suggestion_callback(
         self,
@@ -76,14 +87,33 @@ class MaaiBackchannelTap:
             device=self.config.device,
         )
         self._maai.start()
+
+        if self.config.vap_hybrid_enabled:
+            self._audio_ch1_vap = maai_module.MaaiInput.Chunk()
+            self._audio_ch2_vap = maai_module.MaaiInput.Chunk()
+            self._maai_vap = maai_module.Maai(
+                mode="vap",
+                lang=self.config.lang,
+                frame_rate=self.config.frame_rate,
+                context_len_sec=self.config.context_len_sec,
+                audio_ch1=self._audio_ch1_vap,
+                audio_ch2=self._audio_ch2_vap,
+                device=self.config.device,
+            )
+            self._maai_vap.start()
+            self._poll_vap_task = asyncio.create_task(self._poll_vap_results())
+            logger.info("Maai VAP prediction model started.")
+
         self._running = True
         self._poll_task = asyncio.create_task(self._poll_results())
         logger.info(
-            "MaaiBackchannelTap started lang=%s frame_rate=%s context_len_sec=%s device=%s",
+            "MaaiBackchannelTap started lang=%s frame_rate=%s "
+            "context_len_sec=%s device=%s vap_hybrid_enabled=%s",
             self.config.lang,
             self.config.frame_rate,
             self.config.context_len_sec,
             self.config.device,
+            self.config.vap_hybrid_enabled,
         )
 
     async def stop(self) -> None:
@@ -93,11 +123,24 @@ class MaaiBackchannelTap:
             with suppress(asyncio.CancelledError):
                 await self._poll_task
             self._poll_task = None
+
+        if self._poll_vap_task is not None:
+            self._poll_vap_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._poll_vap_task
+            self._poll_vap_task = None
+
         if self._maai is not None:
             stop = getattr(self._maai, "stop", None)
             if stop is not None:
                 stop(wait=False)
         self._maai = None
+
+        if self._maai_vap is not None:
+            stop = getattr(self._maai_vap, "stop", None)
+            if stop is not None:
+                stop(wait=False)
+        self._maai_vap = None
 
     def observe_user_audio(self, chunk: np.ndarray, *, observed_at: datetime) -> None:
         del observed_at
@@ -153,6 +196,45 @@ class MaaiBackchannelTap:
             if isinstance(result, dict):
                 self.handle_result(result)
 
+    async def _poll_vap_results(self) -> None:
+        assert self._maai_vap is not None
+        while self._running:
+            try:
+                result = await asyncio.to_thread(_read_maai_result_once, self._maai_vap)
+            except asyncio.CancelledError:
+                raise
+            except queue.Empty:
+                continue
+            except Exception:
+                logger.warning("Maai VAP result polling failed", exc_info=True)
+                await asyncio.sleep(0.2)
+                continue
+            if isinstance(result, dict):
+                self.handle_vap_result(result)
+
+    def handle_vap_result(self, result: dict[str, Any]) -> None:
+        p_future = result.get("p_future")
+        if not isinstance(p_future, list) or len(p_future) < 2:
+            return
+        p_yielding = _float_or_zero(p_future[1])
+
+        threshold = self.config.threshold_probability
+        if p_yielding >= threshold:
+            # 確度が高いほど待ち時間を縮める（逆数的）
+            silence_ms = (
+                self.config.min_silence_ms
+                + (1.0 - p_yielding) * self.config.delta_silence_ms
+            )
+            self._recommended_silence_ms = int(round(silence_ms))
+        else:
+            # しきい値未満は最大待ち時間
+            self._recommended_silence_ms = int(
+                self.config.min_silence_ms + self.config.delta_silence_ms
+            )
+
+    def get_recommended_silence_ms(self) -> int | None:
+        return self._recommended_silence_ms
+
     def _feed_two_channel(
         self,
         *,
@@ -172,8 +254,13 @@ class MaaiBackchannelTap:
         user = _pad_or_trim(user_audio, length)
         tomoko = _pad_or_trim(tomoko_audio, length)
         for start in range(0, length - MAAI_FRAME_SIZE + 1, MAAI_FRAME_SIZE):
-            self._audio_ch1.put_chunk(user[start : start + MAAI_FRAME_SIZE])
-            self._audio_ch2.put_chunk(tomoko[start : start + MAAI_FRAME_SIZE])
+            chunk1 = user[start : start + MAAI_FRAME_SIZE]
+            chunk2 = tomoko[start : start + MAAI_FRAME_SIZE]
+            self._audio_ch1.put_chunk(chunk1)
+            self._audio_ch2.put_chunk(chunk2)
+            if self._audio_ch1_vap is not None and self._audio_ch2_vap is not None:
+                self._audio_ch1_vap.put_chunk(chunk1)
+                self._audio_ch2_vap.put_chunk(chunk2)
 
     def _suggestion_from_result(
         self,
@@ -220,22 +307,82 @@ def create_maai_backchannel_tap_from_env(
     *,
     suggestion_callback: Callable[[BackchannelSuggestion], Any] | None = None,
     maai_module: Any | None = None,
+    config_audio: Any | None = None,
 ) -> MaaiBackchannelTap | None:
-    if os.environ.get("TOMOKO_MAAI_BACKCHANNEL_ENABLED", "").lower() not in {
+    enabled_env = os.environ.get("TOMOKO_MAAI_BACKCHANNEL_ENABLED", "").lower() in {
         "1",
         "true",
         "yes",
         "on",
-    }:
+    }
+    enabled_config = config_audio is not None and getattr(config_audio, "vap_hybrid_enabled", False)
+
+    if not (enabled_env or enabled_config):
         return None
+
+    react_threshold = _env_float("TOMOKO_MAAI_REACT_THRESHOLD", 0.50)
+    emo_threshold = _env_float("TOMOKO_MAAI_EMO_THRESHOLD", 0.35)
+    cooldown_ms = _env_int("TOMOKO_MAAI_COOLDOWN_MS", 900)
+    device = os.environ.get("TOMOKO_MAAI_DEVICE", "cpu")
+    frame_rate = _env_number("TOMOKO_MAAI_FRAME_RATE", 10)
+    context_len_sec = _env_int("TOMOKO_MAAI_CONTEXT_LEN_SEC", 5)
+
+    vap_hybrid_enabled = enabled_config or _env_bool(
+        "TOMOKO_MAAI_VAP_HYBRID_ENABLED", False
+    )
+
+    min_silence_ms = 150
+    delta_silence_ms = 650
+    threshold_probability = 0.90
+    if config_audio is not None:
+        min_silence_ms = getattr(
+            config_audio, "vap_hybrid_min_silence_ms", min_silence_ms
+        )
+        if hasattr(config_audio, "vap_hybrid_delta_silence_ms"):
+            delta_silence_ms = config_audio.vap_hybrid_delta_silence_ms
+        else:
+            max_silence_ms = getattr(
+                config_audio,
+                "vap_hybrid_max_silence_ms",
+                min_silence_ms + delta_silence_ms,
+            )
+            delta_silence_ms = max_silence_ms - min_silence_ms
+        threshold_probability = getattr(
+            config_audio,
+            "vap_hybrid_threshold_probability",
+            threshold_probability,
+        )
+
+    # env overrides
+    min_silence_ms = _env_int(
+        "TOMOKO_MAAI_VAP_HYBRID_MIN_SILENCE_MS", min_silence_ms
+    )
+    if "TOMOKO_MAAI_VAP_HYBRID_DELTA_SILENCE_MS" in os.environ:
+        delta_silence_ms = _env_int(
+            "TOMOKO_MAAI_VAP_HYBRID_DELTA_SILENCE_MS", delta_silence_ms
+        )
+    elif "TOMOKO_MAAI_VAP_HYBRID_MAX_SILENCE_MS" in os.environ:
+        max_silence_ms = _env_int(
+            "TOMOKO_MAAI_VAP_HYBRID_MAX_SILENCE_MS",
+            min_silence_ms + delta_silence_ms,
+        )
+        delta_silence_ms = max_silence_ms - min_silence_ms
+    threshold_probability = _env_float(
+        "TOMOKO_MAAI_VAP_HYBRID_THRESHOLD_PROBABILITY", threshold_probability
+    )
+
     return MaaiBackchannelTap(
         config=MaaiBackchannelConfig(
-            react_threshold=_env_float("TOMOKO_MAAI_REACT_THRESHOLD", 0.50),
-            emo_threshold=_env_float("TOMOKO_MAAI_EMO_THRESHOLD", 0.35),
-            cooldown_ms=_env_int("TOMOKO_MAAI_COOLDOWN_MS", 900),
-            device=os.environ.get("TOMOKO_MAAI_DEVICE", "cpu"),
-            frame_rate=_env_number("TOMOKO_MAAI_FRAME_RATE", 10),
-            context_len_sec=_env_int("TOMOKO_MAAI_CONTEXT_LEN_SEC", 5),
+            react_threshold=react_threshold,
+            emo_threshold=emo_threshold,
+            cooldown_ms=cooldown_ms,
+            device=device,
+            frame_rate=frame_rate,
+            context_len_sec=context_len_sec,
+            vap_hybrid_enabled=vap_hybrid_enabled,
+            min_silence_ms=min_silence_ms,
+            delta_silence_ms=delta_silence_ms,
+            threshold_probability=threshold_probability,
         ),
         suggestion_callback=suggestion_callback,
         maai_module=maai_module,
@@ -337,3 +484,10 @@ def _env_int(name: str, default: int) -> int:
         return int(os.environ.get(name, default))
     except (TypeError, ValueError):
         return default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    return val.lower() in {"1", "true", "yes", "on"}
