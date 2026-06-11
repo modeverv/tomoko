@@ -1,3 +1,16 @@
+## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.7: Schema reduction & Structured Output enforcement
+
+前フェーズ（Phase TT-v2.6）のデバッグ用「発話終わり」ボタン・Spaceキー押下によるマーカーシグナル UI 実装とテストを完了した。
+
+これまでの段階では、シャドウワーカーによる意味飽和度分析のために LLM（Gemma-4-E2B等）に対して 5 つのキー（`semantic_saturation`, `remaining_info_risk`, `semantic_split_risk`, `safe_response_level`, `confidence`）を含む重い JSON 構造を出力させ、構造化出力を強制しないままプロンプト指示のみで JSON を生成させていた。この「構造化出力を強制せず、多くの冗長なパラメータを LLM から直接取得する」設計を否定する。重いスキーマを出力させるとモデルの挙動が不安定になり JSON のパース崩れを引き起こしやすいため、またローカル推論時に構造化出力を強制しないと形式の安定性が確保できないためである。したがって、本フェーズでは LLM に要求する JSON キーを `semantic_saturation` と `remaining_info_risk` の 2 つのみに縮減し、さらにローカル MLX 推論バックエンドに対して構造化出力（Structured Output / JSON Schema）インターフェースを実装して生成を強制する。
+
+### 完了条件
+
+- [x] ローカル MLX バックエンド（`GemmaMLXBackend`, `MLXLMBackend`）に `chat_stream_structured` メソッドを実装し、構造化出力を強制するためのインターフェースを提供する。
+- [x] `turn_taking_v2_worker.py` で `chat_stream_structured_with_trace_role` を使用するように改修し、スキーマとして `semantic_saturation` と `remaining_info_risk` の 2 キーのみを指定する。
+- [x] `turn_taking_v2_worker.py` で LLM の結果から他の評価パラメータ（`safe_response_level` 等）を算出して補完するロジックを実装する。
+- [x] 関連するユニットテストおよびインテグレーションテストを修正・追加し、すべて通過することを確認する。
+
 ## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.6: Debug speech end marker UI & logging
 
 前フェーズ（Phase TT-v2.5）の VAP ハイブリッド制御による VAD 動的無音時間調整の実装とテストを完了した。

@@ -114,6 +114,30 @@ class GemmaMLXBackend(InferenceBackend):
                 chunk_count=chunk_count,
             )
 
+    async def chat_stream_structured(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, str]],
+        *,
+        json_schema: dict[str, Any],
+        max_tokens: int | None = None,
+        trace_role: str | None = None,
+    ) -> AsyncGenerator[str, None]:
+        import json
+        schema_desc = json.dumps(json_schema, ensure_ascii=False)
+        enhanced_system_prompt = (
+            f"{system_prompt}\n\n"
+            f"重要: あなたの出力は以下の JSON Schema に完全に準拠した JSON オブジェクトのみである必要があります。\n"
+            f"他のいかなるテキスト（解説、コードブロックのマーク等）も含めてはいけません。\n"
+            f"Schema:\n{schema_desc}"
+        )
+        async for chunk in self.chat_stream(
+            enhanced_system_prompt,
+            messages,
+            trace_role=trace_role,
+        ):
+            yield chunk
+
     def _load(self) -> tuple[Any, Any]:
         if self._model is None or self._tokenizer is None:
             started_at = time.perf_counter()

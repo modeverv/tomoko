@@ -107,3 +107,45 @@ async def test_mlx_lm_backend_loads_with_adapter() -> None:
         pass
 
     assert calls == [("lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit", "lora/adapters")]
+
+
+@pytest.mark.unit
+async def test_mlx_lm_backend_chat_stream_structured() -> None:
+    prompts: list[str] = []
+
+    def load_model(model_name: str, adapter_path: str | None = None):
+        assert model_name == "lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit"
+        assert adapter_path is None
+        return object(), FakeTokenizer()
+
+    def stream_generate(_model, _tokenizer, prompt: str, max_tokens: int):
+        prompts.append(prompt)
+        assert max_tokens == 180
+        yield FakeResponse('{"semantic_saturation": 0.95, "remaining_info_risk": 0.2}')
+
+    backend = MLXLMBackend(
+        name="local_lfm",
+        model="lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit",
+        model_loader=load_model,
+        stream_generator=stream_generate,
+    )
+
+    chunks = [
+        chunk
+        async for chunk in backend.chat_stream_structured(
+            "あなたは発話判定アシスタントです。",
+            [{"role": "user", "content": "てすとおわり"}],
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "semantic_saturation": {"type": "number"},
+                    "remaining_info_risk": {"type": "number"},
+                },
+                "required": ["semantic_saturation", "remaining_info_risk"],
+            },
+        )
+    ]
+
+    assert chunks == ['{"semantic_saturation": 0.95, "remaining_info_risk": 0.2}']
+    assert "あなたは発話判定アシスタントです。\n\n重要: あなたの出力は以下の JSON Schema に完全に準拠した JSON オブジェクトのみである必要があります。" in prompts[0]
+

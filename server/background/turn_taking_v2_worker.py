@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+from typing import Any
 from uuid import UUID
 
 import psycopg
@@ -174,17 +175,22 @@ class TurnTakingV2Worker:
                     f"以下の項目をJSONフォーマットのみで返答してください。余計な文字列や解説は含めず、純粋なJSONのみを出力すること。\n"
                     f"JSONキー:\n"
                     f"- \"semantic_saturation\": 意味的な完了度。文末として十分に成立しているか。(0.0 から 1.0)\n"
-                    f"- \"remaining_info_risk\": 残りの情報が続く（まだ話し終わっていない）リスク。(0.0 から 1.0)\n"
-                    f"- \"semantic_split_risk\": 「でも」「ただ」などがあり文脈が途中で分裂するリスク。(0.0 から 1.0)\n"
-                    f"- \"safe_response_level\": 返答しても安全なレベル。(1 から 5)\n"
-                    f"- \"confidence\": 判定の信頼度。(0.0 から 1.0)"
+                    f"- \"remaining_info_risk\": 残りの情報が続く（まだ話し終わっていない）リスク。(0.0 から 1.0)"
                 )
 
                 messages = [{"role": "user", "content": user_prompt}]
                 logger.info("[v2_shadow] Requesting LLM (Gemma-4 E2B) for raw_text=%r", obs.raw_text)
 
+                from server.shared.inference.trace import chat_stream_structured_with_trace_role
+                
                 full_response = ""
-                async for chunk in backend.chat_stream(system_prompt, messages, trace_role="turn_taking_v2"):
+                async for chunk in chat_stream_structured_with_trace_role(
+                    backend,
+                    system_prompt,
+                    messages,
+                    json_schema=_turn_taking_v2_schema(),
+                    trace_role="turn_taking_v2",
+                ):
                     full_response += chunk
 
                 logger.info("[v2_shadow] LLM Response: %r", full_response)
@@ -197,12 +203,26 @@ class TurnTakingV2Worker:
                     json_str = json_str.split("```")[1].split("```")[0].strip()
 
                 parsed = json.loads(json_str)
+                semantic_saturation = float(parsed.get("semantic_saturation", 0.3))
+                remaining_info_risk = float(parsed.get("remaining_info_risk", 0.7))
+
+                if semantic_saturation >= 0.90:
+                    safe_response_level = 5
+                elif semantic_saturation >= 0.75:
+                    safe_response_level = 4
+                elif semantic_saturation >= 0.50:
+                    safe_response_level = 3
+                elif semantic_saturation >= 0.30:
+                    safe_response_level = 2
+                else:
+                    safe_response_level = 1
+
                 semantic_result = {
-                    "semantic_saturation": float(parsed.get("semantic_saturation", 0.3)),
-                    "remaining_info_risk": float(parsed.get("remaining_info_risk", 0.7)),
-                    "semantic_split_risk": float(parsed.get("semantic_split_risk", 0.0)),
-                    "safe_response_level": int(parsed.get("safe_response_level", 2)),
-                    "confidence": float(parsed.get("confidence", 0.5)),
+                    "semantic_saturation": semantic_saturation,
+                    "remaining_info_risk": remaining_info_risk,
+                    "semantic_split_risk": 0.0,
+                    "safe_response_level": safe_response_level,
+                    "confidence": 0.8,
                 }
                 logger.info("[v2_shadow] LLM semantic judgment succeeded: %s", semantic_result)
             except Exception as e:
@@ -294,3 +314,25 @@ class TurnTakingV2Worker:
                 break
             except Exception as e:
                 logger.error("Error in recovery loop: %s", e)
+
+
+def _turn_taking_v2_schema() -> dict[str, Any]:
+    return {
+        "name": "turn_taking_v2_advisory",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "semantic_saturation": {
+                    "type": "number",
+                    "description": "意味的な完了度。文末として十分に成立しているか。(0.0 から 1.0)",
+                },
+                "remaining_info_risk": {
+                    "type": "number",
+                    "description": "残りの情報が続く（まだ話し終わっていない）リスク。(0.0 から 1.0)",
+                },
+            },
+            "required": ["semantic_saturation", "remaining_info_risk"],
+            "additionalProperties": False,
+        },
+    }
