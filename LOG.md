@@ -1,11 +1,23 @@
+## 2026-06-11 セッション9
+
+### やること（開始時に書く）
+- 選択肢3（VAD 400ms ＋ participation gate）を採用するため、VAD を 400ms に設定変更し、テスト・動作を確認する
+
+### やったこと
+- `config/central_realtime.toml` において `vad_silence_ms` を 800ms から 400ms に変更し、`config/edge_kitchen.toml` の設定（400ms）と整合させた。
+- 設定変更に伴い、アサーションエラーが発生したユニットテスト `tests/unit/test_phase0_config.py` および `tests/unit/test_phase14_edge_split.py` の `vad_silence_ms` や `tts_backend` の期待値を更新。
+- `make test-unit`（全 657 テスト）を実行し、すべて正常にパスすることを確認した。
+
+### 詰まったこと・解決したこと
+- 特になし。
+
+### 次のセッションでやること
+- 本番サーバーの再起動を行い、実際の音声対話テストにて 400ms VAD 設定と未完判定の動作検証を行う。
+
 ## 2026-06-11 セッション8
 
 ### やること（開始時に書く）
-- 8082ポートで起動中のdflashサーバーに対して、意味の崩壊がないか、およびレイテンシー（TTFT等）の測定を行い、焼き込みLoRAモデルの挙動を確認する
-- 意味の崩壊とレイテンシー変化についての評価をユーザーに報告する
-- `prompts/minimal_persona.md` を100文字上限で作成し、それを適用したミニマルプロンプトで応答品質とTTFTを検証する
-
-### やったこと
+- 8082ポートで起動中のdflashサーバーに対して、意味の崩壊がないか、およびレイテンシー（TTFT等）の測定を行い、焼き�### やったこと
 - dflashポート8082 of LoRAフューズモデル（fused_model）に対して、システムプロンプトのトモコ設定（基本性格など）あり（Flag OFF）となし（Flag ON）で応答品質およびTTFTを測定する検証スクリプトを作成・実行した。
 - `prompts/minimal_persona.md` を89文字（100文字上限内）で新規作成し、トモコとしての名前、口調、および感情出力形式（[EMOTION:xxx]）を設定。
 - `test_response.py` を更新し、`minimal_persona.md` の内容＋静的ルールを組み合わせた「Minimal Prompt（Flag ON + Minimal Persona）」のテストケースを追加して測定・実行した。
@@ -13,6 +25,21 @@
 - `minimal_persona.md` を使用したプロンプト（全体で約500文字程度）でも、焼き込まれたLoRAが適切にトリガーされ、トモコとしての口調（生意気な後輩、タメ口）および感情出力（`[EMOTION:smug]` 等）が完全に復活することを確認した。
 - ポート8082のdflashサーバーを一時的にベースモデル（`mlx-community/gemma-4-26b-a4b-it-4bit`）で立ち上げ直し、「フルプロンプト＋ベースモデル」の応答品質とTTFTを測定。
 - 「ミニマルプロンプト＋LoRAフューズモデル」の組み合わせが、応答品質・キャラクター性を維持したままでTTFTを約1秒以上（約58%）劇的に高速化できることを実証・比較した。
+- 測定完了後、dflashサーバーを元の `lora/fused_model` で再起動し稼働状態を復旧。
+- 相槌（MaAI）機能を無効化した状態でデバッグサーバーを起動し、WebSocket経由の3ターン連続音声対話テスト（`make smoke-ws-voice-latency`）を実行。
+- 実アプリを介したE2E音声応答遅延が、かつての 7.8s〜9.3s から **約4.3〜4.6秒とほぼ半減** し、大幅に高速化していることを実測した。またトモコの口調や応答整合性に崩壊がないことを実証した。
+- テスト完了後、デバッグサーバープロセスを正常に終了。
+- 音声合成（TTS）エンジンのベンチマークツールを実行し、`kokoro_mlx` の処理速度がVOICEVOXに比べて全体生成時間（Total）で約2.0秒高速であり、再生途切れの回避やBarge-in制御の簡素化に非常に有利であることを確認。
+- `config/central_realtime.toml` および `config/edge_kitchen.toml` の `tts_backend` を正式に `"kokoro_mlx"` へ変更した。
+- `MEMORY.md` と `LOG.md` を更新。
+
+### 詰まったこと・解決したこと
+- `write_to_file` で `prompts/minimal_persona.md` を作成する際、`ArtifactMetadata` を誤って付与したためにアーティファクトパス検証エラーが発生した。`ArtifactMetadata` を削除することで通常ファイルとして正常に作成・保存できた。
+- ベースモデルでのdflash起動の際、`z-lab/gemma-4-26B-A4B-it-DFlash` をメインモデルに指定したためパラメータ不整合エラーで起動失敗した。ローカルキャッシュにある正しいベースモデル `mlx-community/gemma-4-26b-a4b-it-4bit` を指定し、ドラフトモデルとして `-DFlash` を割り当てることで正常起動に成功した。
+- MaAIがシステムに未インストールのため、デフォルトの相槌有効設定（`TOMOKO_MAAI_BACKCHANNEL_ENABLED=1`）でサーバーを起動するとWebSocketセッション開始時に `ModuleNotFoundError` で強制切断された。環境変数を `TOMOKO_MAAI_BACKCHANNEL_ENABLED=0` と明示して起動することで正常にバイパスして対話テストを実行できた。
+
+### 次のセッションでやること
+- `kokoro_mlx` を採用した本番設定でのE2E音声対話レイテンシーテストを実行し、さらなる遅延改善効果を実測・検証する。せが、応答品質・キャラクター性を維持したままでTTFTを約1秒以上（約58%）劇的に高速化できることを実証・比較した。
 - 測定完了後、dflashサーバーを元の `lora/fused_model` で再起動し稼働状態を復旧。
 - 相槌（MaAI）機能を無効化した状態でデバッグサーバーを起動し、WebSocket経由の3ターン連続音声対話テスト（`make smoke-ws-voice-latency`）を実行。
 - 実アプリを介したE2E音声応答遅延が、かつての 7.8s〜9.3s から **約4.3〜4.6秒とほぼ半減** し、大幅に高速化していることを実測した。またトモコの口調や応答整合性に崩壊がないことを実証した。
