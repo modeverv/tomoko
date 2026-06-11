@@ -1,3 +1,26 @@
+## 2026-06-11 セッション12
+
+### やること（開始時に書く）
+- Gemma-4-12B (mlx-community/gemma-4-12b-it-4bit) と Gemma-4-26B (dflash 8082ポート) の応答速度（TTFT / デコード速度）および品質の実測比較を行う。
+- `scratch/bench_gemma.py` の修正と実行を通じて、両モデルのベンチマークを取得し、結果をまとめる。
+
+### やったこと
+- 最新の `mlx-lm` および `mlx-vlm` API仕様の変更によるベンチマークスクリプト `bench_gemma.py` の実行エラーを修正：
+  - `generate_step` のインポート先を `mlx_lm.utils` から `mlx_lm.generate` もしくは `mlx_vlm.generate` に修正。
+  - `gemma-4-12b` (マルチモーダルモデル) を streaming 処理するために `mlx_vlm.generate.generate_step` を使用するように更新し、必要な引数 `pixel_values` と `mask` を `prepare_inputs` から取得して渡す構造へ改善。
+  - ストリーミングループ内で `token` が `int` 型として返される場合の例外を回避する処理を追加。
+  - `vlm_generate` の戻り値である `GenerationResult` のハンドリングにおける `len()` の型エラーを修正（`len(output)` から `len(output.text)` または直接 `output.generation_tps` などを使用）。
+- 測定対象にローカルロードの Gemma-4-26B (`mlx-community/gemma-4-26b-a4b-it-4bit`) の測定関数 `test_mlx_26b` を追加。
+- 3つの構成（26B dflash, 26B MLX local, 12B MLX local）に対して同時にベンチマークを実測・取得。
+- 得られたデータを分析し、Gemma-4-12B に切り替えた場合はプレフィル遅延（TTFT）が約3.6秒まで大幅に悪化すること、その原因が dflash (speculative decoding & prefix caching) が 12B で使えないためであること、品質面では 12B もトモコの人格を良好に保てること、結論として切り替えは非推奨であることを整理して MEMORY.md に記録した。
+
+### 詰まったこと・解決したこと
+- `generate_step` で `LanguageModelOutput object is not subscriptable` が発生した：`mlx_vlm` でロードしたモデルに対して `mlx_lm` の `generate_step` を使おうとしたために不整合が起きた。`mlx_vlm.generate.generate_step` をインポートし、`prepare_inputs` から取得した `input_ids, pixel_values, mask` を渡して呼び出すことで解決した。
+- `generate_step` ループ内で `int object has no attribute item` が発生した：イテレートされた token が既に int であったため、`.item()` の有無を `hasattr` で判定してから変換するようにし、解決した。
+
+### 次のセッションでやること
+- ユーザーにベンチマーク結果を報告し、Gemma-4-26B の本番構成（dflash 経由）の維持を提案する。
+
 ## 2026-06-11 セッション11
 
 ### やること（開始時に書く）
