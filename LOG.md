@@ -8,6 +8,29 @@
   - main-side の listener を用意し、シャドウレーンのアドバイザリーを読み込んで server-debug.log に記録するだけのパイプラインを構築する（メインの会話制御にはまだ影響させない）
   - 関連する基本機能のユニットテストおよび scaffold が機能することを示すインテグレーションテストが通過する
 
+
+### やったこと
+- Turn-taking v2 の観測シャドウレーン（Scaffold）の構築を完了した。
+  - `docker/postgres/init/018_turn_taking_v2.sql` で `partial_transcript_observations` および `turn_taking_v2_advisories` の DDL を作成。
+  - `server/shared/models.py` に `PartialTranscriptObservation` および `TurnTakingV2Advisory` などの DTO クラスを追加。
+  - `server/shared/turn_taking_v2.py` を作成し、DB 保存（`save_observation`, `save_advisory`）および `pg_notify` の送信を実装。
+  - `server/session.py` 内で、partial transcript が処理されるたびに DB 保存し NOTIFY を投げるよう `_maybe_emit_partial_transcript` を更新。また、バックグラウンドタスク `_listen_v2_advisories` を起動して DB row を読み、ログ出力する listener を実装した。
+  - `server/background/turn_taking_v2_worker.py` および `background-process/run_turn_taking_v2_worker.py` を実装し、非同期に LISTEN してダミーアドバイザリーを書き戻すワーカーを構築。
+  - ユニットテスト `tests/unit/test_turn_taking_v2.py` およびインテグレーションテスト `tests/integration/test_turn_taking_v2_db.py` を追加し、全体の自動テストを通過させた。
+  - Git コミットおよびプッシュを実施。
+
+### 詰まったこと・解決したこと
+- `test_turn_taking_v2` という同じモジュール名が unit と integration の両方に存在し、pytest のインポート競合が発生した。
+  - 既存の DB テスト命名規則（`_db`）に従い、インテグレーションテストを `test_turn_taking_v2_db.py` にリネームして衝突を解消した。
+- テスト内で dummy uuid をセッションIDとして指定したため、親テーブル `conversation_sessions` の外部キー制約に引っかかった。
+  - インテグレーションテスト内で事前にダミーのセッションを登録・クリーンアップするように修正して解決。
+- 前セッションの Apple Speech STT ストリーミング設定変更（`streaming = true`）に伴う `test_phase0_config.py` のアサーション不整合。
+  - アサーションを `streaming is True` に修正し、全体のユニットテストが 100% 通ることを保証した。
+
+### 次のセッションでやること
+- `v2.md` に従い、`Phase TT-v2.1: shadow advisory` の実装に進む。
+  - 具体的には、ワーカー側で単なるダミーではなく、hallucination check, stable prefix extraction, semantic saturation, speech decision score, safe_response_level 等の実際の判定ロジックの実装と、それらの観測をログ等で可視化・検証できるようにする。
+
 ## 2026-06-11 セッション18
 
 
