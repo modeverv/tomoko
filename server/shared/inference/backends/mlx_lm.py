@@ -11,7 +11,7 @@ from server.shared.inference.trace import trace_backend_call
 
 logger = logging.getLogger(__name__)
 
-ModelLoader = Callable[[str], tuple[Any, Any]]
+ModelLoader = Callable[[str, str | None], tuple[Any, Any]]
 StreamGenerator = Callable[[Any, Any, str, int], Iterable[Any]]
 
 
@@ -21,6 +21,7 @@ class MLXLMBackend(InferenceBackend):
         *,
         name: str,
         model: str,
+        adapter_path: str | None = None,
         privacy_allowed: bool = True,
         max_tokens: int = 180,
         model_loader: ModelLoader | None = None,
@@ -28,6 +29,7 @@ class MLXLMBackend(InferenceBackend):
     ) -> None:
         self.name = name
         self.model_name = model
+        self.adapter_path = adapter_path
         self.privacy_allowed = privacy_allowed
         self.max_tokens = max_tokens
         self._model_loader = model_loader or _load_model
@@ -117,7 +119,9 @@ class MLXLMBackend(InferenceBackend):
     def _load(self) -> tuple[Any, Any]:
         if self._model is None or self._tokenizer is None:
             started_at = time.perf_counter()
-            self._model, self._tokenizer = self._model_loader(self.model_name)
+            self._model, self._tokenizer = self._model_loader(
+                self.model_name, self.adapter_path
+            )
             elapsed_ms = (time.perf_counter() - started_at) * 1000
             logger.info(
                 "MLXLMBackend model loaded backend=%s model=%s elapsed_ms=%.1f",
@@ -128,9 +132,11 @@ class MLXLMBackend(InferenceBackend):
         return self._model, self._tokenizer
 
 
-def _load_model(model_name: str) -> tuple[Any, Any]:
+def _load_model(model_name: str, adapter_path: str | None = None) -> tuple[Any, Any]:
     from mlx_lm import load
 
+    if adapter_path:
+        return load(model_name, adapter_path=adapter_path)
     return load(model_name)
 
 

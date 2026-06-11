@@ -52,6 +52,7 @@ class InferenceRouter:
                     self.backends[name] = MLXLMBackend(
                         name=spec.name,
                         model=spec.model,
+                        adapter_path=spec.adapter_path,
                         privacy_allowed=spec.privacy_allowed,
                     )
 

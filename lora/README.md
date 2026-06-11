@@ -103,7 +103,7 @@ chmod +x lora/train.sh
 あらかじめ用意されたテスト用発話（システムプロンプトなし）に対して、焼き込み後のモデルがどのように応答するかを一括で確認します。
 ```bash
 python lora/evaluate.py \
-  --model mlx-community/Qwen2.5-7B-Instruct-4bit \
+  --model mlx-community/gemma-4-26b-a4b-it-4bit　\
   --adapter lora/adapters
 ```
 
@@ -111,7 +111,7 @@ python lora/evaluate.py \
 ターミナル上で、焼き込み後のモデルと直接会話を試すことができます。
 ```bash
 python lora/evaluate.py \
-  --model mlx-community/Qwen2.5-7B-Instruct-4bit \
+  --model mlx-community/gemma-4-26b-a4b-it-4bit \
   --adapter lora/adapters \
   --interactive
 ```

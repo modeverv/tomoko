@@ -59,6 +59,7 @@ class BackendSpec:
     chunk_min_accent_phrases: int | None = None
     segment_length: float | None = None
     chat_template_kwargs: dict[str, Any] | None = None
+    adapter_path: str | None = None
 
 
 @dataclass(frozen=True)
