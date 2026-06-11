@@ -35,6 +35,48 @@ class TestLoraPrograms(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             load_system_prompt("non_existent_file.md")
 
+    def test_load_system_prompt_with_custom_overlay(self) -> None:
+        """明示的に overlay_path が指定された場合に、システムプロンプトとオーバーレイが結合されること"""
+        custom_overlay_path = "tests/unit/temp_custom_overlay.md"
+        try:
+            with open(custom_overlay_path, "w", encoding="utf-8") as f:
+                f.write("This is a custom overlay.")
+            
+            prompt = load_system_prompt(self.temp_prompt_path, custom_overlay_path)
+            expected = "This is a test system prompt for LoRA baking.\n\nThis is a custom overlay."
+            self.assertEqual(prompt, expected)
+        finally:
+            if os.path.exists(custom_overlay_path):
+                os.remove(custom_overlay_path)
+
+    def test_load_system_prompt_with_sibling_overlay(self) -> None:
+        """overlay_pathがNoneの場合、隣にある persona_overlay.md が自動でロードされて結合されること"""
+        sibling_overlay_path = "tests/unit/persona_overlay.md"
+        try:
+            with open(sibling_overlay_path, "w", encoding="utf-8") as f:
+                f.write("This is a sibling overlay.")
+            
+            prompt = load_system_prompt(self.temp_prompt_path)
+            expected = "This is a test system prompt for LoRA baking.\n\nThis is a sibling overlay."
+            self.assertEqual(prompt, expected)
+        finally:
+            if os.path.exists(sibling_overlay_path):
+                os.remove(sibling_overlay_path)
+
+    def test_load_system_prompt_disable_overlay(self) -> None:
+        """overlay_pathが'none'の場合、隣にある persona_overlay.md が自動でロードされず結合されないこと"""
+        sibling_overlay_path = "tests/unit/persona_overlay.md"
+        try:
+            with open(sibling_overlay_path, "w", encoding="utf-8") as f:
+                f.write("This is a sibling overlay.")
+            
+            prompt = load_system_prompt(self.temp_prompt_path, "none")
+            expected = "This is a test system prompt for LoRA baking."
+            self.assertEqual(prompt, expected)
+        finally:
+            if os.path.exists(sibling_overlay_path):
+                os.remove(sibling_overlay_path)
+
     def test_seed_prompts_not_empty(self) -> None:
         """シード発話リストが空でないこと"""
         self.assertTrue(len(SEED_PROMPTS) > 0)

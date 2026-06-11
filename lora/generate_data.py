@@ -37,12 +37,27 @@ SEED_PROMPTS = [
     "どんな音楽が好き？",
 ]
 
-def load_system_prompt(path: str) -> str:
-    """システムプロンプトファイルを読み込む。"""
+def load_system_prompt(path: str, overlay_path: str | None = None) -> str:
+    """システムプロンプトファイルと、オプションで人格オーバーレイファイルを読み込んで結合する。"""
     if not os.path.exists(path):
         raise FileNotFoundError(f"System prompt file not found: {path}")
     with open(path, encoding="utf-8") as f:
-        return f.read().strip()
+        system_prompt = f.read().strip()
+
+    # overlay_path が明示されていない場合は、path の sibling である persona_overlay.md を自動探索
+    if overlay_path is None:
+        sibling_overlay = os.path.join(os.path.dirname(path), "persona_overlay.md")
+        if os.path.exists(sibling_overlay):
+            overlay_path = sibling_overlay
+
+    if overlay_path and overlay_path.lower() != "none" and os.path.exists(overlay_path):
+        print(f"Loading persona overlay: {overlay_path}")
+        with open(overlay_path, encoding="utf-8") as f:
+            overlay_content = f.read().strip()
+            if overlay_content:
+                system_prompt = f"{system_prompt}\n\n{overlay_content}"
+
+    return system_prompt
 
 def generate_user_prompts_ollama(
     base_url: str, model: str, count: int, seed_prompts: list[str]
@@ -225,6 +240,14 @@ def main():
                         help="Model name (e.g. qwen2.5:7b for Ollama, or MLX model folder path).")
     parser.add_argument("--ollama-url", type=str, default="http://localhost:11434",
                         help="Ollama base URL.")
+    parser.add_argument(
+        "--overlay-path", type=str, default=None,
+        help=(
+            "Path to the persona overlay file. "
+            "Defaults to sibling persona_overlay.md if exists. "
+            "Set to 'none' to disable."
+        )
+    )
     parser.add_argument("--split-ratio", type=float, default=0.9,
                         help="Ratio of train split (default: 0.9).")
     
@@ -235,7 +258,7 @@ def main():
     
     # システムプロンプトの読み込み
     try:
-        system_prompt = load_system_prompt(args.system_prompt_path)
+        system_prompt = load_system_prompt(args.system_prompt_path, args.overlay_path)
     except Exception as e:
         print(f"Error loading system prompt: {e}")
         return
