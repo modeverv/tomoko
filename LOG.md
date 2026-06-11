@@ -1,3 +1,21 @@
+## 2026-06-11 セッション11
+
+### やること（開始時に書く）
+- ユーザーのフィードバック（音声が面白くない）を反映し、TTSバックエンドを `kokoro_mlx` から `voicevox_tsumugi_chunked` に変更し、テスト・動作を確認する。
+
+### やったこと
+- `config/central_realtime.toml` および `config/edge_kitchen.toml` の `tts_backend` を `voicevox_tsumugi_chunked` に変更。
+- 設定変更に伴い、アサーションエラーが発生したテストコード `tests/unit/test_phase0_config.py` および `tests/unit/test_phase14_edge_split.py` の `tts_backend` 期待値を `voicevox_tsumugi_chunked` に更新。
+- `make test-unit` を実行し、全 657 テストがパスすることを確認。
+- `pkill -9 -f uvicorn` により古い対話サーバープロセスをクリアし、`make screen-stop && make screen-runtime` で VOICEVOX chunked 対応の対話システムをクリーンに再起動。
+- `make smoke-ws-voice-latency` を実行し、3ターンの対話動作を確認。VOICEVOX 経由でのファーストオーディオ生成時間（TTS開始から音声送出まで約320ms）が十分に高速であり、VAD 400ms の設定とも競合なく正常動作することを確認した。
+
+### 詰まったこと・解決したこと
+- 特になし。
+
+### 次のセッションでやること
+- ユーザーによる実機（VOICEVOX音声）の動作感・面白さの確認を待つ。
+
 ## 2026-06-11 セッション10
 
 ### やること（開始時に書く）

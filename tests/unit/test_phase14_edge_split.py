@@ -174,7 +174,7 @@ def test_edge_kitchen_config_marks_node_as_edge() -> None:
     assert config.node.device_id == "kitchen"
     assert config.node.gateway_ws_url == "ws://127.0.0.1:8000/edge/ws"
     assert config.inference.stt_backend == "local_whisper_mlx_small"
-    assert config.inference.tts_backend == "kokoro_mlx"
+    assert config.inference.tts_backend == "voicevox_tsumugi_chunked"
 
 
 @pytest.mark.unit

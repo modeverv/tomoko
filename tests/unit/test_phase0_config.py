@@ -24,7 +24,7 @@ def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation(
     assert config.inference.persona_update_fallback == "local_gemma4_e2b_mlx"
     assert config.audio.vad_silence_ms == 400
     assert config.inference.stt_backend == "local_apple_speech_ja"
-    assert config.inference.tts_backend == "kokoro_mlx"
+    assert config.inference.tts_backend == "voicevox_tsumugi_chunked"
     assert config.inference.embedding_backend == "local_bge_m3"
     assert config.inference.speech_normalizer_enabled is False
 
