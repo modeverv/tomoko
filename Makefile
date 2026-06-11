@@ -325,6 +325,6 @@ llm-stop:
 voicevox-run:
 	bash _tools/run_voicevox.sh
 
-analyze-v2:
+shadow-worker:
 	mise exec -- uv run python -m server.tools.analyze_turn_taking_v2 --session-id "$(SESSION_ID)" $(if $(MAIN_LOG),--main $(MAIN_LOG),) $(if $(V2_LOG),--v2 $(V2_LOG),) $(if $(OUT_REPORT),--out $(OUT_REPORT),)
 
