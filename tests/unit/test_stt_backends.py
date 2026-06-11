@@ -548,3 +548,72 @@ async def test_mlx_whisper_streaming_suppresses_duplicate_partial(
 
     assert first is not None
     assert second is None
+
+
+@pytest.mark.unit
+async def test_apple_speech_streaming_returns_partial(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    class FakeCompleted:
+        stdout = '{"text":"途中です","locale":"ja-JP","onDevice":true,"elapsedMs":42.0}\n'
+
+    def fake_run(args: list[str], **kwargs: object) -> FakeCompleted:
+        calls.append(args)
+        assert kwargs["check"] is True
+        return FakeCompleted()
+
+    monkeypatch.setattr("server.edge.pipeline.stt_apple.subprocess.run", fake_run)
+    transcriber = AppleSpeechSTT(
+        command="/bin/echo",
+        language="ja-JP",
+        streaming=True,
+        stream_interval_ms=500,
+        stream_min_audio_ms=500,
+    )
+
+    partial = await transcriber.process_stream_chunk(
+        np.ones(2, dtype=np.float32),
+        device_id="local",
+        sample_rate=4,
+    )
+
+    assert partial is not None
+    assert partial.text == "途中です"
+    assert partial.is_final is False
+
+
+@pytest.mark.unit
+async def test_apple_speech_streaming_suppresses_duplicate_partial(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeCompleted:
+        stdout = '{"text":"途中です","locale":"ja-JP","onDevice":true,"elapsedMs":42.0}\n'
+
+    def fake_run(args: list[str], **kwargs: object) -> FakeCompleted:
+        del args, kwargs
+        return FakeCompleted()
+
+    monkeypatch.setattr("server.edge.pipeline.stt_apple.subprocess.run", fake_run)
+    transcriber = AppleSpeechSTT(
+        command="/bin/echo",
+        language="ja-JP",
+        streaming=True,
+        stream_interval_ms=500,
+        stream_min_audio_ms=500,
+    )
+
+    first = await transcriber.process_stream_chunk(
+        np.ones(2, dtype=np.float32),
+        device_id="local",
+        sample_rate=4,
+    )
+    second = await transcriber.process_stream_chunk(
+        np.ones(2, dtype=np.float32),
+        device_id="local",
+        sample_rate=4,
+    )
+
+    assert first is not None
+    assert second is None

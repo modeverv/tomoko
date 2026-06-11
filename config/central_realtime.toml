@@ -161,7 +161,9 @@ language = "ja-JP"
 on_device = true
 timeout_s = 30
 privacy_allowed = true
-streaming = false
+streaming = true
+stream_interval_ms = 500 
+stream_min_audio_ms = 500
 
 [backends.local_bge_m3]
 type = "bge_m3"

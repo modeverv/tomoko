@@ -298,6 +298,9 @@ def create_stt_transcriber(spec: BackendSpec) -> SpeechTranscriber:
             language=spec.language or "ja-JP",
             on_device=spec.on_device,
             timeout_s=spec.timeout_s or 30.0,
+            streaming=spec.streaming,
+            stream_interval_ms=spec.stream_interval_ms,
+            stream_min_audio_ms=spec.stream_min_audio_ms,
         )
     raise ValueError(f"unsupported STT backend type: {spec.type}")
 

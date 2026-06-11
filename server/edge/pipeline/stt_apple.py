@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 import json
 import shutil
 import subprocess
@@ -41,6 +42,9 @@ class AppleSpeechSTT:
         on_device: bool = True,
         contextual_strings: tuple[str, ...] = DEFAULT_CONTEXTUAL_STRINGS,
         timeout_s: float = 30.0,
+        streaming: bool = False,
+        stream_interval_ms: int = 1000,
+        stream_min_audio_ms: int = 1000,
     ) -> None:
         self.command = command or str(DEFAULT_BINARY)
         self.source_path = Path(source_path) if source_path else DEFAULT_SOURCE
@@ -49,6 +53,54 @@ class AppleSpeechSTT:
         self.on_device = on_device
         self.contextual_strings = contextual_strings
         self.timeout_s = timeout_s
+        self.streaming = streaming
+        self.stream_interval_ms = stream_interval_ms
+        self.stream_min_audio_ms = stream_min_audio_ms
+        self._stream_buffer: list[np.ndarray] = []
+        self._stream_samples = 0
+        self._stream_samples_since_emit = 0
+        self._last_stream_text = ""
+
+    async def process_stream_chunk(
+        self,
+        chunk: np.ndarray,
+        *,
+        device_id: str,
+        sample_rate: int,
+    ) -> Transcript | None:
+        if not self.streaming:
+            return None
+
+        self._stream_buffer.append(chunk.astype(np.float32, copy=True))
+        self._stream_samples += len(chunk)
+        self._stream_samples_since_emit += len(chunk)
+        min_samples = int(sample_rate * self.stream_min_audio_ms / 1000)
+        interval_samples = int(sample_rate * self.stream_interval_ms / 1000)
+        if self._stream_samples < min_samples:
+            return None
+        if self._stream_samples_since_emit < interval_samples:
+            return None
+
+        self._stream_samples_since_emit = 0
+        audio = np.concatenate(self._stream_buffer)
+        text = await asyncio.to_thread(self._transcribe_audio, audio, sample_rate)
+        if not text or text == self._last_stream_text:
+            return None
+        self._last_stream_text = text
+        return Transcript(
+            text=text,
+            device_id=device_id,
+            speaker=None,
+            audio_level_db=_audio_level_db(audio),
+            recorded_at=datetime.now(UTC),
+            is_final=False,
+        )
+
+    def reset_stream(self) -> None:
+        self._stream_buffer = []
+        self._stream_samples = 0
+        self._stream_samples_since_emit = 0
+        self._last_stream_text = ""
 
     async def transcribe(self, segment: SpeechSegment) -> Transcript:
         request_id = str(uuid4())
