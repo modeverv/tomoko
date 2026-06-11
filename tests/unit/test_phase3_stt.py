@@ -199,15 +199,21 @@ async def test_session_drops_filtered_final_transcript_before_participation() ->
 
 @pytest.mark.unit
 async def test_session_rejects_low_signal_segment_before_stt() -> None:
+    from server.edge.pipeline.stt_gate import SttAudioFrontend
     events: list[dict[str, str]] = []
     transcriber = ConstantTranscriber("ご視聴ありがとうございました")
     ambient_logs = InMemoryAmbientLogWriter()
+    frontend = SttAudioFrontend(
+        sample_rate=16000,
+        enabled_filters=("signal_gate",),
+    )
     session = TomoroSession(
         vad_processor=VADProcessor(vad=SequenceVAD([0.9] + [0.1] * 13), silence_ms=400),
         send_event=events.append,
         transcriber=transcriber,
         participation_judge=WakeWordJudge(),
         ambient_log_writer=ambient_logs,
+        stt_audio_frontend=frontend,
     )
 
     for _ in range(14):

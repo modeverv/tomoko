@@ -41,9 +41,14 @@ class FakeTranscriber:
 
 @pytest.mark.unit
 async def test_edge_remote_rejects_low_signal_segment_before_stt() -> None:
+    from server.edge.pipeline.stt_gate import SttAudioFrontend
     browser_events: list[dict[str, object]] = []
     gateway_events: list[dict[str, object]] = []
     transcriber = FakeTranscriber()
+    frontend = SttAudioFrontend(
+        sample_rate=16000,
+        enabled_filters=("signal_gate",),
+    )
     session = EdgeRemoteAudioSession(
         device_id="kitchen",
         vad_processor=VADProcessor(
@@ -55,6 +60,7 @@ async def test_edge_remote_rejects_low_signal_segment_before_stt() -> None:
         transcript_filter=TranscriptFilter(),
         send_browser_event=browser_events.append,
         send_gateway_event=gateway_events.append,
+        stt_audio_frontend=frontend,
     )
 
     for _ in range(14):

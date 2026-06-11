@@ -163,7 +163,7 @@ def _create_default_vad_processor():
 def _create_default_stt_audio_frontend(sample_rate: int = 16000) -> SttAudioFrontend:
     return SttAudioFrontend(
         sample_rate=sample_rate,
-        enabled_filters=("speech_bandpass", "signal_gate"),
+        enabled_filters=(),
     )
 
 

@@ -65,7 +65,7 @@ class SttAudioFrontend:
         self,
         *,
         sample_rate: int = 16000,
-        enabled_filters: tuple[SttAudioFilterName, ...] = ("signal_gate",),
+        enabled_filters: tuple[SttAudioFilterName, ...] = (),
         signal_gate: SttSignalGate | None = None,
         noise_profile: NoiseProfile | None = None,
         rnnoise_model_path: Path | None = None,

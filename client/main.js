@@ -84,7 +84,7 @@ function audioConstraints() {
     channelCount: 1,
     echoCancellation: true,
     noiseSuppression: true,
-    autoGainControl: false,
+    autoGainControl: true,
   };
   if (selectedAudioInputDeviceId) {
     audio.deviceId = { exact: selectedAudioInputDeviceId };
