@@ -178,11 +178,19 @@ def _create_default_router() -> InferenceRouter:
 
 
 def _create_default_thinking_mode() -> ThinkFastMode:
-    return ThinkFastMode(persona_path=ROOT_DIR / "prompts" / "base_persona.md")
+    config = _load_config()
+    return ThinkFastMode(
+        persona_path=ROOT_DIR / "prompts" / "base_persona.md",
+        skip_base_persona=config.inference.skip_base_persona,
+    )
 
 
 def _create_default_deep_thinking_mode() -> ThinkDeepMode:
-    return ThinkDeepMode(persona_path=ROOT_DIR / "prompts" / "base_persona.md")
+    config = _load_config()
+    return ThinkDeepMode(
+        persona_path=ROOT_DIR / "prompts" / "base_persona.md",
+        skip_base_persona=config.inference.skip_base_persona,
+    )
 
 
 def _create_default_tts_backend() -> TTSBackend:

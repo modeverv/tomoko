@@ -32,6 +32,7 @@ class InferenceSection:
     memory_extraction_fallback: str | None = None
     persona_update_fallback: str | None = None
     speech_normalizer_enabled: bool = True
+    skip_base_persona: bool = False
 
 
 @dataclass(frozen=True)

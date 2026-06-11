@@ -65,6 +65,7 @@ class ThinkFastMode(ThinkingMode):
         persona_overlay_path: str | Path | None = None,
         prompt_log_path: str | Path | None = DEFAULT_PROMPT_LOG_PATH,
         now_provider: Callable[[], datetime] | None = None,
+        skip_base_persona: bool = False,
     ):
         self.persona_path = Path(persona_path)
         self.persona_overlay_path = (
@@ -76,6 +77,7 @@ class ThinkFastMode(ThinkingMode):
             Path(prompt_log_path) if prompt_log_path is not None else None
         )
         self.now_provider = now_provider or (lambda: datetime.now().astimezone())
+        self.skip_base_persona = skip_base_persona
         self.system_prompt = self._load_system_prompt()
 
     def _load_persona(self) -> str:
@@ -89,6 +91,8 @@ class ThinkFastMode(ThinkingMode):
         return ""
 
     def _load_system_prompt(self) -> str:
+        if self.skip_base_persona:
+            return STATIC_CONTEXT_USAGE_RULES
         persona = self._load_persona().rstrip()
         overlay = self._load_persona_overlay()
         if not overlay:

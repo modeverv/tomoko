@@ -965,3 +965,80 @@ async def test_session_sends_emotion_event_after_wake_word() -> None:
         "image": "/assets/images/tomoko-surprised.svg",
     } in events
     assert {"type": "reply_text", "delta": "え、そうなんだ。"} in events
+
+
+# ---------------------------------------------------------------------------
+# skip_base_persona flag
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_think_fast_skips_persona_when_flag_is_true(tmp_path) -> None:
+    """skip_base_persona=True のとき、persona 本文と overlay がシステムプロンプトから除去される。"""
+    persona = tmp_path / "base_persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    overlay = tmp_path / "persona_overlay.md"
+    overlay.write_text(
+        "## PERSONA OVERLAY\n後輩として助ける。",
+        encoding="utf-8",
+    )
+    backend = FakeBackend(["はい"])
+    mode = ThinkFastMode(
+        persona_path=persona,
+        prompt_log_path=None,
+        now_provider=fixed_now,
+        skip_base_persona=True,
+    )
+
+    [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="テスト",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+            ),
+        )
+    ]
+
+    assert backend.system_prompt is not None
+    # ペルソナ本文と overlay は含まれない
+    assert "あなたはトモコです。" not in backend.system_prompt
+    assert "PERSONA OVERLAY" not in backend.system_prompt
+    # STATIC_CONTEXT_USAGE_RULES は必ず含まれる
+    assert "## STATIC CONTEXT USAGE RULES" in backend.system_prompt
+
+
+@pytest.mark.unit
+async def test_think_fast_includes_persona_when_flag_is_false(tmp_path) -> None:
+    """skip_base_persona=False（デフォルト）のとき、persona 本文がシステムプロンプトに含まれる。"""
+    persona = tmp_path / "base_persona.md"
+    persona.write_text("あなたはトモコです。", encoding="utf-8")
+    backend = FakeBackend(["はい"])
+    mode = ThinkFastMode(
+        persona_path=persona,
+        prompt_log_path=None,
+        now_provider=fixed_now,
+        skip_base_persona=False,
+    )
+
+    [
+        event
+        async for event in mode.think(
+            backend,
+            ThinkingInput(
+                text="テスト",
+                speaker=None,
+                context=[],
+                emotion="neutral",
+                device_id="browser",
+            ),
+        )
+    ]
+
+    assert backend.system_prompt is not None
+    assert "あなたはトモコです。" in backend.system_prompt
+    assert "## STATIC CONTEXT USAGE RULES" in backend.system_prompt
