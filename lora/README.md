@@ -45,8 +45,8 @@ python lora/generate_data.py \
   --system-prompt-path prompts/base_persona.md \
   --output-dir lora/data \
   --num-samples 100 \
-  --backend ollama \
-  --model qwen2.5:7b
+  --backend mlx \
+  --model mlx-community/gemma-4-26b-a4b-it-4bit
 ```
 
 #### 主なオプション:
@@ -54,7 +54,7 @@ python lora/generate_data.py \
 - `--output-dir`: 生成データの保存先（デフォルト: `lora/data`）
 - `--num-samples`: 生成する対話データサンプル数（デフォルト: 100）
 - `--backend`: データ生成に使用する LLM バックエンド。`ollama` または `mlx`（デフォルト: `ollama`）
-- `--model`: 使用するモデル（デフォルト: `qwen2.5:7b`）
+- `--model`: 使用するモデル（デフォルト: `mlx-community/gemma-4-26b-a4b-it-4bit`）
 - `--split-ratio`: データを train / valid に分ける割合（デフォルト: 0.9 = 90%が学習用、10%が検証用）
 
 生成が完了すると、`lora/data/train.jsonl` および `lora/data/valid.jsonl` が作成されます。
@@ -68,7 +68,11 @@ python lora/generate_data.py \
 シェルスクリプトに実行権限を与えて実行します：
 ```bash
 chmod +x lora/train.sh
-./lora/train.sh --iters 200 --batch-size 4
+# ./lora/train.sh --iters 200 --batch-size 4
+./lora/train.sh \
+      --model mlx-community/gemma-4-26b-a4b-it-4bit \
+      --iters 200 \
+      --batch-size 4
 ```
 
 #### 主なオプション:

@@ -144,7 +144,7 @@ def generate_user_prompts_mlx(
         tokenizer,
         prompt=prompt,
         max_tokens=2048,
-        temp=0.8,
+        temperature=0.8,
     )
     
     generated = []
@@ -220,7 +220,7 @@ def get_assistant_response_mlx(
         tokenizer,
         prompt=prompt,
         max_tokens=512,
-        temp=0.7,
+        temperature=0.7,
     )
     return response.strip()
 

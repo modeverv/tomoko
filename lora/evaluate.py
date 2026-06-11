@@ -52,7 +52,7 @@ def run_interactive(model, tokenizer):
                 tokenizer,
                 prompt=prompt,
                 max_tokens=512,
-                temp=0.7,
+                temperature=0.7,
             )
             print(response)
             
@@ -87,7 +87,7 @@ def run_batch(model, tokenizer, test_prompts):
                 tokenizer,
                 prompt=prompt,
                 max_tokens=512,
-                temp=0.7,
+                temperature=0.7,
             )
             print(f"AI: {response.strip()}")
         except Exception as e:
