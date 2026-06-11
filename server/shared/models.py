@@ -1749,3 +1749,50 @@ def _clamp_float(value: object, *, minimum: float, maximum: float) -> float:
     except (TypeError, ValueError):
         number = minimum
     return min(maximum, max(minimum, number))
+
+
+def _optional_float(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    return float(value)
+
+
+def _optional_int(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    return int(value)
+
+
+@dataclass(frozen=True)
+class PartialTranscriptObservation:
+    id: UUID
+    conversation_session_id: UUID | None
+    turn_id: UUID | None
+    revision: int
+    observed_at: datetime
+    vad_state: str | None
+    attention_mode: str | None
+    raw_text: str
+    filtered_text: str | None
+    stable_text: str | None
+    unstable_tail: str | None
+    audio_level_db: float | None
+    source: str | None
+
+
+@dataclass(frozen=True)
+class TurnTakingV2Advisory:
+    id: UUID
+    observation_id: UUID | None
+    conversation_session_id: UUID | None
+    turn_id: UUID | None
+    created_at: datetime
+    semantic_saturation: float | None
+    remaining_info_risk: float | None
+    semantic_split_risk: float | None
+    speech_decision_score: float | None
+    safe_response_level: int | None
+    proposal: str | None
+    confidence: float | None
+    reason: str | None
+

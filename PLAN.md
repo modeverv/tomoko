@@ -7,11 +7,11 @@
 
 ### 完了条件
 
-- [ ] `partial_transcript_observations` および `turn_taking_v2_advisories` テーブルの DDL（マイグレーション）を作成する
-- [ ] `TomoroSession` 側で partial transcript が更新されるたびに DB（`partial_transcript_observations`）へ保存し、PostgreSQL NOTIFY を投げる仕組みを追加する
-- [ ] 非同期に動作する `turn-taking-v2` worker を作成し、LISTEN で起動してダミーアドバイザリー（advisory_id の NOTIFY）を書き戻す scaffold を実装する
-- [ ] main-side の listener を用意し、シャドウレーンのアドバイザリーを読み込んで server-debug.log に記録するだけのパイプラインを構築する（メインの会話制御にはまだ影響させない）
-- [ ] 関連する基本機能のユニットテストおよび scaffold が機能することを示すインテグレーションテストが通過する
+- [x] `partial_transcript_observations` および `turn_taking_v2_advisories` テーブルの DDL（マイグレーション）を作成する
+- [x] `TomoroSession` 側で partial transcript が更新されるたびに DB（`partial_transcript_observations`）へ保存し deflected、PostgreSQL NOTIFY を投げる仕組みを追加する
+- [x] 非同期に動作する `turn-taking-v2` worker を作成し、LISTEN で起動してダミーアドバイザリー（advisory_id の NOTIFY）を書き戻す scaffold を実装する
+- [x] main-side の listener を用意し、シャドウレーンのアドバイザリーを読み込んで server-debug.log に記録するだけのパイプラインを構築する（メインの会話制御にはまだ影響させない）
+- [x] 関連する基本機能 of ユニットテストおよび scaffold が機能することを示すインテグレーションテストが通過する
 
 ## 2026-06-11 lora system prompt baking
 

@@ -128,9 +128,11 @@ from server.shared.task_ledger import (
 )
 from server.shared.timer_alarm import (
     TimerAlarmCreateResult,
+    TimerAlarmState,
     TimerAlarmIntent,
     TimerAlarmIntentDetector,
 )
+from server.shared.turn_taking_v2 import TurnTakingV2Store, NullTurnTakingV2Store
 
 SessionState = Literal["idle", "listening", "processing"]
 OutputFloorPolicy = Literal["ambient_idle"]
@@ -251,6 +253,7 @@ class TomoroSession:
         engaged_timeout_ms: int = DEFAULT_ENGAGED_TIMEOUT_MS,
         cooldown_timeout_ms: int = DEFAULT_COOLDOWN_TIMEOUT_MS,
         playback_echo_grace_ms: int = 1200,
+        turn_taking_v2_store: TurnTakingV2Store | None = None,
     ) -> None:
         self.vad_processor = vad_processor
         self.send_event = send_event
@@ -340,6 +343,15 @@ class TomoroSession:
         self._timer_alarm_transition_tasks: set[asyncio.Task[None]] = set()
         self._timer_alarm_request_sequence = 0
         self._pending_timer_alarm_due_payloads: list[dict[str, Any]] = []
+        self.turn_taking_v2_store = turn_taking_v2_store or NullTurnTakingV2Store()
+        self._last_active_turn_id = None
+        self._partial_revision = 0
+        if hasattr(self.turn_taking_v2_store, "dsn") and getattr(self.turn_taking_v2_store, "dsn"):
+            self._v2_advisory_listener_task = asyncio.create_task(
+                self._listen_v2_advisories(getattr(self.turn_taking_v2_store, "dsn"))
+            )
+        else:
+            self._v2_advisory_listener_task = None
 
     # Audio input and state snapshots.
 
@@ -2135,6 +2147,34 @@ class TomoroSession:
             self.state,
         )
         filter_decision = self._filter_transcript(partial, is_partial=True)
+
+        current_turn_id = self.audio_turns.active_turn_id
+        if current_turn_id != self._last_active_turn_id:
+            self._last_active_turn_id = current_turn_id
+            self._partial_revision = 0
+        elif current_turn_id is None:
+            self._partial_revision = 0
+        else:
+            self._partial_revision += 1
+
+        filtered_text = partial.text if filter_decision.action == "accept" else None
+        try:
+            await self.turn_taking_v2_store.save_observation(
+                conversation_session_id=self.active_conversation_session_id,
+                turn_id=current_turn_id,
+                revision=self._partial_revision,
+                vad_state=self.state,
+                attention_mode=self.attention_mode,
+                raw_text=partial.text,
+                filtered_text=filtered_text,
+                stable_text=None,
+                unstable_tail=None,
+                audio_level_db=partial.audio_level_db,
+                source=partial.device_id,
+            )
+        except Exception as e:
+            logger.error("Failed to save partial transcript observation: %s", e, exc_info=True)
+
         if filter_decision.action != "accept":
             return
         await self._send_event(
@@ -2143,6 +2183,43 @@ class TomoroSession:
                 "text": partial.text,
             }
         )
+
+    async def _listen_v2_advisories(self, dsn: str) -> None:
+        import psycopg
+        from uuid import UUID
+        while True:
+            try:
+                async with await psycopg.AsyncConnection.connect(dsn, autocommit=True) as conn:
+                    await conn.execute("LISTEN turn_taking_v2_advisory")
+                    logger.info("TomoroSession turn-taking v2 advisory listener started")
+                    async for notify in conn.notifies():
+                        advisory_id_str = notify.payload
+                        try:
+                            advisory_id = UUID(advisory_id_str)
+                            advisory = await self.turn_taking_v2_store.get_advisory(advisory_id)
+                            if advisory:
+                                logger.info(
+                                    "[v2_shadow] advisory_received: id=%s observation_id=%s "
+                                    "semantic_saturation=%s remaining_info_risk=%s "
+                                    "semantic_split_risk=%s speech_decision_score=%s "
+                                    "proposal=%s confidence=%s reason=%r",
+                                    advisory.id,
+                                    advisory.observation_id,
+                                    advisory.semantic_saturation,
+                                    advisory.remaining_info_risk,
+                                    advisory.semantic_split_risk,
+                                    advisory.speech_decision_score,
+                                    advisory.proposal,
+                                    advisory.confidence,
+                                    advisory.reason,
+                                )
+                        except Exception as e:
+                            logger.error("Error processing turn-taking v2 advisory notification: %s", e, exc_info=True)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Error in turn-taking v2 advisory listener: %s. Retrying in 2 seconds...", e, exc_info=True)
+                await asyncio.sleep(2.0)
 
     def _filter_transcript(self, transcript: Transcript, *, is_partial: bool):
         if self.transcript_filter is None:

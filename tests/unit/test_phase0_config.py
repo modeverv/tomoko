@@ -76,13 +76,13 @@ def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation(
     assert active_stt_backend.type == "apple_speech"
     assert active_stt_backend.language == "ja-JP"
     assert active_stt_backend.on_device is True
-    assert active_stt_backend.streaming is False
+    assert active_stt_backend.streaming is True
 
     apple_speech_backend = config.backends["local_apple_speech_ja"]
     assert apple_speech_backend.type == "apple_speech"
     assert apple_speech_backend.language == "ja-JP"
     assert apple_speech_backend.on_device is True
-    assert apple_speech_backend.streaming is False
+    assert apple_speech_backend.streaming is True
 
     embedding_backend = config.backends["local_bge_m3"]
     assert embedding_backend.type == "bge_m3"

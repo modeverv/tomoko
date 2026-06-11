@@ -1,4 +1,15 @@
+## 2026-06-11 セッション19
+
+### やること（開始時に書く）
+- `v2.md` および `PLAN.md` の `Turn-taking v2 shadow lane initial scaffold` フェーズに沿った実装
+  - `partial_transcript_observations` および `turn_taking_v2_advisories` テーブルの DDL（マイグレーション）を作成する
+  - `TomoroSession` 側で partial transcript が更新されるたびに DB（`partial_transcript_observations`）へ保存し、PostgreSQL NOTIFY を投げる仕組みを追加する
+  - 非同期に動作する `turn-taking-v2` worker を作成し、LISTEN で起動してダミーアドバイザリー（advisory_id の NOTIFY）を書き戻す scaffold を実装する
+  - main-side の listener を用意し、シャドウレーンのアドバイザリーを読み込んで server-debug.log に記録するだけのパイプラインを構築する（メインの会話制御にはまだ影響させない）
+  - 関連する基本機能のユニットテストおよび scaffold が機能することを示すインテグレーションテストが通過する
+
 ## 2026-06-11 セッション18
+
 
 ### やること（開始時に書く）
 - macOS の `say` コマンドで生成された音声を用いて、Apple Speech STT のリアルタイムストリーミング部分出力機能が期待通りに動作するかを `scratch/smoke_apple_stt_streaming.py` で検証する。
