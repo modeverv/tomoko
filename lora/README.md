@@ -47,6 +47,13 @@ python lora/generate_data.py \
   --num-samples 100 \
   --backend mlx \
   --model mlx-community/gemma-4-26b-a4b-it-4bit
+
+python lora/generate_data.py \
+  --system-prompt-path prompts/base_persona.md \
+  --output-dir lora/data \
+  --num-samples 100 \
+  --backend mlx \
+  --model mlx-community/gemma-4-26b-a4b-it-4bit  
 ```
 
 #### 主なオプション:

@@ -139,12 +139,19 @@ def generate_user_prompts_mlx(
         f"必ず{count}個生成し、余計な説明は省き、1行に1発話ずつ出力してください。番号などは不要です。"
     )
     
+    try:
+        from mlx_lm.sample_utils import make_sampler
+        sampler = make_sampler(temp=0.8)
+        gen_kwargs = {"sampler": sampler}
+    except ImportError:
+        gen_kwargs = {"temperature": 0.8}
+
     response = generate(
         model,
         tokenizer,
         prompt=prompt,
         max_tokens=2048,
-        temperature=0.8,
+        **gen_kwargs
     )
     
     generated = []
@@ -215,12 +222,19 @@ def get_assistant_response_mlx(
             f"<|im_start|>assistant\n"
         )
         
+    try:
+        from mlx_lm.sample_utils import make_sampler
+        sampler = make_sampler(temp=0.7)
+        gen_kwargs = {"sampler": sampler}
+    except ImportError:
+        gen_kwargs = {"temperature": 0.7}
+
     response = generate(
         model,
         tokenizer,
         prompt=prompt,
         max_tokens=512,
-        temperature=0.7,
+        **gen_kwargs
     )
     return response.strip()
 

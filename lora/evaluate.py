@@ -47,12 +47,19 @@ def run_interactive(model, tokenizer):
             print("AI: ", end="", flush=True)
             
             # ストリーミングのような動作を再現（簡略化のため通常生成）
+            try:
+                from mlx_lm.sample_utils import make_sampler
+                sampler = make_sampler(temp=0.7)
+                gen_kwargs = {"sampler": sampler}
+            except ImportError:
+                gen_kwargs = {"temperature": 0.7}
+
             response = generate(
                 model,
                 tokenizer,
                 prompt=prompt,
                 max_tokens=512,
-                temperature=0.7,
+                **gen_kwargs
             )
             print(response)
             
@@ -82,12 +89,19 @@ def run_batch(model, tokenizer, test_prompts):
             prompt = f"<|im_start|>user\n{prompt_text}<|im_end|>\n<|im_start|>assistant\n"
             
         try:
+            try:
+                from mlx_lm.sample_utils import make_sampler
+                sampler = make_sampler(temp=0.7)
+                gen_kwargs = {"sampler": sampler}
+            except ImportError:
+                gen_kwargs = {"temperature": 0.7}
+
             response = generate(
                 model,
                 tokenizer,
                 prompt=prompt,
                 max_tokens=512,
-                temperature=0.7,
+                **gen_kwargs
             )
             print(f"AI: {response.strip()}")
         except Exception as e:

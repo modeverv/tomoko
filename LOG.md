@@ -20,7 +20,7 @@
 ### 詰まったこと・解決したこと
 - `evaluate.py` でアダプタの存在判定に `os.path.exists()` を使用しているため、ユニットテスト中で実際のファイルシステムに依存して失敗する箇所が発生した。テスト内で `os.path.exists` を適切にパッチ（モック）することで解決した。
 - `generate_data.py` に `--overlay-path` の引数を追加した際、helpメッセージ長が 100 文字を超えて Ruff の E501 エラーが発生した。メッセージを複数行に分割することで解決した。
-- **`mlx_lm.generate` において `temp` 引数を渡すと内部の `generate_step` で `TypeError` が発生する問題を解決するため、`temp=...` から `temperature=...` へ引数名を修正（`generate_data.py` および `evaluate.py`）。**
+- **`mlx_lm.generate` において `temp` もしくは `temperature` を直接渡すと、内部の `generate_step` がサンプリング引数をキーワード引数として直接受け付けず `TypeError` になる問題を解決（最新の MLX-LM API 仕様）。`from mlx_lm.sample_utils import make_sampler` を用いて `sampler` オブジェクトを作成し、`sampler=sampler` 引数として `generate` に引き渡すように修正した（古いバージョン向けには直接 temperature を渡すフォールバックも構築）。**
 
 ### 次のセッションでやること
 - ローカル環境で Ollama などを使い、実データでの焼き込み検証を試行する
