@@ -51,6 +51,7 @@ class TurnTakingV2Store(Protocol):
         safe_response_level: int | None,
         proposal: str | None,
         confidence: float | None,
+        would_start_inference: bool | None,
         reason: str | None,
     ) -> UUID: ...
 
@@ -181,6 +182,7 @@ class PostgresTurnTakingV2Store:
         safe_response_level: int | None,
         proposal: str | None,
         confidence: float | None,
+        would_start_inference: bool | None,
         reason: str | None,
     ) -> UUID:
         async with pooled_connection(self.dsn) as conn:
@@ -199,9 +201,10 @@ class PostgresTurnTakingV2Store:
                         safe_response_level,
                         proposal,
                         confidence,
+                        would_start_inference,
                         reason
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
                     (
@@ -216,6 +219,7 @@ class PostgresTurnTakingV2Store:
                         safe_response_level,
                         proposal,
                         confidence,
+                        would_start_inference,
                         reason,
                     ),
                 )
@@ -239,7 +243,8 @@ class PostgresTurnTakingV2Store:
                     SELECT
                         id, observation_id, conversation_session_id, turn_id, created_at,
                         semantic_saturation, remaining_info_risk, semantic_split_risk,
-                        speech_decision_score, safe_response_level, proposal, confidence, reason
+                        speech_decision_score, safe_response_level, proposal, confidence,
+                        would_start_inference, reason
                     FROM turn_taking_v2_advisories
                     WHERE id = %s
                     """,
@@ -261,7 +266,8 @@ class PostgresTurnTakingV2Store:
                     safe_response_level=_optional_int(row[9]),
                     proposal=row[10],
                     confidence=_optional_float(row[11]),
-                    reason=row[12],
+                    would_start_inference=row[12],
+                    reason=row[13],
                 )
 
     async def get_turn_history(

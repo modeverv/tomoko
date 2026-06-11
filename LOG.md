@@ -1,3 +1,31 @@
+## 2026-06-11 セッション23
+
+### やること（開始時に書く）
+- `v2.md` の `Phase TT-v2.3: prepare-only dry run` の実装
+  - `TomoroSession` の `_listen_v2_advisories` において、`would_start_inference` が `True` の advisory を受け取った際に、仮の推論開始をトリガーする処理を追加
+  - 仮の推論開始を `logs/turn-taking-main.jsonl` に記録し、時間差（VADによる本番推論開始よりどれくらい早かったか等）を追えるようにする
+  - 本番の会話応答生成フローや発話制御には一切影響を及ぼさないことを保証する
+  - 動作契約を固定するユニットテストの追加とパス確認
+- 全てのユニットテストが通過することを確認する
+
+### やったこと
+- DDL (`docker/postgres/init/018_turn_taking_v2.sql`) を更新し、`turn_taking_v2_advisories` テーブルに `would_start_inference BOOLEAN` カラムを追加。既存のDBテーブルにもマイグレーションされるよう、`ALTER TABLE ADD COLUMN IF NOT EXISTS` も追記した。
+- `server/shared/models.py` の `TurnTakingV2Advisory` および `server/shared/turn_taking_v2.py` の store 実装を更新し、`would_start_inference` を DB レコードとして保存・取得できる設計へ統合した。
+- `turn_taking_v2_worker.py` から `save_advisory` 時に `would_start_inference` フラグを適切に設定して永続化するロジックを実装した。
+- `TomoroSession` 内の `_listen_v2_advisories` において、`would_start_inference = True` となった advisory を検知した際に、同一ターン内での仮推論トリガー処理を非同期的に呼び出すハンドラを実装した。また、多重発火防止のためにインスタンス変数 `self._v2_provisional_inference_started_at` で状態管理を行った。
+- `log_provisional_inference_start` 関数を `server/shared/turn_taking_logger.py` に追加し、仮推論がトリガーされた事実を `logs/turn-taking-main.jsonl` に記録できるようにした。これにより分析ツールで時間差を容易に算出可能になった。
+- `tests/unit/test_turn_taking_v2.py` に `test_session_triggers_provisional_inference_on_would_start_inference_advisory` を追加し、仮推論 dry-run 開始トリガーと多重発火防止、およびログ出力呼び出しの挙動を保証するユニットテストをパスさせた。
+- `PLAN.md` の Phase TT-v2.3 の完了マークを付け、次のフェーズ `Phase TT-v2.4: provisional inference` を定義・追記した。
+
+### 詰まったこと・解決したこと
+- 特になし。
+
+### 次のセッションでやること
+- `Phase TT-v2.4: provisional inference` の実装
+  - `would_start_inference = True` でトリガーされる実際の LLM 仮推論バックグラウンドタスクの構築
+  - 生成された仮返答のライフサイクル管理（stale/discard 判定、後続の発話変化による破棄）の追加
+  - テストの追加とパス確認
+
 ## 2026-06-11 セッション22
 
 ### やること（開始時に書く）

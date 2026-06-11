@@ -1794,5 +1794,6 @@ class TurnTakingV2Advisory:
     safe_response_level: int | None
     proposal: str | None
     confidence: float | None
+    would_start_inference: bool | None
     reason: str | None
 

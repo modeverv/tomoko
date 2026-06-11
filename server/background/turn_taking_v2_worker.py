@@ -114,6 +114,7 @@ class TurnTakingV2Worker:
                 safe_response_level=0,
                 proposal="silence",
                 confidence=0.0,
+                would_start_inference=False,
                 reason="hallucination_or_noise",
             )
             from server.shared.turn_taking_logger import log_v2_shadow_advisory
@@ -185,6 +186,7 @@ class TurnTakingV2Worker:
             safe_response_level=semantic_result["safe_response_level"],
             proposal=motivation_result["proposal"],
             confidence=semantic_result["confidence"],
+            would_start_inference=motivation_result.get("would_start_inference"),
             reason=reason,
         )
         logger.info(

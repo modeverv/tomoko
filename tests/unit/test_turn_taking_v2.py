@@ -42,6 +42,7 @@ async def test_null_turn_taking_v2_store() -> None:
         safe_response_level=1,
         proposal="silence",
         confidence=0.5,
+        would_start_inference=False,
         reason="dummy",
     )
     assert adv_id is not None
@@ -101,3 +102,81 @@ async def test_session_saves_observation_on_partial_transcript() -> None:
     assert kwargs["raw_text"] == "test partial text"
     assert kwargs["filtered_text"] == "test partial text"
     assert kwargs["revision"] == 0
+
+
+@pytest.mark.unit
+async def test_session_triggers_provisional_inference_on_would_start_inference_advisory() -> None:
+    from unittest.mock import patch, AsyncMock
+    from uuid import uuid4
+    from server.shared.models import TurnTakingV2Advisory, PartialTranscriptObservation
+    from datetime import datetime, UTC
+
+    # Mock dependencies
+    vad = MagicMock()
+    store = AsyncMock()
+    
+    advisory_id = uuid4()
+    turn_id = uuid4()
+    obs_id = uuid4()
+    session_id = uuid4()
+
+    mock_advisory = TurnTakingV2Advisory(
+        id=advisory_id,
+        observation_id=obs_id,
+        conversation_session_id=session_id,
+        turn_id=turn_id,
+        created_at=datetime.now(UTC),
+        semantic_saturation=0.85,
+        remaining_info_risk=0.15,
+        semantic_split_risk=0.05,
+        speech_decision_score=0.78,
+        safe_response_level=4,
+        proposal="full_response_candidate",
+        confidence=0.8,
+        would_start_inference=True,
+        reason="test",
+    )
+    store.get_advisory.return_value = mock_advisory
+
+    mock_obs = PartialTranscriptObservation(
+        id=obs_id,
+        conversation_session_id=session_id,
+        turn_id=turn_id,
+        revision=1,
+        observed_at=datetime.now(UTC),
+        vad_state="idle",
+        attention_mode="engaged",
+        raw_text="テスト安定部分、です",
+        filtered_text="テスト安定部分、です",
+        stable_text="テスト安定部分",
+        unstable_tail="、です",
+        audio_level_db=-15.0,
+        source="test",
+    )
+    store.get_observation.return_value = mock_obs
+
+    session = TomoroSession(
+        vad_processor=vad,
+        send_event=MagicMock(),
+        turn_taking_v2_store=store,
+    )
+
+    with patch("server.shared.turn_taking_logger.log_provisional_inference_start") as mock_log_prov:
+        await session._process_v2_advisory(advisory_id)
+        
+        # Check that provisional inference timestamp is recorded
+        assert turn_id in session._v2_provisional_inference_started_at
+        assert isinstance(session._v2_provisional_inference_started_at[turn_id], int)
+
+        # Check that log_provisional_inference_start was called with correct args
+        mock_log_prov.assert_called_once()
+        kwargs = mock_log_prov.call_args.kwargs
+        assert kwargs["conversation_session_id"] == session_id
+        assert kwargs["turn_id"] == turn_id
+        assert kwargs["stable_text"] == "テスト安定部分"
+        assert "would_start_inference=True" in kwargs["reason"]
+
+        # Call again to test deduplication (should not log again)
+        mock_log_prov.reset_mock()
+        await session._process_v2_advisory(advisory_id)
+        mock_log_prov.assert_not_called()

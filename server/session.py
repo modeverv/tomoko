@@ -344,6 +344,7 @@ class TomoroSession:
         self._timer_alarm_request_sequence = 0
         self._pending_timer_alarm_due_payloads: list[dict[str, Any]] = []
         self.turn_taking_v2_store = turn_taking_v2_store or NullTurnTakingV2Store()
+        self._v2_provisional_inference_started_at: dict[UUID, int] = {}
         self._last_active_turn_id = None
         self._partial_revision = 0
         if hasattr(self.turn_taking_v2_store, "dsn") and getattr(self.turn_taking_v2_store, "dsn"):
@@ -2196,23 +2197,7 @@ class TomoroSession:
                         advisory_id_str = notify.payload
                         try:
                             advisory_id = UUID(advisory_id_str)
-                            advisory = await self.turn_taking_v2_store.get_advisory(advisory_id)
-                            if advisory:
-                                logger.info(
-                                    "[v2_shadow] advisory_received: id=%s observation_id=%s "
-                                    "semantic_saturation=%s remaining_info_risk=%s "
-                                    "semantic_split_risk=%s speech_decision_score=%s "
-                                    "proposal=%s confidence=%s reason=%r",
-                                    advisory.id,
-                                    advisory.observation_id,
-                                    advisory.semantic_saturation,
-                                    advisory.remaining_info_risk,
-                                    advisory.semantic_split_risk,
-                                    advisory.speech_decision_score,
-                                    advisory.proposal,
-                                    advisory.confidence,
-                                    advisory.reason,
-                                )
+                            await self._process_v2_advisory(advisory_id)
                         except Exception as e:
                             logger.error("Error processing turn-taking v2 advisory notification: %s", e, exc_info=True)
             except asyncio.CancelledError:
@@ -2220,6 +2205,45 @@ class TomoroSession:
             except Exception as e:
                 logger.error("Error in turn-taking v2 advisory listener: %s. Retrying in 2 seconds...", e, exc_info=True)
                 await asyncio.sleep(2.0)
+
+    async def _process_v2_advisory(self, advisory_id: UUID) -> None:
+        advisory = await self.turn_taking_v2_store.get_advisory(advisory_id)
+        if advisory:
+            logger.info(
+                "[v2_shadow] advisory_received: id=%s observation_id=%s "
+                "semantic_saturation=%s remaining_info_risk=%s "
+                "semantic_split_risk=%s speech_decision_score=%s "
+                "proposal=%s confidence=%s reason=%r",
+                advisory.id,
+                advisory.observation_id,
+                advisory.semantic_saturation,
+                advisory.remaining_info_risk,
+                advisory.semantic_split_risk,
+                advisory.speech_decision_score,
+                advisory.proposal,
+                advisory.confidence,
+                advisory.reason,
+            )
+            if advisory.would_start_inference and advisory.turn_id:
+                if advisory.turn_id not in self._v2_provisional_inference_started_at:
+                    import time
+                    now_ms = int(time.time() * 1000)
+                    self._v2_provisional_inference_started_at[advisory.turn_id] = now_ms
+                    obs = await self.turn_taking_v2_store.get_observation(advisory.observation_id)
+                    stable_text = obs.stable_text if obs else None
+                    from server.shared.turn_taking_logger import log_provisional_inference_start
+                    log_provisional_inference_start(
+                        ts_ms=now_ms,
+                        conversation_session_id=advisory.conversation_session_id,
+                        turn_id=advisory.turn_id,
+                        stable_text=stable_text,
+                        reason=f"v2 shadow lane would_start_inference=True. saturation={advisory.semantic_saturation}",
+                    )
+                    logger.info(
+                        "[v2_shadow] provisional_inference_started (dry-run): turn_id=%s stable_text=%r",
+                        advisory.turn_id,
+                        stable_text,
+                    )
 
     def _filter_transcript(self, transcript: Transcript, *, is_partial: bool):
         if self.transcript_filter is None:

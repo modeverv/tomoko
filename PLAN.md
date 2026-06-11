@@ -1,3 +1,19 @@
+## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.4: provisional inference
+
+前フェーズ（Phase TT-v2.3）の prepare-only dry run の実装とテストを完了した。これにより、v2 shadow レーンからの `would_start_inference = True` イベントを契機に、TomoroSession が仮の推論開始をトリガーしてログ出力する仕組みが構築された。
+
+これまでの段階では、早期推論開始の「dry-run イベント」を記録するだけで、実際にバックグラウンドで LLM 推論を実行していなかった。この「イベントログを出力するだけで実際の推論を行わない」制限を否定し、本フェーズでは実際にバックグラウンドタスクとして仮推論（LLMによる返答生成）を走らせる仕組みを実装する。
+
+ただし、生成された仮の返答は即座に発話・再生せず、バックグラウンドに保持し、その後到着する後続の partial/final transcript とのインテントの乖離（divergence）や、ユーザーからの追加の発話（semantic split 等）が発生した場合に適切に結果を破棄（stale discard）するライフサイクル管理を構築する。
+
+### 完了条件
+
+- [ ] `would_start_inference = True` になったタイミングで、実際に `provisional_inference` をバックグラウンドタスクとして非同期に実行する機構を追加する。
+- [ ] 生成された仮の返答を `provisional_replies`（一時的な状態）として保持する。
+- [ ] 新しい partial transcript や final transcript が到着した際、インテントが乖離しているか、または semantic_split_risk が上昇している場合に、保持している仮返答を無効化（status = 'stale' / 'discarded'）するライフサイクルロジックを実装する。
+- [ ] 仮推論結果の無効化や整合確認のトランジションイベントを `logs/turn-taking-main.jsonl` に記録する。
+- [ ] 関連するライフサイクルと無効化挙動を検証するユニットテストおよびインテグレーションテストを追加し、通過することを確認する。
+
 ## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.3: prepare-only dry run
 
 前フェーズ（Phase TT-v2.2）のタイムライン分析ツールの実装と検証を完了した。これにより、メイン会話ログと v2 shadow advisory ログを突合して Markdown 形式のレポートを出力し、早期推論開始の妥当性を評価できるようになった。
@@ -8,9 +24,9 @@
 
 ### 完了条件
 
-- [ ] `TomoroSession` の `_listen_v2_advisories` において、`would_start_inference` が `True` の advisory を検知した際に、仮の推論開始をトリガーするハンドラを追加する。
-- [ ] 推論の dry-run 開始イベントを `logs/turn-taking-main.jsonl` に記録し、実際にメインの VAD 判定より何ミリ秒早く推論を準備できたか（または間違ったタイミングだったか）をシミュレーションできる機構を作る。
-- [ ] 関連する動作契約を固定するユニットテストを追加し、通過することを確認する。
+- [x] `TomoroSession` の `_listen_v2_advisories` において、`would_start_inference` が `True` の advisory を検知した際に、仮の推論開始をトリガーするハンドラを追加する。
+- [x] 推論の dry-run 開始イベントを `logs/turn-taking-main.jsonl` に記録し、実際にメインの VAD 判定より何ミリ秒早く推論を準備できたか（または間違ったタイミングだったか）をシミュレーションできる機構を作る。
+- [x] 関連する動作契約を固定するユニットテストを追加し、通過することを確認する。
 
 ## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.2: analysis tool
 

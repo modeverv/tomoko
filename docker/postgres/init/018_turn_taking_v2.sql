@@ -27,8 +27,11 @@ CREATE TABLE IF NOT EXISTS turn_taking_v2_advisories (
     safe_response_level INTEGER,
     proposal TEXT,
     confidence DOUBLE PRECISION,
+    would_start_inference BOOLEAN,
     reason TEXT
 );
+
+ALTER TABLE turn_taking_v2_advisories ADD COLUMN IF NOT EXISTS would_start_inference BOOLEAN;
 
 CREATE INDEX IF NOT EXISTS partial_transcript_obs_session_idx ON partial_transcript_observations (conversation_session_id, observed_at DESC);
 CREATE INDEX IF NOT EXISTS turn_taking_v2_advisories_session_idx ON turn_taking_v2_advisories (conversation_session_id, created_at DESC);
