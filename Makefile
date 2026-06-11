@@ -66,7 +66,7 @@ SCREEN_SHELL ?= zsh
 .PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
 .PHONY: information-collect-world information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
 .PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list
-.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material smoke-research-mcp smoke-research-session smoke-ws-voice-latency log-report monitor system-monitor lint check
+.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material smoke-research-mcp smoke-research-session smoke-ws-voice-latency log-report monitor system-monitor lint check analyze-v2
 
 deps:
 	mise exec -- uv sync
@@ -324,3 +324,7 @@ llm-stop:
 
 voicevox-run:
 	bash _tools/run_voicevox.sh
+
+analyze-v2:
+	mise exec -- uv run python -m server.tools.analyze_turn_taking_v2 --session-id "$(SESSION_ID)" $(if $(MAIN_LOG),--main $(MAIN_LOG),) $(if $(V2_LOG),--v2 $(V2_LOG),) $(if $(OUT_REPORT),--out $(OUT_REPORT),)
+

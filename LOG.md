@@ -1,3 +1,27 @@
+## 2026-06-11 セッション22
+
+### やること（開始時に書く）
+- `v2.md` の `Phase TT-v2.2: analysis tool` の実装
+  - `server/tools/analyze_turn_taking_v2.py` 分析ツールの実装（`logs/turn-taking-main.jsonl` と `logs/turn-taking-v2-shadow.jsonl` の突合、評価分類、Markdown出力）
+  - 分析ツール実行用の Makefile ターゲット `analyze-v2` の追加
+  - 分析ツールの基本動作・分類ロジックを検証するユニットテストの追加とパス
+- 全てのユニットテストが通過することを確認する
+
+### やったこと
+- `server/tools/analyze_turn_taking_v2.py` の分析ツールを実装し、メイン意思決定ログと v2 shadow advisory のタイムラインを突合、評価分類（`good_early_prepare`, `too_early_wrong`, `missed_opportunity`, `safe_wait`, `dangerous_speak`）を行い、Markdown レポートとして出力する仕組みを構築した。
+- `tests/unit/test_turn_taking_v2_analyzer.py` を追加し、各評価分類の判定ロジックが期待通りに動作することを検証するユニットテストをパスさせた。
+- `Makefile` に `analyze-v2` ターゲットを追加し、`make analyze-v2 SESSION_ID=...` で容易に分析を行えるようにした。
+- `PLAN.md` の Phase TT-v2.2 の完了マークを付け、次のフェーズ `Phase TT-v2.3: prepare-only dry run` を定義・追記した。
+
+### 詰まったこと・解決したこと
+- 特になし。
+
+### 次のセッションでやること
+- `Phase TT-v2.3: prepare-only dry run` の実装
+  - `TomoroSession` の `_listen_v2_advisories` にて `would_start_inference = True` の advisory を受け取った際の仮推論トリガー処理の実装
+  - dry-run 開始イベントのメインログ出力とミリ秒単位での先行時間のシミュレーション
+  - ユニットテストによる動作確認
+
 ## 2026-06-11 セッション21
 
 ### やること（開始時に書く）

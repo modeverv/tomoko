@@ -1,3 +1,17 @@
+## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.3: prepare-only dry run
+
+前フェーズ（Phase TT-v2.2）のタイムライン分析ツールの実装と検証を完了した。これにより、メイン会話ログと v2 shadow advisory ログを突合して Markdown 形式のレポートを出力し、早期推論開始の妥当性を評価できるようになった。
+
+これまでの段階では、v2 advisory は DB やログに記録されるだけで、TomoroSession 側の動作には一切連携されていなかった。この「単にログを吐いて捨てるだけ」の制限を否定し、本フェーズでは TomoroSession の中継フローにおいて、v2 shadow レーンから「今なら推論を開始してよい（would_start_inference = True）」という advisory が到着した際に、実際に provisional inference（仮推論）をトリガーする dry-run 処理を追加する。
+
+ただし、本番の返答生成（メイン LLM の呼び出し）は行わず、dry-run ログへの記録や、ダミーの provisional command のシミュレーションに留め、本番の会話フロー（話すこと）には一切影響を与えない設計とする。
+
+### 完了条件
+
+- [ ] `TomoroSession` の `_listen_v2_advisories` において、`would_start_inference` が `True` の advisory を検知した際に、仮の推論開始をトリガーするハンドラを追加する。
+- [ ] 推論の dry-run 開始イベントを `logs/turn-taking-main.jsonl` に記録し、実際にメインの VAD 判定より何ミリ秒早く推論を準備できたか（または間違ったタイミングだったか）をシミュレーションできる機構を作る。
+- [ ] 関連する動作契約を固定するユニットテストを追加し、通過することを確認する。
+
 ## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.2: analysis tool
 
 前フェーズ（Phase TT-v2.1）の shadow advisory 計算ロジックの実装とテストを完了した。
@@ -7,10 +21,10 @@
 
 ### 完了条件
 
-- [ ] メインスレッドのタイムラインと v2 shadow レーンの advisory ログ（`logs/turn-taking-main.jsonl` や `logs/turn-taking-v2-shadow.jsonl` など、あるいは DB レコード）を時間軸で突合し、時系列タイムラインを整理する分析ツール `server/tools/analyze_turn_taking_v2.py` を実装する
-- [ ] 分析ツールが `good_early_prepare`, `too_early_wrong`, `missed_opportunity`, `safe_wait`, `dangerous_speak` 等の評価分類を行い、Markdown レポートとして出力する
-- [ ] ツール実行用の Makefile ターゲット（`make analyze-v2` 等）を追加する
-- [ ] 分析ツールの基本ロジックをテストするユニットテストを追加し、通過することを確認する
+- [x] メインスレッドのタイムラインと v2 shadow レーンの advisory ログ（`logs/turn-taking-main.jsonl` や `logs/turn-taking-v2-shadow.jsonl` など、あるいは DB レコード）を時間軸で突合し、時系列タイムラインを整理する分析ツール `server/tools/analyze_turn_taking_v2.py` を実装する
+- [x] 分析ツールが `good_early_prepare`, `too_early_wrong`, `missed_opportunity`, `safe_wait`, `dangerous_speak` 等の評価分類を行い、Markdown レポートとして出力する
+- [x] ツール実行用の Makefile ターゲット（`make analyze-v2` 等）を追加する
+- [x] 分析ツールの基本ロジックをテストするユニットテストを追加し、通過することを確認する
 
 ## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.1: shadow advisory
 
