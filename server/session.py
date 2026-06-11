@@ -2306,6 +2306,20 @@ class TomoroSession:
             turn_input.playback_state,
             transcript.text,
         )
+        from server.shared.turn_taking_logger import log_main_decision
+
+        log_main_decision(
+            ts_ms=int(time.time() * 1000),
+            conversation_session_id=self.active_conversation_session_id,
+            turn_id=self.audio_turns.active_turn_id,
+            decision=decision.decision,
+            reason=decision.reason,
+            text=transcript.text,
+            source=decision.source,
+            elapsed_ms=decision.elapsed_ms,
+            pending_reply_state=turn_input.pending_reply_state,
+            playback_state=turn_input.playback_state,
+        )
         await self._send_event(
             {
                 "type": "turn_taking_decision",

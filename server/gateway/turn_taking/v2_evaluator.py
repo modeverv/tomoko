@@ -183,6 +183,7 @@ class SpeechMotivationEvaluator:
         semantic_saturation: float,
         remaining_info_risk: float,
         semantic_split_risk: float,
+        confidence: float,
         vad_state: str | None,
         attention_mode: str | None,
         audio_level_db: float | None,
@@ -221,7 +222,20 @@ class SpeechMotivationEvaluator:
         else:
             proposal = "floor_grab_candidate"
 
+        # Phase TT-v2.3: would_start_inference flag
+        # Inference is "ready" when semantic saturation is high, confidence is sufficient,
+        # split risk is low, and VAD doesn't indicate active speech.
+        would_start_inference = False
+        if (
+            semantic_saturation >= 0.75
+            and confidence >= 0.5
+            and semantic_split_risk < 0.5
+            and vad_penalty < 0.5
+        ):
+            would_start_inference = True
+
         return {
             "speech_decision_score": round(speech_decision_score, 3),
-            "proposal": proposal
+            "proposal": proposal,
+            "would_start_inference": would_start_inference,
         }

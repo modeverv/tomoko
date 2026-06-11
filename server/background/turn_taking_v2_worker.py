@@ -116,6 +116,23 @@ class TurnTakingV2Worker:
                 confidence=0.0,
                 reason="hallucination_or_noise",
             )
+            from server.shared.turn_taking_logger import log_v2_shadow_advisory
+            import time
+            log_v2_shadow_advisory(
+                ts_ms=int(time.time() * 1000),
+                conversation_session_id=obs.conversation_session_id,
+                turn_id=obs.turn_id,
+                partial_revision=obs.revision,
+                stable_text=None,
+                semantic_saturation=0.0,
+                remaining_info_risk=1.0,
+                semantic_split_risk=0.0,
+                speech_decision_score=0.0,
+                proposal="silence",
+                confidence=0.0,
+                would_start_inference=False,
+                reason="hallucination_or_noise",
+            )
             return
 
         history_before = await self.store.get_turn_history(
@@ -146,6 +163,7 @@ class TurnTakingV2Worker:
             semantic_saturation=semantic_result["semantic_saturation"],
             remaining_info_risk=semantic_result["remaining_info_risk"],
             semantic_split_risk=semantic_result["semantic_split_risk"],
+            confidence=semantic_result["confidence"],
             vad_state=obs.vad_state,
             attention_mode=obs.attention_mode,
             audio_level_db=obs.audio_level_db,
@@ -175,6 +193,23 @@ class TurnTakingV2Worker:
             motivation_result["proposal"],
             motivation_result["speech_decision_score"],
             stable_text,
+        )
+        from server.shared.turn_taking_logger import log_v2_shadow_advisory
+        import time
+        log_v2_shadow_advisory(
+            ts_ms=int(time.time() * 1000),
+            conversation_session_id=obs.conversation_session_id,
+            turn_id=obs.turn_id,
+            partial_revision=obs.revision,
+            stable_text=stable_text,
+            semantic_saturation=semantic_result["semantic_saturation"],
+            remaining_info_risk=semantic_result["remaining_info_risk"],
+            semantic_split_risk=semantic_result["semantic_split_risk"],
+            speech_decision_score=motivation_result["speech_decision_score"],
+            proposal=motivation_result["proposal"],
+            confidence=semantic_result["confidence"],
+            would_start_inference=motivation_result.get("would_start_inference"),
+            reason=reason,
         )
 
     async def _recovery_loop(self, interval_sec: float) -> None:

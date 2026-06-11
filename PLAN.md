@@ -1,3 +1,17 @@
+## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.2: analysis tool
+
+前フェーズ（Phase TT-v2.1）の shadow advisory 計算ロジックの実装とテストを完了した。
+これにより、v2 worker が単なるダミーではなく、hallucination check, stable prefix extraction, semantic saturation, speech decision score, safe_response_level の推定ロジックを計算し、テーブルに格納する処理が動作するようになった。
+
+現行の「ログ出力だけで動作確認を行う」方法では、v2 が main に対してどれくらい先行して推論準備ができていたか、どの程度正しく判定できたか等の定量的な評価や分析が行えない。この単純ログ確認のみの方針を否定し、今後は時系列の推移を突合する分析ツールを導入して Markdown レポートを生成できるようにする。
+
+### 完了条件
+
+- [ ] メインスレッドのタイムラインと v2 shadow レーンの advisory ログ（`logs/turn-taking-main.jsonl` や `logs/turn-taking-v2-shadow.jsonl` など、あるいは DB レコード）を時間軸で突合し、時系列タイムラインを整理する分析ツール `server/tools/analyze_turn_taking_v2.py` を実装する
+- [ ] 分析ツールが `good_early_prepare`, `too_early_wrong`, `missed_opportunity`, `safe_wait`, `dangerous_speak` 等の評価分類を行い、Markdown レポートとして出力する
+- [ ] ツール実行用の Makefile ターゲット（`make analyze-v2` 等）を追加する
+- [ ] 分析ツールの基本ロジックをテストするユニットテストを追加し、通過することを確認する
+
 ## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.1: shadow advisory
 
 前フェーズの初期 scaffold が無事動作することを確認した。
@@ -5,10 +19,10 @@
 
 ### 完了条件
 
-- [ ] `v2_shadow_advisory` 計算モジュール（またはクラス）を実装し、部分テキスト入力から意味的完了度・発話意欲等を評価できるようにする
-- [ ] v2 worker（`TurnTakingV2Worker`）が、受信した observation に紐づく同一セッションの過去の observation 履歴を DB から取得し、それらを元に stable prefix やリビジョンごとの状態変遷を計算する処理を実装する
-- [ ] 判定したスコア（`semantic_saturation`, `speech_decision_score` 等）を `turn_taking_v2_advisories` テーブルに正しく格納し、NOTIFY する
-- [ ] 新しい判定処理に対応する単体テストと結合テストが通過する
+- [x] `v2_shadow_advisory` 計算モジュール（またはクラス）を実装し、部分テキスト入力から意味的完了度・発話意欲等を評価できるようにする
+- [x] v2 worker（`TurnTakingV2Worker`）が、受信した observation に紐づく同一セッション of 過去の observation 履歴を DB から取得し、それらを元に stable prefix やリビジョンごとの状態変遷を計算する処理を実装する
+- [x] 判定したスコア（`semantic_saturation`, `speech_decision_score` 等）を `turn_taking_v2_advisories` テーブルに正しく格納し、NOTIFY する
+- [x] 新しい判定処理に対応する単体テストと結合テストが通過する
 
 ## 2026-06-11 Turn-taking v2 shadow lane initial scaffold
 

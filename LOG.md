@@ -1,3 +1,25 @@
+## 2026-06-11 セッション21
+
+### やること（開始時に書く）
+- `v2.md` の `Phase TT-v2.1: shadow advisory` の続きを対応する
+- `v2_evaluator.py` に不足しているユニットテストの実装
+- 実際の判定ロジック (hallucination check, stable prefix extraction, semantic saturation, speech decision score, safe_response_level) の確認と微調整
+- 関連するユニットテストおよびインテグレーションテストを実行し、すべて通過することを確認する
+
+### やったこと
+- `SpeechMotivationEvaluator.evaluate` において `confidence` 変数が未定義（NameError）になっていたバグを特定し、引数および呼び出し元（worker およびテスト）に `confidence` を追加・伝搬させる形で修正した。
+- `pytest -m unit` を実行し、`test_turn_taking_v2_evaluator.py` を含む 665 個のユニットテストがすべて正常にパスすることを確認した。
+- `pytest tests/integration/test_turn_taking_v2_db.py -m integration` を実行し、DB 連携を含むインテグレーションテストが正常にパスすることを確認した。
+- `PLAN.md` の `Phase TT-v2.1: shadow advisory` の完了条件をクリアしたため、チェックボックスをすべて完了 [x] に更新した。
+- `PLAN.md` に次のフェーズ `Phase TT-v2.2: analysis tool` を新規追加した。
+
+### 詰まったこと・解決したこと
+- `SpeechMotivationEvaluator.evaluate` 内で未定義の `confidence` を使おうとしていたため、テストが失敗していた。前段の `SemanticFinishJudge.evaluate` で算出された `confidence` を引数に加えて伝搬させることで解決した。
+
+### 次のセッションでやること
+- `Phase TT-v2.2: analysis tool` の実装
+  - `server/tools/analyze_turn_taking_v2.py` 分析スクリプトの作成（メイン会話ログと v2 shadow advisory タイムラインの突合・突合レポート出力ロジックの実装）
+
 ## 2026-06-11 セッション20
 
 ### やること（開始時に書く）
