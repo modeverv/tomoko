@@ -1,3 +1,16 @@
+## 2026-06-11 Turn-taking v2 shadow lane initial scaffold
+
+従来の VAD と final transcript のみに依存した直列的な発話制御方式（v1）による会話状態決定プロセスを否定する。この構成では、VAD時間を短くすると息継ぎ等で発話が細切れになり、長くすると体感応答速度（TTFT）が遅くなるジレンマを解決できないためである。
+今後は、v2.md に基づく Turn-taking v2 / Semantic Speech Decision Shadow Lane 設計へ移行し、まず観測用の非同期シャドウレーン（Scaffold）の構築から段階的に実装を進める。
+
+### 完了条件
+
+- [ ] `partial_transcript_observations` および `turn_taking_v2_advisories` テーブルの DDL（マイグレーション）を作成する
+- [ ] `TomoroSession` 側で partial transcript が更新されるたびに DB（`partial_transcript_observations`）へ保存し、PostgreSQL NOTIFY を投げる仕組みを追加する
+- [ ] 非同期に動作する `turn-taking-v2` worker を作成し、LISTEN で起動してダミーアドバイザリー（advisory_id の NOTIFY）を書き戻す scaffold を実装する
+- [ ] main-side の listener を用意し、シャドウレーンのアドバイザリーを読み込んで server-debug.log に記録するだけのパイプラインを構築する（メインの会話制御にはまだ影響させない）
+- [ ] 関連する基本機能のユニットテストおよび scaffold が機能することを示すインテグレーションテストが通過する
+
 ## 2026-06-11 lora system prompt baking
 
 LoRA（Low-Rank Adaptation）を用いて、指定されたシステムプロンプトの挙動をベースLLMに焼き込むためのデータセット生成から学習実行、評価までを行うプログラム一式を作成する。

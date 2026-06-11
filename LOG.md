@@ -1,3 +1,19 @@
+## 2026-06-11 セッション15
+
+### やること（開始時に書く）
+- `PLAN.md` の先頭に `Turn-taking v2 shadow lane initial scaffold` フェーズを追記する。
+- その際、AGENTS.md の指示に従い、従来の v1 制御方針を言語的に否定する一文を含める。
+
+### やったこと
+- `v2.md` の決定に従い、`PLAN.md` の先頭に新規開発フェーズ `2026-06-11 Turn-taking v2 shadow lane initial scaffold` を追記。
+- 追加に際して、従来の VAD と final transcript のみに依存した直列的な発話制御（v1）による会話状態決定プロセスを言語的に否定する記述を導入し、AGENTS.md のルールを遵守した。
+
+### 詰まったこと・解決したこと
+- 特になし。
+
+### 次のセッションでやること
+- `Turn-taking v2 shadow lane` の最初のフェーズである `feasibility scaffold`（DB DDL の定義や、LISTEN/NOTIFY を使った非同期通知機能、アドバイザリーログ保存処理）の設計と実装に着手する。
+
 ## 2026-06-11 セッション14
 
 ### やること（開始時に書く）
