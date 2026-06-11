@@ -38,8 +38,10 @@ async def _main() -> None:
 
     config = NodeConfig.load(args.config)
     dsn = config.database.dsn
+    from server.shared.inference.router import InferenceRouter
+    router = InferenceRouter(config=config)
 
-    worker = TurnTakingV2Worker(dsn)
+    worker = TurnTakingV2Worker(dsn, router=router)
     await worker.run(recovery_interval_sec=args.recovery_interval_sec)
 
 

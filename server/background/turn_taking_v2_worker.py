@@ -8,14 +8,16 @@ from uuid import UUID
 import psycopg
 
 from server.shared.turn_taking_v2 import PostgresTurnTakingV2Store
+from server.shared.inference.router import InferenceRouter
 
 logger = logging.getLogger(__name__)
 
 
 class TurnTakingV2Worker:
-    def __init__(self, dsn: str) -> None:
+    def __init__(self, dsn: str, router: InferenceRouter | None = None) -> None:
         self.dsn = dsn
         self.store = PostgresTurnTakingV2Store(dsn)
+        self.router = router
         self._stop_event = asyncio.Event()
 
     async def run(self, recovery_interval_sec: float = 5.0) -> None:
@@ -158,7 +160,57 @@ class TurnTakingV2Worker:
                     (stable_text, unstable_tail, observation_id),
                 )
 
-        semantic_result = SemanticFinishJudge.evaluate(obs.raw_text)
+        semantic_result = None
+        if self.router and "local_gemma4_e2b_mlx" in self.router.backends:
+            backend = self.router.backends["local_gemma4_e2b_mlx"]
+            try:
+                system_prompt = (
+                    "あなたは対話システムにおける発話判定アシスタントです。ユーザーの部分的な日本語発話を受け取り、"
+                    "その発話の意味的な完了状態を分析して、指定されたJSONオブジェクトのみを出力してください。余計な説明文は一切加えないでください。"
+                )
+                user_prompt = (
+                    f"以下の発話を分析してください。\n\n"
+                    f"発話: \"{obs.raw_text}\"\n\n"
+                    f"以下の項目をJSONフォーマットのみで返答してください。余計な文字列や解説は含めず、純粋なJSONのみを出力すること。\n"
+                    f"JSONキー:\n"
+                    f"- \"semantic_saturation\": 意味的な完了度。文末として十分に成立しているか。(0.0 から 1.0)\n"
+                    f"- \"remaining_info_risk\": 残りの情報が続く（まだ話し終わっていない）リスク。(0.0 から 1.0)\n"
+                    f"- \"semantic_split_risk\": 「でも」「ただ」などがあり文脈が途中で分裂するリスク。(0.0 から 1.0)\n"
+                    f"- \"safe_response_level\": 返答しても安全なレベル。(1 から 5)\n"
+                    f"- \"confidence\": 判定の信頼度。(0.0 から 1.0)"
+                )
+
+                messages = [{"role": "user", "content": user_prompt}]
+                logger.info("[v2_shadow] Requesting LLM (Gemma-4 E2B) for raw_text=%r", obs.raw_text)
+
+                full_response = ""
+                async for chunk in backend.chat_stream(system_prompt, messages, trace_role="turn_taking_v2"):
+                    full_response += chunk
+
+                logger.info("[v2_shadow] LLM Response: %r", full_response)
+
+                import json
+                json_str = full_response.strip()
+                if "```json" in json_str:
+                    json_str = json_str.split("```json")[1].split("```")[0].strip()
+                elif "```" in json_str:
+                    json_str = json_str.split("```")[1].split("```")[0].strip()
+
+                parsed = json.loads(json_str)
+                semantic_result = {
+                    "semantic_saturation": float(parsed.get("semantic_saturation", 0.3)),
+                    "remaining_info_risk": float(parsed.get("remaining_info_risk", 0.7)),
+                    "semantic_split_risk": float(parsed.get("semantic_split_risk", 0.0)),
+                    "safe_response_level": int(parsed.get("safe_response_level", 2)),
+                    "confidence": float(parsed.get("confidence", 0.5)),
+                }
+                logger.info("[v2_shadow] LLM semantic judgment succeeded: %s", semantic_result)
+            except Exception as e:
+                logger.error("[v2_shadow] Failed to run LLM semantic finish judge: %s. Falling back to rule-based.", e)
+                semantic_result = None
+
+        if semantic_result is None:
+            semantic_result = SemanticFinishJudge.evaluate(obs.raw_text)
 
         motivation_result = SpeechMotivationEvaluator.evaluate(
             semantic_saturation=semantic_result["semantic_saturation"],
