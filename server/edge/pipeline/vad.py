@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
@@ -52,6 +53,7 @@ class VADProcessor:
         sample_rate: int = 16000,
         speech_threshold: float = 0.5,
         device_id: str = "local",
+        pre_roll_ms: int = 500,
     ) -> None:
         self.vad = vad
         self.default_silence_ms = silence_ms
@@ -59,11 +61,14 @@ class VADProcessor:
         self.sample_rate = sample_rate
         self.speech_threshold = speech_threshold
         self.device_id = device_id
+        self.pre_roll_ms = pre_roll_ms
         self.state = "idle"
         self._buffer: list[np.ndarray] = []
         self._silent_samples = 0
         self._started_at: datetime | None = None
         self._max_speech_probability = 0.0
+        self._pre_roll: deque[np.ndarray] = deque()
+        self._pre_roll_samples = 0
 
     def process_chunk(self, chunk: np.ndarray) -> VADResult:
         probability = self.vad.process_chunk(chunk)
@@ -73,12 +78,14 @@ class VADProcessor:
 
         is_speech = probability >= self.speech_threshold
         if self.state == "idle" and not is_speech:
+            self._push_pre_roll(chunk)
             return VADResult(speech_probability=probability)
 
         if self.state == "idle":
             self.state = "listening"
             self._started_at = datetime.now(UTC)
-            self._buffer = []
+            self._buffer = list(self._pre_roll)
+            self._clear_pre_roll()
             self._silent_samples = 0
             self._max_speech_probability = probability
             state_changed_to = "listening"
@@ -123,7 +130,31 @@ class VADProcessor:
         self._started_at = None
         self._max_speech_probability = 0.0
         self.silence_ms = self.default_silence_ms
+        self._clear_pre_roll()
+
+    def _push_pre_roll(self, chunk: np.ndarray) -> None:
+        max_samples = int(self.sample_rate * self.pre_roll_ms / 1000)
+        if max_samples <= 0:
+            return
+        pre_roll_chunk = chunk.astype(np.float32, copy=False)
+        if len(pre_roll_chunk) > max_samples:
+            pre_roll_chunk = pre_roll_chunk[-max_samples:]
+        self._pre_roll.append(pre_roll_chunk)
+        self._pre_roll_samples += len(pre_roll_chunk)
+        while self._pre_roll and self._pre_roll_samples > max_samples:
+            overshoot = self._pre_roll_samples - max_samples
+            oldest = self._pre_roll[0]
+            if len(oldest) <= overshoot:
+                dropped = self._pre_roll.popleft()
+                self._pre_roll_samples -= len(dropped)
+                continue
+            self._pre_roll[0] = oldest[overshoot:]
+            self._pre_roll_samples -= overshoot
+
+    def _clear_pre_roll(self) -> None:
+        self._pre_roll = deque()
+        self._pre_roll_samples = 0
 
 
-def create_vad_processor(silence_ms: int = 400) -> VADProcessor:
-    return VADProcessor(vad=SileroVAD(), silence_ms=silence_ms)
+def create_vad_processor(silence_ms: int = 400, pre_roll_ms: int = 500) -> VADProcessor:
+    return VADProcessor(vad=SileroVAD(), silence_ms=silence_ms, pre_roll_ms=pre_roll_ms)

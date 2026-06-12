@@ -95,7 +95,7 @@ async def test_mlx_lm_backend_loads_with_adapter() -> None:
     backend = MLXLMBackend(
         name="local_lfm",
         model="lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit",
-        adapter_path="lora/adapters",
+        adapter_path="loras/lora/adapters",
         model_loader=load_model,
         stream_generator=stream_generate,
     )
@@ -106,7 +106,7 @@ async def test_mlx_lm_backend_loads_with_adapter() -> None:
     ):
         pass
 
-    assert calls == [("lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit", "lora/adapters")]
+    assert calls == [("lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit", "loras/lora/adapters")]
 
 
 @pytest.mark.unit
@@ -147,7 +147,11 @@ async def test_mlx_lm_backend_chat_stream_structured() -> None:
     ]
 
     assert chunks == ['{"semantic_saturation": 0.95, "remaining_info_risk": 0.2}']
-    assert "あなたは発話判定アシスタントです。\n\n重要: あなたの出力は以下の JSON Schema に完全に準拠した JSON オブジェクトのみである必要があります。" in prompts[0]
+    assert (
+        "あなたは発話判定アシスタントです。\n\n"
+        "重要: あなたの出力は以下の JSON Schema に完全に準拠した "
+        "JSON オブジェクトのみである必要があります。"
+    ) in prompts[0]
 
 
 # ============================================================

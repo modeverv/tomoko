@@ -28,7 +28,12 @@ def strip_thinking_block(text: str) -> str:
     """<|channel|>thought ... ブロックを除去し、実際の応答だけを返す。"""
     # <|channel|>thought で始まるブロックを削除
     # パターン: <|channel|>thought\n...\n<|channel|> or end
-    text = re.sub(r'<\|channel\|>thought.*?(?=<\|channel\|>(?!thought)|\Z)', '', text, flags=re.DOTALL)
+    text = re.sub(
+        r'<\|channel\|>thought.*?(?=<\|channel\|>(?!thought)|\Z)',
+        '',
+        text,
+        flags=re.DOTALL,
+    )
     text = re.sub(r'<\|channel\|>', '', text)
     return text.strip()
 
@@ -48,12 +53,17 @@ def extract_final_response(text: str) -> str:
             body_lines = [stripped]
             for j in range(i + 1, min(i + 5, len(lines))):
                 next_line = lines[j].strip().lstrip("* \t")
-                if next_line and not next_line.startswith("EMOTION:") and not next_line.startswith("*"):
+                if (
+                    next_line
+                    and not next_line.startswith("EMOTION:")
+                    and not next_line.startswith("*")
+                ):
                     body_lines.append(next_line)
                 else:
                     break
             candidate = "\n".join(body_lines)
-            if candidate.split("\n")[0].replace("EMOTION:", "").strip() in VALID_EMOTIONS | set(EMOTION_REMAP):
+            candidate_emotion = candidate.split("\n")[0].replace("EMOTION:", "").strip()
+            if candidate_emotion in VALID_EMOTIONS | set(EMOTION_REMAP):
                 return candidate
     return ""
 
@@ -346,12 +356,17 @@ def main():
     )
     parser.add_argument("--system-prompt-path", type=str, default="prompts/base_persona.md",
                         help="Path to the system prompt file.")
-    parser.add_argument("--output-dir", type=str, default="lora/data",
+    parser.add_argument("--output-dir", type=str, default="loras/lora/data",
                         help="Directory to save train.jsonl and valid.jsonl.")
     parser.add_argument("--num-samples", type=int, default=100,
                         help="Target number of dialogue samples.")
-    parser.add_argument("--backend", type=str, choices=["ollama", "mlx", "openai_compat"], default="ollama",
-                        help="LLM backend (ollama / mlx / openai_compat).")
+    parser.add_argument(
+        "--backend",
+        type=str,
+        choices=["ollama", "mlx", "openai_compat"],
+        default="ollama",
+        help="LLM backend (ollama / mlx / openai_compat).",
+    )
     parser.add_argument("--model", type=str, default="qwen2.5:7b",
                         help="Model name or path. For openai_compat, the model id on the server.")
     parser.add_argument("--ollama-url", type=str, default="http://localhost:11434",
@@ -407,7 +422,8 @@ def main():
             )
             user_prompts.extend(extra_prompts)
         elif args.backend == "openai_compat":
-            # openai_compat は seed プロンプトをそのまま使用（ユーザー発話生成は Ollama と同じロジックを拡張予定）
+            # openai_compat は seed プロンプトをそのまま使用する。
+            # ユーザー発話生成は Ollama と同じロジックを拡張予定。
             pass
             
     # 重複排除と目標数へのクリップ

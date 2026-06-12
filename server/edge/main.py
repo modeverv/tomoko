@@ -163,7 +163,10 @@ async def v2_dataflow_doc() -> FileResponse:
 
 def _create_default_vad_processor():
     config = _load_config()
-    return create_vad_processor(silence_ms=config.audio.vad_silence_ms)
+    return create_vad_processor(
+        silence_ms=config.audio.vad_silence_ms,
+        pre_roll_ms=config.audio.vad_pre_roll_ms,
+    )
 
 
 def _create_default_stt_audio_frontend(sample_rate: int = 16000) -> SttAudioFrontend:

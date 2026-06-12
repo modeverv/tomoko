@@ -7,11 +7,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# lora ディレクトリをインポート対象に加える
-sys.path.append(os.path.join(os.path.dirname(__file__), "../../lora"))
+# loras/lora ディレクトリをインポート対象に加える
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../loras/lora"))
 
-from generate_data import load_system_prompt, SEED_PROMPTS
 import evaluate
+from generate_data import SEED_PROMPTS, load_system_prompt
 
 
 @pytest.mark.unit
@@ -36,7 +36,7 @@ class TestLoraPrograms(unittest.TestCase):
             load_system_prompt("non_existent_file.md")
 
     def test_load_system_prompt_with_custom_overlay(self) -> None:
-        """明示的に overlay_path が指定された場合に、システムプロンプトとオーバーレイが結合されること"""
+        """明示的な overlay_path でシステムプロンプトとオーバーレイが結合されること"""
         custom_overlay_path = "tests/unit/temp_custom_overlay.md"
         try:
             with open(custom_overlay_path, "w", encoding="utf-8") as f:
@@ -50,7 +50,7 @@ class TestLoraPrograms(unittest.TestCase):
                 os.remove(custom_overlay_path)
 
     def test_load_system_prompt_with_sibling_overlay(self) -> None:
-        """overlay_pathがNoneの場合、隣にある persona_overlay.md が自動でロードされて結合されること"""
+        """overlay_path が None の場合に隣の persona_overlay.md が自動結合されること"""
         sibling_overlay_path = "tests/unit/persona_overlay.md"
         try:
             with open(sibling_overlay_path, "w", encoding="utf-8") as f:
@@ -64,7 +64,7 @@ class TestLoraPrograms(unittest.TestCase):
                 os.remove(sibling_overlay_path)
 
     def test_load_system_prompt_disable_overlay(self) -> None:
-        """overlay_pathが'none'の場合、隣にある persona_overlay.md が自動でロードされず結合されないこと"""
+        """overlay_path が 'none' の場合に隣の persona_overlay.md が自動結合されないこと"""
         sibling_overlay_path = "tests/unit/persona_overlay.md"
         try:
             with open(sibling_overlay_path, "w", encoding="utf-8") as f:
@@ -85,7 +85,7 @@ class TestLoraPrograms(unittest.TestCase):
 
     @patch("httpx.post")
     def test_generate_user_prompts_ollama_fallback_on_error(self, mock_post: MagicMock) -> None:
-        """Ollama API呼び出しでエラーが発生した場合に、警告を出して空リストを返し、フォールバックすること"""
+        """Ollama API 呼び出しエラー時に警告して空リストへフォールバックすること"""
         mock_post.side_effect = Exception("Connection error")
         from generate_data import generate_user_prompts_ollama
         
@@ -99,7 +99,11 @@ class TestLoraPrograms(unittest.TestCase):
     @patch("evaluate.run_interactive")
     @patch("mlx_lm.load")
     def test_evaluate_main_batch_mode(
-        self, mock_load: MagicMock, mock_interactive: MagicMock, mock_batch: MagicMock, mock_exists: MagicMock
+        self,
+        mock_load: MagicMock,
+        mock_interactive: MagicMock,
+        mock_batch: MagicMock,
+        mock_exists: MagicMock,
     ) -> None:
         """evaluate.py の main 関数が一括モードで正しく呼び出せること"""
         mock_exists.return_value = True

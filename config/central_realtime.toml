@@ -8,6 +8,7 @@ dsn = "postgresql://tomoko:tomoko@localhost:5432/tomoko"
 sample_rate = 16000
 chunk_ms = 32
 vad_silence_ms = 400
+vad_pre_roll_ms = 500
 vap_hybrid_enabled = true
 vap_hybrid_min_silence_ms = 150
 vap_hybrid_delta_silence_ms = 650

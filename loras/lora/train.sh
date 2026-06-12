@@ -5,8 +5,8 @@ set -e
 
 # デフォルト設定
 MODEL="mlx-community/Qwen2.5-7B-Instruct-4bit"
-DATA_DIR="lora/data"
-ADAPTER_PATH="lora/adapters"
+DATA_DIR="loras/lora/data"
+ADAPTER_PATH="loras/lora/adapters"
 ITERS=200
 BATCH_SIZE=4
 LORA_LAYERS=16

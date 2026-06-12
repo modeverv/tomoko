@@ -112,7 +112,7 @@ def main():
     parser = argparse.ArgumentParser(description="Evaluate fine-tuned LoRA model.")
     parser.add_argument("--model", type=str, default="mlx-community/Qwen2.5-7B-Instruct-4bit",
                         help="Base MLX model folder path or Hugging Face repo ID.")
-    parser.add_argument("--adapter", type=str, default="lora/adapters",
+    parser.add_argument("--adapter", type=str, default="loras/lora/adapters",
                         help="Path to the saved LoRA adapter directory.")
     parser.add_argument("--interactive", action="store_true",
                         help="Run in interactive chat mode.")

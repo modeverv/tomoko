@@ -8457,3 +8457,125 @@ memory / research / current time は発話の後ろへ残す。
 - [x] 応答の意味破綻がないか turn ごとに確認する
 - [x] `_docs/latency.md` / `MEMORY.md` / `ARCHITECTURE.md` / `LOG.md` に実測と判断を追記する
 - [x] focused unit / perf / ruff / full unit が通る
+
+## 2026-06-12 VAD pre-roll buffer for wake word head clipping
+
+「智子聞こえる？」が「聞こえる」とだけ STT される。Silero VAD の発話検知遅延で
+発話冒頭(wake word 部分)が segment から欠落しているのが原因。
+`VADProcessor` が idle 中の音声を捨てる方針は否定し、直近 500ms をリングバッファに
+保持して `idle -> listening` 遷移時に segment 先頭へ連結する。
+
+### 完了条件
+
+- [x] `VADProcessor` に `pre_roll_ms`(デフォルト 500)のリングバッファを追加する
+- [x] idle 中のチャンクを pre-roll に保持し、listening 遷移時に buffer 先頭へ連結する
+- [x] pre-roll は `pre_roll_ms` 相当のサンプル数を超えた分を古い方から捨てる
+- [x] segment 確定 / `reset()` で pre-roll をクリアする
+- [x] `AudioSection` に `vad_pre_roll_ms` を追加し、edge main から配線する
+- [x] `config/edge_kitchen.toml` / `config/central_realtime.toml` に `vad_pre_roll_ms = 500` を追加する
+- [x] pre-roll が segment 先頭に含まれる / 上限で切り詰める / reset でクリアされる unit test を追加する
+- [x] focused unit / ruff / full unit が通る
+
+## 2026-06-12 LoRA directory relocation
+
+上の `2026-06-11 lora system prompt baking` では `lora/` をプロジェクト直下に置く計画だったが、これは今後の複数 LoRA 管理には適さないため否定する。
+
+今後はプロジェクト直下に `loras/` を作り、既存の LoRA プログラム一式を `loras/lora/` 配下に置く。
+
+### 完了条件
+
+- [x] 既存の `lora/` ディレクトリを `loras/lora/` へ移動する
+- [x] `generate_data.py` / `train.sh` / `evaluate.py` の既定パスを `loras/lora/...` に変更する
+- [x] dflash 起動スクリプトの fused model 参照を `loras/lora/fused_model` に変更する
+- [x] LoRA 関連ユニットテストと ruff を通す
+
+## 2026-06-12 Qwen3 short persona LoRA experiment
+
+Gemma 4 E2B は `mlx_vlm` 経路では短い即応テキストを 0.5s 以内に返せるが、
+既存の `mlx-lm` LoRA / fuse 経路では重み key 非互換で直接扱えなかった。
+このため、E2B 相当の小型モデルでありつつ `mlx-lm` / LoRA / fuse と相性がよい
+`Qwen/Qwen3-1.7B-MLX-4bit` を候補にし、Tomoko の persona / output format
+焼き込みに向くかを段階的に確認する。
+
+停止条件つきで進める:
+
+1. `Qwen/Qwen3-1.7B-MLX-4bit` non-thinking で、LoRA なしのプロンプト追従性と品質を評価する。
+   `EMOTION:<label>` 形式、許可 emotion、日本語、Tomoko 口調が崩れるならここで停止する。
+2. 1 が通る場合だけ `loras/short/` を作り、その中で LoRA 用データ、学習、評価を行う。
+   LoRA 適用後に persona / output format が安定しない、または明らかに品質が落ちるならここで停止する。
+3. 2 が通る場合だけ `mlx_lm fuse` で単一モデル化し、ロード可能性と極小 prompt で焼き込みが発火するかを評価する。
+
+### 完了条件
+
+- [x] Step 1: non-thinking の LoRA なし評価で、停止/継続判断をログと artifact に残す
+- [ ] Step 2: 継続可なら `loras/short/` 配下で LoRA 学習と評価を完了する
+- [ ] Step 3: 継続可なら fused model を作成し、極小 prompt で persona / `EMOTION:` が出ることを確認する
+- [x] 結果を `LOG.md` / `MEMORY.md` / `_docs/latency.md` に追記する
+
+2026-06-12 実測: Step 1 で停止する。
+`Qwen/Qwen3-1.7B-MLX-4bit` に `tokenizer.apply_chat_template(..., enable_thinking=False)` を渡して
+`prompts/base_persona.md` + `prompts/persona_overlay.md` を評価したが、8/8 出力で `<think>` が漏れ、
+`EMOTION:` 形式は 0/8 だった。Tomoko の音声応答 format lane としては non-thinking / format 追従性が
+入口条件を満たさないため、`loras/short/` 作成、LoRA 学習、fuse には進まない。
+artifact: `logs/qwen3-short-lora-20260612/step1_base_non_thinking.json`
+
+## 2026-06-12 LFM short persona LoRA experiment
+
+`Qwen/Qwen3-1.7B-MLX-4bit` は non-thinking 指定でも `<think>` が漏れたため停止した。
+次候補として、既存実測で warm total が非常に速かった
+`lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit` を Step 1 から評価する。
+
+停止条件は Qwen3 と同じ:
+
+1. LoRA なしで、`EMOTION:<label>` 形式、許可 emotion、日本語、短文性、Tomoko 口調が崩れるなら停止する。
+2. 1 が通る場合だけ `loras/short/` 配下で LoRA 学習と評価を行う。
+3. 2 が通る場合だけ `mlx_lm fuse` で単一モデル化し、極小 prompt で焼き込みが発火するか評価する。
+
+### 完了条件
+
+- [ ] Step 1: LoRA なし評価で、停止/継続判断を artifact に残す
+- [ ] Step 2: 継続可なら `loras/short/` 配下で LoRA 学習と評価を完了する
+- [ ] Step 3: 継続可なら fused model を作成し、極小 prompt で persona / `EMOTION:` が出ることを確認する
+- [ ] 結果を `LOG.md` / `MEMORY.md` / `_docs/latency.md` に追記する
+
+2026-06-12 追記: LFM は Step 1b の最小 prompt で見込みがあったが、Gemma 4 E2B OptiQ が
+`mlx_lm` LoRA 経路に乗ることを確認できたため、この実験は本命候補から外す。
+途中生成した `loras/short/` は Gemma 4 E2B OptiQ 用に作り直す。
+
+## 2026-06-12 Gemma 4 E2B OptiQ short persona LoRA experiment
+
+上の Qwen3 / LFM 検討では、`mlx-community/gemma-4-e2b-it-4bit` が `mlx_lm` で読めない前提で
+別モデルへ寄せていた。しかし `mlx-community/gemma-4-e2b-it-OptiQ-4bit` は `mlx_lm` usage があり、
+実際に `mlx_lm.load` / `mlx_lm.generate` / `mlx_lm lora` が通ったため、E2B 本命として扱う。
+
+`mlx_lm` の chat dataset は Gemma 4 の `enable_thinking=False` を渡せないため、
+`loras/short/data` は `messages` 形式ではなく、事前に `enable_thinking=False` でレンダリングした
+`text` JSONL とする。
+
+### 完了条件
+
+- [x] Step 1: `mlx_lm.load` / `mlx_lm.generate` / `mlx_lm lora` smoke が通ることを確認する
+- [x] Step 2: `loras/short/` 配下で Gemma 4 E2B OptiQ 用の LoRA 学習と adapter 評価を完了する
+- [x] Step 3: fused model を作成し、極小 prompt で persona / `EMOTION:` が出ることを確認する
+- [x] 結果を `LOG.md` / `MEMORY.md` / `_docs/latency.md` に追記する
+
+2026-06-12 実測: Gemma 4 E2B OptiQ は LoRA 可能。
+`mlx_lm lora` smoke は 2 iter で adapter 保存まで成功し、本学習は 58 train / 10 valid、120 iter、
+12 layers、batch 2、peak memory 5.230GB で完了した。
+
+adapter 適用ロードでは 12 prompt 評価で `EMOTION:` 12/12、許可 emotion 12/12、基本 pass 11/12。
+短文速度は max_tokens=16 の 5 prompt で avg 451.7ms、4/5 が 500ms 未満。
+
+通常の quantized fuse は作成自体は成功したが、極小 prompt 評価で `EMOTION:` 7/10、許可 emotion 6/10 へ崩れたため非推奨。
+`--dequantize` fuse は 8.7GB になり、`EMOTION:` 10/10、許可 emotion 10/10、基本 pass 9/10 で単一モデルとして成立したが、
+短文速度は avg 689.1ms、500ms 未満 1/5 で、0.5s レーンには adapter 適用ロードの方が向く。
+このため `loras/short/fused_model` は dequantized fused model とし、崩れた通常 quantized fuse は
+`loras/short/fused_model_quantized_unreliable` に退避する。
+
+artifacts:
+- `logs/gemma-e2b-optiq-short-lora-20260612/step1_load_generate.json`
+- `logs/gemma-e2b-optiq-short-lora-20260612/step1_lora_smoke.log`
+- `logs/gemma-e2b-optiq-short-lora-20260612/step2b_adapter_eval_augmented.json`
+- `logs/gemma-e2b-optiq-short-lora-20260612/step3_fused_eval.json`
+- `logs/gemma-e2b-optiq-short-lora-20260612/step3b_fused_dequantized_eval.json`
+- `logs/gemma-e2b-optiq-short-lora-20260612/step2d_adapter_short_speed.json`

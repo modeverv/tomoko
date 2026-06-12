@@ -27,3 +27,12 @@ lora/fused_model/
 reports/
 
 memo.md
+
+loras/lora/data
+loras/lora/adapters
+loras/lora/fused_model
+loras/short/data
+loras/short/adapters
+loras/short/fused_model
+loras/short/fused_model*
+

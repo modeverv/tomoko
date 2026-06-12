@@ -7,7 +7,7 @@
 ## ディレクトリ構成
 
 ```text
-lora/
+loras/lora/
 ├── README.md            # この説明書
 ├── requirements.txt     # 必要な依存パッケージ
 ├── generate_data.py     # 学習用データセット（JSONL）の自動生成スクリプト
@@ -20,7 +20,7 @@ lora/
 1. **依存パッケージのインストール**
    本プログラムは Apple Silicon Mac 環境（MLX）を推奨しています。
    ```bash
-   pip install -r lora/requirements.txt
+   pip install -r loras/lora/requirements.txt
    ```
    すでに `tomoko` プロジェクトで `mlx` オプション付きでインストールしている場合は、追加のインストールは基本的に不要です。
 
@@ -41,16 +41,16 @@ lora/
 
 ローカルで **Ollama** が起動している状態で、以下のコマンドを実行します：
 ```bash
-python lora/generate_data.py \
+python loras/lora/generate_data.py \
   --system-prompt-path prompts/base_persona.md \
-  --output-dir lora/data \
+  --output-dir loras/lora/data \
   --num-samples 100 \
   --backend mlx \
   --model mlx-community/gemma-4-26b-a4b-it-4bit
 
-python lora/generate_data.py \
+python loras/lora/generate_data.py \
   --system-prompt-path prompts/base_persona.md \
-  --output-dir lora/data \
+  --output-dir loras/lora/data \
   --num-samples 100 \
   --backend mlx \
   --model mlx-community/gemma-4-26b-a4b-it-4bit  
@@ -58,13 +58,13 @@ python lora/generate_data.py \
 
 #### 主なオプション:
 - `--system-prompt-path`: 焼き込みたいシステムプロンプトのファイルパス（デフォルト: `prompts/base_persona.md`）
-- `--output-dir`: 生成データの保存先（デフォルト: `lora/data`）
+- `--output-dir`: 生成データの保存先（デフォルト: `loras/lora/data`）
 - `--num-samples`: 生成する対話データサンプル数（デフォルト: 100）
 - `--backend`: データ生成に使用する LLM バックエンド。`ollama` または `mlx`（デフォルト: `ollama`）
 - `--model`: 使用するモデル（デフォルト: `mlx-community/gemma-4-26b-a4b-it-4bit`）
 - `--split-ratio`: データを train / valid に分ける割合（デフォルト: 0.9 = 90%が学習用、10%が検証用）
 
-生成が完了すると、`lora/data/train.jsonl` および `lora/data/valid.jsonl` が作成されます。
+生成が完了すると、`loras/lora/data/train.jsonl` および `loras/lora/data/valid.jsonl` が作成されます。
 
 ---
 
@@ -74,9 +74,9 @@ python lora/generate_data.py \
 
 シェルスクリプトに実行権限を与えて実行します：
 ```bash
-chmod +x lora/train.sh
-# ./lora/train.sh --iters 200 --batch-size 4
-./lora/train.sh \
+chmod +x loras/lora/train.sh
+# ./loras/lora/train.sh --iters 200 --batch-size 4
+./loras/lora/train.sh \
       --model mlx-community/gemma-4-26b-a4b-it-4bit \
       --iters 200 \
       --batch-size 4
@@ -84,14 +84,14 @@ chmod +x lora/train.sh
 
 #### 主なオプション:
 - `-m, --model`: ベースとなる MLX モデルフォルダまたは Hugging Face レポ ID（デフォルト: `mlx-community/Qwen2.5-7B-Instruct-4bit`）
-- `-d, --data`: `train.jsonl` と `valid.jsonl` があるディレクトリ（デフォルト: `lora/data`）
-- `-a, --adapter`: LoRA アダプタ（重み）の保存先（デフォルト: `lora/adapters`）
+- `-d, --data`: `train.jsonl` と `valid.jsonl` があるディレクトリ（デフォルト: `loras/lora/data`）
+- `-a, --adapter`: LoRA アダプタ（重み）の保存先（デフォルト: `loras/lora/adapters`）
 - `-i, --iters`: 学習のイテレーション（ステップ）数。データセットが小さい（100件程度）場合は `200`〜`500` イテレーションで十分効果が出ます（デフォルト: 200）
 - `-b, --batch-size`: バッチサイズ（デフォルト: 4）
 - `-l, --layers`: LoRA を適用するレイヤー数（デフォルト: 16）
 - `--lr`: 学習率（デフォルト: `1e-5`）
 
-学習が正常に完了すると、`lora/adapters/` ディレクトリの中に `adapters.safetensors` や `adapter_config.json` などの LoRA アダプタファイルが出力されます。
+学習が正常に完了すると、`loras/lora/adapters/` ディレクトリの中に `adapters.safetensors` や `adapter_config.json` などの LoRA アダプタファイルが出力されます。
 
 ---
 
@@ -102,17 +102,17 @@ chmod +x lora/train.sh
 #### 1. 一括テスト（バッチ評価）モード
 あらかじめ用意されたテスト用発話（システムプロンプトなし）に対して、焼き込み後のモデルがどのように応答するかを一括で確認します。
 ```bash
-python lora/evaluate.py \
+python loras/lora/evaluate.py \
   --model mlx-community/gemma-4-26b-a4b-it-4bit　\
-  --adapter lora/adapters
+  --adapter loras/lora/adapters
 ```
 
 #### 2. インタラクティブチャットモード
 ターミナル上で、焼き込み後のモデルと直接会話を試すことができます。
 ```bash
-python lora/evaluate.py \
+python loras/lora/evaluate.py \
   --model mlx-community/gemma-4-26b-a4b-it-4bit \
-  --adapter lora/adapters \
+  --adapter loras/lora/adapters \
   --interactive
 ```
 
@@ -127,27 +127,27 @@ python lora/evaluate.py \
 ```bash
 python -m mlx_lm fuse \
   --model mlx-community/gemma-4-26b-a4b-it-4bit \
-  --adapter-path lora/adapters \
-  --save-path lora/fused_model
+  --adapter-path loras/lora/adapters \
+  --save-path loras/lora/fused_model
 
 
 dflash serve \
   --chat-template-args '\''{"enable_thinking": false}'\'' \
-  --model lora/fused_model \
+  --model loras/lora/fused_model \
   --draft z-lab/gemma-4-26B-A4B-it-DFlash \
   --port 8082 
 
 ```
 
 │ [!NOTE]
-│ これにより、 lora/fused_model/  にシステムプロンプトが焼き込まれた完全な状態のモデルファイル一式（ weights  や  tokenizer
+│ これにより、 loras/lora/fused_model/  にシステムプロンプトが焼き込まれた完全な状態のモデルファイル一式（ weights  や  tokenizer
 │ など）が新しく生成されます。
 
   #### 2.  dflash  でマージ済みモデルをロードして起動する
 
-   dflash  を起動する際のモデル指定に、先ほど出力したマージ後のディレクトリパス（ lora/fused_model ）を指定します。
+   dflash  を起動する際のモデル指定に、先ほど出力したマージ後のディレクトリパス（ loras/lora/fused_model ）を指定します。
 
     dflash serve \
-      --model lora/fused_model \
+      --model loras/lora/fused_model \
       --port 8082 \
       --enable-thinking

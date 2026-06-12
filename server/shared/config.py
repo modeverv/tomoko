@@ -68,6 +68,7 @@ class AudioSection:
     sample_rate: int
     chunk_ms: int
     vad_silence_ms: int
+    vad_pre_roll_ms: int = 500
     vap_hybrid_enabled: bool = False
     vap_hybrid_min_silence_ms: int = 150
     vap_hybrid_delta_silence_ms: int = 650
