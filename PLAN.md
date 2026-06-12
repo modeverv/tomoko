@@ -1,3 +1,128 @@
+## 2026-06-12 Turn-taking v2 shadow lane - Phase TT-v2.9: shadow-bench VAP prosody fusion & dynamic main VAD modeling
+
+Phase TT-v2.8（prefill 経済モデル）の実装を完了した。
+
+これまでの shadow-bench は、(a) メイン経路の VAD 待ち時間を固定 400ms としてモデル化し、(b) シャドウ側の発火判定にテキスト由来の特徴（意味飽和度・confidence・split risk）と音量（audio_level_db）のみを使っていた。この2点を否定する。(a) は本番が Phase TT-v2.5 で VAP ハイブリッド動的無音制御（`recommended_silence_ms = 150 + (1 - p_yielding) * 650`、上限 800ms、しきい値 0.90）を導入済みであり、固定 400ms のメインモデルは本番のタイミングと乖離しているからである。(b) はテキストだけでは「文として成立する接頭辞（〜なんです）」と「実際の発話終了」を原理的に区別できず、実効リードが再送確認待ちに律速される（約200ms上限）ことがベンチで定量化されたからである。韻律（VAP の p_yielding）はこの曖昧性をテキスト外の情報で解消できる唯一の入力である。
+
+したがって本フェーズでは、maai VAP を say 合成音声に対してオフライン実行して p_yielding 軌跡を取得し、(1) メインの VAD 待ちを本番同様に動的化してベンチの土台を本番に整合させ、(2) fusion スコアに `W_VAP × p_yielding` 項を追加して重みを再探索し、韻律によって再送確認待ち（150ms）の省略や言いさし発話への発火抑制が可能かを定量評価する。
+
+### 完了条件
+
+- [x] `say` の合成出力を WAVE 16kHz に変更し、maai VAP（mode="vap", 10Hz）で p_yielding 軌跡を取得する `VapTracer` を shadow_bench に実装する（maai 不在時は固定 VAD にフォールバック）。
+- [x] メインの LLM 開始時刻を VAP ハイブリッド仕様（min 150 / delta 650 / max 800 / threshold 0.90、env で変更可）で動的に計算する。
+- [x] 各 partial 到着時点の p_yielding を advisory に付与し、fusion スコアに `W_VAP` 項を追加する。
+- [x] `--tune` のグリッドサーチを w_vap 次元込みに拡張し、最適重みをデフォルトに反映する。
+- [x] N=60 以上で実行し、energy / fusion（VAPなし）/ fusion+VAP の実効リード・miss・言いさし発火を比較してレポートに出力する。
+
+## 2026-06-12 Turn-taking v2 shadow lane - Phase TT-v2.8: shadow-bench prefill economics model
+
+shadow-bench のポリシー比較（prod / energy / fusion / eager）と hit/miss（投機成否）計測の実装を完了した。fusion（加重スコア判定）により miss ゼロで実効リード 200ms を達成したが、このタイミングモデルでは STT 遅延 + テキスト確定待ちが下限であり、重み調整での更なる短縮は不可能であることが判明した。
+
+これまでの実効リード計算は「miss = 全損（final で推論をゼロからやり直し）」という前提を置いていた。この前提を否定する。実際の LLM 推論ではプロンプトの大部分（システムプロンプト + 会話履歴 + 確定済み partial テキスト）の KV キャッシュを事前計算（prefill)でき、投機が外れても一致した接頭辞分の計算は再利用できるからである。さらに、TTFT の支配項はターンテイキングのリード（数百ms）ではなくプロンプト prefill（コンテキスト1500トークン規模で秒単位）であり、これを無視した比較は実態を反映しない。
+
+したがって本フェーズでは、shadow-bench に prefill 経済モデルを実装し、(1) naive（従来: final 後に全 prefill）、(2) context-prefill（ターン開始時に履歴を prefill）、(3) incremental-prefill（partial 到着ごとに差分 prefill）、(4) incremental + speculative-decode（fusion 発火でデコードも開始）の4方式の実効 TTFT を定量比較する。トークン化率・prefill 速度は env パラメータ（実測値に差し替え可能）とする。
+
+### 完了条件
+
+- [x] `TOK_PER_CHAR` / `PREFILL_TOK_PER_SEC` / `CONTEXT_TOKENS` / `PREFILL_OVERHEAD_MS` を env パラメータとして導入する。
+- [x] partial 到着列に沿った incremental prefill のシミュレーション（差分トークンの逐次 prefill 完了時刻計算)を実装する。
+- [x] 4方式の「音声終了からデコード開始可能までの遅延」を分析レポートに出力する。
+- [x] 本番実装（inference router への prefill API 追加、provisional inference との統合）への示唆をレポートに含める。
+
+## 2026-06-12 Turn-taking v2 shadow lane - Phase TT-v2.10: production wiring of fusion + VAP signal
+
+Phase TT-v2.8 / TT-v2.9 のベンチ結果（fusion 重み: w_sem=0.5, w_quiet=0.1, w_stable=0.2, w_vap=0.1, theta=0.6 で実効リード615ms・miss 0）を本番に反映する。データフローは既存の一方向（gateway → observations → shadow worker → advisories → session）を維持し、新しい逆流は作らない。**fusion 判定は log-only**（advisory とログに記録するだけで、provisional inference のトリガーは従来の `would_start_inference` のまま）とし、実機ログ突合で数字が確認できてから切り替える。
+
+3つのサブフェーズに分け、各サブフェーズ完了ごとにユニットテストを通す。
+
+### TT-v2.10a: p_yielding を observation に付与（一方向プラミング）
+
+p_yielding の発生源は `server/gateway/maai_backchannel.py` の `MaaiBackchannelTap.handle_vap_result()`（`p_future[1]`）。現在は `_recommended_silence_ms` に変換されて捨てられているため、生値を保持して observation 保存時に同乗させる。
+
+実装ステップ（順に実施）:
+
+1. `server/gateway/maai_backchannel.py`:
+   - `__init__` に `self._last_p_yielding: float | None = None` を追加（`_recommended_silence_ms` の隣）。
+   - `handle_vap_result()` で `p_yielding` を取り出した直後に `self._last_p_yielding = p_yielding` を代入。
+   - `get_recommended_silence_ms()` の隣に `def get_p_yielding(self) -> float | None: return self._last_p_yielding` を追加。
+2. `docker/postgres/init/018_turn_taking_v2.sql` の末尾に追記（既存の `would_start_inference` と同じ additive パターン）:
+   `ALTER TABLE partial_transcript_observations ADD COLUMN IF NOT EXISTS p_yielding DOUBLE PRECISION;`
+3. `server/shared/models.py` の `PartialTranscriptObservation`（line ~1767）に `p_yielding: float | None = None` をフィールド追加（末尾に追加すれば既存呼び出しは壊れない）。
+4. `server/shared/turn_taking_v2.py`:
+   - `TurnTakingV2Store` Protocol の `save_observation` シグネチャに `p_yielding: float | None = None` を追加。
+   - `PostgresTurnTakingV2Store.save_observation` の INSERT 文に `p_yielding` カラムとプレースホルダを追加。
+   - `get_observation` の SELECT に `p_yielding` を追加し、`PartialTranscriptObservation(..., p_yielding=_optional_float(row[13]))` で返す。
+5. `server/session.py` の `_maybe_emit_partial_transcript`（line ~2237 の `save_observation` 呼び出し）:
+   - 呼び出し前に `get_p = getattr(self.audio_interaction_tap, "get_p_yielding", None)` で取得関数を引き、`p_yielding = get_p() if get_p else None` を計算。
+   - `save_observation(..., p_yielding=p_yielding)` を渡す。
+6. ユニットテスト: maai backchannel のテスト（`tests/unit/` を `grep -rl maai` で探す）に「`handle_vap_result` 後に `get_p_yielding()` が p_future[1] を返す」テストを追加。
+7. `mise exec -- uv run pytest tests/unit -k "maai or turn_taking" -q` で確認。
+
+- [x] 上記 1〜7 を完了し、テストが通る。
+
+### TT-v2.10b: evaluator に fusion 判定を実装（log-only）
+
+ベンチ（`scripts/shadow_bench.py` の `run_shadow_evaluator`）と同じ式を `server/gateway/turn_taking/v2_evaluator.py` に移植する。**既存の `would_start_inference` の挙動は一切変えない**（provisional inference のトリガーは従来のまま）。fusion は並走ログ。
+
+実装ステップ:
+
+1. `server/gateway/turn_taking/v2_evaluator.py`:
+   - モジュール定数を追加（env 上書き可）: `FUSION_W_SEM=0.5, FUSION_W_QUIET=0.1, FUSION_W_STABLE=0.2, FUSION_W_VAP=0.1, FUSION_THETA=0.6, QUIET_GATE_DB=-45.0`。
+   - `SpeechMotivationEvaluator.evaluate` に keyword 引数 `p_yielding: float | None = None, tail_stable: bool = False` を追加。
+   - メソッド内に fusion 計算を追加:
+     `quiet = vad_state != "listening" or (audio_level_db is not None and audio_level_db <= QUIET_GATE_DB)`
+     `sem_core = semantic_saturation * confidence * (1 - semantic_split_risk)`
+     `fusion_score = W_SEM*sem_core + W_QUIET*quiet + W_STABLE*tail_stable + W_VAP*(p_yielding or 0.0)`
+     `would_start_inference_fusion = fusion_score >= THETA`
+   - 戻り値 dict に `"fusion_score"`（round 3桁）と `"would_start_inference_fusion"` を追加。既存キーは変更しない。
+2. `docker/postgres/init/018_turn_taking_v2.sql` 末尾に追記:
+   `ALTER TABLE turn_taking_v2_advisories ADD COLUMN IF NOT EXISTS would_start_inference_fusion BOOLEAN;`
+   `ALTER TABLE turn_taking_v2_advisories ADD COLUMN IF NOT EXISTS fusion_score DOUBLE PRECISION;`
+3. `server/shared/models.py` の `TurnTakingV2Advisory` に `would_start_inference_fusion: bool | None = None` と `fusion_score: float | None = None` を末尾追加。
+4. `server/shared/turn_taking_v2.py` の `save_advisory` / `get_advisory` に両カラムを追加（Protocol も。デフォルト None で後方互換）。
+5. `server/background/turn_taking_v2_worker.py` の `_process_observation`:
+   - `split_stable_unstable` の直後に `tail_stable = bool(stable_text) and stable_text == obs.raw_text` を計算。
+   - `SpeechMotivationEvaluator.evaluate(..., p_yielding=obs.p_yielding, tail_stable=tail_stable)` を渡す。
+   - `save_advisory(..., would_start_inference_fusion=motivation_result.get("would_start_inference_fusion"), fusion_score=motivation_result.get("fusion_score"))`。
+   - hallucination 分岐の `save_advisory` / `log_v2_shadow_advisory` にも `would_start_inference_fusion=False, fusion_score=0.0` を渡す。
+6. `server/shared/turn_taking_logger.py` の `log_v2_shadow_advisory` シグネチャと record に `p_yielding`, `fusion_score`, `would_start_inference_fusion` を追加（呼び出し側 worker も更新。デフォルト None で後方互換に）。
+7. ユニットテスト: `tests/unit/test_turn_taking_v2_evaluator.py` に追加:
+   - 「quiet + tail_stable + 高 saturation → fusion=True」
+   - 「listening + 音声大（quiet でない）+ tail_stable なし → 高 saturation でも fusion=False」
+   - 「p_yielding=0.9 が境界ケースのスコアを押し上げて True になる」
+   - 「既存の `would_start_inference` の挙動が引数追加前と同一」
+8. `mise exec -- uv run pytest tests/unit -k "evaluator or worker or turn_taking" -q` で確認。
+
+- [x] 上記 1〜8 を完了し、テストが通る。
+
+### TT-v2.10c: inference backend に prefill API（KV キャッシュ再利用）
+
+ベンチの prefill 経済モデルで TTFT 支配項がプロンプト prefill（コンテキスト1500tok ≒ 秒単位）であることが定量化された。provisional inference（TT-v2.4: 全文生成して破棄）を「差分 prefill + 発火時デコード」に置き換える布石として、まず backend に prefill API を追加する。**状態（KVキャッシュ）は backend 内に閉じ、ターン内 append-only・ターン終了で破棄**の規約とする。
+
+実装ステップ:
+
+1. 調査: `server/shared/inference/backends/base.py` の Backend 基底と `mlx_lm.py` / `gemma_mlx.py` の `chat_stream` 実装を読み、プロンプト構築（chat template 適用）とトークナイズの箇所を特定する。mlx_lm の `stream_generate` は `prompt_cache=` 引数を受け取れる（`mlx_lm.models.cache.make_prompt_cache` / `trim_prompt_cache` / `can_trim_prompt_cache` を利用）。
+2. `base.py` に optional メソッドの規約をコメントで定義: `prefill(cache_key, system_prompt, messages)` と `drop_prefill(cache_key)`。実装しない backend もあるため、呼び出し側は必ず `getattr(backend, "prefill", None)` で存在確認する（no-op フォールバック）。
+3. `mlx_lm.py` に実装:
+   - `self._prompt_caches: dict[str, tuple[list, list[int]]]`（cache_key → (KVキャッシュ, トークン列)）。サイズ上限 2、超過時は古い方を破棄。
+   - `prefill`: 既存キャッシュがあれば前回トークン列との共通プレフィックスまで `trim_prompt_cache` で巻き戻し、差分トークンのみモデルに流して KV を伸ばす。所要時間と差分トークン数を logger.info で記録。
+   - `chat_stream` / `chat_stream_structured`: 同一 cache_key のキャッシュがあれば `prompt_cache=` に渡してデコード。なければ従来動作。
+   - `drop_prefill`: dict から削除。
+4. `gemma_mlx.py` も同様（実装が mlx_lm ベースなら共通ヘルパーへ括り出す）。
+5. 結線についての注意（当初案の修正）: turn_taking_v2_worker は**別プロセス**で動くため、worker から prefill を呼んでも配信プロセス（session 側）の KV キャッシュは温まらない。prefill の呼び出し元は session の `_process_v2_advisory` →応答生成パイプライン（thinking_mode がプロンプトを構築する箇所）でなければならない。プロンプト構築は thinking パイプライン内部にあるため、この統合は**トリガー切替（TT-v2.10d 通過後）と同時に実施**する。本サブフェーズでは backend プリミティブ + テストまでとする。
+6. （5 に統合。ターン終了時の `drop_prefill(f"turn:{turn_id}")` 呼び出しも切替時に実装）
+7. ユニットテスト: fake で「prefill → chat_stream(cache_key) がキャッシュ（サフィックストークン+prompt_cache）を使う」「差分のみ処理」「trim 不可時は作り直し」「drop で破棄」「cache_key なしの呼び出しは従来動作」。
+8. 計測: prefill 実行時間と差分トークン数は `MLXLMBackend prefill ...` の logger.info で記録される。実機統合後、このログからベンチの `PREFILL_TOK_PER_SEC=500` 仮定を実測値に更新する。
+
+- [x] 上記 1〜4, 7 を完了し、テストが通る（5, 6, 8 の実機統合はトリガー切替時 = TT-v2.10d 通過後）。
+- 対象は `mlx_lm.py`（`MLXLMBackend`）のみ。`gemma_mlx.py` は mlx_vlm ベースでキャッシュ API が異なるため後続対応。
+
+### TT-v2.10d: 実機ログ突合（実装後の受け入れ確認）
+
+- [ ] 通常使用で 1 セッション以上会話し、`turn_taking_v2_advisories` に `would_start_inference_fusion` が記録されることを確認する。
+- [x] `server/tools/analyze_turn_taking_v2.py` の分析に fusion 比較セクション（fusion 発火ターン数 / 早発火後にテキストが伸びた率 / 平均 fusion リード）とタイムラインの 🟠fusion マーカーを追加した。
+- [ ] ベンチ予測（実効リード ~600ms / miss 0）と実測が大きく乖離する場合は `FUSION_*` 重みを実機ログで再チューニングし、数字が確認できてから provisional inference のトリガーを fusion に切り替える。
+
 ## 2026-06-11 Turn-taking v2 shadow lane - Phase TT-v2.7: Schema reduction & Structured Output enforcement
 
 前フェーズ（Phase TT-v2.6）のデバッグ用「発話終わり」ボタン・Spaceキー押下によるマーカーシグナル UI 実装とテストを完了した。

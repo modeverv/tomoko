@@ -2233,6 +2233,8 @@ class TomoroSession:
             self._partial_revision += 1
 
         filtered_text = partial.text if filter_decision.action == "accept" else None
+        get_p_yielding = getattr(self.audio_interaction_tap, "get_p_yielding", None)
+        p_yielding = get_p_yielding() if get_p_yielding is not None else None
         try:
             await self.turn_taking_v2_store.save_observation(
                 conversation_session_id=self.active_conversation_session_id,
@@ -2246,6 +2248,7 @@ class TomoroSession:
                 unstable_tail=None,
                 audio_level_db=partial.audio_level_db,
                 source=partial.device_id,
+                p_yielding=p_yielding,
             )
         except Exception as e:
             logger.error("Failed to save partial transcript observation: %s", e, exc_info=True)

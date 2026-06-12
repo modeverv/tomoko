@@ -31,6 +31,7 @@ class TurnTakingV2Store(Protocol):
         unstable_tail: str | None,
         audio_level_db: float | None,
         source: str | None,
+        p_yielding: float | None = None,
     ) -> UUID: ...
 
     async def get_observation(
@@ -53,6 +54,8 @@ class TurnTakingV2Store(Protocol):
         confidence: float | None,
         would_start_inference: bool | None,
         reason: str | None,
+        would_start_inference_fusion: bool | None = None,
+        fusion_score: float | None = None,
     ) -> UUID: ...
 
     async def get_advisory(
@@ -87,6 +90,7 @@ class PostgresTurnTakingV2Store:
         unstable_tail: str | None,
         audio_level_db: float | None,
         source: str | None,
+        p_yielding: float | None = None,
     ) -> UUID:
         async with pooled_connection(self.dsn) as conn:
             async with conn.cursor() as cur:
@@ -104,9 +108,10 @@ class PostgresTurnTakingV2Store:
                         stable_text,
                         unstable_tail,
                         audio_level_db,
-                        source
+                        source,
+                        p_yielding
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
                     (
@@ -122,6 +127,7 @@ class PostgresTurnTakingV2Store:
                         unstable_tail,
                         audio_level_db,
                         source,
+                        p_yielding,
                     ),
                 )
                 row = await cur.fetchone()
@@ -144,7 +150,7 @@ class PostgresTurnTakingV2Store:
                     SELECT
                         id, conversation_session_id, turn_id, revision, observed_at,
                         vad_state, attention_mode, raw_text, filtered_text,
-                        stable_text, unstable_tail, audio_level_db, source
+                        stable_text, unstable_tail, audio_level_db, source, p_yielding
                     FROM partial_transcript_observations
                     WHERE id = %s
                     """,
@@ -167,6 +173,7 @@ class PostgresTurnTakingV2Store:
                     unstable_tail=row[10],
                     audio_level_db=_optional_float(row[11]),
                     source=row[12],
+                    p_yielding=_optional_float(row[13]),
                 )
 
     async def save_advisory(
@@ -184,6 +191,8 @@ class PostgresTurnTakingV2Store:
         confidence: float | None,
         would_start_inference: bool | None,
         reason: str | None,
+        would_start_inference_fusion: bool | None = None,
+        fusion_score: float | None = None,
     ) -> UUID:
         async with pooled_connection(self.dsn) as conn:
             async with conn.cursor() as cur:
@@ -202,9 +211,11 @@ class PostgresTurnTakingV2Store:
                         proposal,
                         confidence,
                         would_start_inference,
-                        reason
+                        reason,
+                        would_start_inference_fusion,
+                        fusion_score
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
                     (
@@ -221,6 +232,8 @@ class PostgresTurnTakingV2Store:
                         confidence,
                         would_start_inference,
                         reason,
+                        would_start_inference_fusion,
+                        fusion_score,
                     ),
                 )
                 row = await cur.fetchone()
@@ -244,7 +257,8 @@ class PostgresTurnTakingV2Store:
                         id, observation_id, conversation_session_id, turn_id, created_at,
                         semantic_saturation, remaining_info_risk, semantic_split_risk,
                         speech_decision_score, safe_response_level, proposal, confidence,
-                        would_start_inference, reason
+                        would_start_inference, reason,
+                        would_start_inference_fusion, fusion_score
                     FROM turn_taking_v2_advisories
                     WHERE id = %s
                     """,
@@ -268,6 +282,8 @@ class PostgresTurnTakingV2Store:
                     confidence=_optional_float(row[11]),
                     would_start_inference=row[12],
                     reason=row[13],
+                    would_start_inference_fusion=row[14],
+                    fusion_score=_optional_float(row[15]),
                 )
 
     async def get_turn_history(

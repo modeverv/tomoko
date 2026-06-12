@@ -1778,6 +1778,7 @@ class PartialTranscriptObservation:
     unstable_tail: str | None
     audio_level_db: float | None
     source: str | None
+    p_yielding: float | None = None
 
 
 @dataclass(frozen=True)
@@ -1796,4 +1797,6 @@ class TurnTakingV2Advisory:
     confidence: float | None
     would_start_inference: bool | None
     reason: str | None
+    would_start_inference_fusion: bool | None = None
+    fusion_score: float | None = None
 

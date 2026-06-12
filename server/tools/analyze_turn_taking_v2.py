@@ -97,11 +97,34 @@ def classify_turn(main_rec: dict[str, Any], v2_recs: list[dict[str, Any]]) -> di
             outcome = "safe_wait"
             reason = "VAD wait was appropriate or response was too short for early prepare."
 
+    # Phase TT-v2.10d: fusion（log-only 並走）の比較分析
+    # fusion=True が main final よりどれだけ早いか / 早発火後にテキストが伸びたか（実機の言いさし率）
+    first_fusion_rec = None
+    for r in v2_recs:
+        if r.get("would_start_inference_fusion") is True:
+            first_fusion_rec = r
+            break
+
+    fusion_lead_time_ms = 0
+    fusion_premature = False
+    if first_fusion_rec:
+        fusion_lead_time_ms = main_rec["ts_ms"] - first_fusion_rec["ts_ms"]
+        fusion_stable = first_fusion_rec.get("stable_text") or ""
+        # 発火時の stable_text より final が実質的に伸びていたら投機失敗（言いさし相当）
+        if final_text.startswith(fusion_stable):
+            fusion_tail = final_text[len(fusion_stable):]
+        else:
+            fusion_tail = final_text
+        fusion_premature = not SAFE_TAIL_REGEX.match(fusion_tail)
+
     return {
         "outcome": outcome,
         "lead_time_ms": lead_time_ms,
         "reason": reason,
         "first_inf_rec": first_inf_rec,
+        "fusion_fired": first_fusion_rec is not None,
+        "fusion_lead_time_ms": fusion_lead_time_ms,
+        "fusion_premature": fusion_premature,
     }
 
 
@@ -140,6 +163,9 @@ def generate_report(
         "dangerous_speak": 0,
     }
     lead_times = []
+    fusion_fired_turns = 0
+    fusion_premature_turns = 0
+    fusion_lead_times: list[float] = []
 
     # Timeline entries
     timeline_lines = []
@@ -160,6 +186,12 @@ def generate_report(
         stats[outcome] += 1
         if outcome == "good_early_prepare":
             lead_times.append(analysis["lead_time_ms"])
+        if analysis["fusion_fired"]:
+            fusion_fired_turns += 1
+            if analysis["fusion_premature"]:
+                fusion_premature_turns += 1
+            elif analysis["fusion_lead_time_ms"] > 0:
+                fusion_lead_times.append(analysis["fusion_lead_time_ms"])
 
         timeline_lines.append(f"### Turn {idx}: {t_id}")
         timeline_lines.append(f"**Outcome**: `{outcome}` — {analysis['reason']}\n")
@@ -181,8 +213,13 @@ def generate_report(
                 score = rec.get("speech_decision_score")
                 score_str = f"{score:.3f}" if score is not None else "-"
                 proposal = rec.get("proposal") or "-"
+                markers = ""
+                if rec.get("would_start_inference") is True:
+                    markers += " 🔵inf"
+                if rec.get("would_start_inference_fusion") is True:
+                    markers += " 🟠fusion"
                 timeline_lines.append(
-                    f"| {time_str} | `v2` | partial rev {rec.get('partial_revision', 0)} ({proposal}) | {stable} | {score_str} |"
+                    f"| {time_str} | `v2` | partial rev {rec.get('partial_revision', 0)} ({proposal}){markers} | {stable} | {score_str} |"
                 )
             else:
                 final = rec.get("text") or "-"
@@ -193,7 +230,13 @@ def generate_report(
 
     total_proposals = len(v2_filtered)
     would_inf_count = sum(1 for r in v2_filtered if r.get("would_start_inference") is True)
+    fusion_inf_count = sum(
+        1 for r in v2_filtered if r.get("would_start_inference_fusion") is True
+    )
     avg_lead = sum(lead_times) / len(lead_times) if lead_times else 0.0
+    avg_fusion_lead = (
+        sum(fusion_lead_times) / len(fusion_lead_times) if fusion_lead_times else 0.0
+    )
 
     report_lines = [
         f"# Turn-taking v2 Analysis (Session: {session_id})",
@@ -208,6 +251,13 @@ def generate_report(
         f"- **safe waits (safe_wait)**: {stats['safe_wait']}",
         f"- **dangerous early proposals (dangerous_speak)**: {stats['dangerous_speak']}",
         f"- **average lead time**: {avg_lead:.1f}ms",
+        "",
+        "## Fusion (TT-v2.10 log-only) Comparison",
+        "",
+        f"- **would_start_inference_fusion records**: {fusion_inf_count}",
+        f"- **turns where fusion fired**: {fusion_fired_turns}",
+        f"- **fusion premature fires (final text grew after fire)**: {fusion_premature_turns}",
+        f"- **average fusion lead time (clean fires)**: {avg_fusion_lead:.1f}ms",
         "",
         "## Timeline Details",
         "",

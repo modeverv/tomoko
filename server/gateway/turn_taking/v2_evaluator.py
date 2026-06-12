@@ -2,9 +2,21 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import re
 
 logger = logging.getLogger(__name__)
+
+# Phase TT-v2.10b: fusion 発火判定の重み。
+# scripts/shadow_bench.py --tune（N=120, VAP動的VAD）で決定した値:
+# 実効リード615ms / miss 0 / 発話中誤発火 0 / 言いさし発火 0。
+# 実機ログ突合（TT-v2.10d）で乖離があれば再チューニングして更新する。
+FUSION_W_SEM = float(os.environ.get("FUSION_W_SEM", "0.5"))
+FUSION_W_QUIET = float(os.environ.get("FUSION_W_QUIET", "0.1"))
+FUSION_W_STABLE = float(os.environ.get("FUSION_W_STABLE", "0.2"))
+FUSION_W_VAP = float(os.environ.get("FUSION_W_VAP", "0.1"))
+FUSION_THETA = float(os.environ.get("FUSION_THETA", "0.6"))
+QUIET_GATE_DB = float(os.environ.get("QUIET_GATE_DB", "-45.0"))
 
 
 class TranscriptValidity:
@@ -84,9 +96,13 @@ class StablePrefixExtractor:
 
 class SemanticFinishJudge:
     # Japanese sentence ending markers
+    # NOTE: 単独の き/け/げ/ぜ/し/も/ぞ/さ/わ は語中にも頻出し、STT partial の
+    # 末尾欠け（例:「〜なんですけど」→「〜なんですけ」）を文末と誤検出するため含めない。
     FINISH_PATTERNS = [
-        r"(です|ます|だ|である|ください|なさい|ね|よ|よね|ぞ|さ|わ|か|き|け|げ|ぜ|の|かな|し|も|ぞ|わ|な|かな|ねえ|よぉ|でしょ|でしょう)(\.|\?|。|？)?$",
+        r"(です|ます|だ|である|ください|なさい|ね|よ|よね|か|の|かな|な|ねえ|よぉ|でしょ|でしょう)(\.|\?|。|？)?$",
         r"(う|よう|まい|ます|です|だ|だろう|でしょう)(\.|\?|。|？)?$",
+        # 丁寧形の過去・否定・勧誘、および促音便の過去形（「〜ました」「〜だった」「〜わかった」）
+        r"(ました|でした|ません|ませんでした|ましょう|った)(\.|\?|。|？)?$",
         r"(\?|？|！|!)$",
         r"(思う|思われます|考えます|感じます|知れません|ありません|ございます)(\.|。)?$"
     ]
@@ -187,6 +203,8 @@ class SpeechMotivationEvaluator:
         vad_state: str | None,
         attention_mode: str | None,
         audio_level_db: float | None,
+        p_yielding: float | None = None,
+        tail_stable: bool = False,
     ) -> dict[str, float | str]:
         vad_penalty = 0.0
         if vad_state == "listening":
@@ -234,8 +252,26 @@ class SpeechMotivationEvaluator:
         ):
             would_start_inference = True
 
+        # Phase TT-v2.10b: fusion 発火判定（log-only 並走。provisional inference の
+        # トリガーは従来の would_start_inference のまま）。
+        # listening 中でも「音声エネルギーが静か + テキスト確定 + 意味完了 + VAP高確度」の
+        # 加重和がしきい値を超えれば発火可とみなす。
+        quiet = vad_state != "listening" or (
+            audio_level_db is not None and audio_level_db <= QUIET_GATE_DB
+        )
+        sem_core = semantic_saturation * confidence * (1.0 - semantic_split_risk)
+        fusion_score = (
+            FUSION_W_SEM * sem_core
+            + FUSION_W_QUIET * (1.0 if quiet else 0.0)
+            + FUSION_W_STABLE * (1.0 if tail_stable else 0.0)
+            + FUSION_W_VAP * (p_yielding or 0.0)
+        )
+        would_start_inference_fusion = fusion_score >= FUSION_THETA
+
         return {
             "speech_decision_score": round(speech_decision_score, 3),
             "proposal": proposal,
             "would_start_inference": would_start_inference,
+            "fusion_score": round(fusion_score, 3),
+            "would_start_inference_fusion": would_start_inference_fusion,
         }

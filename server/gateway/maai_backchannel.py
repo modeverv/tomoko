@@ -64,6 +64,7 @@ class MaaiBackchannelTap:
         self._audio_ch1_vap: Any | None = None
         self._audio_ch2_vap: Any | None = None
         self._recommended_silence_ms: int | None = None
+        self._last_p_yielding: float | None = None
 
     def set_suggestion_callback(
         self,
@@ -217,6 +218,7 @@ class MaaiBackchannelTap:
         if not isinstance(p_future, list) or len(p_future) < 2:
             return
         p_yielding = _float_or_zero(p_future[1])
+        self._last_p_yielding = p_yielding
 
         threshold = self.config.threshold_probability
         if p_yielding >= threshold:
@@ -234,6 +236,9 @@ class MaaiBackchannelTap:
 
     def get_recommended_silence_ms(self) -> int | None:
         return self._recommended_silence_ms
+
+    def get_p_yielding(self) -> float | None:
+        return self._last_p_yielding
 
     def _feed_two_channel(
         self,

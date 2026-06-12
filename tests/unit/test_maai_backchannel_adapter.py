@@ -205,3 +205,31 @@ def test_create_maai_backchannel_tap_from_env_uses_production_react_default(
 
     assert tap is not None
     assert tap.config.react_threshold == pytest.approx(0.50)
+
+
+@pytest.mark.unit
+def test_handle_vap_result_exposes_raw_p_yielding() -> None:
+    tap = MaaiBackchannelTap(
+        config=MaaiBackchannelConfig(),
+        maai_module=FakeMaaiModule(),
+    )
+
+    assert tap.get_p_yielding() is None
+
+    tap.handle_vap_result({"p_future": [0.05, 0.93]})
+
+    assert tap.get_p_yielding() == pytest.approx(0.93)
+    # recommended_silence_ms も従来通り更新されること（p >= threshold 0.90）
+    assert tap.get_recommended_silence_ms() is not None
+
+
+@pytest.mark.unit
+def test_handle_vap_result_ignores_malformed_payload_keeps_last_p() -> None:
+    tap = MaaiBackchannelTap(
+        config=MaaiBackchannelConfig(),
+        maai_module=FakeMaaiModule(),
+    )
+    tap.handle_vap_result({"p_future": [0.4, 0.6]})
+    tap.handle_vap_result({"p_future": "broken"})
+
+    assert tap.get_p_yielding() == pytest.approx(0.6)

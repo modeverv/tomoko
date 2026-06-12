@@ -105,6 +105,9 @@ def log_v2_shadow_advisory(
     confidence: float | None,
     would_start_inference: bool | None,
     reason: str | None,
+    p_yielding: float | None = None,
+    fusion_score: float | None = None,
+    would_start_inference_fusion: bool | None = None,
 ) -> None:
     record = {
         "ts_ms": ts_ms,
@@ -121,6 +124,9 @@ def log_v2_shadow_advisory(
         "proposal": proposal,
         "confidence": confidence,
         "would_start_inference": would_start_inference,
+        "p_yielding": p_yielding,
+        "fusion_score": fusion_score,
+        "would_start_inference_fusion": would_start_inference_fusion,
         "reason": reason,
     }
     _write(_v2_log_path(), record)

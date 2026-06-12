@@ -68,6 +68,7 @@ SCREEN_SHELL ?= zsh
 .PHONY: information-collect-world information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
 .PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list
 .PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material smoke-research-mcp smoke-research-session smoke-ws-voice-latency log-report monitor system-monitor lint check analyze-v2 analyze-v2-latest analyze-v2-list analyze-v2-html
+.PHONY: shadow-bench shadow-bench-report shadow-bench-full
 
 deps:
 	mise exec -- uv sync
@@ -362,3 +363,36 @@ analyze-v2-html:
 	    $(if $(MAIN_LOG),--main $(MAIN_LOG),) \
 	    $(if $(V2_LOG),--v2 $(V2_LOG),) \
 	    $(if $(OUT_DIR),--out-dir $(OUT_DIR),))
+
+## ============================================================
+## Shadow Bench — Turn-taking v2 shadow worker timing benchmark
+## ============================================================
+## seeds/utterances.txt からランダムに N 本を選び、say で音声化
+## → partial 転写列シミュレーション → shadow evaluator 評価
+## → タイミング差分析レポートを stdout + JSONL で出力
+##
+## 使い方:
+##   make shadow-bench           # 10本でテスト
+##   make shadow-bench N=20      # 20本
+##   make shadow-bench N=5 SEED=42  # 乱数シード固定
+##   make shadow-bench-report    # 最新ログを HTML レポートに変換
+##   make shadow-bench-full N=30 # bench + report を一括実行
+N ?= 10
+SEED ?=
+SHADOW_CUT_MODE ?= mix
+
+shadow-bench:
+	mise exec -- uv run python scripts/shadow_bench.py \
+	  -n $(N) \
+	  --cut-mode $(SHADOW_CUT_MODE) \
+	  $(if $(SEED),--seed $(SEED),)
+
+shadow-bench-report:
+	mise exec -- uv run python scripts/shadow_bench_report.py --open
+
+shadow-bench-full:
+	mise exec -- uv run python scripts/shadow_bench.py \
+	  -n $(N) \
+	  --cut-mode $(SHADOW_CUT_MODE) \
+	  $(if $(SEED),--seed $(SEED),) && \
+	mise exec -- uv run python scripts/shadow_bench_report.py --open

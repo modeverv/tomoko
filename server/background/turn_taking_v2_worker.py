@@ -119,6 +119,8 @@ class TurnTakingV2Worker:
                 confidence=0.0,
                 would_start_inference=False,
                 reason="hallucination_or_noise",
+                would_start_inference_fusion=False,
+                fusion_score=0.0,
             )
             from server.shared.turn_taking_logger import log_v2_shadow_advisory
             import time
@@ -136,6 +138,9 @@ class TurnTakingV2Worker:
                 confidence=0.0,
                 would_start_inference=False,
                 reason="hallucination_or_noise",
+                p_yielding=obs.p_yielding,
+                fusion_score=0.0,
+                would_start_inference_fusion=False,
             )
             return
 
@@ -148,6 +153,8 @@ class TurnTakingV2Worker:
         stable_text, unstable_tail = StablePrefixExtractor.split_stable_unstable(
             history_before, obs.raw_text
         )
+        # fusion 用: 現テキストが stable prefix と一致 = 再送で確定済み（揺らぎなし）
+        tail_stable = bool(stable_text) and stable_text == obs.raw_text
 
         async with pooled_connection(self.dsn) as conn:
             async with conn.cursor() as cur:
@@ -240,6 +247,8 @@ class TurnTakingV2Worker:
             vad_state=obs.vad_state,
             attention_mode=obs.attention_mode,
             audio_level_db=obs.audio_level_db,
+            p_yielding=obs.p_yielding,
+            tail_stable=tail_stable,
         )
 
         reason = (
@@ -260,6 +269,8 @@ class TurnTakingV2Worker:
             confidence=semantic_result["confidence"],
             would_start_inference=motivation_result.get("would_start_inference"),
             reason=reason,
+            would_start_inference_fusion=motivation_result.get("would_start_inference_fusion"),
+            fusion_score=motivation_result.get("fusion_score"),
         )
         logger.info(
             "Saved advisory for observation %s. Proposal: %s, Score: %s, Stable: %r",
@@ -284,6 +295,9 @@ class TurnTakingV2Worker:
             confidence=semantic_result["confidence"],
             would_start_inference=motivation_result.get("would_start_inference"),
             reason=reason,
+            p_yielding=obs.p_yielding,
+            fusion_score=motivation_result.get("fusion_score"),
+            would_start_inference_fusion=motivation_result.get("would_start_inference_fusion"),
         )
 
     async def _recovery_loop(self, interval_sec: float) -> None:

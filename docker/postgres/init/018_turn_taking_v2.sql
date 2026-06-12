@@ -35,3 +35,10 @@ ALTER TABLE turn_taking_v2_advisories ADD COLUMN IF NOT EXISTS would_start_infer
 
 CREATE INDEX IF NOT EXISTS partial_transcript_obs_session_idx ON partial_transcript_observations (conversation_session_id, observed_at DESC);
 CREATE INDEX IF NOT EXISTS turn_taking_v2_advisories_session_idx ON turn_taking_v2_advisories (conversation_session_id, created_at DESC);
+
+-- Phase TT-v2.10a: VAP turn-yield probability rides along with each observation
+ALTER TABLE partial_transcript_observations ADD COLUMN IF NOT EXISTS p_yielding DOUBLE PRECISION;
+
+-- Phase TT-v2.10b: fusion (weighted-score) judgment runs log-only alongside would_start_inference
+ALTER TABLE turn_taking_v2_advisories ADD COLUMN IF NOT EXISTS would_start_inference_fusion BOOLEAN;
+ALTER TABLE turn_taking_v2_advisories ADD COLUMN IF NOT EXISTS fusion_score DOUBLE PRECISION;
