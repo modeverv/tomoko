@@ -129,7 +129,6 @@ _configure_app_logging()
 logger = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-CLIENT_DIR = ROOT_DIR / "client"
 ASSETS_DIR = ROOT_DIR / "assets"
 WORK_DIR = ROOT_DIR / "work"
 CONFIG_PATH = Path(
@@ -145,20 +144,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Tomoko Edge", lifespan=lifespan)
-app.mount("/client", StaticFiles(directory=CLIENT_DIR), name="client")
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 _connection_registry = ClientConnectionRegistry()
-
-
-@app.get("/")
-async def index() -> FileResponse:
-    return FileResponse(CLIENT_DIR / "index.html")
-
-
-@app.get("/v2.html")
-async def v2_dataflow_doc() -> FileResponse:
-    """Turn-taking v2 のシグナル/データフロー可視化ドキュメント。"""
-    return FileResponse(CLIENT_DIR / "v2.html")
 
 
 def _create_default_vad_processor():

@@ -4930,3 +4930,15 @@ adapter 適用ロードでは `EMOTION:` 12/12、許可 emotion 12/12、基本 p
 短文速度は avg 689.1ms、500ms 未満 1/5 で、0.5s の short reaction lane には adapter 適用ロードの方が向く。
 `loras/short/fused_model` は dequantized fused model とし、崩れた通常 quantized fuse は
 `loras/short/fused_model_quantized_unreliable` に退避する。
+
+### 気づき: STT audio frontend の実験 filter は production factory では既定OFFになっている
+2026-06-12 の音響/STT 前処理棚卸しで、現行 `server/edge/main.py` の
+`_create_default_stt_audio_frontend()` は `SttAudioFrontend(enabled_filters=())` を返していることを確認した。
+そのため、過去に MEMORY へ残した `speech_bandpass` / `signal_gate` 常時ONの判断とは異なり、
+現行 production factory では `signal_gate` / `speech_bandpass` / `short_segment_merge` /
+`spectral_subtraction` / `rnnoise` はすべて既定OFFである。
+
+`server/edge/pipeline/stt_gate.py` にはこれらの実装と unit test が残っているため、
+production code に見える場所へ退役気味・実験用の音響処理が同居している。
+cleanup する場合は、まず `rnnoise` と `spectral_subtraction` を backup つきで実験用へ隔離し、
+`signal_gate` は復帰候補として最後まで判断を残す。

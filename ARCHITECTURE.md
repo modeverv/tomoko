@@ -1533,11 +1533,6 @@ tomoko-voice/
 │   ├── central_realtime.toml   中央リアルタイム設定
 │   └── central_background.toml 中央バックグラウンド設定
 │
-├── client/
-│   ├── index.html
-│   ├── main.js
-│   └── audio-worklet.js
-│
 ├── assets/images/
 ├── prompts/
 │   ├── base_persona.md

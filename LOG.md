@@ -6484,6 +6484,25 @@ short/normal/deepとかは応答速度を元に動的に切り替えても良い
 - Phase 0: 環境構築から開始
 - MEMORY.md に確定済み判断を整理してから実装開始
 
+## 2026-06-12 セッション35
+
+### やること（開始時に書く）
+- 音響/STT 前処理の signal path を時系列に棚卸しし、hot path / 退役気味 / 実験用の処理を上下レーンで整理して `n.md` に記録する。
+- 削除候補はソース削除前に、バックアップ方針と影響範囲を分けて記録する。
+
+### やったこと
+- `server/edge/pipeline/stt_gate.py` / `server/session.py` / `server/edge/main.py` / `server/edge/remote.py` を読み、central `/ws` と edge remote の STT 前処理 signal path を時系列に整理した。
+- `n.md` を新規作成し、hot path / 退役気味 / 実験用の処理を表で分けた。
+- 現行 production factory が `SttAudioFrontend(enabled_filters=())` を作っており、過去 MEMORY の `speech_bandpass` / `signal_gate` 常時ON判断と現行コードがズレていることを確認した。
+- source 削除は行わず、`rnnoise` / `spectral_subtraction` / `short_segment_merge` / `speech_bandpass` / `signal_gate` の隔離・削除候補順を `n.md` に記録した。
+
+### 詰まったこと・解決したこと
+- なし。今回は挙動変更なしの棚卸しに限定した。
+
+### 次のセッションでやること
+- `n.md` を元に、backup を作ってから音響実験コードを production module から隔離する cleanup Phase を切る。
+- `signal_gate` を production default に戻すか、完全に退役させるかを実機ログ `filters=none` と低音量短文の挙動で判断する。
+
 ## 2026-05-23 セッション1
 
 ### やること（開始時に書く）
