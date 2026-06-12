@@ -8579,3 +8579,20 @@ artifacts:
 - `logs/gemma-e2b-optiq-short-lora-20260612/step3_fused_eval.json`
 - `logs/gemma-e2b-optiq-short-lora-20260612/step3b_fused_dequantized_eval.json`
 - `logs/gemma-e2b-optiq-short-lora-20260612/step2d_adapter_short_speed.json`
+
+## 2026-06-13 tmux runtime helper
+
+既存の `screen-runtime` は macOS 標準の保険として残す。
+一方、日常の実会話確認では `server-debug` / `llm-run` / `voicevox-run` /
+`turn-taking-v2-worker` を同じ tmux session で見られる入口を追加する。
+
+### 完了条件
+
+- [x] `make tmux-runtime` で `server` / `llm` / `voicevox` / `v2-shadow` window を起動する
+- [x] `make tmux-attach` / `make tmux-list` を追加する
+- [x] `make tmux-stop` で tmux session と `llm-run` が作る dflash runtime を停止する
+- [x] README に tmux helper の使い方を追記する
+- [x] dry-run と実停止後のプロセス残りを確認する
+- [x] `tmux-runtime` / `tmux-attach` で mouse mode を有効化し、status line クリックで window を切り替えられるようにする
+- [x] `llm-run` を screen ではなく tmux の `llm-31b` / `llm-26b` window 起動に変更する
+- [x] `tmux-runtime` では LLM / VOICEVOX readiness を待ってから `server-debug` を起動する

@@ -246,6 +246,18 @@ make screen-attach
 make screen-stop
 ```
 
+実会話に必要な `server-debug` / LLM / VOICEVOX / v2 shadow worker を tmux でまとめて起動する helper もあります。
+
+```bash
+make tmux-runtime
+make tmux-attach
+make tmux-stop
+```
+
+`tmux-runtime` / `tmux-attach` は tmux mouse mode を有効にするため、status line の window 名をクリックして切り替えられます。
+`server` window は LLM (`http://127.0.0.1:8081/v1/models`, `http://127.0.0.1:8082/v1/models`) と
+VOICEVOX (`http://127.0.0.1:50122/version`) が応答してから `server-debug` を起動します。
+
 ## Common Commands
 
 ```bash

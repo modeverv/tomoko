@@ -4942,3 +4942,27 @@ adapter 適用ロードでは `EMOTION:` 12/12、許可 emotion 12/12、基本 p
 production code に見える場所へ退役気味・実験用の音響処理が同居している。
 cleanup する場合は、まず `rnnoise` と `spectral_subtraction` を backup つきで実験用へ隔離し、
 `signal_gate` は復帰候補として最後まで判断を残す。
+
+### 気づき: tmux runtime stop は window へ Ctrl-C を送ってから session を落とす
+2026-06-13 に `server-debug` / `llm-run` / `voicevox-run` / `turn-taking-v2-worker` の tmux helper を追加した。
+
+`server-debug` は `tee` を含む pipeline で起動するため、単純な `tmux kill-session` だけでは
+子プロセスが残る場合がある。停止 target では `server` / `voicevox` / `v2-shadow` window へ
+先に Ctrl-C を送り、少し待ってから tmux session を kill する。
+
+また `llm-run` は内部で dflash 用 screen session / process を起動して戻る作りなので、
+tmux session の停止とは別に `make llm-stop` を呼んで dflash runtime を止める。
+
+### 確定した判断: tmux runtime では LLM / VOICEVOX readiness 後に server-debug を起動する
+2026-06-13 に `llm-run` は screen ではなく tmux window で `llm-31b` / `llm-26b` を起動する形へ変更した。
+単体実行時は `dflash-runtime` session を作り、`tmux-runtime` から呼ぶ時は同じ `tomoko-runtime` session 内に
+LLM window を追加する。
+
+`server-debug` は startup warm-up で LLM / VOICEVOX に依存するため、tmux runtime では `server` window を作っても
+すぐ uvicorn を起動しない。`_tools/wait_runtime_dependencies.sh` で
+`http://127.0.0.1:8081/v1/models` / `http://127.0.0.1:8082/v1/models` /
+`http://127.0.0.1:50122/version` が応答するまで待ち、ready 後に `make server-debug` を実行する。
+
+`voicevox-run` は既存 VOICEVOX process / port 状態によって終了する場合があるため、tmux の `voicevox` window は
+`exec make voicevox-run` にしない。`make voicevox-run` が戻っても status を表示し、shell を残して window 自体を
+status line から消さないようにする。

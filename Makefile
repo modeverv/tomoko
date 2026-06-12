@@ -61,14 +61,21 @@ JOURNALIST_INTERVAL_SEC ?= 3600
 JOURNALIST_DATE ?=
 SCREEN_SESSION ?= tomoko-runtime
 SCREEN_SHELL ?= zsh
+TMUX_SESSION ?= tomoko-runtime
+TMUX_SHELL ?= zsh
+TMUX_MOUSE ?= on
+TMUX_RUNTIME_READY_TIMEOUT_SEC ?= 600
+TMUX_RUNTIME_READY_INTERVAL_SEC ?= 2
+TMUX_LLM_READY_URLS ?= http://127.0.0.1:8081/v1/models http://127.0.0.1:8082/v1/models
+TMUX_VOICEVOX_READY_URL ?= http://127.0.0.1:50122/version
 
 .PHONY: deps prepare download-models download-optional-models server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
 .PHONY: session-summarizer session-summarizer-once turn-embedder turn-embedder-once
 .PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once turn-taking-v2-worker
 .PHONY: information-collect-world information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
-.PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list
+.PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list tmux-runtime tmux-run tmux-attach tmux-stop tmux-list
 .PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material smoke-research-mcp smoke-research-session smoke-ws-voice-latency log-report monitor system-monitor lint check analyze-v2 analyze-v2-latest analyze-v2-list analyze-v2-html
-.PHONY: shadow-bench shadow-bench-report shadow-bench-full
+.PHONY: daily llm-run llm-stop voicevox-run shadow-bench shadow-bench-report shadow-bench-full
 
 deps:
 	mise exec -- uv sync
@@ -258,6 +265,50 @@ screen-stop:
 
 screen-list:
 	screen -ls
+
+tmux-runtime:
+	@command -v tmux >/dev/null || { echo "tmux is required"; echo "install with: brew install tmux"; exit 1; }
+	@mkdir -p logs
+	@if tmux has-session -t $(TMUX_SESSION) 2>/dev/null; then \
+		echo "tmux session already exists: $(TMUX_SESSION)"; \
+		echo "attach with: make tmux-attach"; \
+		exit 1; \
+	fi
+	tmux new-session -d -s $(TMUX_SESSION) -n llm-run 'cd "$(CURDIR)" && DFLASH_TMUX_SESSION="$(TMUX_SESSION)" DFLASH_TMUX_EMBED=1 DFLASH_TMUX_MOUSE="$(TMUX_MOUSE)" make llm-run; exec $(TMUX_SHELL) -l'
+	tmux set-option -t $(TMUX_SESSION) mouse $(TMUX_MOUSE)
+	tmux new-window -t $(TMUX_SESSION): -n voicevox 'cd "$(CURDIR)" && make voicevox-run; exit_code=$$?; echo; echo "voicevox-run exited with status $$exit_code; keeping window open."; while :; do sleep 3600; done'
+	tmux new-window -t $(TMUX_SESSION): -n server 'cd "$(CURDIR)" && TOMOKO_RUNTIME_WAIT_TIMEOUT_SEC=$(TMUX_RUNTIME_READY_TIMEOUT_SEC) TOMOKO_RUNTIME_WAIT_INTERVAL_SEC=$(TMUX_RUNTIME_READY_INTERVAL_SEC) TOMOKO_RUNTIME_LLM_READY_URLS="$(TMUX_LLM_READY_URLS)" TOMOKO_RUNTIME_VOICEVOX_READY_URL="$(TMUX_VOICEVOX_READY_URL)" _tools/wait_runtime_dependencies.sh && exec make server-debug'
+	tmux new-window -t $(TMUX_SESSION): -n v2-shadow 'cd "$(CURDIR)" && exec make turn-taking-v2-worker'
+	@echo "started tmux session: $(TMUX_SESSION)"
+	make tmux-attach
+
+run: tmux-runtime
+stop: tmux-stop
+
+tmux-attach:
+	@command -v tmux >/dev/null || { echo "tmux is required"; echo "install with: brew install tmux"; exit 1; }
+	@tmux has-session -t $(TMUX_SESSION) 2>/dev/null || { echo "tmux session not found: $(TMUX_SESSION)"; echo "start with: make tmux-runtime"; exit 1; }
+	@tmux set-option -t $(TMUX_SESSION) mouse $(TMUX_MOUSE)
+	tmux attach -t $(TMUX_SESSION)
+
+tmux-stop:
+	@make llm-stop
+	@if command -v tmux >/dev/null && tmux has-session -t $(TMUX_SESSION) 2>/dev/null; then \
+		tmux send-keys -t $(TMUX_SESSION):llm-run C-c 2>/dev/null || true; \
+		tmux send-keys -t $(TMUX_SESSION):llm-31b C-c 2>/dev/null || true; \
+		tmux send-keys -t $(TMUX_SESSION):llm-26b C-c 2>/dev/null || true; \
+		tmux send-keys -t $(TMUX_SESSION):server C-c 2>/dev/null || true; \
+		tmux send-keys -t $(TMUX_SESSION):voicevox C-c 2>/dev/null || true; \
+		tmux send-keys -t $(TMUX_SESSION):v2-shadow C-c 2>/dev/null || true; \
+		sleep 1; \
+		tmux kill-session -t $(TMUX_SESSION); \
+		echo "stopped tmux session: $(TMUX_SESSION)"; \
+	else \
+		echo "tmux session not found: $(TMUX_SESSION)"; \
+	fi
+
+tmux-list:
+	tmux list-sessions
 
 db-up:
 	$(COMPOSE) up -d postgres

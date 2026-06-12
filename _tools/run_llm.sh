@@ -1,42 +1,60 @@
 #!/usr/bin/env bash
+set -u
 
 cd "$(dirname "$0")/.."
 
 mkdir -p logs
 
-SESSION_31B="dflash-gemma-31b"
-SESSION_26B="dflash-gemma-26b"
+TMUX_SESSION_NAME="${DFLASH_TMUX_SESSION:-dflash-runtime}"
+TMUX_EMBED="${DFLASH_TMUX_EMBED:-0}"
+TMUX_MOUSE="${DFLASH_TMUX_MOUSE:-on}"
 
-if screen -list | grep -q "\.${SESSION_31B}[[:space:]]"; then
-  echo "already running: ${SESSION_31B}"
+WINDOW_31B="llm-31b"
+WINDOW_26B="llm-26b"
+
+command -v tmux >/dev/null || {
+  echo "tmux is required"
+  echo "install with: brew install tmux"
+  exit 1
+}
+
+window_exists() {
+  local session="$1"
+  local window="$2"
+  tmux list-windows -t "${session}" -F '#W' 2>/dev/null | grep -qx "${window}"
+}
+
+start_window() {
+  local session="$1"
+  local window="$2"
+  local command="$3"
+
+  if window_exists "${session}" "${window}"; then
+    echo "already running: ${session}:${window}"
+    return 0
+  fi
+
+  tmux new-window -t "${session}:" -n "${window}" "${command}"
+  echo "started: ${session}:${window}"
+}
+
+command_31b='cd "'"$(pwd)"'" && echo "[start] dflash-gemma-31b at $(date)" && dflash serve --chat-template-args '\''{"enable_thinking": false}'\'' --model mlx-community/gemma-4-31b-it-4bit --draft z-lab/gemma-4-31B-it-DFlash --port 8081 2>&1 | tee -a logs/dflash-31b.log'
+command_26b='cd "'"$(pwd)"'" && echo "[start] dflash-gemma-26b at $(date)" && dflash serve --chat-template-args '\''{"enable_thinking": false}'\'' --model loras/lora/fused_model --draft z-lab/gemma-4-26B-A4B-it-DFlash --port 8082 2>&1 | tee -a logs/dflash-26b.log'
+
+if tmux has-session -t "${TMUX_SESSION_NAME}" 2>/dev/null; then
+  tmux set-option -t "${TMUX_SESSION_NAME}" mouse "${TMUX_MOUSE}" >/dev/null
 else
-screen -dmS "${SESSION_31B}" bash -lc '
-  echo "[start] dflash-gemma-31b at $(date)"
-  dflash serve \
-    --chat-template-args '\''{"enable_thinking": false}'\'' \
-    --model mlx-community/gemma-4-31b-it-4bit \
-    --draft z-lab/gemma-4-31B-it-DFlash \
-    --port 8081 \
-    2>&1 | tee -a logs/dflash-31b.log
-'
-
-  echo "started: ${SESSION_31B}"
+  if [ "${TMUX_EMBED}" = "1" ]; then
+    echo "tmux session not found: ${TMUX_SESSION_NAME}"
+    exit 1
+  fi
+  tmux new-session -d -s "${TMUX_SESSION_NAME}" -n "${WINDOW_31B}" "${command_31b}"
+  tmux set-option -t "${TMUX_SESSION_NAME}" mouse "${TMUX_MOUSE}" >/dev/null
+  echo "started: ${TMUX_SESSION_NAME}:${WINDOW_31B}"
 fi
 
-if screen -list | grep -q "\.${SESSION_26B}[[:space:]]"; then
-  echo "already running: ${SESSION_26B}"
-else
-screen -dmS "${SESSION_26B}" bash -lc '
-  echo "[start] dflash-gemma-26b at $(date)"
-  dflash serve \
-    --chat-template-args '\''{"enable_thinking": false}'\'' \
-    --model loras/lora/fused_model \
-    --draft z-lab/gemma-4-26B-A4B-it-DFlash \
-    --port 8082 \
-    2>&1 | tee -a logs/dflash-26b.log
-'
-  echo "started: ${SESSION_26B}"
-fi
+start_window "${TMUX_SESSION_NAME}" "${WINDOW_31B}" "${command_31b}"
+start_window "${TMUX_SESSION_NAME}" "${WINDOW_26B}" "${command_26b}"
 
 #  dflash serve \
 #    --chat-template-args '\''{"enable_thinking": false}'\'' \
@@ -47,7 +65,7 @@ fi
 
 
 echo
-screen -ls
+tmux list-windows -t "${TMUX_SESSION_NAME}"
 
 echo
 echo "logs:"
@@ -56,7 +74,6 @@ echo "  tail -f logs/dflash-26b.log"
 
 echo
 echo "attach:"
-echo "  screen -r ${SESSION_31B}"
-echo "  screen -r ${SESSION_26B}"
+echo "  tmux attach -t ${TMUX_SESSION_NAME}"
 
 exit 0
