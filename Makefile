@@ -284,6 +284,7 @@ tmux-runtime:
 
 run: tmux-runtime
 stop: tmux-stop
+a: tmux-attach
 
 tmux-attach:
 	@command -v tmux >/dev/null || { echo "tmux is required"; echo "install with: brew install tmux"; exit 1; }
