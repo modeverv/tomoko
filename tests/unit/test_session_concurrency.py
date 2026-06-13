@@ -125,6 +125,30 @@ async def test_precomputed_reply_sends_audio_events_around_chunk() -> None:
 
 
 @pytest.mark.unit
+async def test_precomputed_reply_treats_audio_disconnect_as_closed_output() -> None:
+    events: list[str] = []
+
+    async def send_event(event: dict[str, str]) -> None:
+        events.append(event["type"])
+
+    async def send_audio(chunk: bytes) -> None:
+        del chunk
+        raise RuntimeError('Cannot call "send" once a close message has been sent.')
+
+    session = _session(send_event, send_audio=send_audio)
+
+    await session.start_precomputed_reply(
+        text="結果をまとめるね。",
+        device_id="desk",
+        reason="research_answer",
+        audio_data=b"RIFF\x24\x00\x00\x00WAVEfmt cached",
+        output_lane="reply_turn",
+    )
+
+    assert events == ["attention", "reply_text", "audio_start"]
+
+
+@pytest.mark.unit
 async def test_concurrent_hard_interrupt_sends_one_stop_event() -> None:
     events: list[dict[str, str]] = []
     tts = BlockingTTS()

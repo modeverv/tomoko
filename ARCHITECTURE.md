@@ -634,7 +634,7 @@ TTS も `TTSBackend` 抽象を介して差し替え可能にする。
 2026-06-06 時点の central / edge default TTS は `voicevox_tsumugi_chunked` とする。
 これは `~/by-llms/async-voicevox/run_streaming_voicevox.command` の PR1823 launcher
 `http://127.0.0.1:50122` を前提に、VOICEVOX Engine の `/streaming_synthesis` を
-`chunk_min_accent_phrases=1` / `segment_length=0.2` / 24kHz mono で呼ぶ。
+`chunk_min_accent_phrases=1` / `segment_length=0.6` / 24kHz mono で呼ぶ。
 
 PR1823 は single `audio/wav` response として WAV header 後の 24kHz mono PCM を逐次流す。
 24kHz 以外の `outputSamplingRate` は 422 で拒否されるため、

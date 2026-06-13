@@ -460,7 +460,7 @@ def test_tts_factory_creates_voicevox_chunked_backend() -> None:
             voice="8",
             sample_rate=16000,
             chunk_min_accent_phrases=1,
-            segment_length=0.2,
+            segment_length=0.6,
         )
     )
 
@@ -469,7 +469,7 @@ def test_tts_factory_creates_voicevox_chunked_backend() -> None:
     assert backend.speaker_id == 8
     assert backend.sample_rate == 16000
     assert backend.chunk_min_accent_phrases == 1
-    assert backend.segment_length == 0.2
+    assert backend.segment_length == 0.6
 
 
 def _wav_bytes(*, frame_count: int = 2, sample_rate: int = 24000) -> bytes:

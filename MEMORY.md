@@ -4966,3 +4966,25 @@ LLM window を追加する。
 `voicevox-run` は既存 VOICEVOX process / port 状態によって終了する場合があるため、tmux の `voicevox` window は
 `exec make voicevox-run` にしない。`make voicevox-run` が戻っても status を表示し、shell を残して window 自体を
 status line から消さないようにする。
+
+### 確定した判断: VOICEVOX chunked は途切れ対策として segment_length 0.6 / CPU threads 4 に戻す
+2026-06-13 の実ログでは、`voicevox_tsumugi_chunked` の 0.2 秒 WAV chunk が
+再生速度に追いつかず、playback telemetry 上で chunk 間に大きな隙間が出ていた。
+
+上の「PR1823 chunked VOICEVOX は first chunk 即時 yield と segment_length 0.2 を既定にする」
+という判断のうち、first chunk 即時 yield は維持するが、0.2 秒を既定にする部分は否定する。
+central / edge の `voicevox_tsumugi_chunked.segment_length` は 0.6 秒とし、
+`async-voicevox/run_streaming_voicevox.command` の `CPU_NUM_THREADS` 既定は 4 にする。
+
+これは first audio latency よりも、実再生中の queue under-run とプツプツ途切れの回避を優先する設定である。
+live browser での体感確認後、必要なら `_docs/latency.md` に実測を追記する。
+
+### 確定した判断: WebSocket 切断後の client send は通常終了として扱う
+2026-06-13 の最新 `logs/server-debug.log` では、長い research answer の precomputed reply を
+音声送信中に browser WebSocket が `keepalive ping timeout` / close 済み状態になり、
+その後の `audio_end` JSON 送信で ASGI exception になっていた。
+
+長い TTS / precomputed reply の送信中に client が切れることは runtime の通常終了系として扱う。
+`TomoroSession` は client output disconnected を記録し、以後の audio chunk / `audio_end` / `reply_done`
+送信を止める。これは会話制御判断ではなく transport boundary の閉じ方なので、
+TomoroSession の state owner 方針は変えない。

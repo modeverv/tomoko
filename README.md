@@ -178,7 +178,7 @@ TomoroSession が所有するもの:
 | STT 比較候補 | `local_whisper_mlx_large_turbo_q4` | MLX Whisper large turbo q4 |
 | STT 比較候補 | `local_whisperkit_serve_large_turbo_632m_cpu_ne` | WhisperKit serve + CPU/ANE |
 | VAD | `silero_vad` | 16kHz / 32ms chunk |
-| TTS | `voicevox_tsumugi_chunked` | VOICEVOX Engine speaker id 8 / PR1823 `/streaming_synthesis` / 24kHz mono / chunk_min_accent_phrases=1 / segment_length=0.2 |
+| TTS | `voicevox_tsumugi_chunked` | VOICEVOX Engine speaker id 8 / PR1823 `/streaming_synthesis` / 24kHz mono / chunk_min_accent_phrases=1 / segment_length=0.6 |
 | TTS 比較候補 | `kokoro_mlx` | local MLX TTS |
 | embedding | `local_bge_m3` | `BAAI/bge-m3` / 1024 dimensions |
 

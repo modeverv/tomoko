@@ -213,6 +213,30 @@ def _timer_alarm_due_notice_text(*, kind: str, label: str) -> str:
 
 logger = logging.getLogger(__name__)
 
+
+class ClientOutputDisconnected(Exception):
+    """Raised internally when the browser output WebSocket is already closed."""
+
+
+def _is_client_output_disconnect(exc: Exception) -> bool:
+    exc_name = type(exc).__name__
+    if exc_name in {
+        "ClientDisconnected",
+        "ConnectionClosed",
+        "ConnectionClosedError",
+        "ConnectionClosedOK",
+        "WebSocketDisconnect",
+    }:
+        return True
+    if isinstance(exc, RuntimeError):
+        message = str(exc)
+        return (
+            'Cannot call "send" once a close message has been sent.' in message
+            or "websocket.close" in message
+        )
+    return False
+
+
 class TomoroSession:
     def __init__(
         self,
@@ -331,6 +355,7 @@ class TomoroSession:
         self._short_memory_buffer = ShortMemoryBuffer()
         self._short_memory_turn = 0
         self._short_memory_extraction_tasks: set[asyncio.Task[None]] = set()
+        self._client_output_disconnected = False
         self._research_intent_detector = ResearchIntentDetector()
         self._research_transition_handler: Callable[[TransitionResult], Any] | None = None
         self._research_transition_tasks: set[asyncio.Task[None]] = set()
@@ -3242,9 +3267,9 @@ class TomoroSession:
         # starts only when a human replies through the normal participation path.
         await self._transition_attention("engaged")
         self._latency_probe.mark_reply_output_started()
-        await self._send_event({"type": "reply_text", "delta": stripped_text})
-        self.audio_turns.begin_turn(lane=output_lane)
         try:
+            await self._send_event({"type": "reply_text", "delta": stripped_text})
+            self.audio_turns.begin_turn(lane=output_lane)
             if audio_data is None:
                 await self._flush_tts_text(stripped_text, style="neutral")
             else:
@@ -3263,8 +3288,17 @@ class TomoroSession:
             )
             await self._send_reserved_audio_end()
             await self._send_event({"type": "reply_done"})
+        except ClientOutputDisconnected:
+            logger.info(
+                "TomoroSession precomputed reply output stopped after client disconnect "
+                "reason=%s lane=%s",
+                reason,
+                output_lane,
+            )
         finally:
-            await self._send_reserved_audio_end()
+            if not self._client_output_disconnected:
+                with suppress(ClientOutputDisconnected):
+                    await self._send_reserved_audio_end()
             self._note_attention_activity()
 
     async def _maybe_record_initiative_feedback(
@@ -3338,10 +3372,18 @@ class TomoroSession:
     # Client output, reply tasks, and command execution.
 
     async def _send_event(self, event: dict[str, Any]) -> None:
+        if self._client_output_disconnected:
+            return
         async with self._send_lock:
-            maybe_awaitable = self.send_event(event)
-            if inspect.isawaitable(maybe_awaitable):
-                await maybe_awaitable
+            try:
+                maybe_awaitable = self.send_event(event)
+                if inspect.isawaitable(maybe_awaitable):
+                    await maybe_awaitable
+            except Exception as exc:
+                if _is_client_output_disconnect(exc):
+                    self._mark_client_output_disconnected(exc)
+                    raise ClientOutputDisconnected from exc
+                raise
 
     async def _send_transcript_final_event(
         self,
@@ -3568,11 +3610,29 @@ class TomoroSession:
         self._observe_tomoko_audio(chunk)
         if self.send_audio is None:
             return
+        if self._client_output_disconnected:
+            raise ClientOutputDisconnected
         self._latency_probe.mark_reply_output_started()
         async with self._send_lock:
-            maybe_awaitable = self.send_audio(chunk.data)
-            if inspect.isawaitable(maybe_awaitable):
-                await maybe_awaitable
+            try:
+                maybe_awaitable = self.send_audio(chunk.data)
+                if inspect.isawaitable(maybe_awaitable):
+                    await maybe_awaitable
+            except Exception as exc:
+                if _is_client_output_disconnect(exc):
+                    self._mark_client_output_disconnected(exc)
+                    raise ClientOutputDisconnected from exc
+                raise
+
+    def _mark_client_output_disconnected(self, exc: Exception) -> None:
+        if self._client_output_disconnected:
+            return
+        self._client_output_disconnected = True
+        logger.info(
+            "TomoroSession client output disconnected during send type=%s error=%s",
+            type(exc).__name__,
+            exc,
+        )
 
     async def _start_reply_task(
         self,
@@ -3606,6 +3666,8 @@ class TomoroSession:
             )
         except asyncio.CancelledError:
             raise
+        except ClientOutputDisconnected:
+            logger.info("TomoroSession reply output stopped after client disconnect")
         except Exception as e:
             logger.error("Error generating reply: %s", e)
         finally:

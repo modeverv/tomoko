@@ -115,7 +115,7 @@ def test_central_realtime_config_uses_lmstudio_gemma4_26b_for_main_conversation(
     assert voicevox_chunked_backend.voice == "8"
     assert voicevox_chunked_backend.sample_rate == 24000
     assert voicevox_chunked_backend.chunk_min_accent_phrases == 1
-    assert voicevox_chunked_backend.segment_length == 0.2
+    assert voicevox_chunked_backend.segment_length == 0.6
 
     irodori_backend = config.backends["irodori_mlx"]
     assert irodori_backend.type == "irodori_mlx"

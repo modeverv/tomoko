@@ -8596,3 +8596,20 @@ artifacts:
 - [x] `tmux-runtime` / `tmux-attach` で mouse mode を有効化し、status line クリックで window を切り替えられるようにする
 - [x] `llm-run` を screen ではなく tmux の `llm-31b` / `llm-26b` window 起動に変更する
 - [x] `tmux-runtime` では LLM / VOICEVOX readiness を待ってから `server-debug` を起動する
+
+## 2026-06-13 VOICEVOX chunk under-run mitigation
+
+上の「`voicevox_tsumugi_chunked.segment_length` が 0.2 秒になる」という判断は、
+実ブラウザ再生で 0.2 秒 WAV chunk の到着が再生速度に追いつかず、
+playback queue が空いて途切れやすいことがログ上で確認されたため否定する。
+
+central / edge の `voicevox_tsumugi_chunked.segment_length` は 0.6 秒へ戻す。
+同時に `async-voicevox` launcher の `CPU_NUM_THREADS` 既定を 4 に上げ、
+PR1823 VOICEVOX の生成が再生速度へ追いつく余地を増やす。
+
+### 完了条件
+
+- [x] central / edge の `voicevox_tsumugi_chunked.segment_length` が 0.6 秒になる
+- [x] `async-voicevox/run_streaming_voicevox.command` の `CPU_NUM_THREADS` 既定が 4 になる
+- [x] focused config / VOICEVOX unit が通る
+- [ ] live browser で途切れが減ったか確認し、必要なら `_docs/latency.md` に実測を追加する
