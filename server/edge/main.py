@@ -89,6 +89,7 @@ from server.shared.timer_alarm import (
     TimerAlarmCommandRunner,
     TimerAlarmWorker,
 )
+from server.shared.turn_taking_v2 import PostgresTurnTakingV2Store
 
 
 def _configure_app_logging() -> None:
@@ -400,6 +401,11 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         "stop_intent_store_factory",
         _create_default_stop_intent_store,
     )
+    turn_taking_v2_store_factory = getattr(
+        app.state,
+        "turn_taking_v2_store_factory",
+        _create_default_turn_taking_v2_store,
+    )
     stop_ack_audio_provider_factory = getattr(
         app.state,
         "stop_ack_audio_provider_factory",
@@ -418,6 +424,7 @@ async def _central_browser_session(websocket: WebSocket) -> None:
     vad_processor = vad_processor_factory()
     candidate_feedback_store = candidate_feedback_store_factory()
     stop_intent_store = stop_intent_store_factory()
+    turn_taking_v2_store = turn_taking_v2_store_factory()
     router = router_factory()
     embedding_backend = embedding_backend_factory()
     audio_interaction_tap = audio_interaction_tap_factory(config_audio=config.audio)
@@ -472,6 +479,7 @@ async def _central_browser_session(websocket: WebSocket) -> None:
         stt_audio_frontend=_create_default_stt_audio_frontend(vad_processor.sample_rate),
         candidate_feedback_store=candidate_feedback_store,
         stop_intent_store=stop_intent_store,
+        turn_taking_v2_store=turn_taking_v2_store,
         stop_ack_audio_provider=stop_ack_audio_provider_factory(),
         connected_output_state=output_state,
         audio_interaction_tap=audio_interaction_tap,
@@ -1104,6 +1112,11 @@ def _create_default_candidate_feedback_store() -> PostgresCandidateFeedbackStore
 def _create_default_stop_intent_store() -> PostgresStopIntentStore:
     config = _load_config()
     return PostgresStopIntentStore(config.database.dsn)
+
+
+def _create_default_turn_taking_v2_store() -> PostgresTurnTakingV2Store:
+    config = _load_config()
+    return PostgresTurnTakingV2Store(config.database.dsn)
 
 
 def _create_default_stop_ack_audio_provider() -> StopAckAudioProvider:

@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import signal
+import time
 from typing import Any
 from uuid import UUID
 
 import psycopg
 
-from server.shared.turn_taking_v2 import PostgresTurnTakingV2Store
 from server.shared.inference.router import InferenceRouter
+from server.shared.inference.trace import chat_stream_with_trace_role
+from server.shared.turn_taking_v2 import PostgresTurnTakingV2Store
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +40,10 @@ class TurnTakingV2Worker:
         try:
             while not self._stop_event.is_set():
                 try:
-                    async with await psycopg.AsyncConnection.connect(self.dsn, autocommit=True) as conn:
+                    async with await psycopg.AsyncConnection.connect(
+                        self.dsn,
+                        autocommit=True,
+                    ) as conn:
                         await conn.execute("LISTEN turn_taking_v2_observation")
                         logger.info("Listening on 'turn_taking_v2_observation'...")
 
@@ -54,7 +60,7 @@ class TurnTakingV2Worker:
                                         await self._process_observation(obs_id)
                                     except ValueError:
                                         logger.warning("Invalid UUID payload: %s", obs_id_str)
-                            except asyncio.TimeoutError:
+                            except TimeoutError:
                                 continue
                             except psycopg.OperationalError:
                                 logger.error("DB connection error in LISTEN loop. Reconnecting...")
@@ -97,15 +103,19 @@ class TurnTakingV2Worker:
         logger.info("Processing observation %s: raw_text=%r", observation_id, obs.raw_text)
 
         from server.gateway.turn_taking.v2_evaluator import (
-            TranscriptValidity,
-            StablePrefixExtractor,
             SemanticFinishJudge,
             SpeechMotivationEvaluator,
+            StablePrefixExtractor,
+            TranscriptValidity,
         )
 
         is_valid = TranscriptValidity.evaluate(obs.raw_text)
         if not is_valid:
-            logger.info("Observation %s ignored as hallucination/noise: raw_text=%r", observation_id, obs.raw_text)
+            logger.info(
+                "Observation %s ignored as hallucination/noise: raw_text=%r",
+                observation_id,
+                obs.raw_text,
+            )
             await self.store.save_advisory(
                 observation_id=observation_id,
                 conversation_session_id=obs.conversation_session_id,
@@ -123,7 +133,7 @@ class TurnTakingV2Worker:
                 fusion_score=0.0,
             )
             from server.shared.turn_taking_logger import log_v2_shadow_advisory
-            import time
+
             log_v2_shadow_advisory(
                 ts_ms=int(time.time() * 1000),
                 conversation_session_id=obs.conversation_session_id,
@@ -172,68 +182,22 @@ class TurnTakingV2Worker:
         if self.router and "local_gemma4_e2b_mlx" in self.router.backends:
             backend = self.router.backends["local_gemma4_e2b_mlx"]
             try:
-                system_prompt = (
-                    "あなたは対話システムにおける発話判定アシスタントです。ユーザーの部分的な日本語発話を受け取り、"
-                    "その発話の意味的な完了状態を分析して、指定されたJSONオブジェクトのみを出力してください。余計な説明文は一切加えないでください。"
+                logger.info(
+                    "[v2_shadow] Requesting compact semantic LLM (Gemma-4 E2B) "
+                    "for raw_text=%r",
+                    obs.raw_text,
                 )
-                user_prompt = (
-                    f"以下の発話を分析してください。\n\n"
-                    f"発話: \"{obs.raw_text}\"\n\n"
-                    f"以下の項目をJSONフォーマットのみで返答してください。余計な文字列や解説は含めず、純粋なJSONのみを出力すること。\n"
-                    f"JSONキー:\n"
-                    f"- \"semantic_saturation\": 意味的な完了度。文末として十分に成立しているか。(0.0 から 1.0)\n"
-                    f"- \"remaining_info_risk\": 残りの情報が続く（まだ話し終わっていない）リスク。(0.0 から 1.0)"
-                )
-
-                messages = [{"role": "user", "content": user_prompt}]
-                logger.info("[v2_shadow] Requesting LLM (Gemma-4 E2B) for raw_text=%r", obs.raw_text)
-
-                from server.shared.inference.trace import chat_stream_structured_with_trace_role
-                
-                full_response = ""
-                async for chunk in chat_stream_structured_with_trace_role(
+                semantic_result = await _run_compact_semantic_finish_judge(
                     backend,
-                    system_prompt,
-                    messages,
-                    json_schema=_turn_taking_v2_schema(),
-                    trace_role="turn_taking_v2",
-                ):
-                    full_response += chunk
-
-                logger.info("[v2_shadow] LLM Response: %r", full_response)
-
-                import json
-                json_str = full_response.strip()
-                if "```json" in json_str:
-                    json_str = json_str.split("```json")[1].split("```")[0].strip()
-                elif "```" in json_str:
-                    json_str = json_str.split("```")[1].split("```")[0].strip()
-
-                parsed = json.loads(json_str)
-                semantic_saturation = float(parsed.get("semantic_saturation", 0.3))
-                remaining_info_risk = float(parsed.get("remaining_info_risk", 0.7))
-
-                if semantic_saturation >= 0.90:
-                    safe_response_level = 5
-                elif semantic_saturation >= 0.75:
-                    safe_response_level = 4
-                elif semantic_saturation >= 0.50:
-                    safe_response_level = 3
-                elif semantic_saturation >= 0.30:
-                    safe_response_level = 2
-                else:
-                    safe_response_level = 1
-
-                semantic_result = {
-                    "semantic_saturation": semantic_saturation,
-                    "remaining_info_risk": remaining_info_risk,
-                    "semantic_split_risk": 0.0,
-                    "safe_response_level": safe_response_level,
-                    "confidence": 0.8,
-                }
+                    obs.raw_text,
+                )
                 logger.info("[v2_shadow] LLM semantic judgment succeeded: %s", semantic_result)
             except Exception as e:
-                logger.error("[v2_shadow] Failed to run LLM semantic finish judge: %s. Falling back to rule-based.", e)
+                logger.error(
+                    "[v2_shadow] Failed to run compact LLM semantic finish judge: "
+                    "%s. Falling back to rule-based.",
+                    e,
+                )
                 semantic_result = None
 
         if semantic_result is None:
@@ -253,7 +217,8 @@ class TurnTakingV2Worker:
 
         reason = (
             f"valid_speech: saturation={semantic_result['semantic_saturation']}, "
-            f"split_risk={semantic_result['semantic_split_risk']}, score={motivation_result['speech_decision_score']}"
+            f"split_risk={semantic_result['semantic_split_risk']}, "
+            f"score={motivation_result['speech_decision_score']}"
         )
 
         await self.store.save_advisory(
@@ -280,7 +245,7 @@ class TurnTakingV2Worker:
             stable_text,
         )
         from server.shared.turn_taking_logger import log_v2_shadow_advisory
-        import time
+
         log_v2_shadow_advisory(
             ts_ms=int(time.time() * 1000),
             conversation_session_id=obs.conversation_session_id,
@@ -321,7 +286,10 @@ class TurnTakingV2Worker:
                         )
                         rows = await cur.fetchall()
                         if rows:
-                            logger.info("Recovery polling found %d unprocessed observations", len(rows))
+                            logger.info(
+                                "Recovery polling found %d unprocessed observations",
+                                len(rows),
+                            )
                             for (obs_id,) in rows:
                                 await self._process_observation(obs_id)
             except asyncio.CancelledError:
@@ -330,23 +298,108 @@ class TurnTakingV2Worker:
                 logger.error("Error in recovery loop: %s", e)
 
 
-def _turn_taking_v2_schema() -> dict[str, Any]:
+async def _run_compact_semantic_finish_judge(
+    backend: Any,
+    raw_text: str,
+) -> dict[str, float]:
+    full_response = ""
+    async for chunk in chat_stream_with_trace_role(
+        backend,
+        _compact_semantic_system_prompt(),
+        [{"role": "user", "content": _compact_semantic_user_prompt(raw_text)}],
+        max_tokens=48,
+        trace_role="turn_taking_v2",
+    ):
+        full_response += chunk
+
+    logger.info("[v2_shadow] Compact LLM Response: %r", full_response)
+    semantic_saturation, remaining_info_risk = _parse_compact_semantic_response(
+        full_response
+    )
+    return _semantic_result_from_scores(
+        semantic_saturation=semantic_saturation,
+        remaining_info_risk=remaining_info_risk,
+    )
+
+
+def _compact_semantic_system_prompt() -> str:
+    return (
+        "You are a JSON extraction engine for Japanese speech turn-taking. "
+        'Return only one JSON object like {"semantic_saturation": 0.0, '
+        '"remaining_info_risk": 1.0}. Do not copy a schema. Do not include '
+        "Markdown or explanations. Values must be numbers between 0 and 1."
+    )
+
+
+def _compact_semantic_user_prompt(raw_text: str) -> str:
+    return "\n".join(
+        [
+            "日本語発話の完了度を数値化してください。",
+            f"発話: {json.dumps(raw_text, ensure_ascii=False)}",
+            "",
+            "semantic_saturation: 発話が文末として意味的に完了しているほど高い。",
+            "remaining_info_risk: まだ後続の語句や説明が続きそうなほど高い。",
+            "出力は値入りJSONだけ。schemaや説明は返さない。",
+        ]
+    )
+
+
+def _parse_compact_semantic_response(raw_response: str) -> tuple[float, float]:
+    json_text = _extract_json_object(raw_response)
+    if json_text is None:
+        raise ValueError("semantic LLM response did not contain a JSON object")
+
+    parsed = json.loads(json_text)
+    expected_keys = {"semantic_saturation", "remaining_info_risk"}
+    if not isinstance(parsed, dict) or set(parsed) != expected_keys:
+        raise ValueError("semantic LLM response did not match the strict 2-key shape")
+
+    semantic_saturation = float(parsed["semantic_saturation"])
+    remaining_info_risk = float(parsed["remaining_info_risk"])
+    if not (
+        0.0 <= semantic_saturation <= 1.0
+        and 0.0 <= remaining_info_risk <= 1.0
+    ):
+        raise ValueError("semantic LLM scores must be between 0.0 and 1.0")
+
+    return semantic_saturation, remaining_info_risk
+
+
+def _extract_json_object(raw_response: str) -> str | None:
+    stripped = raw_response.strip()
+    if not stripped:
+        return None
+    if "```json" in stripped:
+        return stripped.split("```json", 1)[1].split("```", 1)[0].strip()
+    if "```" in stripped:
+        return stripped.split("```", 1)[1].split("```", 1)[0].strip()
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    return stripped[start : end + 1]
+
+
+def _semantic_result_from_scores(
+    *,
+    semantic_saturation: float,
+    remaining_info_risk: float,
+) -> dict[str, float]:
+    if semantic_saturation >= 0.90:
+        safe_response_level = 5
+    elif semantic_saturation >= 0.75:
+        safe_response_level = 4
+    elif semantic_saturation >= 0.50:
+        safe_response_level = 3
+    elif semantic_saturation >= 0.30:
+        safe_response_level = 2
+    else:
+        safe_response_level = 1
+
     return {
-        "name": "turn_taking_v2_advisory",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "semantic_saturation": {
-                    "type": "number",
-                    "description": "意味的な完了度。文末として十分に成立しているか。(0.0 から 1.0)",
-                },
-                "remaining_info_risk": {
-                    "type": "number",
-                    "description": "残りの情報が続く（まだ話し終わっていない）リスク。(0.0 から 1.0)",
-                },
-            },
-            "required": ["semantic_saturation", "remaining_info_risk"],
-            "additionalProperties": False,
-        },
+        "semantic_saturation": semantic_saturation,
+        "remaining_info_risk": remaining_info_risk,
+        "semantic_split_risk": 0.0,
+        "safe_response_level": safe_response_level,
+        "confidence": 0.8,
     }

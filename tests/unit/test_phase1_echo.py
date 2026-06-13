@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import struct
+from datetime import UTC, datetime
+from uuid import UUID
 
 import numpy as np
 import pytest
@@ -10,7 +12,7 @@ from fastapi import WebSocketDisconnect
 from server.edge.debug_recording import DebugAudioRecorder
 from server.edge.main import _handle_client_text_event, app, websocket_session
 from server.edge.pipeline.vad import VADProcessor
-from server.shared.models import SessionEvent
+from server.shared.models import SessionEvent, Transcript
 
 
 class ConstantVAD:
@@ -99,6 +101,25 @@ async def test_ws_accepts_playback_telemetry_text_events() -> None:
 
 
 @pytest.mark.unit
+async def test_ws_wires_turn_taking_v2_store_for_partial_transcripts() -> None:
+    store = FakeTurnTakingV2Store()
+    set_test_vad(VADProcessor(vad=SequenceVAD([0.9])))
+    app.state.transcriber_factory = lambda: FakeStreamingTranscriber("途中です")
+    app.state.turn_taking_v2_store_factory = lambda: store
+    chunk = np.ones(512, dtype=np.float32).tobytes()
+    websocket = FakeWebSocket([chunk])
+
+    try:
+        await websocket_session(websocket)  # type: ignore[arg-type]
+    finally:
+        del app.state.turn_taking_v2_store_factory
+
+    assert store.observations
+    assert store.observations[0]["raw_text"] == "途中です"
+    assert store.observations[0]["p_yielding"] is None
+
+
+@pytest.mark.unit
 async def test_ws_debug_recording_saves_audio_without_session_processing(
     tmp_path,
 ) -> None:
@@ -155,6 +176,70 @@ class FakeLifecycleSession:
 
     async def apply_client_lifecycle_event(self, event: SessionEvent) -> None:
         self.events.append(event)
+
+
+class FakeStreamingTranscriber:
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.sent = False
+
+    async def transcribe(self, audio: np.ndarray, device_id: str = "default") -> Transcript:
+        return Transcript(
+            text=self.text,
+            device_id=device_id,
+            speaker=None,
+            audio_level_db=-20.0,
+            recorded_at=datetime.now(UTC),
+        )
+
+    async def process_stream_chunk(
+        self,
+        chunk: np.ndarray,
+        *,
+        device_id: str = "default",
+        sample_rate: int = 16000,
+    ) -> Transcript | None:
+        if self.sent:
+            return None
+        self.sent = True
+        return Transcript(
+            text=self.text,
+            device_id=device_id,
+            speaker=None,
+            audio_level_db=-20.0,
+            recorded_at=datetime.now(UTC),
+            is_final=False,
+        )
+
+    def reset_stream(self) -> None:
+        self.sent = False
+
+
+class FakeTurnTakingV2Store:
+    def __init__(self) -> None:
+        self.observations: list[dict[str, object]] = []
+
+    async def save_observation(self, **kwargs) -> UUID:  # type: ignore[no-untyped-def]
+        self.observations.append(kwargs)
+        return UUID("00000000-0000-0000-0000-000000000001")
+
+    async def get_observation(self, observation_id: UUID):  # type: ignore[no-untyped-def]
+        return None
+
+    async def save_advisory(self, **kwargs) -> UUID:  # type: ignore[no-untyped-def]
+        return UUID("00000000-0000-0000-0000-000000000002")
+
+    async def get_advisory(self, advisory_id: UUID):  # type: ignore[no-untyped-def]
+        return None
+
+    async def get_turn_history(
+        self,
+        *,
+        conversation_session_id: UUID | None,
+        turn_id: UUID | None,
+        before_revision: int | None = None,
+    ) -> list[str]:
+        return []
 
 
 class FakeWebSocket:
