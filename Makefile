@@ -34,6 +34,18 @@ WS_LATENCY_TEXT ?= トモコ、短く返事して。
 WS_LATENCY_SCENARIO ?= three-turn
 WS_LATENCY_SILENCE_MS ?= 1200
 WS_LATENCY_INTER_TURN_PAUSE_MS ?= 1500
+INITIATIVE_REPORT_DIR ?= reports/initiative-motivation
+INITIATIVE_CANDIDATES ?= $(INITIATIVE_REPORT_DIR)/candidates-latest.json
+INITIATIVE_SIMULATION ?= $(INITIATIVE_REPORT_DIR)/session-latest.json
+INITIATIVE_HTML ?= $(INITIATIVE_REPORT_DIR)/session-latest.html
+INITIATIVE_SILENCE_SIMULATION ?= $(INITIATIVE_REPORT_DIR)/silence-latest.json
+INITIATIVE_SILENCE_HTML ?= $(INITIATIVE_REPORT_DIR)/silence-latest.html
+INITIATIVE_DRYRUN_OUTPUT ?= $(INITIATIVE_REPORT_DIR)/dryrun-latest.json
+INITIATIVE_WINDOW_SEC ?= 1800
+INITIATIVE_RECENT_SESSIONS ?= 100
+INITIATIVE_DURATION_SEC ?= 300
+INITIATIVE_THRESHOLD ?= 0.65
+INITIATIVE_MARKER_ID ?= marker-1
 WORLD_OBSERVATION_LOG_FILE ?= logs/world-observations.log
 WORLD_OBSERVATION_WORK ?= informations/work
 WORLD_OBSERVATION_ARCHIVED ?= informations/archived
@@ -74,7 +86,7 @@ TMUX_VOICEVOX_READY_URL ?= http://127.0.0.1:50122/version
 .PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once turn-taking-v2-worker
 .PHONY: information-collect-world information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
 .PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list tmux-runtime tmux-run tmux-attach tmux-stop tmux-list
-.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material smoke-research-mcp smoke-research-session smoke-ws-voice-latency log-report monitor system-monitor lint check analyze-v2 analyze-v2-latest analyze-v2-list analyze-v2-html
+.PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material smoke-research-mcp smoke-research-session smoke-ws-voice-latency log-report monitor system-monitor lint check analyze-v2 analyze-v2-latest analyze-v2-list analyze-v2-html initiative-candidates initiative-sim initiative-silence initiative-dryrun
 .PHONY: daily llm-run llm-stop voicevox-run shadow-bench shadow-bench-report shadow-bench-full
 
 deps:
@@ -415,6 +427,42 @@ analyze-v2-html:
 	    $(if $(MAIN_LOG),--main $(MAIN_LOG),) \
 	    $(if $(V2_LOG),--v2 $(V2_LOG),) \
 	    $(if $(OUT_DIR),--out-dir $(OUT_DIR),))
+
+initiative-candidates:
+	mise exec -- uv run python -m server.tools.export_initiative_candidates \
+		--config $(CENTRAL_CONFIG) \
+		--output $(INITIATIVE_CANDIDATES)
+
+initiative-sim: initiative-candidates
+	mise exec -- uv run python -m server.tools.simulate_initiative_motivation \
+		--config $(CENTRAL_CONFIG) \
+		--mode logs \
+		--main logs/turn-taking-main.jsonl \
+		--v2 logs/turn-taking-v2-shadow.jsonl \
+		--candidates $(INITIATIVE_CANDIDATES) \
+		--output $(INITIATIVE_SIMULATION) \
+		--html $(INITIATIVE_HTML) \
+		--threshold $(INITIATIVE_THRESHOLD) \
+		--window-sec $(INITIATIVE_WINDOW_SEC) \
+		--recent-sessions $(INITIATIVE_RECENT_SESSIONS)
+	open ./reports/initiative-motivation/session-latest.html
+
+initiative-silence: initiative-candidates
+	mise exec -- uv run python -m server.tools.simulate_initiative_motivation \
+		--mode silence \
+		--candidates $(INITIATIVE_CANDIDATES) \
+		--duration-sec $(INITIATIVE_DURATION_SEC) \
+		--output $(INITIATIVE_SILENCE_SIMULATION) \
+		--html $(INITIATIVE_SILENCE_HTML) \
+		--threshold $(INITIATIVE_THRESHOLD)
+	open ./reports/initiative-motivation/silence-latest.html
+
+initiative-dryrun:
+	mise exec -- uv run python -m server.tools.run_initiative_prompt_dryrun \
+		--simulation $(INITIATIVE_SIMULATION) \
+		--marker-id $(INITIATIVE_MARKER_ID) \
+		--config $(CENTRAL_CONFIG) \
+		--output $(INITIATIVE_DRYRUN_OUTPUT)
 
 ## ============================================================
 ## Shadow Bench — Turn-taking v2 shadow worker timing benchmark
