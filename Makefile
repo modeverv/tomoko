@@ -12,6 +12,7 @@ SESSION_SUMMARY_LOG_FILE ?= logs/session-summarizer.log
 TURN_EMBEDDER_LOG_FILE ?= logs/turn-embedder.log
 PERSONA_UPDATE_LOG_FILE ?= logs/persona-updater.log
 THINKER_LOG_FILE ?= logs/thinker.log
+THINKER2_LOG_FILE ?= logs/thinker2.log
 JOURNALIST_LOG_FILE ?= logs/journalist.log
 TURN_TAKING_LOG_FILE ?= logs/turn-taking-worker.log
 TURN_TAKING_V2_LOG_FILE ?= logs/turn-taking-v2-worker.log
@@ -69,6 +70,8 @@ PERSONA_UPDATE_LIMIT ?= 1
 PERSONA_UPDATE_INTERVAL_SEC ?= 60
 THINKER_CANDIDATE_INTERVAL_SEC ?= 60
 THINKER_ARRIVAL_INTERVAL_SEC ?= 180
+THINKER2_INTERVAL_SEC ?= 60
+THINKER2_INSPECTION_HTML ?= reports/thinker2/latest.html
 JOURNALIST_INTERVAL_SEC ?= 3600
 JOURNALIST_DATE ?=
 SCREEN_SESSION ?= tomoko-runtime
@@ -83,7 +86,7 @@ TMUX_VOICEVOX_READY_URL ?= http://127.0.0.1:50122/version
 
 .PHONY: deps prepare download-models download-optional-models server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
 .PHONY: session-summarizer session-summarizer-once turn-embedder turn-embedder-once
-.PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once turn-taking-v2-worker
+.PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once thinker2 thinker2-once journalist journalist-once turn-taking-worker turn-taking-worker-once turn-taking-v2-worker
 .PHONY: information-collect-world information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
 .PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list tmux-runtime tmux-run tmux-attach tmux-stop tmux-list
 .PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material smoke-research-mcp smoke-research-session smoke-ws-voice-latency log-report monitor system-monitor lint check analyze-v2 analyze-v2-latest analyze-v2-list analyze-v2-html initiative-candidates initiative-sim initiative-silence initiative-dryrun
@@ -158,6 +161,20 @@ thinker-once:
 		--candidate-interval-sec $(THINKER_CANDIDATE_INTERVAL_SEC) \
 		--arrival-interval-sec $(THINKER_ARRIVAL_INTERVAL_SEC)
 
+thinker2:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(THINKER2_LOG_FILE) mise exec -- uv run python background-process/run_thinker2.py \
+		--config $(CENTRAL_CONFIG) \
+		--watch \
+		--interval-sec $(THINKER2_INTERVAL_SEC) \
+		--inspection-output $(THINKER2_INSPECTION_HTML)
+
+thinker2-once:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(THINKER2_LOG_FILE) mise exec -- uv run python background-process/run_thinker2.py \
+		--config $(CENTRAL_CONFIG) \
+		--once \
+		--interval-sec $(THINKER2_INTERVAL_SEC) \
+		--inspection-output $(THINKER2_INSPECTION_HTML)
+
 journalist:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(JOURNALIST_LOG_FILE) mise exec -- uv run python background-process/run_journalist.py \
 		--config $(CENTRAL_CONFIG) \
@@ -230,7 +247,7 @@ gcal:
 		--days-before $(GCAL_DAYS_BEFORE) \
 		--days-ahead $(GCAL_DAYS_AHEAD)
 
-background-once: persona-seed-initial session-summarizer-once turn-embedder-once persona-updater-once information-ingest-once information-interpret-once gcal thinker-once journalist-once
+background-once: persona-seed-initial session-summarizer-once turn-embedder-once persona-updater-once information-ingest-once information-interpret-once gcal thinker-once thinker2-once journalist-once
 
 background-watch:
 	@echo "Run long-lived processes in separate terminals:"
@@ -239,13 +256,14 @@ background-watch:
 	@echo "  make persona-seed-initial"
 	@echo "  make persona-updater"
 	@echo "  make thinker"
+	@echo "  make thinker2"
 	@echo "  make journalist"
 	@echo "  make turn-taking-worker"
 	@echo "  make information-interpret"
 	@echo "  make gcal"
 
 background-dry-run:
-	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once turn-embedder turn-embedder-once persona-seed-initial persona-updater persona-updater-once information-collect-world information-ingest-dry-run information-ingest-once information-interpret-once information-interpret gcal thinker thinker-once journalist journalist-once turn-taking-worker turn-taking-worker-once
+	$(MAKE) -n gateway edge-kitchen session-summarizer session-summarizer-once turn-embedder turn-embedder-once persona-seed-initial persona-updater persona-updater-once information-collect-world information-ingest-dry-run information-ingest-once information-interpret-once information-interpret gcal thinker thinker-once thinker2 thinker2-once journalist journalist-once turn-taking-worker turn-taking-worker-once
 
 screen-runtime:
 	@command -v screen >/dev/null || { echo "screen is required"; exit 1; }

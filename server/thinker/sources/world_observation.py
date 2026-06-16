@@ -30,6 +30,8 @@ class WorldObservationSource:
         )
         seeds: list[CandidateSeed] = []
         for interpretation in interpretations:
+            if _should_skip_interpretation(interpretation):
+                continue
             score = max(interpretation.tomoko_interest, interpretation.relevance_to_user)
             seeds.append(
                 CandidateSeed(
@@ -80,3 +82,17 @@ def _seed_text(interpretation_text: str) -> str:
     if len(text) > 120:
         text = f"{text[:117]}..."
     return f"外部観測から、押しつけず短く話題候補にする: {text}"
+
+
+def _should_skip_interpretation(interpretation) -> bool:
+    if interpretation.confidence < 0.45:
+        return True
+    if interpretation.freshness == "stale":
+        return True
+    speakability = str(interpretation.speakability_hint).lower()
+    if any(token in speakability for token in ("sensitive", "private", "do_not_speak")):
+        return True
+    reason = interpretation.reason_json if isinstance(interpretation.reason_json, dict) else {}
+    if bool(reason.get("sensitive")) or bool(reason.get("requires_private_context")):
+        return True
+    return False

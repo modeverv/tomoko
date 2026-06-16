@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from server.shared.calendar import PostgresCalendarEventStore
 from server.shared.candidate import (
     CandidateSeed,
     CandidateStore,
@@ -18,11 +19,17 @@ from server.shared.candidate import (
 from server.shared.config import NodeConfig
 from server.shared.inference.router import InferenceRouter
 from server.shared.inference.tts import create_tts_backend
+from server.shared.perception import PostgresUserContextSnapshotStore
 from server.thinker.arrival import ArrivalPrecomputer
 from server.thinker.evaluator.base import UtteranceEvaluator
 from server.thinker.evaluator.llm import LLMUtteranceEvaluator
 from server.thinker.pregenerator import PregenerationResult, UtterancePregenerator
 from server.thinker.sources.base import InformationSource
+from server.thinker.sources.calendar_reminder import CalendarReminderSource
+from server.thinker.sources.context_snapshot import (
+    ActivityContextSource,
+    ScreenContextSource,
+)
 from server.thinker.sources.diary import DiarySource
 from server.thinker.sources.time_based import TimeBasedSource
 from server.thinker.sources.world_observation import WorldObservationSource
@@ -317,6 +324,8 @@ def build_default_thinker(config: NodeConfig) -> ThinkerProcess:
     from server.world_observations.store import PostgresWorldObservationStore
 
     store = PostgresCandidateStore(config.database.dsn)
+    calendar_store = PostgresCalendarEventStore(config.database.dsn)
+    snapshot_store = PostgresUserContextSnapshotStore(config.database.dsn)
     diary_store = PostgresDiaryStore(config.database.dsn)
     world_observation_store = PostgresWorldObservationStore(config.database.dsn)
     router = InferenceRouter(config=config)
@@ -325,6 +334,9 @@ def build_default_thinker(config: NodeConfig) -> ThinkerProcess:
         store=store,
         sources=[
             TimeBasedSource(),
+            CalendarReminderSource(calendar_store=calendar_store),
+            ScreenContextSource(snapshot_store=snapshot_store),
+            ActivityContextSource(snapshot_store=snapshot_store),
             DiarySource(diary_store=diary_store),
             WorldObservationSource(store=world_observation_store),
         ],

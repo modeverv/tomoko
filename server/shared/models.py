@@ -8,6 +8,14 @@ from uuid import UUID
 import numpy as np
 
 AttentionMode = Literal["ambient", "engaged", "cooldown", "withdrawn"]
+PerceptionFrameSource = Literal["camera", "screenshot"]
+InteractionReadiness = Literal[
+    "away",
+    "do_not_disturb",
+    "low_intrusion_ok",
+    "chat_ok",
+    "needs_help_maybe",
+]
 ParticipationMode = Literal["called", "invited", "observer", "withdraw"]
 StartReason = Literal[
     "wake_word",
@@ -1682,6 +1690,137 @@ class CalendarEvent:
         return f"{self.source_id}:{self.uid}:{self.start_time.isoformat()}"
 
 
+@dataclass(frozen=True)
+class PerceptionFrame:
+    source: PerceptionFrameSource
+    file_path: str
+    sha256: str
+    captured_at: datetime
+    id: UUID | None = None
+    device_id: str | None = None
+    width: int | None = None
+    height: int | None = None
+    retained: bool = True
+    created_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if self.source not in {"camera", "screenshot"}:
+            raise ValueError(f"Unsupported perception frame source: {self.source}")
+        if not self.file_path:
+            raise ValueError("PerceptionFrame.file_path must not be empty")
+        if not self.sha256:
+            raise ValueError("PerceptionFrame.sha256 must not be empty")
+        if self.width is not None and self.width <= 0:
+            raise ValueError("PerceptionFrame.width must be positive")
+        if self.height is not None and self.height <= 0:
+            raise ValueError("PerceptionFrame.height must be positive")
+
+
+@dataclass(frozen=True)
+class HumanPresenceObservation:
+    frame_id: UUID
+    observed_at: datetime
+    present: bool
+    confidence: float
+    model: str
+    id: UUID | None = None
+    raw_reason_json: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if self.confidence < 0.0 or self.confidence > 1.0:
+            raise ValueError("HumanPresenceObservation.confidence must be 0.0-1.0")
+        if not self.model:
+            raise ValueError("HumanPresenceObservation.model must not be empty")
+
+
+@dataclass(frozen=True)
+class HumanActivityObservation:
+    frame_id: UUID
+    observed_at: datetime
+    activity_label: str
+    confidence: float
+    model: str
+    id: UUID | None = None
+    presence_observation_id: UUID | None = None
+    raw_reason_json: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if not self.activity_label:
+            raise ValueError("HumanActivityObservation.activity_label must not be empty")
+        if self.confidence < 0.0 or self.confidence > 1.0:
+            raise ValueError("HumanActivityObservation.confidence must be 0.0-1.0")
+        if not self.model:
+            raise ValueError("HumanActivityObservation.model must not be empty")
+
+
+@dataclass(frozen=True)
+class ScreenActivityObservation:
+    frame_id: UUID
+    observed_at: datetime
+    screen_activity_label: str
+    confidence: float
+    model: str
+    id: UUID | None = None
+    app_hint: str | None = None
+    document_hint: str | None = None
+    url_hint: str | None = None
+    raw_reason_json: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if not self.screen_activity_label:
+            raise ValueError("ScreenActivityObservation.screen_activity_label must not be empty")
+        if self.confidence < 0.0 or self.confidence > 1.0:
+            raise ValueError("ScreenActivityObservation.confidence must be 0.0-1.0")
+        if not self.model:
+            raise ValueError("ScreenActivityObservation.model must not be empty")
+
+
+@dataclass(frozen=True)
+class UserContextSnapshot:
+    computed_at: datetime
+    user_activity_summary: str
+    context_summary: str
+    interaction_readiness: InteractionReadiness
+    confidence: float
+    id: UUID | None = None
+    device_id: str | None = None
+    present: bool | None = None
+    presence_observed_at: datetime | None = None
+    activity_label: str | None = None
+    activity_observed_at: datetime | None = None
+    screen_activity_label: str | None = None
+    screen_observed_at: datetime | None = None
+    calendar_summary: str | None = None
+    world_summary: str | None = None
+    source_frame_ids: tuple[UUID, ...] = field(default_factory=tuple)
+    source_observation_ids: tuple[UUID, ...] = field(default_factory=tuple)
+    model: str | None = None
+    raw_reason_json: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if not self.user_activity_summary:
+            raise ValueError("UserContextSnapshot.user_activity_summary must not be empty")
+        if not self.context_summary:
+            raise ValueError("UserContextSnapshot.context_summary must not be empty")
+        if self.interaction_readiness not in {
+            "away",
+            "do_not_disturb",
+            "low_intrusion_ok",
+            "chat_ok",
+            "needs_help_maybe",
+        }:
+            raise ValueError(
+                f"Unsupported UserContextSnapshot.interaction_readiness: "
+                f"{self.interaction_readiness}"
+            )
+        if self.confidence < 0.0 or self.confidence > 1.0:
+            raise ValueError("UserContextSnapshot.confidence must be 0.0-1.0")
+
+
 @dataclass
 class ThinkingInput:
     text: str
@@ -1799,4 +1938,3 @@ class TurnTakingV2Advisory:
     reason: str | None
     would_start_inference_fusion: bool | None = None
     fusion_score: float | None = None
-

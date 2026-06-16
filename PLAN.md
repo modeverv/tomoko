@@ -8613,3 +8613,83 @@ PR1823 VOICEVOX の生成が再生速度へ追いつく余地を増やす。
 - [x] `async-voicevox/run_streaming_voicevox.command` の `CPU_NUM_THREADS` 既定が 4 になる
 - [x] focused config / VOICEVOX unit が通る
 - [ ] live browser で途切れが減ったか確認し、必要なら `_docs/latency.md` に実測を追加する
+
+## 2026-06-16 thinker2 / thinker v2 background cognition worker
+
+turn-taking / stop / barge-in 系 shadow worker に、カレンダー・タイマー・world information・カメラ・スクリーンショット由来の観測を混ぜる方針は否定する。
+shadow worker は会話 hot path 近傍の低遅延 advisory に限定し、thinker2 は外界・人間状態の background cognition worker として別 worker にする。
+
+thinker2 は raw frame / observation / user context snapshot / candidate generation を扱う。
+発話候補は既存 `utterance_candidates` / `arrival_candidates` に載せ、TomoroSession の final gate / `/ws` hot path / shadow worker の責務は変更しない。
+
+### Phase T2.0: document and boundary
+
+- [x] `thinkerv2.md` に設計と実装計画を書く
+- [x] PLAN.md へ実装 phase と完了条件を追記する
+- [x] MEMORY.md へ確定した判断を追記する
+
+### Phase T2.1: deterministic candidate sources
+
+- [x] calendar reminder source を追加する
+- [x] timer / alarm reminder source との境界を確認する
+- [x] deterministic candidate text template を固定する
+- [x] `pytest -m unit` で source / dedupe / available_at / expires_at を検証する
+
+### Phase T2.2: perception frame store
+
+- [x] `perception_frames` DDL を追加する
+- [x] frame store DTO / InMemory / PostgreSQL store を追加する
+- [x] camera / screenshot の retention 100 件を実装する
+- [x] unit / integration test を追加する
+
+### Phase T2.3: camera presence
+
+- [x] camera capture を 30 秒ごとに保存する
+- [x] presence JSON schema を固定する
+- [x] Gemma E12B class backend で `present` / `confidence` を返す
+- [x] `human_presence_observations` に保存する
+- [x] stale frame discard と backlog skip をテストする
+
+### Phase T2.4: camera activity
+
+- [x] activity JSON schema を固定する
+- [x] `activity_label` を一言で返す
+- [x] `present=false` と activity label の矛盾を latest 合成で丸める
+- [x] `human_activity_observations` に保存する
+
+### Phase T2.5: screenshot activity
+
+- [x] screenshot capture を 30 秒ごとに保存する
+- [x] screen activity JSON schema を固定する
+- [x] `app_hint` / `document_hint` / `url_hint` を optional にする
+- [x] `screen_activity_observations` に保存する
+
+### Phase T2.6: user context snapshot
+
+- [x] latest presence / activity / screen / calendar / world を読む
+- [x] `user_context_snapshots` を保存する
+- [x] `interaction_readiness` を deterministic rule + optional LLM synthesis で決める
+- [x] `present=false` の時は activity を `away` 相当に丸める
+- [x] snapshot generation の elapsed / skipped source をログに残す
+
+### Phase T2.7: context-derived candidates
+
+- [x] screen context candidate source を追加する
+- [x] activity context candidate source を追加する
+- [x] `interaction_readiness` に応じて priority / urgency / intrusion を調整する
+- [x] candidate は既存 `utterance_candidates` / `arrival_candidates` に保存する
+- [x] candidate final gate は TomoroSession から動かさない
+
+### Phase T2.8: world information autonomous collection
+
+- [x] deterministic topic seed を固定する
+- [x] 既存 world observation operator 経由で収集する
+- [x] raw artifact / normalizer / interpretation / candidate の既存境界を使う
+- [x] low confidence / outdated / sensitive は candidate にしない
+
+### Phase T2.9: runtime integration and inspection
+
+- [x] `background-process/run_thinker2.py` を追加する
+- [x] `make thinker2` / `make thinker2-once` を追加する
+- [x] queue depth / inference latency / skipped stale frame / candidate count をログに出す
+- [x] offline replay / inspection HTML を作り、live runtime 接続前に挙動を確認する

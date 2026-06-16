@@ -29,6 +29,7 @@ def test_makefile_exposes_config_and_log_vars_for_separate_processes() -> None:
         "TURN_EMBEDDER_LOG_FILE ?= logs/turn-embedder.log",
         "PERSONA_UPDATE_LOG_FILE ?= logs/persona-updater.log",
         "THINKER_LOG_FILE ?= logs/thinker.log",
+        "THINKER2_LOG_FILE ?= logs/thinker2.log",
         "JOURNALIST_LOG_FILE ?= logs/journalist.log",
         "MONITOR_HOST ?= 127.0.0.1",
         "MONITOR_PORT ?= 8770",
@@ -61,6 +62,8 @@ def test_background_process_targets_pass_the_central_config_explicitly() -> None
         "persona-updater-once",
         "thinker",
         "thinker-once",
+        "thinker2",
+        "thinker2-once",
         "journalist",
         "journalist-once",
         "information-ingest-once",
@@ -178,3 +181,16 @@ def test_makefile_exposes_world_observation_operator_collection() -> None:
         "TOMOKO_WORLD_OBSERVATION_PROVIDER_TIMEOUT_SEC=$(WORLD_OBSERVATION_PROVIDER_TIMEOUT_SEC)"
         in body
     )
+
+
+@pytest.mark.unit
+def test_makefile_exposes_thinker2_runtime_entries() -> None:
+    body = _target_body("thinker2")
+    once_body = _target_body("thinker2-once")
+
+    assert "background-process/run_thinker2.py" in body
+    assert "background-process/run_thinker2.py" in once_body
+    assert "TOMOKO_LOG_FILE=$(THINKER2_LOG_FILE)" in body
+    assert "--watch" in body
+    assert "--once" in once_body
+    assert "--inspection-output $(THINKER2_INSPECTION_HTML)" in once_body
