@@ -15,6 +15,12 @@ min_silence_ms = 150
 delta_silence_ms = 650
 yielding_threshold = 0.90
 
+[stt.apple_speech]
+command = ".cache/tomoko/AppleSpeechSTT.app/Contents/MacOS/apple-speech-stt"
+language = "ja-JP"
+on_device = true
+timeout_sec = 30
+
 [tts.voicevox_chunked]
 url = "http://127.0.0.1:50122"
 speaker_id = 8
@@ -35,7 +41,8 @@ draft_model = "z-lab/gemma-4-31B-it-DFlash"
 
 [ocr]
 capture_command = "screencapture"
-ocr_command = "tesseract"
+primary_ocr = "vision"
+fallback_ocr = "tesseract"
 metadata_command = "osascript"
 
 [user_status]

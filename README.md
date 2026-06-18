@@ -51,6 +51,7 @@ make voicevox-run
 make v2-runtime-ready
 make v2-ocr-smoke
 make v2-llm-tts-smoke
+make v2-conversation-smoke
 ```
 
 The default main LLM path follows the v1 measured route: dflash on
@@ -58,6 +59,14 @@ The default main LLM path follows the v1 measured route: dflash on
 `z-lab/gemma-4-26B-A4B-it-DFlash`. Summary/background LLM defaults to the 31B
 dflash route on `127.0.0.1:8081`. VOICEVOX defaults to the sibling
 `async-voicevox` streaming command and `127.0.0.1:50122`.
+
+STT defaults to the root Apple Speech sidecar under
+`.cache/tomoko/AppleSpeechSTT.app`, built from `scripts/apple_speech_stt/` on
+first use. OCR prefers the root Vision.framework sidecar from
+`scripts/vision_ocr/` and falls back to `tesseract`. `make v2-conversation-smoke`
+starts a local hot-path server plus the tomoko heartbeat process with fake
+runtime providers, then sends float32 audio bytes over `/ws` to verify the
+VAD pre-roll -> STT -> tomoko adoption -> prompt -> binary WAV response path.
 
 `v1/` is reference-only. When a v1 implementation detail is needed, move the
 smallest required idea or file into the v2 root explicitly and keep the new v2

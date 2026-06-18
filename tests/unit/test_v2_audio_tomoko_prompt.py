@@ -1,11 +1,22 @@
 from __future__ import annotations
 
+import json
+import wave
+from collections.abc import AsyncIterator
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
-from server.audio.stt import StaticStreamingSttBackend, StreamingSttEvent, observation_events
+from server.audio import stt as stt_module
+from server.audio.stt import (
+    AppleSpeechStreamingBackend,
+    StaticStreamingSttBackend,
+    StreamingSttEvent,
+    observation_events,
+)
 from server.audio.vad import VADProcessor
+from server.hot_path.audio_conversation import HotPathAudioConversation, audio_bytes_to_samples
 from server.hot_path.model_executor import (
     MultipartMixedParser,
     PromptExecutor,
@@ -20,6 +31,7 @@ from server.hot_path.protocol import (
     parse_browser_message,
 )
 from server.shared.models import (
+    AudioSpeechSegment,
     CancelPolicy,
     FloorSignal,
     FloorState,
@@ -48,6 +60,89 @@ def test_vad_preroll_is_joined_at_speech_start() -> None:
     assert len(segment.samples) == 200
     assert segment.samples[:100] == (0.2,) * 100
     assert segment.samples[100:] == (0.9,) * 100
+
+
+def test_audio_bytes_are_decoded_as_float32_chunks() -> None:
+    assert audio_bytes_to_samples(b"\x00\x00\x00\x00\x00\x00\x00?") == (0.0, 0.5)
+
+
+@pytest.mark.asyncio
+async def test_apple_speech_backend_writes_wav_and_yields_final_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    command = tmp_path / "apple-speech-stt"
+    command.write_text("#!/bin/sh\n", encoding="utf-8")
+    observed_audio_paths: list[Path] = []
+
+    def fake_run(args: list[str], **_kwargs: object) -> object:
+        audio_path = Path(args[args.index("--audio") + 1])
+        observed_audio_paths.append(audio_path)
+        with wave.open(str(audio_path), "rb") as wav:
+            assert wav.getframerate() == 16000
+            assert wav.getnchannels() == 1
+            assert wav.getnframes() == 2
+
+        class Completed:
+            stdout = json.dumps({"text": "こんにちは"})
+
+        return Completed()
+
+    monkeypatch.setattr(stt_module.subprocess, "run", fake_run)
+    backend = AppleSpeechStreamingBackend(command=str(command))
+    now = utc_now()
+    segment = AudioSpeechSegment(
+        samples=(0.5, -0.5),
+        sample_rate=16000,
+        started_at=now - timedelta(milliseconds=1),
+        ended_at=now,
+    )
+    events = [event async for event in backend.transcribe_stream(segment)]
+    assert events == [StreamingSttEvent("こんにちは", True, 1.0)]
+    assert observed_audio_paths
+    assert not observed_audio_paths[0].exists()
+
+
+class _RecordingSttBackend:
+    def __init__(self) -> None:
+        self.segments: list[AudioSpeechSegment] = []
+
+    async def transcribe_stream(
+        self,
+        segment: AudioSpeechSegment,
+    ) -> AsyncIterator[StreamingSttEvent]:
+        self.segments.append(segment)
+        yield StreamingSttEvent("トモコ、返事して", True, 1.0)
+
+
+@pytest.mark.asyncio
+async def test_hot_path_audio_conversation_runs_vad_stt_tomoko_prompt_with_preroll() -> None:
+    stt_backend = _RecordingSttBackend()
+    conversation = HotPathAudioConversation(
+        vad=VADProcessor(sample_rate=1000, pre_roll_ms=300, silence_ms=100),
+        stt_backend=stt_backend,
+        tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
+        prompt_builder=PromptBuilderV2(),
+        prompt_executor=PromptExecutor(
+            StaticChatBackend(["うん"]),
+            StaticWavTtsBackend([b"RIFFxxxxWAVEdata"]),
+        ),
+        speech_rms_threshold=0.02,
+    )
+
+    assert await conversation.process_audio_samples((0.002,) * 100) is None
+    assert await conversation.process_audio_samples((0.004,) * 100) is None
+    assert await conversation.process_audio_samples((0.2,) * 100) is None
+    assert await conversation.process_audio_samples((0.0,) * 100) is None
+    result = await conversation.process_audio_samples((0.0,) * 100)
+    assert result is not None
+    assert result.observations[0].text == "トモコ、返事して"
+    assert result.durable_utterance is not None
+    assert result.prompt_request is not None
+    assert result.execution_result.audio_chunks[0].chunk == b"RIFFxxxxWAVEdata"
+    assert stt_backend.segments[0].samples[:100] == (0.002,) * 100
+    assert stt_backend.segments[0].samples[100:200] == (0.004,) * 100
+    assert stt_backend.segments[0].samples[200:300] == (0.2,) * 100
 
 
 @pytest.mark.asyncio

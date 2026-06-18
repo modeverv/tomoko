@@ -9,6 +9,7 @@ from pathlib import Path
 import httpx
 import psycopg
 
+from server.audio.stt import apple_speech_runtime_available
 from server.info.main import calendar_dto_map, parse_minimal_ics
 from server.shared.logging import JsonlLogger
 from server.shared.models import new_id
@@ -28,7 +29,7 @@ def readiness_snapshot() -> dict[str, object]:
         "database": _database_ready(),
         "llm": {url: _http_ready(url) for url in llm_urls},
         "voicevox": {voicevox_url: _http_ready(voicevox_url)},
-        "apple_speech": "macOS runtime required",
+        "apple_speech": apple_speech_runtime_available(),
         "ocr": ocr_runtime_available(),
     }
 
@@ -114,7 +115,14 @@ def main() -> None:
     subparsers.add_parser("report-latest")
     args = parser.parse_args()
     if args.command == "process":
-        asyncio.run(run_process(args.name))
+        try:
+            asyncio.run(run_process(args.name))
+        except KeyboardInterrupt:
+            JsonlLogger(Path("logs/v2-runtime.jsonl")).log(
+                "process_stop",
+                process=args.name,
+                reason="keyboard_interrupt",
+            )
     elif args.command == "info-once":
         print(json.dumps(info_once(), ensure_ascii=False))
     elif args.command == "readiness":

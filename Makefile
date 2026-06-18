@@ -42,7 +42,7 @@ WS_LATENCY_TEXT ?= トモコ、短く返事して。
 .PHONY: background-once background-watch background-dry-run
 .PHONY: tmux-runtime tmux-run tmux-attach tmux-stop tmux-list run stop a
 .PHONY: v2-runtime v2-stop v2-runtime-ready llm-run llm-stop voicevox-run v2-ocr-smoke ocr-smoke
-.PHONY: v2-initiative-sim v2-floor-bench v2-report-latest v2-llm-tts-smoke
+.PHONY: v2-initiative-sim v2-floor-bench v2-report-latest v2-llm-tts-smoke v2-conversation-smoke
 .PHONY: db-up db-stop db-down db-dump test-unit test-integration lint check smoke-ws-voice-latency log-report monitor system-monitor
 
 deps:
@@ -64,7 +64,7 @@ server gateway v2-hot-path:
 server-reload gateway-reload:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TOMOKO_LOG_FILE) $(PYTHON) -m uvicorn server.hot_path.app:app --host $(HOST) --port $(PORT) --log-level $(UVICORN_LOG_LEVEL) --reload
 
-server-debug:
+server-debug v2-hot-path-debug:
 	mkdir -p logs
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=DEBUG TOMOKO_LOG_FILE= $(PYTHON) -m uvicorn server.hot_path.app:app --host $(HOST) --port $(PORT) --log-level info --reload 2>&1 | tee -a $(TOMOKO_DEBUG_LOG_FILE)
 
@@ -182,6 +182,9 @@ v2-ocr-smoke ocr-smoke:
 
 v2-llm-tts-smoke:
 	TOMOKO_V2_LLM_URL="$(TOMOKO_V2_LLM_URL)" TOMOKO_V2_LLM_MODEL="$(TOMOKO_V2_LLM_MODEL)" TOMOKO_V2_VOICEVOX_URL="$(TOMOKO_V2_VOICEVOX_URL)" $(PYTHON) -m scripts.v2_runtime_smoke
+
+v2-conversation-smoke:
+	TOMOKO_V2_FAKE_RUNTIME=1 $(PYTHON) -m scripts.v2_ws_conversation_smoke --fake-runtime --start-processes
 
 v2-initiative-sim:
 	$(PYTHON) -m scripts.v2_initiative_sim

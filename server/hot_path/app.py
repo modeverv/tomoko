@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from typing import TypeVar
 
@@ -7,9 +8,25 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from server.hot_path.model_executor import PromptExecutor, create_default_real_prompt_executor
+from server.audio.stt import StaticStreamingSttBackend, StreamingSttEvent
+from server.audio.vad import VADProcessor
+from server.hot_path.audio_conversation import (
+    HotPathAudioConversation,
+    HotPathConversationResult,
+    create_default_audio_conversation,
+)
+from server.hot_path.model_executor import (
+    PromptExecutionResult,
+    PromptExecutor,
+    StaticChatBackend,
+    StaticWavTtsBackend,
+    create_default_real_prompt_executor,
+)
 from server.hot_path.protocol import encode_server_event, parse_browser_message
 from server.shared.models import CancelPolicy, PromptRequest, PromptScope
+from server.tomoko.main import TomokoProcessCore
+from server.tomoko.prompt import PromptBuilderV2
+from server.tomoko.session import SessionBoundaryModel
 
 app = FastAPI(title="Tomoko v2 hot-path-process")
 app.mount("/client", StaticFiles(directory="client"), name="client")
@@ -33,9 +50,13 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             if message["type"] == "websocket.disconnect":
                 return
             if "bytes" in message and message["bytes"] is not None:
-                await websocket.send_text(
-                    encode_server_event("debug_marker", received="audio_bytes")
-                )
+                result = await _audio_conversation().process_audio_bytes(message["bytes"])
+                if result is None:
+                    await websocket.send_text(
+                        encode_server_event("debug_marker", received="audio_bytes")
+                    )
+                else:
+                    await _send_audio_conversation_result(websocket, result)
                 continue
             if "text" in message and message["text"] is not None:
                 event = parse_browser_message(message["text"])
@@ -46,6 +67,33 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     await _run_prompt(websocket, _prompt_request_from_event(event.payload))
     except WebSocketDisconnect:
         return
+
+
+async def _send_audio_conversation_result(
+    websocket: WebSocket,
+    result: HotPathConversationResult,
+) -> None:
+    for observation in result.observations:
+        await websocket.send_text(
+            encode_server_event(
+                "transcript",
+                text=observation.text,
+                is_final=observation.is_final,
+                observation_id=str(observation.id),
+            )
+        )
+    if result.durable_utterance is not None:
+        await websocket.send_text(
+            encode_server_event(
+                "durable_utterance",
+                text=result.durable_utterance.text,
+                session_id=str(result.durable_utterance.session_id),
+                utterance_id=str(result.durable_utterance.id),
+            )
+        )
+    if result.prompt_request is None:
+        return
+    await _send_prompt_execution_result(websocket, result.prompt_request, result.execution_result)
 
 
 async def _run_prompt(websocket: WebSocket, request: PromptRequest) -> None:
@@ -62,6 +110,14 @@ async def _run_prompt(websocket: WebSocket, request: PromptRequest) -> None:
         )
         return
 
+    await _send_prompt_execution_result(websocket, request, result)
+
+
+async def _send_prompt_execution_result(
+    websocket: WebSocket,
+    request: PromptRequest,
+    result: PromptExecutionResult,
+) -> None:
     for event in result.model_events:
         if event.event_kind == "delta":
             await websocket.send_text(
@@ -98,9 +154,49 @@ async def _run_prompt(websocket: WebSocket, request: PromptRequest) -> None:
 def _prompt_executor() -> PromptExecutor:
     executor = getattr(app.state, "prompt_executor", None)
     if executor is None:
-        executor = create_default_real_prompt_executor()
+        executor = (
+            _fake_prompt_executor()
+            if _fake_runtime_enabled()
+            else create_default_real_prompt_executor()
+        )
         app.state.prompt_executor = executor
     return executor
+
+
+def _audio_conversation() -> HotPathAudioConversation:
+    conversation = getattr(app.state, "audio_conversation", None)
+    if conversation is None:
+        if _fake_runtime_enabled():
+            conversation = HotPathAudioConversation(
+                vad=VADProcessor(),
+                stt_backend=StaticStreamingSttBackend(
+                    [
+                        StreamingSttEvent(
+                            os.environ.get("TOMOKO_V2_FAKE_TRANSCRIPT", "トモコ、返事して"),
+                            True,
+                            1.0,
+                        )
+                    ]
+                ),
+                tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
+                prompt_builder=PromptBuilderV2(),
+                prompt_executor=_prompt_executor(),
+            )
+        else:
+            conversation = create_default_audio_conversation(_prompt_executor())
+        app.state.audio_conversation = conversation
+    return conversation
+
+
+def _fake_runtime_enabled() -> bool:
+    return os.environ.get("TOMOKO_V2_FAKE_RUNTIME") == "1"
+
+
+def _fake_prompt_executor() -> PromptExecutor:
+    return PromptExecutor(
+        StaticChatBackend([os.environ.get("TOMOKO_V2_FAKE_REPLY", "うん、聞こえてるよ。")]),
+        StaticWavTtsBackend([b"RIFFxxxxWAVEdata"]),
+    )
 
 
 def _prompt_request_from_event(payload: dict[str, object]) -> PromptRequest:

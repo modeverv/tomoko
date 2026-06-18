@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from uuid import UUID
 
@@ -13,7 +14,8 @@ from server.shared.logging import JsonlLogger
 from server.shared.notify import build_notify_message, notify_sql, parse_id_payload
 from server.shared.process import Heartbeat, HeartbeatWriter
 from server.shared.schemas import SCREEN_ACTIVITY_FIXED_LINE_SCHEMA, parse_fixed_line_output
-from server.user_status.ocr_runtime import ocr_runtime_available
+from server.user_status import ocr_runtime
+from server.user_status.ocr_runtime import ocr_runtime_available, vision_ocr_text
 
 pytestmark = pytest.mark.unit
 
@@ -101,6 +103,7 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     assert "voicevox-run:" in makefile
     assert "v2-runtime-ready:" in makefile
     assert "v2-ocr-smoke" in makefile
+    assert "v2-conversation-smoke:" in makefile
     assert makefile.index("-n llm-run") < makefile.index("-n hot-path")
     assert "tmux send-keys -t $(TMUX_SESSION):hot-path C-c" in makefile
     assert "v2-report-latest:" in makefile
@@ -108,7 +111,34 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
 
 def test_ocr_runtime_availability_reports_expected_keys() -> None:
     availability = ocr_runtime_available()
-    assert set(availability) == {"screencapture", "tesseract", "osascript"}
+    assert set(availability) == {"screencapture", "vision_ocr", "tesseract", "osascript"}
+
+
+def test_vision_ocr_text_uses_sidecar_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image = tmp_path / "screen.png"
+    image.write_bytes(b"png")
+    command = tmp_path / "vision-ocr"
+    command.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    def fake_ensure() -> Path:
+        return command
+
+    def fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert args[:3] == [str(command), "--image", str(image)]
+        return subprocess.CompletedProcess(
+            args=args,
+            returncode=0,
+            stdout=json.dumps({"text": "Vision text"}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(ocr_runtime, "ensure_vision_ocr_command", fake_ensure)
+    monkeypatch.setattr(ocr_runtime.subprocess, "run", fake_run)
+
+    assert vision_ocr_text(image) == "Vision text"
 
 
 def test_hot_path_websocket_uses_prompt_executor_for_text_prompt() -> None:

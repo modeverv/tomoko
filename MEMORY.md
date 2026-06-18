@@ -59,6 +59,13 @@ root `/ws` は text prompt smoke 用に `prompt` / `text_prompt` / `user_text` e
 `PromptExecutor` 経由で dflash text event と VOICEVOX binary WAV chunk を返す。
 client は server から届く binary WAV を再生するだけで、発話可否や retry などの状態判定は持たない。
 
+### v2 STT / OCR runtime は macOS sidecar を root に持つ
+2026-06-18 セッション4で、STT は `scripts/apple_speech_stt/` から build される Apple Speech sidecar、
+OCR は `scripts/vision_ocr/` から build される Vision.framework sidecar を root v2 の実 runtime とした。
+OCR は Vision を優先し、失敗時だけ tesseract fallback を使う。`/ws` の音声 conversation smoke は
+VAD pre-roll -> STT observation -> tomoko durable utterance -> prompt execution -> binary WAV 返却を同じ
+WebSocket 上で確認する。
+
 ## 未解決の疑問（人間への確認待ち）
 
 ### [2026-06-18] live acceptance の実機検証タイミング

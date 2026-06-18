@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>local.tomoko.v2.apple-speech-stt</string>
+  <key>CFBundleExecutable</key>
+  <string>apple-speech-stt</string>
+  <key>CFBundleName</key>
+  <string>TomokoV2AppleSpeechSTT</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Tomoko uses Apple Speech locally for on-device speech recognition.</string>
+</dict>
+</plist>

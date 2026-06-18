@@ -1,5 +1,54 @@
 # LOG.md
 
+## 2026-06-18 セッション4
+
+### やること（開始時に書く）
+- STT / TTS / OCR / LLM の実 runtime が root v2 で揃っているかを実コードで確認し、不足があれば実装する。
+- hot-path-process と tomoko-process を起動して会話チェックできる状態にする。
+- VAD が発話先頭へ過去チャンクを pre-roll 連結しているか確認し、不足なら実装する。
+- 実装済み Phase について `PLAN.md` のチェックボックスを更新する。
+
+### やったこと
+- root v2 に Apple Speech STT sidecar runtime を追加した。
+  - `scripts/apple_speech_stt/AppleSpeechSTT.swift`
+  - `scripts/apple_speech_stt/Info.plist`
+  - `server/audio/stt.py` の `AppleSpeechStreamingBackend`
+- root v2 に Vision.framework OCR sidecar runtime を追加した。
+  - `scripts/vision_ocr/VisionOCR.swift`
+  - `server/user_status/ocr_runtime.py` は Vision OCR を優先し、失敗時に tesseract fallback する。
+- `/ws` の音声 bytes を `HotPathAudioConversation` へ流すようにし、VAD pre-roll -> STT observation -> tomoko durable utterance -> prompt -> TTS WAV chunk の smoke 経路を作った。
+- `make v2-conversation-smoke` を追加し、hot-path server と tomoko heartbeat process を実際に起動して fake audio conversation を確認できるようにした。
+- `server.runtime readiness` が Apple Speech / Vision OCR availability を具体的に返すようにした。
+- `README.md` / `MEMORY.md` / `_docs/latency.md` を追記した。
+
+### 詰まったこと・解決したこと
+- VAD pre-roll 自体は既に `VADProcessor(pre_roll_ms=500)` で実装済みだったが、`/ws` 音声 bytes からその経路を使っていなかった。今回 `HotPathAudioConversation` を追加して実際の `/ws` 音声経路へ接続した。
+- `make v2-conversation-smoke` 初回は tomoko heartbeat process 停止時に `KeyboardInterrupt` traceback が出た。`server.runtime process` の SIGINT を通常停止ログとして扱うよう修正した。
+- LLM / VOICEVOX endpoint はこの作業時点では未起動。起動 launcher は前回追加済みで、実 first content / first audio は `make tmux-runtime` 後に `make v2-llm-tts-smoke` で測る。
+
+### 検証
+- `make check`
+  - unit: 35 passed, 1 deselected
+  - ruff: passed
+- `make v2-conversation-smoke`
+  - hot-path uvicorn と tomoko heartbeat process を起動
+  - fake audio bytes から `transcript`, `durable_utterance`, `model_delta`, `model_complete`, `audio_complete`, `prompt_complete` を確認
+  - binary WAV chunk 1 件 / 16 bytes
+- `uv run python -m server.runtime readiness`
+  - Apple Speech: `binary=true`, `source=true`, `plist=true`, `swiftc=true`
+  - OCR: `screencapture=true`, `vision_ocr=true`, `tesseract=true`, `osascript=true`
+  - LLM `8081` / `8082`: false
+  - VOICEVOX `50122`: false
+- `make v2-ocr-smoke`
+  - Vision-first OCR path で 2739 chars 抽出
+  - metadata app `Codex`, YouTube URL/title detected
+- `bash -n scripts/wait_runtime_dependencies.sh scripts/run_llm.sh scripts/run_llm_stop.sh scripts/run_voicevox.sh`
+  - passed
+
+### 次のセッションでやること
+- `make tmux-runtime` で dflash / VOICEVOX を実起動し、`make v2-runtime-ready` を true にする。
+- 実 runtime 起動後に `make v2-llm-tts-smoke` を実行し、first content / first audio / total latency を `_docs/latency.md` に追記する。
+
 ## 2026-06-18 セッション3
 
 ### やること（開始時に書く）
