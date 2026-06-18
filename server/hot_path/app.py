@@ -137,6 +137,7 @@ async def _send_prompt_execution_result(
             )
 
     for chunk in result.audio_chunks:
+        _audio_conversation().mark_tomoko_audio_sent(chunk.chunk)
         await websocket.send_bytes(chunk.chunk)
         if chunk.is_final:
             await websocket.send_text(

@@ -22,6 +22,12 @@ class VADProcessor:
     _speech_started_ms: float | None = None
     _last_speech_ms: float | None = None
 
+    def reset(self) -> None:
+        self._pre_roll.clear()
+        self._speech_chunks.clear()
+        self._speech_started_ms = None
+        self._last_speech_ms = None
+
     def process_chunk(
         self,
         chunk: tuple[float, ...],

@@ -1,5 +1,38 @@
 # LOG.md
 
+## 2026-06-18 セッション5
+
+### やること（開始時に書く）
+- live runtime log で発話ループを確認し、Tomoko の TTS 出力がユーザー発話として STT/TomokoProcess に戻っているなら server-owned echo suppression を実装する。
+
+### やったこと
+- `tmux` の VOICEVOX / dflash / hot-path logs を確認し、Tomoko 応答「こんにちは。準備はできているよ...」系が連続で `audio_query` / `chat/completions` に再投入されていることを確認した。
+- ループ停止のため hot-path process を一度止めた。
+- `HotPathAudioConversation` に Tomoko TTS 送出 WAV の duration + grace 中だけ mic bytes を VAD 前で破棄する echo suppression を追加した。
+- suppression 開始時に `VADProcessor.reset()` で pre-roll / 発話中バッファを落とし、Tomoko 音声が次の SpeechSegment に混入しないようにした。
+- hot-path tmux window を復帰し、dflash / VOICEVOX / Apple Speech / OCR readiness が ready であることを確認した。
+
+### 詰まったこと・解決したこと
+- `server-debug.log` には transcript / audio_complete などの application event が出ておらず、VOICEVOX と dflash の tmux pane が実際の発話ループの証拠になった。
+- client に発話判定を持たせず、server が「自分が送った音声のWAV長」を根拠に mic 入力を抑止する設計にした。
+
+### 検証
+- `uv run pytest tests/unit/test_v2_audio_tomoko_prompt.py -q`
+  - 15 passed
+- `make check`
+  - unit: 38 passed, 1 deselected
+  - ruff: passed
+- `git diff --check`
+  - passed
+- `make v2-conversation-smoke`
+  - fake runtime で `transcript -> durable_utterance -> model_delta -> model_complete -> audio_complete -> prompt_complete` を確認
+- `make v2-llm-tts-smoke`
+  - real dflash/VOICEVOX で `text="了解。"` / `audio_chunks=1` / first audio bytes 35372 を確認
+
+### 次のセッションでやること
+- 実ブラウザでスピーカー出力ありの状態で会話し、Tomoko 発話直後に同一応答が transcript / durable_utterance として再投入されないことを確認する。
+- 必要なら `tomoko_echo_grace_ms` の 800ms を実ログで調整する。
+
 ## 2026-06-18 セッション4
 
 ### やること（開始時に書く）

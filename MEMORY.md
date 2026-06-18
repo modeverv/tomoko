@@ -66,6 +66,13 @@ OCR は Vision を優先し、失敗時だけ tesseract fallback を使う。`/w
 VAD pre-roll -> STT observation -> tomoko durable utterance -> prompt execution -> binary WAV 返却を同じ
 WebSocket 上で確認する。
 
+### v2 hot-path は TTS 送出音を server-owned echo suppression window で扱う
+2026-06-18 セッション5の実 runtime log で、Tomoko の TTS 出力がマイクへ回り込み、
+同じ応答が数秒おきに LLM/VOICEVOX へ再投入される発話ループを確認した。
+root v2 hot-path では、送出する complete WAV chunk の duration + grace 中は mic bytes を
+VAD/STT に入れず、送出時に VAD pre-roll / 発話中バッファを reset する。
+client は再生と表示だけを担当し、自己発話判定やリトライ判断は持たない。
+
 ## 未解決の疑問（人間への確認待ち）
 
 ### [2026-06-18] live acceptance の実機検証タイミング
