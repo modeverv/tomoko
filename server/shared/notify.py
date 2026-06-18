@@ -40,6 +40,11 @@ def build_notify_message(channel: str, payload_id: UUID) -> NotifyMessage:
 
 def notify_sql(channel: str, payload_id: UUID) -> tuple[str, dict[str, str]]:
     validate_channel(channel)
+    print(
+        "[tomoko:db] notify_send "
+        f"channel={channel!r} payload={str(payload_id)!r}",
+        flush=True,
+    )
     return "SELECT pg_notify(%(channel)s, %(payload)s)", {
         "channel": channel,
         "payload": str(payload_id),

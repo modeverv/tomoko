@@ -5,19 +5,21 @@ from dataclasses import dataclass
 from server.shared.models import DurableUtterance, PartialTranscriptObservation
 from server.tomoko.session import SessionBoundaryModel
 
+DEFAULT_BLOCKED_FINAL_STT_TEXTS: frozenset[str] = frozenset({"", "はい", "い"})
+
 
 @dataclass(slots=True)
 class TomokoProcessCore:
     session_model: SessionBoundaryModel
+    blocked_final_stt_texts: frozenset[str] = DEFAULT_BLOCKED_FINAL_STT_TEXTS
 
     def adopt_final_observation(
         self,
         observation: PartialTranscriptObservation,
     ) -> DurableUtterance | None:
-        if not observation.is_final:
+        if self.block_reason_for_final_observation(observation) is not None:
             return None
-        if not observation.text.strip():
-            return None
+
         boundary = self.session_model.observe_utterance(observation.audio_ended_at)
         return DurableUtterance(
             session_id=boundary.session_id,
@@ -26,3 +28,20 @@ class TomokoProcessCore:
             stt_observation_id=observation.id,
             trace_id=observation.trace_id,
         )
+
+    def block_reason_for_final_observation(
+        self,
+        observation: PartialTranscriptObservation,
+    ) -> str | None:
+        if not observation.is_final:
+            return "not_final"
+        normalized = normalize_stt_block_text(observation.text)
+        if not normalized:
+            return "blank"
+        if normalized in self.blocked_final_stt_texts:
+            return "dictionary"
+        return None
+
+
+def normalize_stt_block_text(text: str) -> str:
+    return "".join(text.split())

@@ -57,7 +57,8 @@ async function connect() {
       transcriptEl.textContent = payload.text;
     }
     if (payload.type === "transcript" && payload.is_final) {
-      appendTimelineItem("stt", payload.text || "(blank)");
+      const text = (payload.text || "").trim();
+      if (text) appendTimelineItem("stt", text);
     }
     if (payload.type === "model_delta") transcriptEl.textContent += payload.text_delta;
     if (payload.type === "model_complete") transcriptEl.textContent = payload.text;

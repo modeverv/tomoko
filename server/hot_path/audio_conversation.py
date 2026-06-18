@@ -85,7 +85,11 @@ class HotPathAudioConversation:
     async def process_segment(self, segment: AudioSpeechSegment) -> HotPathConversationResult:
         _console_event("stt_start", samples=len(segment.samples))
         observations = await observation_events(segment, self.stt_backend)
-        _console_event("stt_done", observations=len(observations))
+        final_text = next(
+            (observation.text for observation in observations if observation.is_final),
+            "",
+        )
+        _console_event("stt_done", observations=len(observations), final_text=final_text)
         final_observation = next(
             (observation for observation in observations if observation.is_final),
             None,
@@ -97,13 +101,36 @@ class HotPathAudioConversation:
         )
         if durable is None:
             if final_observation is not None and final_observation.is_final:
+                block_reason = self.tomoko_core.block_reason_for_final_observation(
+                    final_observation
+                )
                 logger.info(
-                    "blank_final_stt_ignored observation_id=%s",
+                    "final_stt_blocked observation_id=%s reason=%s text=%r",
                     final_observation.id,
+                    block_reason,
+                    final_observation.text,
                 )
                 _console_event(
-                    "blank_final_stt_ignored",
+                    "stt_rule_blocked",
                     observation_id=str(final_observation.id),
+                    reason=block_reason,
+                    text=final_observation.text,
+                )
+                if block_reason == "blank":
+                    _console_event(
+                        "blank_final_stt_ignored",
+                        observation_id=str(final_observation.id),
+                    )
+                elif block_reason == "dictionary":
+                    _console_event(
+                        "stt_hallucination_blocked",
+                        observation_id=str(final_observation.id),
+                        text=final_observation.text,
+                    )
+            else:
+                _console_event(
+                    "stt_no_final",
+                    observations=len(observations),
                 )
             return HotPathConversationResult(
                 observations=observations,

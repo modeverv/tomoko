@@ -52,7 +52,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 _console_event("ws_disconnected")
                 return
             if "bytes" in message and message["bytes"] is not None:
-                _console_event("audio_bytes", bytes=len(message["bytes"]))
                 result = await _audio_conversation().process_audio_bytes(message["bytes"])
                 if result is None:
                     await websocket.send_text(

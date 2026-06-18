@@ -45,7 +45,7 @@ from server.shared.models import (
 )
 from server.tomoko.context import ContextSnapshotBuilderV2
 from server.tomoko.floor import SpeechDecisionModel
-from server.tomoko.main import TomokoProcessCore
+from server.tomoko.main import TomokoProcessCore, normalize_stt_block_text
 from server.tomoko.prompt import PromptBuilderV2
 from server.tomoko.session import SessionBoundaryModel
 
@@ -183,6 +183,37 @@ async def test_hot_path_does_not_prompt_for_blank_final_stt() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hot_path_blocks_rule_based_stt_hallucination(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    stt_backend = _RecordingSttBackend(text="はい")
+    conversation = HotPathAudioConversation(
+        vad=VADProcessor(sample_rate=1000, pre_roll_ms=300, silence_ms=100),
+        stt_backend=stt_backend,
+        tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
+        prompt_builder=PromptBuilderV2(),
+        prompt_executor=PromptExecutor(
+            StaticChatBackend(["この返答は出てはいけない"]),
+            StaticWavTtsBackend([b"RIFFxxxxWAVEdata"]),
+        ),
+        speech_rms_threshold=0.02,
+    )
+
+    assert await conversation.process_audio_samples((0.2,) * 100) is None
+    assert await conversation.process_audio_samples((0.0,) * 100) is None
+    result = await conversation.process_audio_samples((0.0,) * 100)
+
+    assert result is not None
+    assert result.observations[0].text == "はい"
+    assert result.durable_utterance is None
+    assert result.prompt_request is None
+    assert result.execution_result.audio_chunks == []
+    captured = capsys.readouterr()
+    assert "stt_hallucination_blocked" in captured.out
+    assert "text='はい'" in captured.out
+
+
+@pytest.mark.asyncio
 async def test_streaming_stt_observation_keeps_vap_fields() -> None:
     now = utc_now()
     segment = VADProcessor(sample_rate=1000).process_chunk(
@@ -291,6 +322,22 @@ def test_tomoko_adopts_only_final_stt_observation() -> None:
     assert final.text == "final"
 
 
+def test_tomoko_blocks_current_log_based_stt_hallucinations() -> None:
+    now = utc_now()
+    core = TomokoProcessCore(SessionBoundaryModel())
+    for text in ["", "  ", "はい", "い"]:
+        observation = __import__("server.shared.models").shared.models.PartialTranscriptObservation(
+            text=text,
+            is_final=True,
+            stability=1.0,
+            audio_started_at=now,
+            audio_ended_at=now,
+        )
+        assert core.adopt_final_observation(observation) is None
+
+    assert normalize_stt_block_text(" は い ") == "はい"
+
+
 def test_session_boundary_uses_idle_gap() -> None:
     now = utc_now()
     model = SessionBoundaryModel(idle_gap_to_new_session_ms=1000)
@@ -348,7 +395,9 @@ def test_prompt_builder_orders_stable_current_volatile_and_skips_calendar_for_cl
 
 
 @pytest.mark.asyncio
-async def test_prompt_executor_requires_complete_wav_chunks() -> None:
+async def test_prompt_executor_requires_complete_wav_chunks(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     request = PromptRequest(
         prompt_text="hello",
         scope=PromptScope.MAIN,
@@ -365,6 +414,10 @@ async def test_prompt_executor_requires_complete_wav_chunks() -> None:
     result = await executor.execute(request)
     assert [event.event_kind for event in result.model_events] == ["delta", "delta", "complete"]
     assert result.audio_chunks[0].is_final
+    captured = capsys.readouterr()
+    assert "prompt_send" in captured.out
+    assert "----- TOMOKO LLM PROMPT BEGIN -----" in captured.out
+    assert "hello" in captured.out
     bad = PromptExecutor(StaticChatBackend(["x"]), StaticWavTtsBackend([b"not wav"]))
     with pytest.raises(ValueError):
         await bad.execute(request)

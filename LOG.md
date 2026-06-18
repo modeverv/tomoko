@@ -1,5 +1,53 @@
 # LOG.md
 
+## 2026-06-18 セッション9
+
+### やること（開始時に書く）
+- UI timeline で blank final STT を表示しない。
+- console に STT 結果、NOTIFY 送信、LLM prompt 全文を出す。
+- 現在の実 server log から拾える STT hallucination を辞書で block し、block した事実も console に出す。
+- hot-path / tomoko / LLM / VOICEVOX 実 runtime を通し、macOS `say` 音声の終話から Tomoko の最初の音声 binary 到着までを測る simulator を追加して実測する。
+
+### やったこと
+- `client/main.js` の timeline は final STT が blank の場合に item を追加しないようにした。
+- hot-path / audio / LLM / DB NOTIFY の console-visible log を強化した。
+  - STT final text: `stt_done final_text=...`
+  - STT block: `stt_rule_blocked` / `stt_hallucination_blocked`
+  - LLM prompt: `prompt_send` と `TOMOKO LLM PROMPT BEGIN/END` に挟んだ全文
+  - NOTIFY: `notify_send channel=... payload=...`
+- `TomokoProcessCore` に final STT block 辞書を追加し、実 log で繰り返していた `はい` / `い` と blank を durable utterance / prompt request に昇格しないようにした。
+- `scripts/v2_say_latency_smoke.py` と `make v2-say-latency-smoke` を追加し、macOS `say` 生成音声を 16kHz mono float32 chunk として実 `/ws` に流す latency smoke を作った。
+- Makefile の `TOMOKO_V2_VOICEVOX_SPEED` 既定値も実 runtime 起動時に効くよう `2.0` に揃えた。
+
+### 詰まったこと・解決したこと
+- hot-path の `audio_bytes` log は 128 sample ごとに出て STT/PROMPT log を埋めるため削除した。代わりに VAD segment 以降の意味のある境界を console に残す。
+- `/ws` の transcript event は現状 `process_segment()` が LLM/TTS 実行まで完了してから client に返るため、tool 側では transcript / TTS / first audio の受信時刻がほぼ同時になった。server console では STT 完了と prompt 送信の順序は追える。
+- `PLAN.md` の live acceptance P50/P95 や 10 分 smoke は今回の 1 回実測では未達なのでチェックは付けていない。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_audio_tomoko_prompt.py tests/unit/test_v2_runtime_foundation.py -q`
+  - 28 passed
+- `uv run python -m py_compile scripts/v2_say_latency_smoke.py && node --check client/main.js`
+  - passed
+- `make check`
+  - ruff passed
+  - unit 42 passed / 1 deselected
+- `uv run python -m server.runtime readiness`
+  - LLM `8081` / `8082`: true
+  - VOICEVOX `50122`: true
+  - Apple Speech / OCR binaries: true
+  - database: false
+- `make v2-say-latency-smoke`
+  - input `トモコ、短く返事して。` / voice `Kyoko`
+  - STT `智子短く返事して`
+  - reply `了解。短く話すね。`
+  - voice-end to first binary audio 2875.8ms
+  - artifact `logs/say-latency-20260618-120425.json`
+
+### 次のセッションでやること
+- transcript event を LLM/TTS 完了前に client へ出すかを検討する。UI timeline の STT 表示を「STT完了時刻」として使いたいなら、現在の batch 返却では遅すぎる。
+- live conversation を 10 分以上走らせ、first audio P50/P95 と block 辞書の過不足を `_docs/latency.md` に追記する。
+
 ## 2026-06-18 セッション8
 
 ### やること（開始時に書く）

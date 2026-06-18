@@ -20,7 +20,9 @@ from server.user_status.ocr_runtime import ocr_runtime_available, vision_ocr_tex
 pytestmark = pytest.mark.unit
 
 
-def test_notify_payload_is_id_only_and_channel_limited() -> None:
+def test_notify_payload_is_id_only_and_channel_limited(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     event_id = UUID("00000000-0000-0000-0000-000000000123")
     message = build_notify_message("v2_prompt_request", event_id)
     assert message.payload == event_id
@@ -32,6 +34,9 @@ def test_notify_payload_is_id_only_and_channel_limited() -> None:
     sql, params = notify_sql("v2_candidate", event_id)
     assert "pg_notify" in sql
     assert params["payload"] == str(event_id)
+    captured = capsys.readouterr()
+    assert "notify_send" in captured.out
+    assert "v2_candidate" in captured.out
 
 
 def test_fixed_line_parser_requires_small_vlm_schema() -> None:
@@ -104,6 +109,8 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     assert "v2-runtime-ready:" in makefile
     assert "v2-ocr-smoke" in makefile
     assert "v2-conversation-smoke:" in makefile
+    assert "v2-say-latency-smoke:" in makefile
+    assert "TOMOKO_V2_VOICEVOX_SPEED ?= 2.0" in makefile
     assert makefile.index("-n llm-run") < makefile.index("-n hot-path")
     assert "tmux send-keys -t $(TMUX_SESSION):hot-path C-c" in makefile
     assert "v2-report-latest:" in makefile
@@ -183,6 +190,7 @@ def test_client_renders_stt_and_tts_timeline() -> None:
     assert 'id="timeline-items"' in index
     assert "appendTimelineItem" in script
     assert 'payload.type === "transcript" && payload.is_final' in script
+    assert 'if (text) appendTimelineItem("stt", text);' in script
     assert 'payload.type === "tts_result"' in script
     assert "console.log" in script
     assert ".timeline-item" in styles

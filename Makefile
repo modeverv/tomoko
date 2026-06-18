@@ -23,7 +23,7 @@ TOMOKO_V2_VOICEVOX_READY_URL ?= http://127.0.0.1:50122/version
 TOMOKO_V2_LLM_URL ?= http://127.0.0.1:8082
 TOMOKO_V2_LLM_MODEL ?= gemma-4-26b-a4b-it-mlx
 TOMOKO_V2_VOICEVOX_URL ?= http://127.0.0.1:50122
-TOMOKO_V2_VOICEVOX_SPEED ?= 1.5
+TOMOKO_V2_VOICEVOX_SPEED ?= 2.0
 VOICEVOX_COMMAND ?= /Users/seijiro/Sync/sync_work/by-llms/async-voicevox/run_streaming_voicevox.command
 DFLASH_31B_MODEL ?= mlx-community/gemma-4-31b-it-4bit
 DFLASH_31B_DRAFT ?= z-lab/gemma-4-31B-it-DFlash
@@ -33,6 +33,7 @@ DFLASH_26B_DRAFT ?= z-lab/gemma-4-26B-A4B-it-DFlash
 DFLASH_26B_PORT ?= 8082
 WS_LATENCY_URL ?= ws://$(HOST):$(PORT)/ws
 WS_LATENCY_TEXT ?= トモコ、短く返事して。
+WS_LATENCY_VOICE ?= Kyoko
 
 .PHONY: deps prepare download-models download-optional-models
 .PHONY: server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
@@ -43,7 +44,7 @@ WS_LATENCY_TEXT ?= トモコ、短く返事して。
 .PHONY: background-once background-watch background-dry-run
 .PHONY: tmux-runtime tmux-run tmux-attach tmux-stop tmux-list run stop a
 .PHONY: v2-runtime v2-stop v2-runtime-ready llm-run llm-stop voicevox-run v2-ocr-smoke ocr-smoke
-.PHONY: v2-initiative-sim v2-floor-bench v2-report-latest v2-llm-tts-smoke v2-conversation-smoke
+.PHONY: v2-initiative-sim v2-floor-bench v2-report-latest v2-llm-tts-smoke v2-conversation-smoke v2-say-latency-smoke
 .PHONY: db-up db-stop db-down db-dump test-unit test-integration lint check smoke-ws-voice-latency log-report monitor system-monitor
 
 deps:
@@ -186,6 +187,9 @@ v2-llm-tts-smoke:
 
 v2-conversation-smoke:
 	TOMOKO_V2_FAKE_RUNTIME=1 $(PYTHON) -m scripts.v2_ws_conversation_smoke --fake-runtime --start-processes
+
+v2-say-latency-smoke:
+	$(PYTHON) -m scripts.v2_say_latency_smoke --url "$(WS_LATENCY_URL)" --text "$(WS_LATENCY_TEXT)" --voice "$(WS_LATENCY_VOICE)"
 
 v2-initiative-sim:
 	$(PYTHON) -m scripts.v2_initiative_sim

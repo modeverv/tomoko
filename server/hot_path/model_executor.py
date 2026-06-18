@@ -263,6 +263,7 @@ class PromptExecutor:
     async def execute(self, request: PromptRequest) -> PromptExecutionResult:
         result = PromptExecutionResult()
         text_parts: list[str] = []
+        _console_prompt(request)
         async for delta in self._chat_backend.stream(request):
             text_parts.append(delta)
             result.model_events.append(
@@ -314,3 +315,15 @@ def create_default_real_prompt_executor() -> PromptExecutor:
             segment_length=float(os.environ.get("TOMOKO_V2_VOICEVOX_SEGMENT_LENGTH", "0.6")),
         ),
     )
+
+
+def _console_prompt(request: PromptRequest) -> None:
+    print(
+        "[tomoko:llm] prompt_send "
+        f"request_id={str(request.id)!r} scope={request.scope.value!r} "
+        f"chars={len(request.prompt_text)!r}",
+        flush=True,
+    )
+    print("----- TOMOKO LLM PROMPT BEGIN -----", flush=True)
+    print(request.prompt_text, flush=True)
+    print("----- TOMOKO LLM PROMPT END -----", flush=True)
