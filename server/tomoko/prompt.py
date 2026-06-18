@@ -39,7 +39,14 @@ class PromptBuilderV2:
 
     def _format_stable_context(self, snapshot: ContextSnapshot, calendar: dict[str, str]) -> str:
         lines: list[str] = []
-        lines.extend(f"recent_user_raw={item}" for item in snapshot.recent_utterances)
+        if snapshot.recent_history:
+            for item in snapshot.recent_history:
+                if item.speaker == "tomoko":
+                    lines.append(f"recent_tomoko_raw={item.text}")
+                else:
+                    lines.append(f"recent_user_raw={item.text}")
+        else:
+            lines.extend(f"recent_user_raw={item}" for item in snapshot.recent_utterances)
         lines.extend(
             f"summary={summary.keyword}: {summary.conclusion}"
             for summary in snapshot.summaries

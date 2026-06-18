@@ -12,6 +12,7 @@ from server.hot_path.model_executor import PromptExecutionResult, PromptExecutor
 from server.shared.models import (
     AudioSpeechSegment,
     ContextSnapshot,
+    ConversationHistoryItem,
     DurableUtterance,
     PartialTranscriptObservation,
     PromptRequest,
@@ -51,6 +52,7 @@ class HotPathAudioConversation:
     context_builder: ContextSnapshotBuilderV2 = field(default_factory=ContextSnapshotBuilderV2)
     _audio_clock_ms: float = 0.0
     _recent_utterances: list[str] = field(default_factory=list)
+    _recent_history: list[ConversationHistoryItem] = field(default_factory=list)
 
     async def process_audio_bytes(self, payload: bytes) -> HotPathConversationResult | None:
         return await self.process_audio_samples(audio_bytes_to_samples(payload))
@@ -141,6 +143,7 @@ class HotPathAudioConversation:
             )
 
         self._recent_utterances.append(durable.text)
+        self._recent_history.append(ConversationHistoryItem(speaker="user", text=durable.text))
         snapshot = self.context_builder.build(
             session_id=durable.session_id,
             recent_utterances=self._recent_utterances[-8:],
@@ -148,6 +151,7 @@ class HotPathAudioConversation:
             calendar_loader=lambda: {},
             user_status=None,
             candidates=[],
+            recent_history=self._recent_history[-8:],
         )
         request = self.prompt_builder.build_main_reply(snapshot, durable.text)
         _console_event(
@@ -156,6 +160,11 @@ class HotPathAudioConversation:
             utterance=durable.text,
         )
         execution_result = await self.prompt_executor.execute(request)
+        tomoko_text = text_from_execution_result(execution_result)
+        if tomoko_text.strip():
+            self._recent_history.append(
+                ConversationHistoryItem(speaker="tomoko", text=tomoko_text)
+            )
         return HotPathConversationResult(
             observations=observations,
             durable_utterance=durable,
@@ -187,6 +196,13 @@ def speech_probability_from_rms(samples: tuple[float, ...], *, threshold: float)
         return 0.0
     rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
     return min(1.0, rms / threshold)
+
+
+def text_from_execution_result(result: PromptExecutionResult) -> str:
+    return next(
+        (event.text for event in result.model_events if event.event_kind == "complete"),
+        "",
+    )
 
 
 def _console_event(event: str, **fields: object) -> None:

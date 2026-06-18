@@ -1,5 +1,58 @@
 # LOG.md
 
+## 2026-06-18 セッション11
+
+### やること（開始時に書く）
+- Tomoko の VOICEVOX 発話速度は 2.0 では速すぎるため、1.5 倍を正式な既定にする。
+- Makefile / runtime default / tests / README / MEMORY の速度期待値を一致させる。
+
+### やったこと
+- `VoicevoxChunkedTtsBackend` の既定 `speed` を `1.5` にした。
+- `create_default_real_prompt_executor()` の `TOMOKO_V2_VOICEVOX_SPEED` 未指定時 fallback を `1.5` にした。
+- `Makefile` の `TOMOKO_V2_VOICEVOX_SPEED ?= 1.5` と unit test の期待値を一致させた。
+- README の VOICEVOX speed 既定値を `1.5` にした。
+
+### 検証
+- `make check`
+  - ruff passed
+  - unit 44 passed / 1 deselected
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること
+- 実 runtime の live conversation で 1.5 倍の聴感と first audio latency を再確認する。
+
+## 2026-06-18 セッション10
+
+### やること（開始時に書く）
+- LLM prompt の stable context に前回までの Tomoko 発話（LLM 推論結果）も載せる。
+- user-only の `recent_user_raw` だけでなく、speaker が分かる会話履歴として prompt snapshot を作る。
+
+### やったこと
+- `ConversationHistoryItem(speaker, text)` を `server/shared/models.py` に追加した。
+- `ContextSnapshot.recent_history` を追加し、従来の `recent_utterances` は互換用に残した。
+- `PromptBuilderV2` は speaker 付き履歴がある場合、user を `recent_user_raw=...`、Tomoko を `recent_tomoko_raw=...` として prompt に出すようにした。
+- `HotPathAudioConversation` は user durable utterance と LLM complete text を `_recent_history` に積み、次 turn の prompt に Tomoko 発話を載せるようにした。
+
+### 詰まったこと・解決したこと
+- `make check` はこの時点では、既存の未コミット `Makefile` 差分 `TOMOKO_V2_VOICEVOX_SPEED ?= 1.5` と unit test の `2.0` 固定期待がズレて失敗した。
+- セッション11で 1.5 を正式採用し、Makefile / runtime default / tests を一致させた。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_models.py tests/unit/test_v2_audio_tomoko_prompt.py -q`
+  - 24 passed
+- `uv run python -m py_compile server/shared/models.py server/tomoko/context.py server/tomoko/prompt.py server/hot_path/audio_conversation.py`
+  - passed
+- `uv run ruff check server tests`
+  - passed
+- `make check`
+  - ruff passed
+  - unit 43 passed / 1 failed / 1 deselected
+  - failure at the time: `tests/unit/test_v2_runtime_foundation.py::test_makefile_exposes_v2_runtime_targets_in_order` が `TOMOKO_V2_VOICEVOX_SPEED ?= 2.0` を期待していたが、worktree の `Makefile` は `1.5`
+
+### 次のセッションでやること
+- live console で次 turn prompt に `recent_tomoko_raw=...` が出ることを確認する。
+
 ## 2026-06-18 セッション9
 
 ### やること（開始時に書く）
@@ -51,7 +104,7 @@
 ## 2026-06-18 セッション8
 
 ### やること（開始時に書く）
-- VOICEVOX の発話速度を 2 倍にし、Tomoko を早口にする。
+- VOICEVOX の発話速度を 1.5 倍にし、Tomoko を早口にする。
 
 ### やったこと
 - `VoicevoxChunkedTtsBackend` の既定 `speedScale` を `2.0` にした。

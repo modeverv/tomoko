@@ -12,6 +12,7 @@ from server.shared.models import (
     CandidateRecord,
     CandidateSeed,
     ContextSnapshot,
+    ConversationHistoryItem,
     PartialTranscriptObservation,
     SessionSummary,
     SpeechDecision,
@@ -36,6 +37,7 @@ def test_all_v2_boundary_dtos_live_in_shared_models() -> None:
         "SpeechDecision",
         "UserStatusObservation",
         "ContextSnapshot",
+        "ConversationHistoryItem",
         "CandidateSeed",
         "CandidateRecord",
         "SessionSummary",
@@ -120,6 +122,10 @@ def test_context_snapshot_keeps_structured_children() -> None:
     snapshot = ContextSnapshot(
         session_id=summary.session_id,
         recent_utterances=("raw user text",),
+        recent_history=(
+            ConversationHistoryItem(speaker="user", text="こんにちは"),
+            ConversationHistoryItem(speaker="tomoko", text="聞こえてるよ"),
+        ),
         summaries=(summary,),
         calendar_items={"20260618T120000": "meeting"},
         user_status=status,
@@ -127,5 +133,7 @@ def test_context_snapshot_keeps_structured_children() -> None:
     )
     field_names = {field.name for field in fields(snapshot)}
     assert "recent_utterances" in field_names
+    assert "recent_history" in field_names
+    assert snapshot.to_dict()["recent_history"][1]["speaker"] == "tomoko"
     assert snapshot.to_dict()["summaries"][0]["keyword"] == "DDD"
     assert snapshot.to_dict()["user_status"]["activity_label"] == "coding_or_terminal"

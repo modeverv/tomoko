@@ -209,6 +209,12 @@ class DurableUtterance(SerializableDto):
 
 
 @dataclass(slots=True)
+class ConversationHistoryItem(SerializableDto):
+    speaker: str
+    text: str
+
+
+@dataclass(slots=True)
 class FloorSignal(SerializableDto):
     floor_state: FloorState
     silence_ms: int
@@ -320,6 +326,7 @@ class ContextSnapshot(SerializableDto):
     calendar_items: dict[str, str]
     user_status: UserStatusObservation | None
     candidates: tuple[CandidateRecord, ...]
+    recent_history: tuple[ConversationHistoryItem, ...] = ()
     id: UUID = field(default_factory=new_id)
     elapsed_ms: float = 0.0
     trace_id: UUID = field(default_factory=new_id)

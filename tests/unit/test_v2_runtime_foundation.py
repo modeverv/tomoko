@@ -110,7 +110,7 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     assert "v2-ocr-smoke" in makefile
     assert "v2-conversation-smoke:" in makefile
     assert "v2-say-latency-smoke:" in makefile
-    assert "TOMOKO_V2_VOICEVOX_SPEED ?= 2.0" in makefile
+    assert "TOMOKO_V2_VOICEVOX_SPEED ?= 1.5" in makefile
     assert makefile.index("-n llm-run") < makefile.index("-n hot-path")
     assert "tmux send-keys -t $(TMUX_SESSION):hot-path C-c" in makefile
     assert "v2-report-latest:" in makefile

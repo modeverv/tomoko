@@ -35,6 +35,7 @@ from server.hot_path.protocol import (
 from server.shared.models import (
     AudioSpeechSegment,
     CancelPolicy,
+    ConversationHistoryItem,
     FloorSignal,
     FloorState,
     PromptRequest,
@@ -265,7 +266,7 @@ def test_openai_sse_and_voicevox_multipart_parsers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_voicevox_audio_query_uses_configured_double_speed() -> None:
+async def test_voicevox_audio_query_uses_configured_fast_speech_speed() -> None:
     class FakeResponse:
         def raise_for_status(self) -> None:
             return None
@@ -279,21 +280,21 @@ async def test_voicevox_audio_query_uses_configured_double_speed() -> None:
             assert params == {"text": "こんにちは", "speaker": 8}
             return FakeResponse()
 
-    backend = VoicevoxChunkedTtsBackend(url="http://voicevox", speed=2.0)
+    backend = VoicevoxChunkedTtsBackend(url="http://voicevox", speed=1.5)
     audio_query = await backend._audio_query(FakeClient(), "こんにちは")
 
-    assert audio_query["speedScale"] == 2.0
+    assert audio_query["speedScale"] == 1.5
     assert audio_query["outputSamplingRate"] == 24000
     assert audio_query["outputStereo"] is False
 
 
-def test_default_real_prompt_executor_uses_voicevox_double_speed(
+def test_default_real_prompt_executor_uses_voicevox_fast_speech_speed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("TOMOKO_V2_VOICEVOX_SPEED", raising=False)
     executor = create_default_real_prompt_executor()
 
-    assert executor._tts_backend.speed == 2.0
+    assert executor._tts_backend.speed == 1.5
 
 
 def test_tomoko_adopts_only_final_stt_observation() -> None:
@@ -392,6 +393,59 @@ def test_prompt_builder_orders_stable_current_volatile_and_skips_calendar_for_cl
     assert "STABLE_CONTEXT:" in prompt.prompt_text
     assert "CURRENT_USER_UTTERANCE:\nいま何時?" in prompt.prompt_text
     assert "calendar[" not in prompt.prompt_text
+
+
+def test_prompt_builder_includes_recent_tomoko_raw_history() -> None:
+    session_id = __import__("uuid").uuid4()
+    snapshot = ContextSnapshotBuilderV2().build(
+        session_id=session_id,
+        recent_utterances=["こんにちは"],
+        recent_history=[
+            ConversationHistoryItem(speaker="user", text="こんにちは"),
+            ConversationHistoryItem(speaker="tomoko", text="聞こえてるよ"),
+        ],
+        summaries=[],
+        calendar_loader=lambda: {},
+        user_status=None,
+        candidates=[],
+    )
+    prompt = PromptBuilderV2().build_main_reply(snapshot, "俺って聞こえてる")
+
+    assert "recent_user_raw=こんにちは" in prompt.prompt_text
+    assert "recent_tomoko_raw=聞こえてるよ" in prompt.prompt_text
+    assert "CURRENT_USER_UTTERANCE:\n俺って聞こえてる" in prompt.prompt_text
+
+
+@pytest.mark.asyncio
+async def test_hot_path_puts_previous_tomoko_reply_in_next_prompt() -> None:
+    stt_backend = _RecordingSttBackend(text="こんにちは")
+    conversation = HotPathAudioConversation(
+        vad=VADProcessor(sample_rate=1000, pre_roll_ms=300, silence_ms=100),
+        stt_backend=stt_backend,
+        tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
+        prompt_builder=PromptBuilderV2(),
+        prompt_executor=PromptExecutor(
+            StaticChatBackend(["聞こえてるよ"]),
+            StaticWavTtsBackend([b"RIFFxxxxWAVEdata"]),
+        ),
+        speech_rms_threshold=0.02,
+    )
+
+    assert await conversation.process_audio_samples((0.2,) * 100) is None
+    assert await conversation.process_audio_samples((0.0,) * 100) is None
+    first = await conversation.process_audio_samples((0.0,) * 100)
+    assert first is not None
+
+    stt_backend.text = "俺って聞こえてる"
+    assert await conversation.process_audio_samples((0.2,) * 100) is None
+    assert await conversation.process_audio_samples((0.0,) * 100) is None
+    second = await conversation.process_audio_samples((0.0,) * 100)
+
+    assert second is not None
+    assert second.prompt_request is not None
+    assert "recent_user_raw=こんにちは" in second.prompt_request.prompt_text
+    assert "recent_tomoko_raw=聞こえてるよ" in second.prompt_request.prompt_text
+    assert "CURRENT_USER_UTTERANCE:\n俺って聞こえてる" in second.prompt_request.prompt_text
 
 
 @pytest.mark.asyncio

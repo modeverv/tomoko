@@ -7,6 +7,7 @@ from uuid import UUID
 from server.shared.models import (
     CandidateRecord,
     ContextSnapshot,
+    ConversationHistoryItem,
     SessionSummary,
     UserStatusObservation,
 )
@@ -26,6 +27,7 @@ class ContextSnapshotBuilderV2:
         calendar_loader: callable,
         user_status: UserStatusObservation | None,
         candidates: list[CandidateRecord],
+        recent_history: list[ConversationHistoryItem] | None = None,
     ) -> ContextSnapshot:
         started = time.perf_counter()
         calendar_items = self._load_calendar(session_id, calendar_loader)
@@ -36,6 +38,7 @@ class ContextSnapshotBuilderV2:
             calendar_items=calendar_items,
             user_status=user_status,
             candidates=tuple(candidates),
+            recent_history=tuple(recent_history or ()),
             elapsed_ms=(time.perf_counter() - started) * 1000.0,
         )
 
