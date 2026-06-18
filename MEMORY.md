@@ -285,3 +285,23 @@ final 確認込みの `logs/say-latency-20260618-160314.json` は first audio 15
 final transcript 5123.1ms。前回の 4058〜4492ms より改善した。
 ただし partial 由来の発話後に final / 後続 partial が append される重複はまだ残る。
 次は同一 utterance の partial speech-order と final speech-order を reconcile する。
+
+## 2026-06-18 セッション22 確定した判断
+
+### partial speech-order 後の final は durable 保存だけして重複発話させない
+partial 由来の speech-order が既に出ている同一 utterance について、後から final STT が来た場合は
+final を durable user utterance として履歴に保存する。ただし Tomoko の speech-order / prompt は作らず、
+`final reconciled with active partial reply` で suppress する。
+これにより partial reply の後に final reply が append される二重発話を止める。
+
+### Apple Speech partial の比較では wake word と filler 差分を normalize する
+pseudo streaming partial は `その今日の予定を教えて` のように先頭へ `その` が付くことがあり、
+final は `智子今日の予定を教えて...` のように wake word を含むことがある。
+reconcile 判定では `トモコ` / `智子` / `その` / `えっと` / `あの` を除去した上で、
+包含または prefix ratio で同一 utterance とみなす。
+
+### 録音ファイル smoke は ffmpeg 優先で 16kHz mono PCM WAV に変換する
+`scripts/v2_say_latency_smoke.py --input-wav` は QuickTime などの録音ファイルを `/ws` に replay できる。
+`afconvert` は m4a 入力で Python 3.11 の `wave` が読めない WAVE_FORMAT_EXTENSIBLE を出す場合があるため、
+`ffmpeg` が存在する環境では `ffmpeg -ac 1 -ar 16000 -sample_fmt s16` を優先する。
+clean smoke `logs/say-latency-20260618-161626.json` では `_reference/test.m4a` を実測できた。

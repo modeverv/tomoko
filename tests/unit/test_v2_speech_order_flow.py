@@ -73,7 +73,7 @@ async def test_tomoko_conversation_core_can_emit_early_order_from_partial_stt() 
 
     result = await core.handle_observation(
         PartialTranscriptObservation(
-            text="トモコ、今の予定を教えて",
+            text="その今の予定を教えて",
             is_final=False,
             stability=0.85,
             audio_started_at=now,
@@ -85,6 +85,60 @@ async def test_tomoko_conversation_core_can_emit_early_order_from_partial_stt() 
     assert result.speech_order is not None
     assert result.speech_order.mode == SpeechOrderMode.REPLACE_CURRENT
     assert "partial" in result.saturation.source
+
+
+@pytest.mark.asyncio
+async def test_tomoko_conversation_core_reconciles_final_after_partial_order() -> None:
+    now = utc_now()
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=SemanticSaturationJudge(),
+        scheduler=SpeechScheduler(),
+        chat_backend=StaticChatBackend(["先に答えるね。", "重複しないでね。"]),
+    )
+
+    partial = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="その今の予定を教えて",
+            is_final=False,
+            stability=0.85,
+            audio_started_at=now,
+            audio_ended_at=now,
+        )
+    )
+    final = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="トモコ、今の予定を教えてください",
+            is_final=True,
+            stability=1.0,
+            audio_started_at=now,
+            audio_ended_at=now,
+            trace_id=partial.observation.trace_id,
+        )
+    )
+
+    assert partial.speech_order is not None
+    assert final.durable_utterance is not None
+    assert final.speech_order is None
+    assert final.prompt_request is None
+    assert final.scheduler_output.reason == "final reconciled with active partial reply"
+
+    stale_partial = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="今の予定を教えてください",
+            is_final=False,
+            stability=0.85,
+            audio_started_at=now,
+            audio_ended_at=now,
+            trace_id=partial.observation.trace_id,
+        )
+    )
+
+    assert stale_partial.speech_order is None
+    assert stale_partial.prompt_request is None
+    assert stale_partial.scheduler_output.reason == (
+        "partial reconciled with active partial reply"
+    )
 
 
 @pytest.mark.asyncio

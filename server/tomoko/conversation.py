@@ -52,6 +52,9 @@ class TomokoConversationCore:
     _recent_utterances: list[str] = field(default_factory=list)
     _recent_history: list[ConversationHistoryItem] = field(default_factory=list)
     _partial_history: list[str] = field(default_factory=list)
+    _active_partial_order: SpeechOrder | None = None
+    _active_partial_basis_text: str = ""
+    _last_reconciled_final_text: str = ""
 
     async def handle_observation(
         self,
@@ -80,6 +83,55 @@ class TomokoConversationCore:
             self._partial_history.append(text)
             basis_text = text
             session_id = None
+
+        if self._should_reconcile_observation(observation, basis_text):
+            saturation = SemanticSaturationResult(
+                saturation=1.0 if observation.is_final else 0.0,
+                source="reconciled_final" if observation.is_final else "reconciled_partial",
+                basis_text=basis_text,
+                trace_id=observation.trace_id,
+            )
+            scheduler_output = self.scheduler.decide(
+                SpeechSchedulerInput(
+                    partial_stt_text="" if observation.is_final else basis_text,
+                    final_stt_text=basis_text if observation.is_final else "",
+                    semantic_saturation=0.0,
+                    trace_id=observation.trace_id,
+                )
+            )
+            scheduler_output.reason = (
+                "final reconciled with active partial reply"
+                if observation.is_final
+                else "partial reconciled with active partial reply"
+            )
+            if durable is not None and prior_session_history is None:
+                self._recent_utterances.append(durable.text)
+                self._recent_history.append(
+                    ConversationHistoryItem(speaker="user", text=durable.text)
+                )
+                self._active_partial_order = None
+                self._active_partial_basis_text = ""
+                self._last_reconciled_final_text = durable.text
+                self.current_speech_order = None
+                self.current_speech_score = 0.0
+            snapshot = self.context_builder.build(
+                session_id=session_id,
+                recent_utterances=self._recent_utterances[-8:],
+                summaries=[],
+                calendar_loader=lambda: {},
+                user_status=None,
+                candidates=[],
+                recent_history=self._recent_history[-8:],
+            )
+            return TomokoConversationResult(
+                observation=observation,
+                durable_utterance=durable,
+                saturation=saturation,
+                scheduler_output=scheduler_output,
+                context_snapshot=snapshot,
+                prompt_request=None,
+                speech_order=None,
+            )
 
         saturation = await self.saturation_judge.judge(
             basis_text,
@@ -177,6 +229,9 @@ class TomokoConversationCore:
         )
         self.current_speech_order = order
         self.current_speech_score = scheduler_output.score
+        if not observation.is_final:
+            self._active_partial_order = order
+            self._active_partial_basis_text = basis_text
         if durable is not None and prior_session_history is None:
             self._recent_utterances.append(durable.text)
             self._recent_history.append(
@@ -203,6 +258,21 @@ class TomokoConversationCore:
             speech_order=order,
             model_events=model_events,
         )
+
+    def _should_reconcile_observation(
+        self,
+        observation: PartialTranscriptObservation,
+        basis_text: str,
+    ) -> bool:
+        if self._active_partial_order is None or not self._active_partial_basis_text:
+            return (
+                not observation.is_final
+                and bool(self._last_reconciled_final_text)
+                and _similar_enough(basis_text, self._last_reconciled_final_text)
+            )
+        if observation.is_final:
+            return _similar_enough(self._active_partial_basis_text, basis_text)
+        return _similar_enough(self._active_partial_basis_text, basis_text)
 
     async def _generate_model_events(self, request: PromptRequest) -> list[ModelOutputEvent]:
         events: list[ModelOutputEvent] = []
@@ -276,6 +346,35 @@ def _stable_partial(partials: list[str]) -> str:
         while prefix and not partial.startswith(prefix):
             prefix = prefix[:-1]
     return prefix
+
+
+def _similar_enough(left: str, right: str) -> bool:
+    left_normalized = _normalize_for_reconcile(left)
+    right_normalized = _normalize_for_reconcile(right)
+    if not left_normalized or not right_normalized:
+        return False
+    return (
+        left_normalized in right_normalized
+        or right_normalized in left_normalized
+        or _prefix_ratio(left_normalized, right_normalized) >= 0.7
+    )
+
+
+def _normalize_for_reconcile(text: str) -> str:
+    normalized = "".join(text.split())
+    for removable in ("トモコ", "智子", "その", "えっと", "あの"):
+        normalized = normalized.replace(removable, "")
+    return normalized
+
+
+def _prefix_ratio(left: str, right: str) -> float:
+    limit = min(len(left), len(right))
+    common = 0
+    for index in range(limit):
+        if left[index] != right[index]:
+            break
+        common += 1
+    return common / max(len(left), len(right))
 
 
 def _order_mode_for_action(action: SpeechSchedulerAction) -> SpeechOrderMode:

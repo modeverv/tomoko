@@ -493,7 +493,7 @@ v2 でも同じ `streaming` / `stream_interval_ms` / `stream_min_audio_ms` /
 - [x] focused unit test で partial emit / duplicate suppression / hot-path partial speech-order を固定する。
 - [x] 実 `/ws` smoke で final transcript 前の partial speech-order を artifact に残す。
 - [x] partial STT / E2B / LLM / TTS を WebSocket audio receive loop から非同期に逃がす。
-- [ ] partial 由来 speech-order 後の final STT で重複発話しないように reconcile する。
+- [x] partial 由来 speech-order 後の final STT で重複発話しないように reconcile する。
 
 ### 完了条件
 
@@ -511,3 +511,21 @@ final Apple Speech を始める。partial 返答は concise prompt にして、V
 clean smoke では `logs/say-latency-20260618-160201.json` で voice-end to first audio 860.5ms、
 final 確認込みでは `logs/say-latency-20260618-160314.json` で 1515.6ms。
 前回の 4058〜4492ms より改善したが、目標範囲としてはまだ不安定なので完了条件は未チェックのまま残す。
+
+## 2026-06-18 セッション22 進捗追記
+
+partial 由来 speech-order 後に同一 utterance の final STT が来た場合、final は durable user utterance
+として保存しつつ speech-order / prompt は出さず、scheduler decision は
+`final reconciled with active partial reply` で suppress するようにした。
+Apple Speech partial が付けることがある `その` や wake word 差分は normalize して比較する。
+
+実 `/ws` smoke artifact `logs/say-latency-20260618-161305.json` では、
+partial `その今日の予定を教えて` が speech-order を 1 件出し、その後の final
+`智子今日の予定を教えてそれだけで大丈夫です` は reconcile suppress された。
+`speech_order` / `tts_result` / `binary_audio` は各 1 件で、重複音声は出ていない。
+
+`scripts/v2_say_latency_smoke.py --input-wav` も追加した。
+QuickTime などで録音した音声ファイルを 16kHz mono PCM WAV に変換して `/ws` に流せる。
+clean hot-path で `_reference/test.m4a` を流した artifact `logs/say-latency-20260618-161626.json` では、
+final transcript `こんにちは今の気分を教えてくださいませ`、voice-end to first audio 5864.3ms。
+この録音では partial saturation が閾値未満で、早期発話ではなく final 起点になった。

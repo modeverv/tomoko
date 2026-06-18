@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import math
+import shutil
 import struct
 import subprocess
 import tempfile
@@ -45,6 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--url", default="ws://127.0.0.1:8000/ws")
     parser.add_argument("--text", default="トモコ、短く返事して。")
     parser.add_argument("--voice", default="Kyoko")
+    parser.add_argument("--input-wav")
     parser.add_argument("--chunk-samples", type=int, default=128)
     parser.add_argument("--trailing-silence-ms", type=int, default=2500)
     parser.add_argument("--continue-after-first-audio", action="store_true")
@@ -79,6 +81,50 @@ def generate_say_wav(text: str, voice: str, output_dir: Path, stamp: str) -> Pat
             check=True,
             text=True,
         )
+    return wav_path
+
+
+def prepare_input_wav(input_path: Path, output_dir: Path, stamp: str) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    wav_path = output_dir / f"say-latency-{stamp}-input.wav"
+    if shutil.which("ffmpeg"):
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(input_path),
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-sample_fmt",
+                "s16",
+                str(wav_path),
+            ],
+            check=True,
+            text=True,
+        )
+    else:
+        subprocess.run(
+            [
+                "afconvert",
+                "-f",
+                "WAVE",
+                "-d",
+                "LEI16@16000",
+                "-c",
+                "1",
+                str(input_path),
+                str(wav_path),
+            ],
+            check=True,
+            text=True,
+        )
+    read_wav_float32(wav_path)
     return wav_path
 
 
@@ -226,7 +272,11 @@ async def async_main() -> None:
     args = parse_args()
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     output_dir = Path(args.output_dir)
-    wav_path = generate_say_wav(args.text, args.voice, output_dir, stamp)
+    wav_path = (
+        prepare_input_wav(Path(args.input_wav), output_dir, stamp)
+        if args.input_wav
+        else generate_say_wav(args.text, args.voice, output_dir, stamp)
+    )
     result = await measure(args, wav_path)
     payload = asdict(result)
     output_path = output_dir / f"say-latency-{stamp}.json"

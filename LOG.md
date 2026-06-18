@@ -1,5 +1,47 @@
 # LOG.md
 
+## 2026-06-18 セッション22
+
+### やること（開始時に書く）
+- partial 後に final / 後続 partial が append される重複発話を reconcile する。
+- QuickTime などで録音した wav/m4a を `/ws` latency smoke に流せるようにする。
+- 実 `/ws` smoke で重複 speech-order が減ることと、録音ファイル入力で実測できることを確認する。
+
+### やったこと
+- `TomokoConversationCore` に active partial speech-order の basis text を保持し、同一 utterance の final / 後続 partial を normalize 比較で reconcile する処理を追加した。
+- reconcile された final は durable user utterance として履歴には残すが、speech-order / prompt は作らず suppress するようにした。
+- Apple Speech pseudo partial が先頭に付けることがある `その`、wake word の `トモコ` / `智子`、短い filler を normalize 対象にした。
+- `scripts/v2_say_latency_smoke.py` に `--input-wav` を追加し、ユーザー録音ファイルを 16kHz mono 16-bit PCM WAV に変換して `/ws` に replay できるようにした。
+- `afconvert` が QuickTime m4a から Python 3.11 の `wave` で読めない WAVE_FORMAT_EXTENSIBLE を出すケースがあったため、`ffmpeg` がある環境では `ffmpeg -ac 1 -ar 16000 -sample_fmt s16` を優先するようにした。
+
+### 詰まったこと・解決したこと
+- 最初の reconcile 比較では partial `その今日の予定を教えて` と final `智子今日の予定を教えて...` の差分で似ていない扱いになった。
+  - 解決: normalize で wake word / `その` / filler を除去し、包含または prefix ratio で判定するようにした。
+- 置かれた `_reference/test.m4a` を `afconvert` だけで変換すると、標準 `wave` module が `unknown format: 65534` で読めなかった。
+  - 解決: `--input-wav` は `ffmpeg` 優先にして、変換後に `read_wav_float32()` で読めることを確認するようにした。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py::test_tomoko_conversation_core_reconciles_final_after_partial_order -q`
+  - 1 passed
+- `uv run ruff check server/tomoko/conversation.py tests/unit/test_v2_speech_order_flow.py scripts/v2_say_latency_smoke.py`
+  - passed
+- `uv run python -m scripts.v2_say_latency_smoke --url ws://127.0.0.1:62236/ws --voice Kyoko --text 'トモコ今日の予定を教えてそれだけで大丈夫です' --continue-after-first-audio --post-first-audio-ms 5000 --timeout-sec 90`
+  - artifact `logs/say-latency-20260618-161305.json`
+  - partial `その今日の予定を教えて` で speech-order 1 件
+  - final `智子今日の予定を教えてそれだけで大丈夫です` は `final reconciled with active partial reply` で suppress
+  - `speech_order` / `tts_result` / `binary_audio` は各 1 件
+  - voice-end to first audio 1736.5ms、voice-end to final transcript 2095.1ms
+- `uv run python -m scripts.v2_say_latency_smoke --url ws://127.0.0.1:62237/ws --input-wav _reference/test.m4a --text 'こんにちは、今の気分を教えてくださいませ' --continue-after-first-audio --post-first-audio-ms 1000 --timeout-sec 90`
+  - artifact `logs/say-latency-20260618-161626.json`
+  - input duration 3708.0ms
+  - final transcript `こんにちは今の気分を教えてくださいませ`
+  - voice-end to first audio 5864.3ms
+  - partial は出たが saturation 閾値未満だったため、今回は final 起点で返答した。
+
+### 次のセッションでやること
+- partial saturation が閾値未満の録音でも早期開始したいか、E2B saturation prompt / threshold を見直す。
+- Apple Speech pseudo partial の stale partial が final 後に出るケースを artifact で継続観測する。
+
 ## 2026-06-18 セッション21
 
 ### やること（開始時に書く）
