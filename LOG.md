@@ -1,5 +1,38 @@
 # LOG.md
 
+## 2026-06-18 セッション14
+
+### やること（開始時に書く）
+- hot-path と tomoko-process を DB `LISTEN/NOTIFY` で完全分離する。
+- hot-path は STT observation を DB に insert して `v2_stt_observation` を id-only NOTIFY し、`v2_speech_order` を LISTEN して TTS/audio 実行する。
+- tomoko-process は `v2_stt_observation` を LISTEN し、scheduler/LLM を実行して scheduler decision / speech-order を DB に保存し、`v2_speech_order` を id-only NOTIFY する。
+- fake と real runtime の split smoke で latency を artifact / `_docs/latency.md` に記録する。
+
+### やったこと
+- `server/tomoko/db_worker.py` を追加し、tomoko-process が `v2_stt_observation` を LISTEN して `TomokoConversationCore` を実行し、semantic saturation / scheduler decision / speech-order を DB に保存して `v2_speech_order` を NOTIFY するようにした。
+- `server/hot_path/db_conversation.py` を追加し、hot-path が STT observation を DB insert + NOTIFY し、`v2_speech_order` を LISTEN / recovery polling で受けて `SpeechOrderExecutor` と TTS/audio event 保存を実行するようにした。
+- `TOMOKO_V2_DB_SPLIT=1` で `/ws` audio conversation が DB split path を使い、`python -m server.runtime process tomoko-db` で tomoko DB worker が起動するようにした。
+- `make v2-db-split-smoke` / `scripts/v2_db_split_smoke.py` を追加し、別 process の hot-path + tomoko-db worker を起動して DB `LISTEN/NOTIFY` latency smoke を実行できるようにした。
+- `README.md` / `PLAN.md` / `MEMORY.md` / `_docs/latency.md` に DB split smoke の使い方、完了範囲、実測値を記録した。
+
+### 詰まったこと・解決したこと
+- 初回 smoke は tomoko-process が `PromptRequest.context_snapshot_id` を `v2_prompt_requests` に保存しようとして、未永続 `v2_context_snapshots` FK に当たり停止した。
+  - 解決: DB split smoke では prompt request に未永続 context/utterance/candidate FK を持たせず、音声出力用 request row は hot-path が speech-order id で作る形にした。
+- `make v2-db-split-smoke` は fake runtime で process/DB bridge の latency を測る。real Apple Speech / dflash / VOICEVOX の split latency は別途 live runtime 起動状態で測る必要がある。
+
+### 検証
+- `uv run ruff check server scripts background-process tests`
+  - passed
+- `uv run pytest -m unit -q`
+  - 62 passed / 1 deselected
+- `make v2-db-split-smoke`
+  - passed
+  - total 67.6ms / transcript->order 0.1ms / order->first audio 0.2ms
+  - artifact: `logs/db-split-smoke-20260618-133937.json`
+
+### 次のセッションでやること
+- live dflash / VOICEVOX / Apple Speech 起動状態で DB split の real say latency smoke を追加または実行し、fake bridge latency と real perceived latency を分けて記録する。
+
 ## 2026-06-18 セッション13
 
 ### やること（開始時に書く）

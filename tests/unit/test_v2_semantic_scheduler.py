@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
 from server.shared.logging import JsonlLogger
 from server.shared.models import (
+    CancelPolicy,
+    PromptRequest,
+    PromptScope,
     SpeechOrder,
     SpeechOrderMode,
     SpeechPressureState,
@@ -14,6 +18,9 @@ from server.shared.models import (
     SpeechSchedulerThresholds,
 )
 from server.tomoko.db_bridge import (
+    insert_audio_output_event_sql,
+    insert_prompt_request_for_order_sql,
+    insert_prompt_request_sql,
     insert_scheduler_decision_sql,
     insert_speech_order_sql,
     notify_speech_order_sql,
@@ -182,8 +189,47 @@ def test_speech_order_db_bridge_uses_row_body_and_id_only_notify() -> None:
     )
     order_sql = insert_speech_order_sql(order)
     notify_query, notify_params = notify_speech_order_sql(order.id)
+    prompt_sql = insert_prompt_request_for_order_sql(order)
 
     assert "v2_speech_scheduler_decisions" in decision_sql.query
     assert "v2_speech_orders" in order_sql.query
+    assert "v2_prompt_requests" in prompt_sql.query
+    assert "context_snapshot_id" not in prompt_sql.query
+    assert "utterance_id" not in prompt_sql.query
+    assert "candidate_id" not in prompt_sql.query
     assert "SELECT pg_notify" in notify_query
     assert notify_params["payload"] == str(order.id)
+
+    chunk = __import__("server.shared.models").shared.models.AudioChunkOut(
+        request_id=order.id,
+        chunk=b"RIFFxxxxWAVEdata",
+        sample_rate=16000,
+        is_final=True,
+        trace_id=order.trace_id,
+    )
+    audio_sql = insert_audio_output_event_sql(chunk)
+    assert "v2_audio_output_events" in audio_sql.query
+    assert len(chunk.chunk) in audio_sql.params
+
+
+def test_prompt_request_sql_does_not_reference_unpersisted_snapshot_fk() -> None:
+    request = PromptRequest(
+        prompt_text="返事して",
+        scope=PromptScope.MAIN,
+        decision_id=None,
+        utterance_id=uuid4(),
+        candidate_id=uuid4(),
+        priority=50,
+        cancel_policy=CancelPolicy.KEEP_UNTIL_COMPLETE,
+        context_snapshot_id=uuid4(),
+    )
+
+    sql = insert_prompt_request_sql(request)
+
+    assert "v2_prompt_requests" in sql.query
+    assert "context_snapshot_id" not in sql.query
+    assert "utterance_id" not in sql.query
+    assert "candidate_id" not in sql.query
+    assert request.context_snapshot_id not in sql.params
+    assert request.utterance_id not in sql.params
+    assert request.candidate_id not in sql.params

@@ -132,3 +132,25 @@ V2.20 の 10 分 live conversation smoke は Apple Speech / VOICEVOX / LLM runti
 `v2_semantic_saturation_observations` と `v2_speech_order` NOTIFY channel を追加した。
 常駐 LISTEN worker と hot-path の DB 書き込み接続は次の実装単位として残し、現時点の実 `/ws`
 会話は in-process vertical path で動かす。
+
+## 2026-06-18 セッション14 確定した判断
+
+### DB 分離 smoke は hot-path と tomoko-process を完全別 process で通す
+`TOMOKO_V2_DB_SPLIT=1` の hot-path は STT observation を DB に insert して
+`v2_stt_observation` を id-only NOTIFY する。`tomoko-db` process は
+`v2_stt_observation` を LISTEN し、semantic saturation / scheduler decision /
+speech-order を DB に保存して `v2_speech_order` を id-only NOTIFY する。
+hot-path は `v2_speech_order` を LISTEN して `SpeechOrderExecutor` で TTS/audio を実行し、
+`v2_audio_output_events` を保存する。NOTIFY 欠落に備え、同じ trace_id の未実行 order を
+短時間 polling で回収する。
+
+### DB split の prompt request は未永続 context snapshot を参照しない
+tomoko-process 側の `PromptRequest` は現時点では scheduler/LLM の中間契約であり、
+DB smoke では context snapshot row をまだ永続化しない。そのため `v2_prompt_requests`
+への保存は未永続の `context_snapshot_id` / `utterance_id` / `candidate_id` FK を持たせず、
+音声出力の request row は hot-path が speech-order id で作る。
+
+### fake DB split smoke の latency
+`make v2-db-split-smoke` は fake STT / fake LLM / fake TTS で process 間 DB bridge だけを測る。
+2026-06-18 の smoke は total 67.6ms、transcript->order 0.1ms、order->first audio 0.2ms。
+artifact は `logs/db-split-smoke-20260618-133937.json`。

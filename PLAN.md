@@ -269,17 +269,17 @@ process 分離に戻す。DB row が本体、NOTIFY は id-only wakeup とする
 - [x] `v2_speech_scheduler_decisions` table を追加する。
 - [x] `v2_semantic_saturation_observations` table を追加する。
 - [x] NOTIFY channel に `v2_speech_order` を追加する。
-- [ ] hot-path-process は STT observation を DB に insert し、`v2_stt_observation` を NOTIFY する。
-- [ ] tomoko-process は `v2_stt_observation` を LISTEN し、scheduler decision と speech-order を DB に保存する。
+- [x] hot-path-process は STT observation を DB に insert し、`v2_stt_observation` を NOTIFY する。
+- [x] tomoko-process は `v2_stt_observation` を LISTEN し、scheduler decision と speech-order を DB に保存する。
 - [x] tomoko-process は `v2_speech_order` を NOTIFY する。
-- [ ] hot-path-process は `v2_speech_order` を LISTEN し、speech-order を実行する。
-- [ ] recovery polling を入れる。
+- [x] hot-path-process は `v2_speech_order` を LISTEN し、speech-order を実行する。
+- [x] recovery polling を入れる。
 - [x] integration test を追加する。
 
 ### 完了条件
 
 - [x] NOTIFY payload は UUID のみ。
-- [ ] DB に scheduler decision / speech-order / audio event が残る。
+- [x] DB に scheduler decision / speech-order / audio event が残る。
 - [x] PostgreSQL integration test で insert / select / notify path が通る。
 
 ## Phase S8: real runtime scheduler conversation

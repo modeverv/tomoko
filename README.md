@@ -71,6 +71,10 @@ first use. OCR prefers the root Vision.framework sidecar from
 starts a local hot-path server plus the tomoko heartbeat process with fake
 runtime providers, then sends float32 audio bytes over `/ws` to verify the
 VAD pre-roll -> STT -> tomoko adoption -> prompt -> binary WAV response path.
+`make v2-db-split-smoke` starts hot-path and tomoko-process separately with fake
+runtime providers and verifies the DB `LISTEN/NOTIFY` path:
+hot-path STT observation insert -> `v2_stt_observation` -> tomoko scheduler /
+speech-order insert -> `v2_speech_order` -> hot-path TTS/audio event insert.
 
 `v1/` is reference-only. When a v1 implementation detail is needed, move the
 smallest required idea or file into the v2 root explicitly and keep the new v2

@@ -5,7 +5,11 @@ from typing import Any
 from uuid import UUID
 
 from server.shared.models import (
+    AudioChunkOut,
+    CancelPolicy,
     PartialTranscriptObservation,
+    PromptRequest,
+    PromptScope,
     SemanticSaturationResult,
     SpeechOrder,
     SpeechOrderMode,
@@ -155,6 +159,87 @@ def insert_speech_order_sql(order: SpeechOrder) -> SqlCommand:
     )
 
 
+def insert_prompt_request_for_order_sql(order: SpeechOrder) -> SqlCommand:
+    return SqlCommand(
+        """
+        INSERT INTO v2_prompt_requests (
+            id,
+            scope,
+            priority,
+            cancel_policy,
+            prompt_text,
+            status,
+            trace_id
+        )
+        VALUES (%s, %s, %s, %s, %s, 'completed', %s)
+        ON CONFLICT (id) DO NOTHING
+        RETURNING id
+        """,
+        (
+            order.id,
+            PromptScope.MAIN.value,
+            order.priority,
+            CancelPolicy.KEEP_UNTIL_COMPLETE.value,
+            order.text,
+            order.trace_id,
+        ),
+    )
+
+
+def insert_audio_output_event_sql(chunk: AudioChunkOut) -> SqlCommand:
+    return SqlCommand(
+        """
+        INSERT INTO v2_audio_output_events (
+            id,
+            request_id,
+            event_kind,
+            content_type,
+            byte_length,
+            is_final,
+            trace_id
+        )
+        VALUES (%s, %s, 'chunk', %s, %s, %s, %s)
+        ON CONFLICT (id) DO NOTHING
+        RETURNING id
+        """,
+        (
+            chunk.id,
+            chunk.request_id,
+            chunk.content_type,
+            len(chunk.chunk),
+            chunk.is_final,
+            chunk.trace_id,
+        ),
+    )
+
+
+def insert_prompt_request_sql(request: PromptRequest) -> SqlCommand:
+    return SqlCommand(
+        """
+        INSERT INTO v2_prompt_requests (
+            id,
+            scope,
+            priority,
+            cancel_policy,
+            prompt_text,
+            status,
+            trace_id
+        )
+        VALUES (%s, %s, %s, %s, %s, 'completed', %s)
+        ON CONFLICT (id) DO NOTHING
+        RETURNING id
+        """,
+        (
+            request.id,
+            request.scope.value,
+            request.priority,
+            request.cancel_policy.value,
+            request.prompt_text,
+            request.trace_id,
+        ),
+    )
+
+
 def speech_order_from_row(row: dict[str, Any]) -> SpeechOrder:
     return SpeechOrder(
         id=row["id"],
@@ -171,6 +256,10 @@ def speech_order_from_row(row: dict[str, Any]) -> SpeechOrder:
 
 def notify_speech_order_sql(order_id: UUID) -> tuple[str, dict[str, str]]:
     return notify_sql("v2_speech_order", order_id)
+
+
+def notify_stt_observation_sql(observation_id: UUID) -> tuple[str, dict[str, str]]:
+    return notify_sql("v2_stt_observation", observation_id)
 
 
 def _json_dump(value: dict[str, float]) -> str:

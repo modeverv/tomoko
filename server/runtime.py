@@ -11,8 +11,10 @@ import psycopg
 
 from server.audio.stt import apple_speech_runtime_available
 from server.info.main import calendar_dto_map, parse_minimal_ics
+from server.shared.db import default_dsn
 from server.shared.logging import JsonlLogger
 from server.shared.models import new_id
+from server.tomoko.db_worker import run_default_worker
 from server.user_status.ocr_runtime import ocr_runtime_available
 
 
@@ -35,6 +37,14 @@ def readiness_snapshot() -> dict[str, object]:
 
 
 async def run_process(process_name: str) -> None:
+    if process_name in {"tomoko-db", "tomoko-split"}:
+        fake_reply = os.environ.get("TOMOKO_V2_FAKE_REPLY")
+        await run_default_worker(
+            os.environ.get("TOMOKO_DATABASE_URL", default_dsn()),
+            fake_reply=fake_reply if os.environ.get("TOMOKO_V2_FAKE_RUNTIME") == "1" else None,
+        )
+        return
+
     logger = JsonlLogger(Path("logs/v2-runtime.jsonl"))
     readiness = readiness_snapshot()
     logger.log("process_start", process=process_name, readiness=readiness)

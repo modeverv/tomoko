@@ -110,6 +110,7 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     assert "v2-ocr-smoke" in makefile
     assert "v2-conversation-smoke:" in makefile
     assert "v2-scheduler-conversation-smoke:" in makefile
+    assert "v2-db-split-smoke:" in makefile
     assert "v2-say-latency-smoke:" in makefile
     assert "v2-scheduler-say-latency-smoke:" in makefile
     assert "v2-scheduler-report:" in makefile

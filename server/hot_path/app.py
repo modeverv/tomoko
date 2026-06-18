@@ -8,13 +8,18 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from server.audio.stt import StaticStreamingSttBackend, StreamingSttEvent
+from server.audio.stt import (
+    AppleSpeechStreamingBackend,
+    StaticStreamingSttBackend,
+    StreamingSttEvent,
+)
 from server.audio.vad import VADProcessor
 from server.hot_path.audio_conversation import (
     HotPathAudioConversation,
     HotPathConversationResult,
     create_default_audio_conversation,
 )
+from server.hot_path.db_conversation import HotPathDbSplitConversation
 from server.hot_path.model_executor import (
     PromptExecutionResult,
     PromptExecutor,
@@ -24,6 +29,7 @@ from server.hot_path.model_executor import (
 )
 from server.hot_path.protocol import encode_server_event, parse_browser_message
 from server.hot_path.speech_executor import SpeechOrderExecutor
+from server.shared.db import default_dsn
 from server.shared.models import CancelPolicy, PromptRequest, PromptScope
 from server.tomoko.conversation import TomokoConversationCore
 from server.tomoko.main import TomokoProcessCore
@@ -261,10 +267,30 @@ def _prompt_executor() -> PromptExecutor:
     return executor
 
 
-def _audio_conversation() -> HotPathAudioConversation:
+def _audio_conversation() -> HotPathAudioConversation | HotPathDbSplitConversation:
     conversation = getattr(app.state, "audio_conversation", None)
     if conversation is None:
-        if _fake_runtime_enabled():
+        if _db_split_enabled():
+            tts_backend = _prompt_executor()._tts_backend
+            if _fake_runtime_enabled():
+                tts_backend = StaticWavTtsBackend([b"RIFFxxxxWAVEdata"])
+            conversation = HotPathDbSplitConversation(
+                dsn=default_dsn(),
+                vad=VADProcessor(),
+                stt_backend=StaticStreamingSttBackend(
+                    [
+                        StreamingSttEvent(
+                            os.environ.get("TOMOKO_V2_FAKE_TRANSCRIPT", "トモコ、返事して"),
+                            True,
+                            1.0,
+                        )
+                    ]
+                )
+                if _fake_runtime_enabled()
+                else AppleSpeechStreamingBackend(),
+                speech_executor=SpeechOrderExecutor(tts_backend),
+            )
+        elif _fake_runtime_enabled():
             chat_backend = StaticChatBackend(
                 [os.environ.get("TOMOKO_V2_FAKE_REPLY", "うん、聞こえてるよ。")]
             )
@@ -298,6 +324,10 @@ def _audio_conversation() -> HotPathAudioConversation:
 
 def _fake_runtime_enabled() -> bool:
     return os.environ.get("TOMOKO_V2_FAKE_RUNTIME") == "1"
+
+
+def _db_split_enabled() -> bool:
+    return os.environ.get("TOMOKO_V2_DB_SPLIT") == "1"
 
 
 def _fake_prompt_executor() -> PromptExecutor:
