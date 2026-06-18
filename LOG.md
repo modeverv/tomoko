@@ -1,5 +1,26 @@
 # LOG.md
 
+## 2026-06-18 セッション8
+
+### やること（開始時に書く）
+- VOICEVOX の発話速度を 2 倍にし、Tomoko を早口にする。
+
+### やったこと
+- `VoicevoxChunkedTtsBackend` の既定 `speedScale` を `2.0` にした。
+- `create_default_real_prompt_executor()` が `TOMOKO_V2_VOICEVOX_SPEED` を読み、未指定時は `2.0` を使うようにした。
+- `Makefile` に `TOMOKO_V2_VOICEVOX_SPEED ?= 2.0` を追加し、`v2-llm-tts-smoke` に渡すようにした。
+- `README.md` と `MEMORY.md` に v2 VOICEVOX speed 既定値を追記した。
+
+### 詰まったこと・解決したこと
+- 現在このシェルでは VOICEVOX runtime が起動していないため、実音声の聴感確認は未実施。
+
+### 検証
+- `uv run pytest tests/unit/test_v2_audio_tomoko_prompt.py::test_voicevox_audio_query_uses_configured_double_speed tests/unit/test_v2_audio_tomoko_prompt.py::test_default_real_prompt_executor_uses_voicevox_double_speed -q`
+  - 2 passed
+
+### 次のセッションでやること
+- `make tmux-runtime` 後に実会話または `make v2-llm-tts-smoke` で 2 倍速の聴感を確認する。
+
 ## 2026-06-18 セッション7
 
 ### やること（開始時に書く）

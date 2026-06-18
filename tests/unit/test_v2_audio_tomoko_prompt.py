@@ -22,6 +22,8 @@ from server.hot_path.model_executor import (
     PromptExecutor,
     StaticChatBackend,
     StaticWavTtsBackend,
+    VoicevoxChunkedTtsBackend,
+    create_default_real_prompt_executor,
     parse_openai_sse_content,
 )
 from server.hot_path.protocol import (
@@ -229,6 +231,38 @@ def test_openai_sse_and_voicevox_multipart_parsers() -> None:
     parser = MultipartMixedParser("abc")
     assert parser.feed(body) == [wav]
     assert parser.finish() == []
+
+
+@pytest.mark.asyncio
+async def test_voicevox_audio_query_uses_configured_double_speed() -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {}
+
+    class FakeClient:
+        async def post(self, url: str, *, params: dict[str, object]) -> FakeResponse:
+            assert url == "http://voicevox/audio_query"
+            assert params == {"text": "こんにちは", "speaker": 8}
+            return FakeResponse()
+
+    backend = VoicevoxChunkedTtsBackend(url="http://voicevox", speed=2.0)
+    audio_query = await backend._audio_query(FakeClient(), "こんにちは")
+
+    assert audio_query["speedScale"] == 2.0
+    assert audio_query["outputSamplingRate"] == 24000
+    assert audio_query["outputStereo"] is False
+
+
+def test_default_real_prompt_executor_uses_voicevox_double_speed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("TOMOKO_V2_VOICEVOX_SPEED", raising=False)
+    executor = create_default_real_prompt_executor()
+
+    assert executor._tts_backend.speed == 2.0
 
 
 def test_tomoko_adopts_only_final_stt_observation() -> None:

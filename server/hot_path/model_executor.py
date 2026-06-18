@@ -88,7 +88,7 @@ class VoicevoxChunkedTtsBackend(TtsBackend):
         url: str = "http://127.0.0.1:50122",
         speaker_id: int = 8,
         sample_rate: int = 24000,
-        speed: float = 1.0,
+        speed: float = 2.0,
         chunk_min_accent_phrases: int = 1,
         segment_length: float = 0.6,
         timeout_sec: float = 30.0,
@@ -310,6 +310,7 @@ def create_default_real_prompt_executor() -> PromptExecutor:
             url=os.environ.get("TOMOKO_V2_VOICEVOX_URL", "http://127.0.0.1:50122"),
             speaker_id=int(os.environ.get("TOMOKO_V2_VOICEVOX_SPEAKER", "8")),
             sample_rate=int(os.environ.get("TOMOKO_V2_VOICEVOX_SAMPLE_RATE", "24000")),
+            speed=float(os.environ.get("TOMOKO_V2_VOICEVOX_SPEED", "2.0")),
             segment_length=float(os.environ.get("TOMOKO_V2_VOICEVOX_SEGMENT_LENGTH", "0.6")),
         ),
     )

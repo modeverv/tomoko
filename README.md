@@ -58,7 +58,8 @@ The default main LLM path follows the v1 measured route: dflash on
 `127.0.0.1:8082` with `v1/loras/lora/fused_model` and
 `z-lab/gemma-4-26B-A4B-it-DFlash`. Summary/background LLM defaults to the 31B
 dflash route on `127.0.0.1:8081`. VOICEVOX defaults to the sibling
-`async-voicevox` streaming command and `127.0.0.1:50122`.
+`async-voicevox` streaming command and `127.0.0.1:50122`. Tomoko's VOICEVOX
+speech speed defaults to `TOMOKO_V2_VOICEVOX_SPEED=2.0`.
 
 STT defaults to the root Apple Speech sidecar under
 `.cache/tomoko/AppleSpeechSTT.app`, built from `scripts/apple_speech_stt/` on

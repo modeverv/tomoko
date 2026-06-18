@@ -23,6 +23,7 @@ TOMOKO_V2_VOICEVOX_READY_URL ?= http://127.0.0.1:50122/version
 TOMOKO_V2_LLM_URL ?= http://127.0.0.1:8082
 TOMOKO_V2_LLM_MODEL ?= gemma-4-26b-a4b-it-mlx
 TOMOKO_V2_VOICEVOX_URL ?= http://127.0.0.1:50122
+TOMOKO_V2_VOICEVOX_SPEED ?= 2.0
 VOICEVOX_COMMAND ?= /Users/seijiro/Sync/sync_work/by-llms/async-voicevox/run_streaming_voicevox.command
 DFLASH_31B_MODEL ?= mlx-community/gemma-4-31b-it-4bit
 DFLASH_31B_DRAFT ?= z-lab/gemma-4-31B-it-DFlash
@@ -181,7 +182,7 @@ v2-ocr-smoke ocr-smoke:
 	$(PYTHON) -m scripts.v2_ocr_smoke
 
 v2-llm-tts-smoke:
-	TOMOKO_V2_LLM_URL="$(TOMOKO_V2_LLM_URL)" TOMOKO_V2_LLM_MODEL="$(TOMOKO_V2_LLM_MODEL)" TOMOKO_V2_VOICEVOX_URL="$(TOMOKO_V2_VOICEVOX_URL)" $(PYTHON) -m scripts.v2_runtime_smoke
+	TOMOKO_V2_LLM_URL="$(TOMOKO_V2_LLM_URL)" TOMOKO_V2_LLM_MODEL="$(TOMOKO_V2_LLM_MODEL)" TOMOKO_V2_VOICEVOX_URL="$(TOMOKO_V2_VOICEVOX_URL)" TOMOKO_V2_VOICEVOX_SPEED="$(TOMOKO_V2_VOICEVOX_SPEED)" $(PYTHON) -m scripts.v2_runtime_smoke
 
 v2-conversation-smoke:
 	TOMOKO_V2_FAKE_RUNTIME=1 $(PYTHON) -m scripts.v2_ws_conversation_smoke --fake-runtime --start-processes
