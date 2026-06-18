@@ -32,64 +32,75 @@ class TomokoDbWorker:
     logger: JsonlLogger
 
     async def run_forever(self) -> None:
-        async with await psycopg.AsyncConnection.connect(
+        async with await self._open_listener() as listener:
+            async with await self._open_connections() as conn:
+                _console_event("listen_start", channel="v2_stt_observation")
+                async for notify in listener.notifies():
+                    observation_id = parse_id_payload(notify.payload)
+                    await self.process_observation_id(observation_id, conn)
+
+    async def process_observation_id(
+        self,
+        observation_id: UUID,
+        conn: psycopg.AsyncConnection[dict[str, object]],
+    ) -> TomokoConversationResult | None:
+        observation = await load_stt_observation(conn, observation_id)
+        if observation is None:
+            _console_event("stt_observation_missing", observation_id=str(observation_id))
+            return None
+        _console_event(
+            "stt_observation_loaded",
+            observation_id=str(observation.id),
+            final=observation.is_final,
+            text=observation.text,
+        )
+        result = await self.conversation_core.handle_observation(observation)
+        await execute_command(
+            conn,
+            insert_saturation_sql(result.saturation, stt_observation_id=observation.id),
+        )
+        await execute_command(
+            conn,
+            insert_scheduler_decision_sql(
+                result.scheduler_output,
+                stt_observation_id=observation.id,
+                semantic_saturation_id=result.saturation.id,
+            ),
+        )
+        if result.prompt_request is not None:
+            await execute_command(conn, insert_prompt_request_sql(result.prompt_request))
+        if result.speech_order is not None:
+            await execute_command(conn, insert_speech_order_sql(result.speech_order))
+            query, params = notify_speech_order_sql(result.speech_order.id)
+            await conn.execute(query, params)
+            _console_event(
+                "speech_order_notified",
+                order_id=str(result.speech_order.id),
+                mode=result.speech_order.mode.value,
+            )
+        self.logger.log(
+            "tomoko_db_worker_processed",
+            observation_id=str(observation.id),
+            speech_order_id=str(result.speech_order.id) if result.speech_order else None,
+            action=result.scheduler_output.action.value,
+            score=result.scheduler_output.score,
+        )
+        return result
+
+    async def _open_listener(self) -> psycopg.AsyncConnection[object]:
+        listener = await psycopg.AsyncConnection.connect(
             self.dsn,
             autocommit=True,
-        ) as listener:
-            await listener.execute("LISTEN v2_stt_observation")
-            _console_event("listen_start", channel="v2_stt_observation")
-            async for notify in listener.notifies():
-                observation_id = parse_id_payload(notify.payload)
-                await self.process_observation_id(observation_id)
+        )
+        await listener.execute("LISTEN v2_stt_observation")
+        return listener
 
-    async def process_observation_id(self, observation_id: UUID) -> TomokoConversationResult | None:
-        async with await psycopg.AsyncConnection.connect(
+    async def _open_connections(self) -> psycopg.AsyncConnection[dict[str, object]]:
+        return await psycopg.AsyncConnection.connect(
             self.dsn,
             autocommit=True,
             row_factory=dict_row,
-        ) as conn:
-            observation = await load_stt_observation(conn, observation_id)
-            if observation is None:
-                _console_event("stt_observation_missing", observation_id=str(observation_id))
-                return None
-            _console_event(
-                "stt_observation_loaded",
-                observation_id=str(observation.id),
-                final=observation.is_final,
-                text=observation.text,
-            )
-            result = await self.conversation_core.handle_observation(observation)
-            await execute_command(
-                conn,
-                insert_saturation_sql(result.saturation, stt_observation_id=observation.id),
-            )
-            await execute_command(
-                conn,
-                insert_scheduler_decision_sql(
-                    result.scheduler_output,
-                    stt_observation_id=observation.id,
-                    semantic_saturation_id=result.saturation.id,
-                ),
-            )
-            if result.prompt_request is not None:
-                await execute_command(conn, insert_prompt_request_sql(result.prompt_request))
-            if result.speech_order is not None:
-                await execute_command(conn, insert_speech_order_sql(result.speech_order))
-                query, params = notify_speech_order_sql(result.speech_order.id)
-                await conn.execute(query, params)
-                _console_event(
-                    "speech_order_notified",
-                    order_id=str(result.speech_order.id),
-                    mode=result.speech_order.mode.value,
-                )
-            self.logger.log(
-                "tomoko_db_worker_processed",
-                observation_id=str(observation.id),
-                speech_order_id=str(result.speech_order.id) if result.speech_order else None,
-                action=result.scheduler_output.action.value,
-                score=result.scheduler_output.score,
-            )
-            return result
+        )
 
 
 async def load_stt_observation(

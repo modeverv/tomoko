@@ -154,3 +154,19 @@ DB smoke では context snapshot row をまだ永続化しない。そのため 
 `make v2-db-split-smoke` は fake STT / fake LLM / fake TTS で process 間 DB bridge だけを測る。
 2026-06-18 の smoke は total 67.6ms、transcript->order 0.1ms、order->first audio 0.2ms。
 artifact は `logs/db-split-smoke-20260618-133937.json`。
+
+## 2026-06-18 セッション15 確定した判断
+
+### DB split runtime は process lifetime connection を持つ
+DB split の初回実装は hot-path が発話ごとに LISTEN / write / order load / recovery poll /
+audio event 保存の connection を開き、tomoko-db worker も通知ごとに work connection を開いていた。
+2026-06-18 セッション15で、hot-path は `/ws` ready 前に `v2_speech_order` LISTEN connection と
+write/read connection を warm し、その後の STT insert / order load / recovery polling /
+audio event 保存で再接続しないようにした。tomoko-db worker も `v2_stt_observation` LISTEN
+connection と work connection を process lifetime で保持する。
+
+### process-lifetime DB connection 後の split latency
+fake DB split smoke は server 内部 total 15.8ms、notify->order 13.5ms、order->first audio 2.3ms
+まで下がった。実 Apple Speech / dflash / VOICEVOX の分離版 say smoke は voice-end to first audio
+2153.8ms、server STT-start to audio-ready 1733.9ms、notify->order 826.3ms、order->VOICEVOX ready
+607.4ms。artifact は `logs/say-latency-20260618-140145.json`。

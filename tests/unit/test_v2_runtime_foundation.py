@@ -120,6 +120,26 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     assert "v2-report-latest:" in makefile
 
 
+def test_db_split_runtime_reuses_process_lifetime_connections() -> None:
+    hot_path_source = Path("server/hot_path/db_conversation.py").read_text(encoding="utf-8")
+    worker_source = Path("server/tomoko/db_worker.py").read_text(encoding="utf-8")
+
+    assert hot_path_source.count("AsyncConnection.connect") == 2
+    assert "async def _ensure_connections" in hot_path_source
+    assert "async def _load_speech_order" in hot_path_source
+    assert "AsyncConnection.connect" not in hot_path_source[
+        hot_path_source.index("async def _load_speech_order") :
+        hot_path_source.index("def create_default_db_split_conversation")
+    ]
+
+    assert worker_source.count("AsyncConnection.connect") == 2
+    assert "async def _open_connections" in worker_source
+    assert "AsyncConnection.connect" not in worker_source[
+        worker_source.index("async def process_observation_id") :
+        worker_source.index("async def _open_listener")
+    ]
+
+
 def test_ocr_runtime_availability_reports_expected_keys() -> None:
     availability = ocr_runtime_available()
     assert set(availability) == {"screencapture", "vision_ocr", "tesseract", "osascript"}

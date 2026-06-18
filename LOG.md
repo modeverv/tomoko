@@ -1,5 +1,41 @@
 # LOG.md
 
+## 2026-06-18 セッション15
+
+### やること（開始時に書く）
+- DB split path の発話ごとの `psycopg.AsyncConnection.connect()` をなくし、hot-path / tomoko-db worker が process lifetime の DB connection を持つようにする。
+- 同じ分離版 real say latency smoke を再実行し、ユーザー発話終わりから VOICEVOX first audio chunk までを測り直す。
+
+### やったこと
+- hot-path DB split conversation は `/ws` ready 前に `v2_speech_order` LISTEN connection と write/read connection を warm し、STT insert / order load / recovery polling / audio event 保存で再接続しないようにした。
+- tomoko-db worker は `v2_stt_observation` LISTEN connection と work connection を process lifetime で開き、通知ごとの `AsyncConnection.connect()` をやめた。
+- unit test で DB split runtime の connection open が初期化関数だけに閉じていることを固定した。
+
+### 詰まったこと・解決したこと
+- 最初の修正では hot-path connection が lazy open で、初回発話 latency に初期接続が混ざった。
+  - 解決: `/ws` accepted 後、`ready` event を返す前に `warm_connections()` を呼んで、発話開始前に LISTEN/write connection を作るようにした。
+
+### 検証
+- `make check`
+  - ruff passed
+  - unit 64 passed / 1 deselected
+- `TEST_DATABASE_URL=postgresql://tomoko:tomoko@localhost:5432/tomoko uv run pytest -m integration -q`
+  - 1 passed / 64 deselected
+- `make v2-db-split-smoke`
+  - process-lifetime connection + ready-before-warm path passed
+  - fake total 49.4ms / server internal DB split total 15.8ms
+  - artifact `logs/db-split-smoke-20260618-140130.json`
+- split real say latency smoke on `ws://127.0.0.1:60620/ws`
+  - voice-end to first audio 2153.8ms
+  - server STT-start to audio-ready 1733.9ms
+  - notify->order 826.3ms
+  - order->VOICEVOX ready 607.4ms
+  - artifact `logs/say-latency-20260618-140145.json`
+
+### 次のセッションでやること
+- 同条件で 3-5 回連続測定し、dflash / VOICEVOX の揺れを平均と p95 で見る。
+- `order->VOICEVOX ready` 約600msを短縮するため、VOICEVOX streaming chunk 設定と hot-path送出タイミングを再点検する。
+
 ## 2026-06-18 セッション14
 
 ### やること（開始時に書く）

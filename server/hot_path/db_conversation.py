@@ -5,7 +5,7 @@ import math
 import struct
 import time
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 import psycopg
@@ -55,6 +55,16 @@ class HotPathDbSplitConversation:
     order_timeout_sec: float = 30.0
     recovery_poll_interval_sec: float = 0.05
     _audio_clock_ms: float = 0.0
+    _listener: psycopg.AsyncConnection[object] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+    _conn: psycopg.AsyncConnection[dict[str, object]] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
 
     async def process_audio_bytes(self, payload: bytes) -> HotPathConversationResult | None:
         return await self.process_audio_samples(audio_bytes_to_samples(payload))
@@ -152,104 +162,113 @@ class HotPathDbSplitConversation:
         self,
         observation: PartialTranscriptObservation,
     ) -> tuple[SpeechOrder, float]:
-        async with await psycopg.AsyncConnection.connect(
-            self.dsn,
-            autocommit=True,
-        ) as listener:
-            await listener.execute("LISTEN v2_speech_order")
-            async with await psycopg.AsyncConnection.connect(
+        listener, conn = await self._ensure_connections()
+        await execute_command(conn, insert_stt_observation_sql(observation))
+        query, params = notify_stt_observation_sql(observation.id)
+        await conn.execute(query, params)
+        _console_event(
+            "stt_observation_notified",
+            observation_id=str(observation.id),
+            trace_id=str(observation.trace_id),
+        )
+        deadline = time.monotonic() + self.order_timeout_sec
+        while time.monotonic() < deadline:
+            async for notify in listener.notifies(timeout=0.1, stop_after=1):
+                order_id = parse_id_payload(notify.payload)
+                order = await self._load_speech_order(order_id)
+                if order is not None and order.trace_id == observation.trace_id:
+                    return order, time.perf_counter()
+            recovered = await self._poll_speech_order_by_trace(observation.trace_id)
+            if recovered is not None:
+                return recovered, time.perf_counter()
+            await asyncio.sleep(self.recovery_poll_interval_sec)
+        raise TimeoutError(f"speech order was not received for {observation.id}")
+
+    async def _ensure_connections(
+        self,
+    ) -> tuple[psycopg.AsyncConnection[object], psycopg.AsyncConnection[dict[str, object]]]:
+        if self._listener is None or self._listener.closed:
+            self._listener = await psycopg.AsyncConnection.connect(
+                self.dsn,
+                autocommit=True,
+            )
+            await self._listener.execute("LISTEN v2_speech_order")
+            _console_event("listen_start", channel="v2_speech_order")
+        if self._conn is None or self._conn.closed:
+            self._conn = await psycopg.AsyncConnection.connect(
                 self.dsn,
                 autocommit=True,
                 row_factory=dict_row,
-            ) as writer:
-                await execute_command(writer, insert_stt_observation_sql(observation))
-                query, params = notify_stt_observation_sql(observation.id)
-                await writer.execute(query, params)
-                _console_event(
-                    "stt_observation_notified",
-                    observation_id=str(observation.id),
-                    trace_id=str(observation.trace_id),
-                )
-            deadline = time.monotonic() + self.order_timeout_sec
-            while time.monotonic() < deadline:
-                async for notify in listener.notifies(timeout=0.1, stop_after=1):
-                    order_id = parse_id_payload(notify.payload)
-                    order = await self._load_speech_order(order_id)
-                    if order is not None and order.trace_id == observation.trace_id:
-                        return order, time.perf_counter()
-                recovered = await self._poll_speech_order_by_trace(observation.trace_id)
-                if recovered is not None:
-                    return recovered, time.perf_counter()
-                await asyncio.sleep(self.recovery_poll_interval_sec)
-        raise TimeoutError(f"speech order was not received for {observation.id}")
+            )
+            _console_event("db_connection_ready")
+        return self._listener, self._conn
+
+    async def warm_connections(self) -> None:
+        await self._ensure_connections()
+
+    async def aclose(self) -> None:
+        if self._listener is not None:
+            await self._listener.close()
+            self._listener = None
+        if self._conn is not None:
+            await self._conn.close()
+            self._conn = None
 
     async def _load_speech_order(self, order_id: UUID) -> SpeechOrder | None:
-        async with await psycopg.AsyncConnection.connect(
-            self.dsn,
-            autocommit=True,
-            row_factory=dict_row,
-        ) as conn:
-            cursor = await conn.execute(
-                """
-                SELECT
-                    id,
-                    scheduler_decision_id,
-                    text,
-                    mode,
-                    reason,
-                    priority,
-                    supersedes_order_id,
-                    trace_id,
-                    created_at
-                FROM v2_speech_orders
-                WHERE id = %s
-                """,
-                (order_id,),
-            )
-            row = await cursor.fetchone()
-            return speech_order_from_row(row) if row is not None else None
+        _, conn = await self._ensure_connections()
+        cursor = await conn.execute(
+            """
+            SELECT
+                id,
+                scheduler_decision_id,
+                text,
+                mode,
+                reason,
+                priority,
+                supersedes_order_id,
+                trace_id,
+                created_at
+            FROM v2_speech_orders
+            WHERE id = %s
+            """,
+            (order_id,),
+        )
+        row = await cursor.fetchone()
+        return speech_order_from_row(row) if row is not None else None
 
     async def _poll_speech_order_by_trace(self, trace_id: UUID) -> SpeechOrder | None:
-        async with await psycopg.AsyncConnection.connect(
-            self.dsn,
-            autocommit=True,
-            row_factory=dict_row,
-        ) as conn:
-            cursor = await conn.execute(
-                """
-                SELECT
-                    id,
-                    scheduler_decision_id,
-                    text,
-                    mode,
-                    reason,
-                    priority,
-                    supersedes_order_id,
-                    trace_id,
-                    created_at
-                FROM v2_speech_orders
-                WHERE trace_id = %s
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                (trace_id,),
-            )
-            row = await cursor.fetchone()
-            return speech_order_from_row(row) if row is not None else None
+        _, conn = await self._ensure_connections()
+        cursor = await conn.execute(
+            """
+            SELECT
+                id,
+                scheduler_decision_id,
+                text,
+                mode,
+                reason,
+                priority,
+                supersedes_order_id,
+                trace_id,
+                created_at
+            FROM v2_speech_orders
+            WHERE trace_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (trace_id,),
+        )
+        row = await cursor.fetchone()
+        return speech_order_from_row(row) if row is not None else None
 
     async def _record_audio(
         self,
         order: SpeechOrder,
         result: PromptExecutionResult,
     ) -> None:
-        async with await psycopg.AsyncConnection.connect(
-            self.dsn,
-            autocommit=True,
-            row_factory=dict_row,
-        ) as conn:
-            await execute_command(conn, insert_prompt_request_for_order_sql(order))
-            for chunk in result.audio_chunks:
-                await execute_command(conn, insert_audio_output_event_sql(chunk))
+        _, conn = await self._ensure_connections()
+        await execute_command(conn, insert_prompt_request_for_order_sql(order))
+        for chunk in result.audio_chunks:
+            await execute_command(conn, insert_audio_output_event_sql(chunk))
 
 
 def create_default_db_split_conversation(

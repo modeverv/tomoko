@@ -54,6 +54,9 @@ async def index() -> FileResponse:
 async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
     _console_event("ws_connected")
+    conversation = _audio_conversation()
+    if isinstance(conversation, HotPathDbSplitConversation):
+        await conversation.warm_connections()
     await websocket.send_text(encode_server_event("ready", process="hot-path"))
     try:
         while True:
@@ -62,7 +65,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 _console_event("ws_disconnected")
                 return
             if "bytes" in message and message["bytes"] is not None:
-                result = await _audio_conversation().process_audio_bytes(message["bytes"])
+                result = await conversation.process_audio_bytes(message["bytes"])
                 if result is None:
                     await websocket.send_text(
                         encode_server_event("debug_marker", received="audio_bytes")
