@@ -113,6 +113,7 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     assert "v2-db-split-smoke:" in makefile
     assert "v2-say-latency-smoke:" in makefile
     assert "v2-scheduler-say-latency-smoke:" in makefile
+    assert "v2-five-turn-smoke:" in makefile
     assert "v2-scheduler-report:" in makefile
     assert "TOMOKO_V2_VOICEVOX_SPEED ?= 1.5" in makefile
     assert makefile.index("-n llm-run") < makefile.index("-n hot-path")
@@ -138,6 +139,17 @@ def test_db_split_runtime_reuses_process_lifetime_connections() -> None:
         worker_source.index("async def process_observation_id") :
         worker_source.index("async def _open_listener")
     ]
+
+
+def test_five_turn_smoke_has_five_default_turns() -> None:
+    source = Path("scripts/v2_five_turn_smoke.py").read_text(encoding="utf-8")
+
+    assert "class FiveTurnResult" in source
+    assert "DEFAULT_TURNS" in source
+    assert source.count('"トモコ、短く返事して。"') == 1
+    assert source.count('"最後に、今の状態を短くまとめて。"') == 1
+    assert "average_first_audio_ms" in source
+    assert "p95_first_audio_ms" in source
 
 
 def test_ocr_runtime_availability_reports_expected_keys() -> None:

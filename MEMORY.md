@@ -170,3 +170,13 @@ fake DB split smoke は server 内部 total 15.8ms、notify->order 13.5ms、orde
 まで下がった。実 Apple Speech / dflash / VOICEVOX の分離版 say smoke は voice-end to first audio
 2153.8ms、server STT-start to audio-ready 1733.9ms、notify->order 826.3ms、order->VOICEVOX ready
 607.4ms。artifact は `logs/say-latency-20260618-140145.json`。
+
+## 2026-06-18 セッション16 確定した判断
+
+### v2 5ターン実 runtime smoke を同一 WebSocket で測る
+v1 相当の multi-turn 実 runtime smoke として `make v2-five-turn-smoke` を追加した。
+macOS `say` で5発話を作り、同一 `/ws` セッションに順番に流し、turn ごとの transcript /
+model text / TTS text / first audio latency と全体 average / p95 / max を JSON artifact に残す。
+2026-06-18 の実行では artifact `logs/five-turn-smoke-20260618-140934.json`、avg first audio
+3491.2ms、p95 4387.7ms。turn 別 first audio は 2505.4 / 2869.6 / 3511.1 / 4182.1 / 4387.7ms。
+turn が進むほど遅くなる傾向が見えたため、prompt/history増加と dflash cache hit を別途見る。

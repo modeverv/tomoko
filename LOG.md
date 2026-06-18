@@ -1,5 +1,33 @@
 # LOG.md
 
+## 2026-06-18 セッション16
+
+### やること（開始時に書く）
+- v1 にあった multi-turn 実 runtime smoke に相当する v2 版を追加する。
+- 実 Apple Speech / dflash / VOICEVOX を使い、同一 `/ws` セッションで約5ターンの say 音声を流して first audio latency と応答を artifact に残す。
+
+### やったこと
+- `scripts/v2_five_turn_smoke.py` を追加し、macOS `say` で生成した5発話を同一 `/ws` セッションへ順番に流す実 runtime smoke を作った。
+- `make v2-five-turn-smoke` を追加し、既存の `WS_LATENCY_URL` / `WS_LATENCY_VOICE` で実行できるようにした。
+- artifact には turn ごとの input WAV、final transcript、model/TTS text、event counts、voice-end to transcript / TTS result / first audio latency、全体平均 / p95 / max を保存する。
+
+### 検証
+- `uv run ruff check scripts/v2_five_turn_smoke.py tests/unit/test_v2_runtime_foundation.py`
+  - passed
+- `python -m py_compile scripts/v2_five_turn_smoke.py`
+  - passed
+- `uv run pytest -m unit tests/unit/test_v2_runtime_foundation.py::test_makefile_exposes_v2_runtime_targets_in_order -q`
+  - passed
+- `make v2-five-turn-smoke`
+  - passed on existing `ws://127.0.0.1:8000/ws`
+  - artifact `logs/five-turn-smoke-20260618-140934.json`
+  - avg first audio 3491.2ms / p95 4387.7ms / max 4387.7ms
+  - turn first audio: 2505.4 / 2869.6 / 3511.1 / 4182.1 / 4387.7ms
+
+### 次のセッションでやること
+- 5ターン smoke を DB split URL でも回し、通常 hot-path と DB split の multi-turn 劣化傾向を比較する。
+- turn が進むほど first audio が伸びる理由を、prompt/history増加、dflash cache hit、VOICEVOX長文化に分けて見る。
+
 ## 2026-06-18 セッション15
 
 ### やること（開始時に書く）

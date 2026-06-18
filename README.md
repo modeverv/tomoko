@@ -54,6 +54,7 @@ make v2-llm-tts-smoke
 make v2-conversation-smoke
 make v2-scheduler-conversation-smoke
 make v2-scheduler-say-latency-smoke
+make v2-five-turn-smoke
 make v2-scheduler-report
 ```
 
