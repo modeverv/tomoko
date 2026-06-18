@@ -1,5 +1,47 @@
 # LOG.md
 
+## 2026-06-18 セッション18
+
+### やること（開始時に書く）
+- dflash prefix cache が効きやすいかを確認するため、main reply prompt を `SYSTEM` / `SESSION_TRANSCRIPT` / `INSTRUCTION` 形式に変更する。
+- `SESSION_TRANSCRIPT` には同一 session の過去発話と現在 user 発話を speaker 付きで並べる。
+- 5ターン smoke で prompt artifact と dflash prefix-cache-stats を確認する。
+
+### やったこと
+- main reply prompt を `SYSTEM` / `INSTRUCTION` / `SESSION_TRANSCRIPT` 形式に変更した。
+- `SESSION_TRANSCRIPT` は `user:` / `tomoko:` の speaker 付きで同一 session の履歴を append-only に積み、最後に現在 user 発話を置くようにした。
+- `PromptRequest.prompt_text` は smoke artifact にそのまま残しつつ、OpenAI compatible chat completion へ送る直前に `SESSION_TRANSCRIPT` を `user` / `assistant` role の message list に分解するようにした。
+- hot-path 側 executor と tomoko-process 側 chat backend の両方で同じ prompt role 分解を行うようにした。
+
+### 詰まったこと・解決したこと
+- 最初に `SYSTEM` / `SESSION_TRANSCRIPT` / `INSTRUCTION` の文字列順で試したが、dflash 側では 2ターン目以降も prefix cache が hit しなかった。
+- 次に `INSTRUCTION` を transcript の前へ移動して `prompt_text` 自体は前 turn の完全 prefix になるようにしたが、単一 user message として送る限り dflash はまだ hit しなかった。
+- 原因は、chat template 後の token 列では previous request の assistant 生成位置と next request の user message 継続位置が揃わないためと判断した。
+- `SESSION_TRANSCRIPT` を実際の chat roles に分解したところ、2ターン目以降で dflash の `prefix cache hit` が出るようになった。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_audio_tomoko_prompt.py::test_prompt_builder_next_turn_keeps_previous_prompt_as_prefix tests/unit/test_v2_audio_tomoko_prompt.py::test_session_transcript_prompt_is_sent_as_chat_roles -q`
+  - 2 passed
+- `uv run pytest -m unit -q`
+  - 69 passed, 1 deselected
+- `uv run ruff check server/tomoko/prompt.py server/llm/chat.py server/hot_path/model_executor.py tests/unit/test_v2_audio_tomoko_prompt.py tests/unit/test_v2_speech_order_flow.py`
+  - passed
+- temp server `ws://127.0.0.1:62231/ws` で exact order smoke
+  - artifact `logs/five-turn-smoke-20260618-145017.json`
+  - dflash `hits=16+0` のまま、misses が増え、`prefill restored 0.0 tok/s`
+- temp server `ws://127.0.0.1:62232/ws` で append-only prompt text smoke
+  - artifact `logs/five-turn-smoke-20260618-145232.json`
+  - prompt text は turn N+1 が turn N を prefix に持つが、dflash は `hits=16+0` のまま
+- temp server `ws://127.0.0.1:62233/ws` で chat role 分解 smoke
+  - artifact `logs/five-turn-smoke-20260618-145708.json`
+  - avg first audio 2354.5ms / p95 3073.2ms / max 3073.2ms
+  - dflash は 2ターン目から `prefix cache hit 40/63`, `59/86`, `82/112`, `108/132` tokens
+  - `prefill_tokens_saved` は 1822 -> 2111 まで増え、`prefill restored` も 72.9 / 69.8 / 128.9 / 136.8 tok/s と出た
+
+### 次のセッションでやること
+- DB split path でも同じ chat role 分解が効くか、tomoko-db worker 経由の 5ターン smoke を必要に応じて回す。
+- dflash の hit が出る条件は「prompt_text 文字列 prefix」ではなく「chat template 後 token prefix」なので、今後 prompt 形式を変える時は role 境界込みで確認する。
+
 ## 2026-06-18 セッション17
 
 ### やること（開始時に書く）

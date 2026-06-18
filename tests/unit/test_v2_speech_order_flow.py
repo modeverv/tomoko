@@ -55,7 +55,10 @@ async def test_tomoko_conversation_core_turns_final_stt_into_speech_order() -> N
     assert result.model_events[-1].text == "了解。短く返すね。"
     assert result.prompt_request is not None
     assert "recent_user_raw=トモコ、短く返事して" not in result.prompt_request.prompt_text
-    assert "CURRENT_USER_UTTERANCE:\nトモコ、短く返事して" in result.prompt_request.prompt_text
+    assert "CURRENT_USER_UTTERANCE" not in result.prompt_request.prompt_text
+    assert "SESSION_TRANSCRIPT:\nuser: トモコ、短く返事して" in (
+        result.prompt_request.prompt_text
+    )
 
 
 @pytest.mark.asyncio
@@ -143,9 +146,10 @@ async def test_tomoko_conversation_core_uses_same_session_history_without_duplic
     assert result.context_snapshot.session_id == session_id
     assert result.prompt_request is not None
     prompt = result.prompt_request.prompt_text
-    assert "recent_user_raw=最初に短く返事して" in prompt
-    assert "recent_tomoko_raw=了解。短く話すね。" in prompt
-    assert "CURRENT_USER_UTTERANCE:\n最後に今の状態を短くまとめて" in prompt
+    assert "user: 最初に短く返事して" in prompt
+    assert "tomoko: 了解。短く話すね。" in prompt
+    assert "user: 最後に今の状態を短くまとめて" in prompt
+    assert "CURRENT_USER_UTTERANCE" not in prompt
     assert "recent_user_raw=最後に今の状態を短くまとめて" not in prompt
 
 

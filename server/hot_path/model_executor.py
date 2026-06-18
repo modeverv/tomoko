@@ -137,6 +137,9 @@ class VoicevoxChunkedTtsBackend(TtsBackend):
 
 
 def _messages_for_request(request: PromptRequest) -> list[dict[str, str]]:
+    transcript_messages = _session_transcript_messages(request.prompt_text)
+    if transcript_messages is not None:
+        return transcript_messages
     if request.scope == PromptScope.SHORT:
         system = "EMOTION:<label> の1行と、短い日本語1文だけを返す。"
     else:
@@ -145,6 +148,41 @@ def _messages_for_request(request: PromptRequest) -> list[dict[str, str]]:
         {"role": "system", "content": system},
         {"role": "user", "content": request.prompt_text},
     ]
+
+
+def _session_transcript_messages(prompt_text: str) -> list[dict[str, str]] | None:
+    if "SESSION_TRANSCRIPT:" not in prompt_text or "SYSTEM:" not in prompt_text:
+        return None
+    system_body = _section_between(prompt_text, "SYSTEM:", "INSTRUCTION:")
+    instruction_body = _section_between(prompt_text, "INSTRUCTION:", "SESSION_TRANSCRIPT:")
+    transcript_body = prompt_text.split("SESSION_TRANSCRIPT:", 1)[1].strip()
+    messages: list[dict[str, str]] = [
+        {
+            "role": "system",
+            "content": "\n".join(
+                part.strip() for part in (system_body, instruction_body) if part.strip()
+            ),
+        }
+    ]
+    for line in transcript_body.splitlines():
+        if line.startswith("user: "):
+            messages.append({"role": "user", "content": line.removeprefix("user: ")})
+        elif line.startswith("tomoko: "):
+            messages.append(
+                {"role": "assistant", "content": line.removeprefix("tomoko: ")}
+            )
+    if len(messages) <= 1 or messages[-1]["role"] != "user":
+        return None
+    return messages
+
+
+def _section_between(text: str, start_marker: str, end_marker: str) -> str:
+    if start_marker not in text:
+        return ""
+    tail = text.split(start_marker, 1)[1]
+    if end_marker in tail:
+        return tail.split(end_marker, 1)[0].strip()
+    return tail.strip()
 
 
 def parse_openai_sse_content(line: str) -> str | None:

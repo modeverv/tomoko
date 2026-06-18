@@ -26,12 +26,16 @@ from server.hot_path.model_executor import (
     create_default_real_prompt_executor,
     parse_openai_sse_content,
 )
+from server.hot_path.model_executor import (
+    _messages_for_request as hot_path_messages_for_request,
+)
 from server.hot_path.protocol import (
     BrowserJsonEvent,
     encode_server_event,
     is_audio_control,
     parse_browser_message,
 )
+from server.llm.chat import _messages_for_request as tomoko_messages_for_request
 from server.shared.models import (
     AudioSpeechSegment,
     CancelPolicy,
@@ -390,12 +394,14 @@ def test_prompt_builder_orders_stable_current_volatile_and_skips_calendar_for_cl
         candidates=[],
     )
     prompt = PromptBuilderV2().build_main_reply(snapshot, "いま何時?")
-    assert "STABLE_CONTEXT:" in prompt.prompt_text
-    assert "CURRENT_USER_UTTERANCE:\nいま何時?" in prompt.prompt_text
+    assert "SYSTEM:\nTomoko v2: natural local voice conversation." in prompt.prompt_text
+    assert "SESSION_TRANSCRIPT:\nuser: raw text\nuser: いま何時?" in prompt.prompt_text
+    assert "INSTRUCTION:\n次のtomoko発話だけ返す。" in prompt.prompt_text
+    assert prompt.prompt_text.endswith("SESSION_TRANSCRIPT:\nuser: raw text\nuser: いま何時?")
     assert "calendar[" not in prompt.prompt_text
 
 
-def test_prompt_builder_includes_recent_tomoko_raw_history() -> None:
+def test_prompt_builder_uses_append_only_session_transcript() -> None:
     session_id = __import__("uuid").uuid4()
     snapshot = ContextSnapshotBuilderV2().build(
         session_id=session_id,
@@ -411,9 +417,75 @@ def test_prompt_builder_includes_recent_tomoko_raw_history() -> None:
     )
     prompt = PromptBuilderV2().build_main_reply(snapshot, "俺って聞こえてる")
 
-    assert "recent_user_raw=こんにちは" in prompt.prompt_text
-    assert "recent_tomoko_raw=聞こえてるよ" in prompt.prompt_text
-    assert "CURRENT_USER_UTTERANCE:\n俺って聞こえてる" in prompt.prompt_text
+    assert "SESSION_TRANSCRIPT:" in prompt.prompt_text
+    assert "user: こんにちは\ntomoko: 聞こえてるよ\nuser: 俺って聞こえてる" in (
+        prompt.prompt_text
+    )
+    assert "CURRENT_USER_UTTERANCE" not in prompt.prompt_text
+    assert "recent_user_raw" not in prompt.prompt_text
+
+
+def test_prompt_builder_next_turn_keeps_previous_prompt_as_prefix() -> None:
+    session_id = __import__("uuid").uuid4()
+    first_snapshot = ContextSnapshotBuilderV2().build(
+        session_id=session_id,
+        recent_utterances=[],
+        summaries=[],
+        calendar_loader=lambda: {},
+        user_status=None,
+        candidates=[],
+    )
+    first = PromptBuilderV2().build_main_reply(first_snapshot, "最初に短く返事して")
+    second_snapshot = ContextSnapshotBuilderV2().build(
+        session_id=session_id,
+        recent_utterances=[],
+        recent_history=[
+            ConversationHistoryItem(speaker="user", text="最初に短く返事して"),
+            ConversationHistoryItem(speaker="tomoko", text="了解。"),
+        ],
+        summaries=[],
+        calendar_loader=lambda: {},
+        user_status=None,
+        candidates=[],
+    )
+    second = PromptBuilderV2().build_main_reply(second_snapshot, "続きも一言で")
+
+    assert second.prompt_text.startswith(first.prompt_text)
+    assert second.prompt_text[len(first.prompt_text):].startswith("\ntomoko: 了解。")
+
+
+def test_session_transcript_prompt_is_sent_as_chat_roles() -> None:
+    request = PromptRequest(
+        prompt_text=(
+            "SYSTEM:\nTomoko v2: natural local voice conversation.\n"
+            "INSTRUCTION:\n次のtomoko発話だけ返す。\n"
+            "SESSION_TRANSCRIPT:\n"
+            "user: 最初に短く返事して\n"
+            "tomoko: 了解。\n"
+            "user: 続きも一言で"
+        ),
+        scope=PromptScope.MAIN,
+        decision_id=None,
+        utterance_id=None,
+        candidate_id=None,
+        priority=50,
+        cancel_policy=CancelPolicy.CANCEL_ON_USER_SPEAKING,
+    )
+
+    for messages_for_request in (tomoko_messages_for_request, hot_path_messages_for_request):
+        messages = messages_for_request(request)
+        assert messages == [
+            {
+                "role": "system",
+                "content": (
+                    "Tomoko v2: natural local voice conversation.\n"
+                    "次のtomoko発話だけ返す。"
+                ),
+            },
+            {"role": "user", "content": "最初に短く返事して"},
+            {"role": "assistant", "content": "了解。"},
+            {"role": "user", "content": "続きも一言で"},
+        ]
 
 
 @pytest.mark.asyncio
@@ -443,9 +515,9 @@ async def test_hot_path_puts_previous_tomoko_reply_in_next_prompt() -> None:
 
     assert second is not None
     assert second.prompt_request is not None
-    assert "recent_user_raw=こんにちは" in second.prompt_request.prompt_text
-    assert "recent_tomoko_raw=聞こえてるよ" in second.prompt_request.prompt_text
-    assert "CURRENT_USER_UTTERANCE:\n俺って聞こえてる" in second.prompt_request.prompt_text
+    assert "user: こんにちは" in second.prompt_request.prompt_text
+    assert "tomoko: 聞こえてるよ" in second.prompt_request.prompt_text
+    assert "user: 俺って聞こえてる" in second.prompt_request.prompt_text
 
 
 @pytest.mark.asyncio

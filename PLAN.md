@@ -432,3 +432,25 @@ tomoko-process が行う。
 - [x] `pytest -m unit` が通る。
 - [x] DB split smoke が通り、session / utterance / speech-order が DB に残る。
 - [x] 5ターン目 prompt で現在発話が stable context と current の両方に重複しない。
+
+## Phase S14: prefix-cache friendly session transcript prompt
+
+dflash prefix cache が multi-turn 会話で効くように、main reply prompt を session transcript 形式へ変更する。
+人間確認用 artifact には `SYSTEM` / `INSTRUCTION` / `SESSION_TRANSCRIPT` を残し、
+LLM transport では `SESSION_TRANSCRIPT` を OpenAI chat roles に分解して送る。
+
+### 実装手順
+
+- [x] main reply prompt を `SYSTEM` / `INSTRUCTION` / `SESSION_TRANSCRIPT` 形式に変更する。
+- [x] `SESSION_TRANSCRIPT` に同一 session の `user:` / `tomoko:` 履歴と現在 user 発話を append-only に積む。
+- [x] 文字列 prompt が next turn で previous turn の prefix になることを unit test で固定する。
+- [x] LLM 送信時に `SESSION_TRANSCRIPT` を `user` / `assistant` role の message list に分解する。
+- [x] hot-path executor と tomoko-process chat backend の両方で同じ role 分解を使う。
+- [x] 5ターン smoke artifact に新 prompt を保存し、dflash prefix-cache-stats を確認する。
+
+### 完了条件
+
+- [x] `pytest -m unit` が通る。
+- [x] `ruff check` が通る。
+- [x] 5ターン real runtime smoke で 2ターン目以降に dflash `prefix cache hit` が出る。
+- [x] first audio latency を `_docs/latency.md` に追記する。
