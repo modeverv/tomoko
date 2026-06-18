@@ -5,11 +5,15 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from fastapi.testclient import TestClient
 
+from server.hot_path.app import app
+from server.hot_path.model_executor import PromptExecutor, StaticChatBackend, StaticWavTtsBackend
 from server.shared.logging import JsonlLogger
 from server.shared.notify import build_notify_message, notify_sql, parse_id_payload
 from server.shared.process import Heartbeat, HeartbeatWriter
 from server.shared.schemas import SCREEN_ACTIVITY_FIXED_LINE_SCHEMA, parse_fixed_line_output
+from server.user_status.ocr_runtime import ocr_runtime_available
 
 pytestmark = pytest.mark.unit
 
@@ -92,10 +96,48 @@ def test_jsonl_logger_writes_structured_event(tmp_path: Path) -> None:
 
 def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     makefile = Path("Makefile").read_text(encoding="utf-8")
-    assert "v2-runtime:" in makefile
-    assert makefile.index("-n hot-path") < makefile.index("-n tomoko")
-    assert "tmux send-keys -t $(V2_TMUX_SESSION):hot-path C-c" in makefile
+    assert "v2-runtime tmux-runtime:" in makefile
+    assert "llm-run:" in makefile
+    assert "voicevox-run:" in makefile
+    assert "v2-runtime-ready:" in makefile
+    assert "v2-ocr-smoke" in makefile
+    assert makefile.index("-n llm-run") < makefile.index("-n hot-path")
+    assert "tmux send-keys -t $(TMUX_SESSION):hot-path C-c" in makefile
     assert "v2-report-latest:" in makefile
+
+
+def test_ocr_runtime_availability_reports_expected_keys() -> None:
+    availability = ocr_runtime_available()
+    assert set(availability) == {"screencapture", "tesseract", "osascript"}
+
+
+def test_hot_path_websocket_uses_prompt_executor_for_text_prompt() -> None:
+    app.state.prompt_executor = PromptExecutor(
+        StaticChatBackend(["うん"]),
+        StaticWavTtsBackend([b"RIFFxxxxWAVEdata"]),
+    )
+    try:
+        with TestClient(app).websocket_connect("/ws") as websocket:
+            ready = json.loads(websocket.receive_text())
+            assert ready["type"] == "ready"
+
+            websocket.send_json({"type": "prompt", "text": "トモコ、返事して"})
+
+            delta = json.loads(websocket.receive_text())
+            complete = json.loads(websocket.receive_text())
+            audio = websocket.receive_bytes()
+            audio_complete = json.loads(websocket.receive_text())
+            done = json.loads(websocket.receive_text())
+    finally:
+        del app.state.prompt_executor
+
+    assert delta["type"] == "model_delta"
+    assert delta["text_delta"] == "うん"
+    assert complete["type"] == "model_complete"
+    assert complete["text"] == "うん"
+    assert audio == b"RIFFxxxxWAVEdata"
+    assert audio_complete["type"] == "audio_complete"
+    assert done["type"] == "prompt_complete"
 
 
 def test_ddl_has_core_tables_and_id_only_notify_function() -> None:

@@ -27,10 +27,37 @@ the process that owns personality, floor control, and session boundaries.
 ```bash
 make check
 make db-up
-make v2-runtime
+make tmux-runtime
 make v2-report-latest
-make v2-stop
+make tmux-stop
 ```
+
+`make tmux-runtime` is the v2 equivalent of the v1 runtime launcher. It starts
+dflash LLM windows, the sibling VOICEVOX streaming runtime, the hot-path server,
+and the separated v2 background processes. The short aliases from v1 are kept:
+
+```bash
+make run    # alias for make tmux-runtime
+make a      # attach tmux
+make stop   # stop dflash and the tmux runtime
+```
+
+Useful focused runtime commands:
+
+```bash
+make llm-run
+make llm-stop
+make voicevox-run
+make v2-runtime-ready
+make v2-ocr-smoke
+make v2-llm-tts-smoke
+```
+
+The default main LLM path follows the v1 measured route: dflash on
+`127.0.0.1:8082` with `v1/loras/lora/fused_model` and
+`z-lab/gemma-4-26B-A4B-it-DFlash`. Summary/background LLM defaults to the 31B
+dflash route on `127.0.0.1:8081`. VOICEVOX defaults to the sibling
+`async-voicevox` streaming command and `127.0.0.1:50122`.
 
 `v1/` is reference-only. When a v1 implementation detail is needed, move the
 smallest required idea or file into the v2 root explicitly and keep the new v2

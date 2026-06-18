@@ -6,7 +6,13 @@ import pytest
 
 from server.audio.stt import StaticStreamingSttBackend, StreamingSttEvent, observation_events
 from server.audio.vad import VADProcessor
-from server.hot_path.model_executor import PromptExecutor, StaticChatBackend, StaticWavTtsBackend
+from server.hot_path.model_executor import (
+    MultipartMixedParser,
+    PromptExecutor,
+    StaticChatBackend,
+    StaticWavTtsBackend,
+    parse_openai_sse_content,
+)
 from server.hot_path.protocol import (
     BrowserJsonEvent,
     encode_server_event,
@@ -75,6 +81,24 @@ def test_browser_protocol_has_single_ws_style_events() -> None:
     assert is_audio_control(parsed)
     assert parse_browser_message(b"\x00\x01") == b"\x00\x01"
     assert encode_server_event("transcript", text="hi") == '{"type": "transcript", "text": "hi"}'
+
+
+def test_openai_sse_and_voicevox_multipart_parsers() -> None:
+    assert parse_openai_sse_content('data: {"choices":[{"delta":{"content":"こん"}}]}') == "こん"
+    assert parse_openai_sse_content("data: [DONE]") is None
+
+    wav = b"RIFFxxxxWAVEdata"
+    body = (
+        b"--abc\r\n"
+        b"Content-Type: audio/wav\r\n"
+        + f"Content-Length: {len(wav)}\r\n".encode("ascii")
+        + b"\r\n"
+        + wav
+        + b"\r\n--abc--\r\n"
+    )
+    parser = MultipartMixedParser("abc")
+    assert parser.feed(body) == [wav]
+    assert parser.finish() == []
 
 
 def test_tomoko_adopts_only_final_stt_observation() -> None:

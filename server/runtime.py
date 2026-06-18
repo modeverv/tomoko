@@ -3,20 +3,33 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 from pathlib import Path
+
+import httpx
+import psycopg
 
 from server.info.main import calendar_dto_map, parse_minimal_ics
 from server.shared.logging import JsonlLogger
 from server.shared.models import new_id
+from server.user_status.ocr_runtime import ocr_runtime_available
 
 
 def readiness_snapshot() -> dict[str, object]:
+    llm_urls = os.environ.get(
+        "TOMOKO_V2_LLM_READY_URLS",
+        "http://127.0.0.1:8081/v1/models http://127.0.0.1:8082/v1/models",
+    ).split()
+    voicevox_url = os.environ.get(
+        "TOMOKO_V2_VOICEVOX_READY_URL",
+        "http://127.0.0.1:50122/version",
+    )
     return {
-        "database_url_env": "TOMOKO_DATABASE_URL",
-        "llm_runtime": "configured externally",
-        "voicevox": "configured externally",
+        "database": _database_ready(),
+        "llm": {url: _http_ready(url) for url in llm_urls},
+        "voicevox": {voicevox_url: _http_ready(voicevox_url)},
         "apple_speech": "macOS runtime required",
-        "ocr": "optional",
+        "ocr": ocr_runtime_available(),
     }
 
 
@@ -69,6 +82,26 @@ def report_latest() -> Path:
         encoding="utf-8",
     )
     return output
+
+
+def _database_ready() -> bool:
+    dsn = os.environ.get("TOMOKO_DATABASE_URL")
+    if not dsn:
+        return False
+    try:
+        with psycopg.connect(dsn, connect_timeout=2) as conn:
+            conn.execute("SELECT 1")
+    except psycopg.Error:
+        return False
+    return True
+
+
+def _http_ready(url: str) -> bool:
+    try:
+        response = httpx.get(url, timeout=2.0)
+    except httpx.HTTPError:
+        return False
+    return response.status_code < 500
 
 
 def main() -> None:

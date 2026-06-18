@@ -42,6 +42,23 @@ NOTIFY は `v2_notify_id(channel_name, event_id)` を経由し、許可 channel 
 root hot-path FastAPI は `/` で `client/index.html`、`/client/*` で静的ファイルを返し、runtime 通信は
 `/ws` のみを使う。client は mic bytes 送信、audio stop command、JSON event 表示に留める。
 
+### v2 runtime launcher は v1 と同じ dflash / VOICEVOX 操作感にする
+2026-06-18 のセッション3で、root `Makefile` に v1 相当の `llm-run` / `llm-stop` /
+`voicevox-run` / `tmux-runtime` / `run` / `stop` / `a` を復元した。
+main LLM は dflash `8082` + `v1/loras/lora/fused_model` + `z-lab/gemma-4-26B-A4B-it-DFlash`、
+summary/background LLM は dflash `8081` + Gemma 4 31B、VOICEVOX は sibling
+`async-voicevox/run_streaming_voicevox.command` + `50122` を既定にする。
+
+### v2 OCR はまず macOS capture + tesseract + OS metadata で実 runtime 化する
+Apple Vision OCR へ切り替える余地は残すが、初期の実 runtime は `screencapture` で画像を取り、
+`tesseract` で文字を拾い、`osascript` で front app / window title / Chrome title / URL を補助証拠として
+保存する。VLM JSON ではなく OCR/OS metadata を主材料にする v1 thinker2 の判断を継承する。
+
+### v2 hot-path の実 prompt smoke は `/ws` 上で完結させる
+root `/ws` は text prompt smoke 用に `prompt` / `text_prompt` / `user_text` event を受け取り、
+`PromptExecutor` 経由で dflash text event と VOICEVOX binary WAV chunk を返す。
+client は server から届く binary WAV を再生するだけで、発話可否や retry などの状態判定は持たない。
+
 ## 未解決の疑問（人間への確認待ち）
 
 ### [2026-06-18] live acceptance の実機検証タイミング

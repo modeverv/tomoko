@@ -1,5 +1,72 @@
 # LOG.md
 
+## 2026-06-18 セッション3
+
+### やること（開始時に書く）
+- root `Makefile` を v1 と同等の操作感に拡張する。
+- v1 の `llm-run` / `voicevox-run` / readiness / tmux runtime を参照し、v2 root に VOICEVOX / dflash LLM / OCR の実 runtime launcher と readiness smoke を用意する。
+- 実 runtime provider は v2 の process 分離に合わせ、hot-path 側の model executor / runtime readiness / user-status OCR に接続する。
+
+### やったこと
+- root `Makefile` を v1 の主要 target 名に合わせて拡張した。
+  - `server` / `server-debug` / `gateway` / `edge-kitchen`
+  - `tmux-runtime` / `run` / `stop` / `a`
+  - `llm-run` / `llm-stop` / `voicevox-run` / `v2-runtime-ready`
+  - background 系の v2 alias と dry-run
+  - `v2-ocr-smoke` / `v2-llm-tts-smoke`
+- `scripts/run_llm.sh` / `scripts/run_llm_stop.sh` / `scripts/run_voicevox.sh` / `scripts/wait_runtime_dependencies.sh` を追加した。
+- dflash LLM は v1 と同じ 31B `8081` / 26B `8082` の tmux window 構成にし、26B は既定で `v1/loras/lora/fused_model` を参照する。
+- VOICEVOX は v1 と同じ sibling `async-voicevox/run_streaming_voicevox.command` を既定 launcher として使う。
+- `OpenAICompatibleChatBackend` と `VoicevoxChunkedTtsBackend` を `server/hot_path/model_executor.py` に追加し、fake backend ではなく実 dflash / VOICEVOX endpoint を叩けるようにした。
+- `server/user_status/ocr_runtime.py` と `scripts/v2_ocr_smoke.py` を追加し、`screencapture` + `tesseract` + `osascript` による OCR / OS metadata 経路を作った。
+- `server.runtime readiness` を実 URL / binary availability を見る形に変更した。
+- `README.md` と `config/v2.toml` に実 runtime の既定値を追記した。
+
+### 詰まったこと・解決したこと
+- `Makefile` は `v2-runtime tmux-runtime:` の複数 target 表記にしたため、既存 unit test の単純文字列期待を更新した。
+- OCR smoke は実行でき、現在画面の OCR / metadata から YouTube 視聴中と判定した。
+- LLM / VOICEVOX endpoint は未起動だったため `readiness` は false。launcher command、`dflash` binary、fused model path、VOICEVOX command の存在確認まで実施した。
+
+### 検証
+- `make check`
+  - unit: 30 passed, 1 deselected
+  - ruff: passed
+- `git diff --check`
+  - passed
+- `uv run python -m server.runtime readiness`
+  - database false
+  - LLM `8081` / `8082` false
+  - VOICEVOX `50122` false
+  - OCR: `screencapture=true`, `tesseract=true`, `osascript=true`
+- `make v2-ocr-smoke`
+  - screenshot saved under `logs/user-status/...-screen.png`
+  - OCR text 2472 chars
+  - activity_label `watching_video`
+  - metadata app `pycharm`, YouTube URL/title detected
+- `command -v dflash`
+  - `/Users/seijiro/.local/share/mise/installs/python/3.14/bin/dflash`
+- `test -d v1/loras/lora/fused_model`
+  - main fused model ok
+- `test -f /Users/seijiro/Sync/sync_work/by-llms/async-voicevox/run_streaming_voicevox.command`
+  - voicevox command ok
+- `make -n llm-run voicevox-run v2-llm-tts-smoke`
+  - expected dflash / VOICEVOX / real smoke commands printed
+- `uv run pytest -m integration -q`
+  - 1 skipped, 30 deselected (`TEST_DATABASE_URL` 未設定)
+
+### 次のセッションでやること
+- `make tmux-runtime` で dflash / VOICEVOX / v2 processes を実起動し、`make v2-runtime-ready` が true になることを確認する。
+- runtime 起動後に `make v2-llm-tts-smoke` を実行して、dflash text delta -> VOICEVOX WAV chunk の実測を `_docs/latency.md` に追記する。
+
+### 追記（実 runtime 接続の追加確認）
+- `server.hot_path.app` の `/ws` が `prompt` / `text_prompt` / `user_text` を受けた時に `PromptExecutor` を呼び、`model_delta` / `model_complete` と binary WAV chunk を返す経路を追加した。
+- `client/main.js` は server から届く binary WAV chunk を `decodeAudioData()` で再生するようにした。client 側で状態判定は増やしていない。
+- 追加 unit `test_hot_path_websocket_uses_prompt_executor_for_text_prompt` を作り、fake executor 注入で `/ws` -> model event -> WAV bytes -> completion の契約を確認した。
+- 再検証:
+  - `make check`: unit 31 passed, 1 deselected / ruff passed
+  - `make v2-ocr-smoke`: OCR text 2422 chars, metadata app `Google Chrome`, Gmail URL detected, activity_label `watching_video`
+  - `uv run pytest -m integration -q`: 1 skipped, 31 deselected (`TEST_DATABASE_URL` 未設定)
+
 ## 2026-06-18 セッション2
 
 ### やること（開始時に書く）

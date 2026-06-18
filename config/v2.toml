@@ -1,6 +1,8 @@
 [runtime]
 database_url_env = "TOMOKO_DATABASE_URL"
 jsonl_log = "logs/v2-runtime.jsonl"
+llm_ready_urls = ["http://127.0.0.1:8081/v1/models", "http://127.0.0.1:8082/v1/models"]
+voicevox_ready_url = "http://127.0.0.1:50122/version"
 
 [vad]
 sample_rate = 16000
@@ -14,8 +16,27 @@ delta_silence_ms = 650
 yielding_threshold = 0.90
 
 [tts.voicevox_chunked]
+url = "http://127.0.0.1:50122"
+speaker_id = 8
+sample_rate = 24000
 segment_length_sec = 0.6
 content_type = "audio/wav"
+
+[llm.main]
+url = "http://127.0.0.1:8082"
+model = "gemma-4-26b-a4b-it-mlx"
+local_model_path = "v1/loras/lora/fused_model"
+draft_model = "z-lab/gemma-4-26B-A4B-it-DFlash"
+
+[llm.summary]
+url = "http://127.0.0.1:8081"
+model = "gemma-4-31b-it-mlx"
+draft_model = "z-lab/gemma-4-31B-it-DFlash"
+
+[ocr]
+capture_command = "screencapture"
+ocr_command = "tesseract"
+metadata_command = "osascript"
 
 [user_status]
 capture_interval_sec = 60
