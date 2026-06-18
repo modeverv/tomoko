@@ -1,5 +1,51 @@
 # LOG.md
 
+## 2026-06-18 セッション21
+
+### やること（開始時に書く）
+- partial STT / E2B / LLM / TTS を WebSocket audio receive loop から非同期 lane に逃がす。
+- audio receive loop が partial 処理待ちで詰まらず、VAD final 検出と音声受信を継続できるようにする。
+- 実 `/ws` smoke で first audio latency と final transcript 順序を再測定し、`_docs/latency.md` に残す。
+
+### やったこと
+- `/ws` direct audio conversation path に `AudioPartialLane` / `AudioFinalLane` を追加した。
+- receive loop は VAD と queue 投入だけを行い、partial STT / E2B / LLM / TTS は background task で処理するようにした。
+- partial lane は queue に溜まった audio chunks を coalesce して、Apple Speech pseudo partial の再実行回数を減らした。
+- final lane は partial lane が idle になるまで短く待ってから final STT を始めるようにした。
+- `SpeechOrderExecutor(protect_inflight_replace=True)` を追加し、partial TTS 合成中に final replace が来ても partial audio を discard しないようにした。
+- partial observation から作る prompt は `短く一文で返す` instruction を付けるようにした。
+- smoke script に `--post-first-audio-ms` を追加し、first audio 後も観測を続けられるようにした。
+
+### 詰まったこと・解決したこと
+- 最初の async 化だけでは final replace が partial TTS の generation を潰し、partial audio が `discarded=1` になった。
+  - 解決: in-flight replace protection を入れた。
+- 次に final result の model_delta 送信が partial audio より先に queue を占有した。
+  - 解決: 音声 chunk が無い queued/deferred speech-order の prompt result は WebSocket に流さないようにした。
+- それでも high partial が final STT に負けるケースがあった。
+  - 解決: final STT 自体を background lane に逃がし、partial lane の idle を短く待ってから final Apple Speech を始めるようにした。
+- partial 返答が長いと VOICEVOX full WAV 待ちが重かった。
+  - 解決: partial prompt を concise にした。
+
+### 検証
+- `uv run pytest -m unit -q`
+  - 77 passed, 1 deselected
+- `uv run ruff check server scripts tests`
+  - passed
+- `git diff --check`
+  - passed
+- `uv run python -m scripts.v2_say_latency_smoke --url ws://127.0.0.1:62235/ws --voice Kyoko --text 'トモコ今日の予定を教えてそれだけで大丈夫です' --continue-after-first-audio --timeout-sec 90`
+  - artifact `logs/say-latency-20260618-160201.json`
+  - voice-end to first audio 860.5ms
+  - partial prompt は concise、TTS text `今は特に決まってないけど、のんびり過ごそうかな。`
+- `uv run python -m scripts.v2_say_latency_smoke --url ws://127.0.0.1:62235/ws --voice Kyoko --text 'トモコ今日の予定を教えてそれだけで大丈夫です' --continue-after-first-audio --post-first-audio-ms 5000 --timeout-sec 90`
+  - artifact `logs/say-latency-20260618-160314.json`
+  - voice-end to first audio 1515.6ms
+  - final transcript 5123.1ms after voice end
+
+### 次のセッションでやること
+- 同一 utterance の partial speech-order と final speech-order を reconcile し、重複 append / duplicate reply を止める。
+- Apple Speech pseudo partial のタイミングばらつきをさらに下げる。必要なら low-saturation partial の E2B 判定頻度を減らす。
+
 ## 2026-06-18 セッション20
 
 ### やること（開始時に書く）

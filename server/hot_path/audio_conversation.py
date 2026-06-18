@@ -4,7 +4,7 @@ import logging
 import math
 import struct
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -72,6 +72,10 @@ class HotPathAudioConversation:
     async def process_audio_samples(
         self,
         samples: tuple[float, ...],
+        *,
+        process_partials: bool = True,
+        partial_callback: Callable[[tuple[float, ...], float], None] | None = None,
+        final_callback: Callable[[AudioSpeechSegment], None] | None = None,
     ) -> HotPathConversationResult | None:
         if not samples:
             return None
@@ -88,7 +92,10 @@ class HotPathAudioConversation:
         )
         partial_result = None
         if speech_probability >= self.vad.speech_threshold:
-            partial_result = await self.process_streaming_partial(samples, now_ms)
+            if partial_callback is not None:
+                partial_callback(samples, now_ms)
+            elif process_partials:
+                partial_result = await self.process_streaming_partial(samples, now_ms)
         if segment is None:
             return partial_result
         self._reset_stt_stream()
@@ -99,6 +106,9 @@ class HotPathAudioConversation:
             started_at=segment.started_at.isoformat(),
             ended_at=segment.ended_at.isoformat(),
         )
+        if final_callback is not None:
+            final_callback(segment)
+            return partial_result
         return await self.process_segment(segment)
 
     async def process_streaming_partial(
@@ -300,7 +310,7 @@ def create_default_audio_conversation(prompt_executor: PromptExecutor) -> HotPat
             chat_backend=chat_backend,
             tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
         ),
-        speech_executor=SpeechOrderExecutor(tts_backend),
+        speech_executor=SpeechOrderExecutor(tts_backend, protect_inflight_replace=True),
     )
 
 

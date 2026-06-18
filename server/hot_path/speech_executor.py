@@ -29,6 +29,7 @@ class SpeechOrderExecutor:
     current_score: float = 0.0
     append_queue: list[SpeechOrder] = field(default_factory=list)
     current_generation: int = 0
+    protect_inflight_replace: bool = False
 
     async def execute(self, order: SpeechOrder) -> SpeechOrderExecutionResult:
         _console_event(
@@ -51,6 +52,18 @@ class SpeechOrderExecutor:
                 "speech_order_queued",
                 order_id=str(order.id),
                 queue_size=len(self.append_queue),
+            )
+            return SpeechOrderExecutionResult(order=order, queued=True)
+
+        if (
+            order.mode == SpeechOrderMode.REPLACE_CURRENT
+            and self.protect_inflight_replace
+            and self.current_order is not None
+        ):
+            _console_event(
+                "speech_order_replace_deferred",
+                order_id=str(order.id),
+                current_order_id=str(self.current_order.id),
             )
             return SpeechOrderExecutionResult(order=order, queued=True)
 

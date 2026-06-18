@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import Callable
+from contextlib import suppress
 from typing import TypeVar
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -17,6 +19,7 @@ from server.audio.vad import VADProcessor
 from server.hot_path.audio_conversation import (
     HotPathAudioConversation,
     HotPathConversationResult,
+    audio_bytes_to_samples,
     create_default_audio_conversation,
 )
 from server.hot_path.db_conversation import HotPathDbSplitConversation
@@ -30,7 +33,7 @@ from server.hot_path.model_executor import (
 from server.hot_path.protocol import encode_server_event, parse_browser_message
 from server.hot_path.speech_executor import SpeechOrderExecutor
 from server.shared.db import default_dsn
-from server.shared.models import CancelPolicy, PromptRequest, PromptScope
+from server.shared.models import AudioSpeechSegment, CancelPolicy, PromptRequest, PromptScope
 from server.tomoko.conversation import TomokoConversationCore
 from server.tomoko.main import TomokoProcessCore
 from server.tomoko.prompt import PromptBuilderV2
@@ -57,6 +60,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     conversation = _audio_conversation()
     if isinstance(conversation, HotPathDbSplitConversation):
         await conversation.warm_connections()
+    result_queue: asyncio.Queue[HotPathConversationResult] = asyncio.Queue()
+    result_sender = asyncio.create_task(_send_audio_result_queue(websocket, result_queue))
+    partial_lane = (
+        AudioPartialLane(conversation, result_queue)
+        if isinstance(conversation, HotPathAudioConversation)
+        else None
+    )
+    final_lane = (
+        AudioFinalLane(conversation, result_queue, partial_lane=partial_lane)
+        if isinstance(conversation, HotPathAudioConversation)
+        else None
+    )
     await websocket.send_text(encode_server_event("ready", process="hot-path"))
     try:
         while True:
@@ -65,13 +80,23 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 _console_event("ws_disconnected")
                 return
             if "bytes" in message and message["bytes"] is not None:
-                result = await conversation.process_audio_bytes(message["bytes"])
-                if result is None:
-                    await websocket.send_text(
-                        encode_server_event("debug_marker", received="audio_bytes")
-                    )
+                if partial_lane is None:
+                    result = await conversation.process_audio_bytes(message["bytes"])
                 else:
-                    await _send_audio_conversation_result(websocket, result)
+                    samples = audio_bytes_to_samples(message["bytes"])
+                    result = await conversation.process_audio_samples(
+                        samples,
+                        process_partials=False,
+                        partial_callback=partial_lane.submit,
+                        final_callback=final_lane.submit if final_lane is not None else None,
+                    )
+                if result is None:
+                    if partial_lane is None:
+                        await websocket.send_text(
+                            encode_server_event("debug_marker", received="audio_bytes")
+                        )
+                else:
+                    await result_queue.put(result)
                 continue
             if "text" in message and message["text"] is not None:
                 event = parse_browser_message(message["text"])
@@ -84,6 +109,151 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     await _run_prompt(websocket, _prompt_request_from_event(event.payload))
     except WebSocketDisconnect:
         return
+    finally:
+        if final_lane is not None:
+            await final_lane.stop()
+        if partial_lane is not None:
+            await partial_lane.stop()
+        result_sender.cancel()
+        with suppress(asyncio.CancelledError):
+            await result_sender
+
+
+class AudioPartialLane:
+    def __init__(
+        self,
+        conversation: HotPathAudioConversation,
+        result_queue: asyncio.Queue[HotPathConversationResult],
+        *,
+        max_queue_size: int = 256,
+    ) -> None:
+        self.conversation = conversation
+        self.result_queue = result_queue
+        self._queue: asyncio.Queue[tuple[int, tuple[float, ...], float]] = asyncio.Queue(
+            maxsize=max_queue_size
+        )
+        self._generation = 0
+        self._idle = asyncio.Event()
+        self._idle.set()
+        self._task = asyncio.create_task(self._run())
+
+    def submit(self, samples: tuple[float, ...], now_ms: float) -> None:
+        self._idle.clear()
+        item = (self._generation, tuple(samples), now_ms)
+        try:
+            self._queue.put_nowait(item)
+        except asyncio.QueueFull:
+            with suppress(asyncio.QueueEmpty):
+                self._queue.get_nowait()
+                self._queue.task_done()
+            self._queue.put_nowait(item)
+
+    def invalidate(self) -> None:
+        self._generation += 1
+        while True:
+            try:
+                self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            self._queue.task_done()
+
+    async def stop(self) -> None:
+        self._task.cancel()
+        with suppress(asyncio.CancelledError):
+            await self._task
+
+    async def wait_idle(self, timeout: float) -> None:
+        with suppress(TimeoutError):
+            await asyncio.wait_for(self._idle.wait(), timeout=timeout)
+
+    async def _run(self) -> None:
+        while True:
+            generation, samples, now_ms = await self._queue.get()
+            try:
+                samples = self._coalesce_pending(generation, samples)
+                if generation != self._generation:
+                    continue
+                result = await self.conversation.process_streaming_partial(samples, now_ms)
+                if result is not None and generation == self._generation:
+                    await self.result_queue.put(result)
+            finally:
+                self._queue.task_done()
+                if self._queue.empty():
+                    self._idle.set()
+
+    def _coalesce_pending(
+        self,
+        generation: int,
+        samples: tuple[float, ...],
+    ) -> tuple[float, ...]:
+        chunks = [samples]
+        while True:
+            try:
+                queued_generation, queued_samples, _queued_now_ms = self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            try:
+                if queued_generation == generation:
+                    chunks.append(queued_samples)
+            finally:
+                self._queue.task_done()
+        if len(chunks) == 1:
+            return samples
+        return tuple(sample for chunk in chunks for sample in chunk)
+
+
+class AudioFinalLane:
+    def __init__(
+        self,
+        conversation: HotPathAudioConversation,
+        result_queue: asyncio.Queue[HotPathConversationResult],
+        *,
+        partial_lane: AudioPartialLane | None,
+        partial_wait_timeout_sec: float = 1.5,
+    ) -> None:
+        self.conversation = conversation
+        self.result_queue = result_queue
+        self.partial_lane = partial_lane
+        self.partial_wait_timeout_sec = partial_wait_timeout_sec
+        self._queue: asyncio.Queue[AudioSpeechSegment] = asyncio.Queue(maxsize=4)
+        self._task = asyncio.create_task(self._run())
+
+    def submit(self, segment: AudioSpeechSegment) -> None:
+        try:
+            self._queue.put_nowait(segment)
+        except asyncio.QueueFull:
+            with suppress(asyncio.QueueEmpty):
+                self._queue.get_nowait()
+                self._queue.task_done()
+            self._queue.put_nowait(segment)
+
+    async def stop(self) -> None:
+        self._task.cancel()
+        with suppress(asyncio.CancelledError):
+            await self._task
+
+    async def _run(self) -> None:
+        while True:
+            segment = await self._queue.get()
+            try:
+                if self.partial_lane is not None:
+                    await self.partial_lane.wait_idle(self.partial_wait_timeout_sec)
+                result = await self.conversation.process_segment(segment)
+                await self.result_queue.put(result)
+            finally:
+                self._queue.task_done()
+
+
+async def _send_audio_result_queue(
+    websocket: WebSocket,
+    result_queue: asyncio.Queue[HotPathConversationResult],
+) -> None:
+    while True:
+        result = await result_queue.get()
+        try:
+            await _send_audio_conversation_result(websocket, result)
+        finally:
+            result_queue.task_done()
 
 
 async def _send_audio_conversation_result(
@@ -152,6 +322,13 @@ async def _send_audio_conversation_result(
             )
         )
     if result.prompt_request is None:
+        return
+    if result.speech_order is not None and not result.execution_result.audio_chunks:
+        _console_event(
+            "prompt_result_deferred",
+            request_id=str(result.prompt_request.id),
+            order_id=str(result.speech_order.id),
+        )
         return
     await _send_prompt_execution_result(websocket, result.prompt_request, result.execution_result)
 
@@ -299,7 +476,7 @@ def _audio_conversation() -> HotPathAudioConversation | HotPathDbSplitConversati
                 )
                 if _fake_runtime_enabled()
                 else AppleSpeechStreamingBackend(),
-                speech_executor=SpeechOrderExecutor(tts_backend),
+                speech_executor=SpeechOrderExecutor(tts_backend, protect_inflight_replace=True),
             )
         elif _fake_runtime_enabled():
             chat_backend = StaticChatBackend(
@@ -325,7 +502,7 @@ def _audio_conversation() -> HotPathAudioConversation | HotPathDbSplitConversati
                     tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
                     prompt_builder=PromptBuilderV2(),
                 ),
-                speech_executor=SpeechOrderExecutor(tts_backend),
+                speech_executor=SpeechOrderExecutor(tts_backend, protect_inflight_replace=True),
             )
         else:
             conversation = create_default_audio_conversation(_prompt_executor())

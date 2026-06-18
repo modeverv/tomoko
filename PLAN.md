@@ -492,7 +492,7 @@ v2 でも同じ `streaming` / `stream_interval_ms` / `stream_min_audio_ms` /
 - [x] partial saturation が閾値未満なら speech-order を出さない gate を追加する。
 - [x] focused unit test で partial emit / duplicate suppression / hot-path partial speech-order を固定する。
 - [x] 実 `/ws` smoke で final transcript 前の partial speech-order を artifact に残す。
-- [ ] partial STT / E2B / LLM / TTS を WebSocket audio receive loop から非同期に逃がす。
+- [x] partial STT / E2B / LLM / TTS を WebSocket audio receive loop から非同期に逃がす。
 - [ ] partial 由来 speech-order 後の final STT で重複発話しないように reconcile する。
 
 ### 完了条件
@@ -501,3 +501,13 @@ v2 でも同じ `streaming` / `stream_interval_ms` / `stream_min_audio_ms` /
 - [x] `ruff check` が通る。
 - [x] 実 E2B endpoint で partial 由来の scheduler `replace_current` が final transcript 前に出る。
 - [ ] first audio がユーザー発話終了前、または終了直後の目標範囲に入る。
+
+## 2026-06-18 セッション21 進捗追記
+
+partial STT / E2B / LLM / TTS と final STT を WebSocket receive loop から background lane に逃がした。
+partial lane は queued audio chunks を coalesce し、final lane は partial lane が idle になるまで短く待ってから
+final Apple Speech を始める。partial 返答は concise prompt にして、VOICEVOX full WAV 待ちを短くした。
+
+clean smoke では `logs/say-latency-20260618-160201.json` で voice-end to first audio 860.5ms、
+final 確認込みでは `logs/say-latency-20260618-160314.json` で 1515.6ms。
+前回の 4058〜4492ms より改善したが、目標範囲としてはまだ不安定なので完了条件は未チェックのまま残す。

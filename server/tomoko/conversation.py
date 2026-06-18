@@ -157,7 +157,11 @@ class TomokoConversationCore:
                 speech_order=None,
             )
 
-        request = self.prompt_builder.build_main_reply(snapshot, basis_text)
+        request = self.prompt_builder.build_main_reply(
+            snapshot,
+            basis_text,
+            concise=not observation.is_final,
+        )
         model_events = await self._generate_model_events(request)
         text_out = next(
             (event.text for event in model_events if event.event_kind == "complete"),

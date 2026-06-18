@@ -264,3 +264,24 @@ final STT より 5108.4ms 早い。
 ただし first audio は voice-end から 4492.5ms 後で、ユーザー発話終了前の発話開始にはなっていない。
 原因は partial STT / E2B saturation / LLM / TTS を WebSocket audio receive loop 内で await しており、
 音声受信と VAD final 検出が詰まるため。次は partial 処理を audio receive loop から非同期に逃がす。
+
+## 2026-06-18 セッション21 確定した判断
+
+### partial / final processing は WebSocket receive loop から逃がす
+`/ws` の audio receive loop で partial STT / E2B / LLM / TTS を await すると、
+音声受信と VAD final 検出が詰まる。hot-path direct conversation では
+`AudioPartialLane` と `AudioFinalLane` を持ち、receive loop は VAD と queue 投入だけを行う。
+partial lane は queue に溜まった chunk を coalesce して Apple Speech pseudo partial の再実行回数を減らす。
+final lane は partial lane が idle になるまで短く待ってから final STT を始め、Apple Speech を奪い合わない。
+
+### partial reply は concise prompt にする
+partial early-start は最初の音声到着が目的なので、partial observation から作る prompt は
+`短く一文で返す` にする。これにより今回の smoke では partial WAV が 271916 bytes から
+112684 bytes 程度まで縮んだ。
+
+### async lane 後も reconcile は未完了
+clean smoke の best artifact `logs/say-latency-20260618-160201.json` は voice-end to first audio 860.5ms。
+final 確認込みの `logs/say-latency-20260618-160314.json` は first audio 1515.6ms、
+final transcript 5123.1ms。前回の 4058〜4492ms より改善した。
+ただし partial 由来の発話後に final / 後続 partial が append される重複はまだ残る。
+次は同一 utterance の partial speech-order と final speech-order を reconcile する。

@@ -195,6 +195,33 @@ async def test_speech_order_executor_replace_append_stop_and_generation_guard() 
 
 
 @pytest.mark.asyncio
+async def test_speech_order_executor_can_protect_inflight_replace_audio() -> None:
+    executor = SpeechOrderExecutor(
+        StaticWavTtsBackend([b"RIFFxxxxWAVEdata"]),
+        protect_inflight_replace=True,
+    )
+    current = SpeechOrder(
+        text="partial reply",
+        mode=SpeechOrderMode.REPLACE_CURRENT,
+        reason="partial",
+        priority=100,
+    )
+    executor.begin_external_playback(current, score=1.0)
+
+    final_replace = SpeechOrder(
+        text="final reply",
+        mode=SpeechOrderMode.REPLACE_CURRENT,
+        reason="final",
+        priority=100,
+    )
+    result = await executor.execute(final_replace)
+
+    assert result.queued is True
+    assert result.audio_chunks == []
+    assert executor.current_order == current
+
+
+@pytest.mark.asyncio
 async def test_in_process_vertical_slice_stt_to_speech_order_to_audio() -> None:
     now = utc_now()
     segment = AudioSpeechSegment(

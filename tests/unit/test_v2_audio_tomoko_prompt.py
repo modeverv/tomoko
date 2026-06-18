@@ -272,6 +272,28 @@ async def test_hot_path_can_emit_partial_speech_order_before_vad_final() -> None
     assert stt_backend.reset_count == 1
 
 
+@pytest.mark.asyncio
+async def test_hot_path_can_enqueue_partial_without_awaiting_partial_stt() -> None:
+    stt_backend = _PartialThenFinalSttBackend()
+    conversation = HotPathAudioConversation(
+        vad=VADProcessor(sample_rate=1000, pre_roll_ms=0, silence_ms=100),
+        stt_backend=stt_backend,
+        speech_rms_threshold=0.02,
+    )
+    submitted: list[tuple[int, float]] = []
+
+    result = await conversation.process_audio_samples(
+        (0.2,) * 100,
+        process_partials=False,
+        partial_callback=lambda samples, now_ms: submitted.append((len(samples), now_ms)),
+    )
+
+    assert result is None
+    assert len(submitted) == 1
+    assert submitted[0][0] == 100
+    assert stt_backend.partial_sent is False
+
+
 async def test_hot_path_does_not_prompt_for_blank_final_stt() -> None:
     stt_backend = _RecordingSttBackend(text="")
     conversation = HotPathAudioConversation(
@@ -561,6 +583,24 @@ def test_prompt_builder_next_turn_keeps_previous_prompt_as_prefix() -> None:
 
     assert second.prompt_text.startswith(first.prompt_text)
     assert second.prompt_text[len(first.prompt_text):].startswith("\ntomoko: 了解。")
+
+
+def test_prompt_builder_can_request_concise_partial_reply() -> None:
+    snapshot = ContextSnapshotBuilderV2().build(
+        session_id=None,
+        recent_utterances=[],
+        summaries=[],
+        calendar_loader=lambda: {},
+        user_status=None,
+        candidates=[],
+    )
+    prompt = PromptBuilderV2().build_main_reply(
+        snapshot,
+        "その今日の予定を教えて",
+        concise=True,
+    )
+
+    assert "INSTRUCTION:\n次のtomoko発話だけ返す。短く一文で返す。" in prompt.prompt_text
 
 
 def test_session_transcript_prompt_is_sent_as_chat_roles() -> None:

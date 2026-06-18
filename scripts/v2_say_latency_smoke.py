@@ -48,6 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--chunk-samples", type=int, default=128)
     parser.add_argument("--trailing-silence-ms", type=int, default=2500)
     parser.add_argument("--continue-after-first-audio", action="store_true")
+    parser.add_argument("--post-first-audio-ms", type=int, default=0)
     parser.add_argument("--timeout-sec", type=float, default=45.0)
     parser.add_argument("--output-dir", default="logs")
     return parser.parse_args()
@@ -182,6 +183,8 @@ async def measure(args: argparse.Namespace, wav_path: Path) -> SayLatencyResult:
         try:
             await asyncio.wait_for(first_audio_seen.wait(), timeout=args.timeout_sec)
         finally:
+            if first_audio_seen.is_set() and args.post_first_audio_ms > 0:
+                await asyncio.sleep(args.post_first_audio_ms / 1000.0)
             try:
                 await asyncio.wait_for(prompt_done.wait(), timeout=5.0)
             except TimeoutError:

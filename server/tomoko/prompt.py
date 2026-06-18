@@ -20,13 +20,24 @@ def is_clock_question(text: str) -> bool:
 class PromptBuilderV2:
     system_header: str = "Tomoko v2: natural local voice conversation."
 
-    def build_main_reply(self, snapshot: ContextSnapshot, current_utterance: str) -> PromptRequest:
+    def build_main_reply(
+        self,
+        snapshot: ContextSnapshot,
+        current_utterance: str,
+        *,
+        concise: bool = False,
+    ) -> PromptRequest:
         calendar = {} if is_clock_question(current_utterance) else snapshot.calendar_items
+        instruction = (
+            "次のtomoko発話だけ返す。短く一文で返す。"
+            if concise
+            else "次のtomoko発話だけ返す。"
+        )
         sections = [
             "SYSTEM:",
             self._format_system(snapshot, calendar),
             "INSTRUCTION:",
-            "次のtomoko発話だけ返す。",
+            instruction,
             "SESSION_TRANSCRIPT:",
             self._format_session_transcript(snapshot, current_utterance),
         ]
