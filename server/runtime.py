@@ -36,13 +36,21 @@ def readiness_snapshot() -> dict[str, object]:
 
 async def run_process(process_name: str) -> None:
     logger = JsonlLogger(Path("logs/v2-runtime.jsonl"))
-    logger.log("process_start", process=process_name, readiness=readiness_snapshot())
+    readiness = readiness_snapshot()
+    logger.log("process_start", process=process_name, readiness=readiness)
+    _console_event(
+        process_name,
+        "process_start",
+        readiness=json.dumps(readiness, ensure_ascii=False),
+    )
     try:
         while True:
             logger.log("heartbeat", process=process_name)
+            _console_event(process_name, "heartbeat")
             await asyncio.sleep(5)
     except asyncio.CancelledError:
         logger.log("process_stop", process=process_name)
+        _console_event(process_name, "process_stop", reason="cancelled")
         raise
 
 
@@ -55,6 +63,7 @@ END:VEVENT
     events = parse_minimal_ics(sample)
     payload = {"events": calendar_dto_map(events)}
     JsonlLogger(Path("logs/v2-runtime.jsonl")).log("info_once", **payload)
+    _console_event("runtime", "info_once", events=len(events))
     return payload
 
 
@@ -123,12 +132,25 @@ def main() -> None:
                 process=args.name,
                 reason="keyboard_interrupt",
             )
+            _console_event(args.name, "process_stop", reason="keyboard_interrupt")
     elif args.command == "info-once":
         print(json.dumps(info_once(), ensure_ascii=False))
     elif args.command == "readiness":
-        print(json.dumps(readiness_snapshot(), ensure_ascii=False))
+        snapshot = readiness_snapshot()
+        _console_event("runtime", "readiness", readiness=json.dumps(snapshot, ensure_ascii=False))
+        print(json.dumps(snapshot, ensure_ascii=False))
     elif args.command == "report-latest":
         print(report_latest())
+
+
+def _console_event(process: str, event: str, **fields: object) -> None:
+    parts = [f"[tomoko:{process}] {event}"]
+    for key, value in fields.items():
+        text = str(value)
+        if len(text) > 180:
+            text = text[:177] + "..."
+        parts.append(f"{key}={text!r}")
+    print(" ".join(parts), flush=True)
 
 
 if __name__ == "__main__":

@@ -62,7 +62,9 @@ class AppleSpeechStreamingBackend:
         self,
         segment: AudioSpeechSegment,
     ) -> AsyncIterator[StreamingSttEvent]:
+        _console_event("apple_speech_start", samples=len(segment.samples), rate=segment.sample_rate)
         text = await asyncio.to_thread(self._transcribe_audio, segment)
+        _console_event("apple_speech_done", text=text)
         yield StreamingSttEvent(text=text, is_final=True, stability=1.0)
 
     async def warm_up(self) -> None:
@@ -238,3 +240,13 @@ def _is_no_speech_error(detail: str) -> bool:
     except json.JSONDecodeError:
         return NO_SPEECH_ERROR in detail
     return str(payload.get("error", "")).strip() == NO_SPEECH_ERROR
+
+
+def _console_event(event: str, **fields: object) -> None:
+    parts = [f"[tomoko:stt] {event}"]
+    for key, value in fields.items():
+        text = str(value)
+        if len(text) > 120:
+            text = text[:117] + "..."
+        parts.append(f"{key}={text!r}")
+    print(" ".join(parts), flush=True)

@@ -1,5 +1,38 @@
 # LOG.md
 
+## 2026-06-18 セッション7
+
+### やること（開始時に書く）
+- 各プロセスの tmux console を見て何が起きているかわかるよう、runtime / hot-path / audio / STT の標準出力ログを増やす。
+- client UI に STT final と TTS result をタイムライン表示する。
+
+### やったこと
+- `server.runtime` の long-lived process が `process_start` / `heartbeat` / `process_stop` / `readiness` を標準出力にも出すようにした。
+- hot-path `/ws` で `ws_connected`, `audio_bytes`, `client_event`, `stt_observation`, `durable_utterance`, `model_delta`, `model_complete`, `tts_result`, `audio_chunk`, `prompt_complete` を console-visible にした。
+- audio conversation 境界で `vad_segment`, `stt_start`, `stt_done`, `blank_final_stt_ignored`, `prompt_built` を出すようにした。
+- Apple Speech backend で `apple_speech_start` / `apple_speech_done` を出すようにした。
+- `/ws` の prompt 実行結果に `tts_result` JSON event を追加し、TTSに渡した最終テキスト・chunk数・byte数を client に送るようにした。
+- client UI に timeline section を追加し、STT final と TTS result を時刻付きで表示するようにした。
+- client の browser console に websocket event / audio chunk / audio play を出すようにした。
+
+### 詰まったこと・解決したこと
+- `tts_result` は binary audio chunk より前に送ることで、client / test が TTS内容をテキストイベントとして確実に拾えるようにした。
+- hot-path の live uvicorn `--reload` が変更を検知し、実起動中の server process も更新済み。
+
+### 検証
+- `uv run pytest tests/unit/test_v2_runtime_foundation.py::test_hot_path_websocket_uses_prompt_executor_for_text_prompt tests/unit/test_v2_runtime_foundation.py::test_client_renders_stt_and_tts_timeline -q`
+  - 2 passed
+- `make check`
+  - unit: 38 passed, 1 deselected
+  - ruff: passed
+- `make v2-conversation-smoke`
+  - console-visible log に `audio_bytes -> vad_segment -> stt_start/stt_done -> stt_observation -> durable_utterance -> model_complete -> tts_result -> audio_chunk -> prompt_complete` が出ることを確認
+- `node --check client/main.js`
+  - passed
+
+### 次のセッションでやること
+- 実ブラウザ会話で timeline と hot-path pane を見ながら、話し続ける原因が blank STT / repeated non-empty transcript / prompt repeat のどれかを特定する。
+
 ## 2026-06-18 セッション6
 
 ### やること（開始時に書く）

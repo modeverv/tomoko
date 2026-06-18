@@ -8,12 +8,19 @@
   </head>
   <body>
     <main>
-      <section id="status">disconnected</section>
+      <header class="topbar">
+        <section id="status">disconnected</section>
+        <section id="debug"></section>
+      </header>
       <section id="transcript"></section>
-      <section id="debug"></section>
-      <button id="connect" type="button">Connect</button>
-      <button id="stop-audio" type="button">Stop</button>
-      <select id="audio-output"></select>
+      <section id="timeline" aria-label="conversation timeline">
+        <ol id="timeline-items"></ol>
+      </section>
+      <section class="controls">
+        <button id="connect" type="button">Connect</button>
+        <button id="stop-audio" type="button">Stop</button>
+        <select id="audio-output"></select>
+      </section>
     </main>
     <script type="module" src="/client/main.js"></script>
   </body>

@@ -155,6 +155,7 @@ def test_hot_path_websocket_uses_prompt_executor_for_text_prompt() -> None:
 
             delta = json.loads(websocket.receive_text())
             complete = json.loads(websocket.receive_text())
+            tts_result = json.loads(websocket.receive_text())
             audio = websocket.receive_bytes()
             audio_complete = json.loads(websocket.receive_text())
             done = json.loads(websocket.receive_text())
@@ -165,9 +166,26 @@ def test_hot_path_websocket_uses_prompt_executor_for_text_prompt() -> None:
     assert delta["text_delta"] == "うん"
     assert complete["type"] == "model_complete"
     assert complete["text"] == "うん"
+    assert tts_result["type"] == "tts_result"
+    assert tts_result["text"] == "うん"
+    assert tts_result["audio_chunks"] == 1
     assert audio == b"RIFFxxxxWAVEdata"
     assert audio_complete["type"] == "audio_complete"
     assert done["type"] == "prompt_complete"
+
+
+def test_client_renders_stt_and_tts_timeline() -> None:
+    index = Path("client/index.html").read_text(encoding="utf-8")
+    script = Path("client/main.js").read_text(encoding="utf-8")
+    styles = Path("client/styles.css").read_text(encoding="utf-8")
+
+    assert 'id="timeline"' in index
+    assert 'id="timeline-items"' in index
+    assert "appendTimelineItem" in script
+    assert 'payload.type === "transcript" && payload.is_final' in script
+    assert 'payload.type === "tts_result"' in script
+    assert "console.log" in script
+    assert ".timeline-item" in styles
 
 
 def test_ddl_has_core_tables_and_id_only_notify_function() -> None:

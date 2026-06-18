@@ -13,12 +13,71 @@ main {
   gap: 16px;
 }
 
+.topbar,
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 button,
 select {
   min-height: 36px;
 }
 
+#transcript {
+  min-height: 32px;
+  padding: 12px 0;
+  font-size: 20px;
+}
+
 #debug {
   color: #aaa;
   font-size: 13px;
+}
+
+#timeline {
+  border-top: 1px solid #333;
+  padding-top: 12px;
+}
+
+#timeline-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.timeline-item {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 4px 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #242424;
+}
+
+.timeline-kind {
+  font-size: 12px;
+  font-weight: 700;
+  color: #9fd6ff;
+}
+
+.timeline-item-tts .timeline-kind {
+  color: #a7efbd;
+}
+
+.timeline-item-system .timeline-kind {
+  color: #c8c8c8;
+}
+
+.timeline-text {
+  overflow-wrap: anywhere;
+}
+
+.timeline-meta {
+  grid-column: 2;
+  color: #8d8d8d;
+  font-size: 12px;
 }

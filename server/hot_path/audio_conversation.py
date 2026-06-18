@@ -73,10 +73,19 @@ class HotPathAudioConversation:
         )
         if segment is None:
             return None
+        _console_event(
+            "vad_segment",
+            samples=len(segment.samples),
+            sample_rate=segment.sample_rate,
+            started_at=segment.started_at.isoformat(),
+            ended_at=segment.ended_at.isoformat(),
+        )
         return await self.process_segment(segment)
 
     async def process_segment(self, segment: AudioSpeechSegment) -> HotPathConversationResult:
+        _console_event("stt_start", samples=len(segment.samples))
         observations = await observation_events(segment, self.stt_backend)
+        _console_event("stt_done", observations=len(observations))
         final_observation = next(
             (observation for observation in observations if observation.is_final),
             None,
@@ -91,6 +100,10 @@ class HotPathAudioConversation:
                 logger.info(
                     "blank_final_stt_ignored observation_id=%s",
                     final_observation.id,
+                )
+                _console_event(
+                    "blank_final_stt_ignored",
+                    observation_id=str(final_observation.id),
                 )
             return HotPathConversationResult(
                 observations=observations,
@@ -110,6 +123,11 @@ class HotPathAudioConversation:
             candidates=[],
         )
         request = self.prompt_builder.build_main_reply(snapshot, durable.text)
+        _console_event(
+            "prompt_built",
+            request_id=str(request.id),
+            utterance=durable.text,
+        )
         execution_result = await self.prompt_executor.execute(request)
         return HotPathConversationResult(
             observations=observations,
@@ -142,3 +160,13 @@ def speech_probability_from_rms(samples: tuple[float, ...], *, threshold: float)
         return 0.0
     rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
     return min(1.0, rms / threshold)
+
+
+def _console_event(event: str, **fields: object) -> None:
+    parts = [f"[tomoko:audio] {event}"]
+    for key, value in fields.items():
+        text = str(value)
+        if len(text) > 120:
+            text = text[:117] + "..."
+        parts.append(f"{key}={text!r}")
+    print(" ".join(parts), flush=True)

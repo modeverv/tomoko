@@ -43,13 +43,16 @@ async def index() -> FileResponse:
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
+    _console_event("ws_connected")
     await websocket.send_text(encode_server_event("ready", process="hot-path"))
     try:
         while True:
             message = await websocket.receive()
             if message["type"] == "websocket.disconnect":
+                _console_event("ws_disconnected")
                 return
             if "bytes" in message and message["bytes"] is not None:
+                _console_event("audio_bytes", bytes=len(message["bytes"]))
                 result = await _audio_conversation().process_audio_bytes(message["bytes"])
                 if result is None:
                     await websocket.send_text(
@@ -60,6 +63,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 continue
             if "text" in message and message["text"] is not None:
                 event = parse_browser_message(message["text"])
+                if not isinstance(event, bytes):
+                    _console_event("client_event", event_type=event.event_type)
                 if not isinstance(event, bytes) and event.event_type == "audio_control":
                     await websocket.send_text(encode_server_event("audio_control_ack"))
                     continue
@@ -74,6 +79,11 @@ async def _send_audio_conversation_result(
     result: HotPathConversationResult,
 ) -> None:
     for observation in result.observations:
+        _console_event(
+            "stt_observation",
+            final=observation.is_final,
+            text=observation.text,
+        )
         await websocket.send_text(
             encode_server_event(
                 "transcript",
@@ -83,6 +93,11 @@ async def _send_audio_conversation_result(
             )
         )
     if result.durable_utterance is not None:
+        _console_event(
+            "durable_utterance",
+            text=result.durable_utterance.text,
+            session_id=str(result.durable_utterance.session_id),
+        )
         await websocket.send_text(
             encode_server_event(
                 "durable_utterance",
@@ -98,8 +113,15 @@ async def _send_audio_conversation_result(
 
 async def _run_prompt(websocket: WebSocket, request: PromptRequest) -> None:
     try:
+        _console_event("prompt_start", request_id=str(request.id), scope=request.scope.value)
         result = await _prompt_executor().execute(request)
     except Exception as exc:
+        _console_event(
+            "prompt_error",
+            request_id=str(request.id),
+            error=type(exc).__name__,
+            message=str(exc),
+        )
         await websocket.send_text(
             encode_server_event(
                 "prompt_error",
@@ -120,6 +142,11 @@ async def _send_prompt_execution_result(
 ) -> None:
     for event in result.model_events:
         if event.event_kind == "delta":
+            _console_event(
+                "model_delta",
+                request_id=str(event.request_id),
+                chars=len(event.text_delta),
+            )
             await websocket.send_text(
                 encode_server_event(
                     "model_delta",
@@ -128,6 +155,11 @@ async def _send_prompt_execution_result(
                 )
             )
         elif event.event_kind == "complete":
+            _console_event(
+                "model_complete",
+                request_id=str(event.request_id),
+                text=event.text,
+            )
             await websocket.send_text(
                 encode_server_event(
                     "model_complete",
@@ -136,7 +168,36 @@ async def _send_prompt_execution_result(
                 )
             )
 
+    tts_text = next(
+        (event.text for event in result.model_events if event.event_kind == "complete"),
+        "",
+    )
+    if result.audio_chunks:
+        _console_event(
+            "tts_result",
+            request_id=str(request.id),
+            text=tts_text,
+            chunks=len(result.audio_chunks),
+            bytes=sum(len(chunk.chunk) for chunk in result.audio_chunks),
+        )
+        await websocket.send_text(
+            encode_server_event(
+                "tts_result",
+                request_id=str(request.id),
+                text=tts_text,
+                audio_chunks=len(result.audio_chunks),
+                audio_bytes=sum(len(chunk.chunk) for chunk in result.audio_chunks),
+                content_type=result.audio_chunks[-1].content_type,
+            )
+        )
+
     for chunk in result.audio_chunks:
+        _console_event(
+            "audio_chunk",
+            request_id=str(chunk.request_id),
+            bytes=len(chunk.chunk),
+            final=chunk.is_final,
+        )
         await websocket.send_bytes(chunk.chunk)
         if chunk.is_final:
             await websocket.send_text(
@@ -149,6 +210,7 @@ async def _send_prompt_execution_result(
             )
 
     await websocket.send_text(encode_server_event("prompt_complete", request_id=str(request.id)))
+    _console_event("prompt_complete", request_id=str(request.id))
 
 
 def _prompt_executor() -> PromptExecutor:
@@ -229,3 +291,13 @@ def _enum_or_default(
         return enum_factory(str(value))
     except ValueError:
         return default
+
+
+def _console_event(event: str, **fields: object) -> None:
+    parts = [f"[tomoko:hot-path] {event}"]
+    for key, value in fields.items():
+        text = str(value)
+        if len(text) > 120:
+            text = text[:117] + "..."
+        parts.append(f"{key}={text!r}")
+    print(" ".join(parts), flush=True)
