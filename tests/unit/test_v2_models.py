@@ -14,9 +14,19 @@ from server.shared.models import (
     ContextSnapshot,
     ConversationHistoryItem,
     PartialTranscriptObservation,
+    SemanticSaturationResult,
     SessionSummary,
     SpeechDecision,
     SpeechDecisionKind,
+    SpeechOrder,
+    SpeechOrderMode,
+    SpeechPressureState,
+    SpeechSchedulerAction,
+    SpeechSchedulerInput,
+    SpeechSchedulerOutput,
+    SpeechSchedulerThresholds,
+    SpeechSchedulerWeights,
+    SpeechTextIntent,
     UserStatusObservation,
     utc_now,
 )
@@ -35,6 +45,13 @@ def test_all_v2_boundary_dtos_live_in_shared_models() -> None:
         "AudioChunkOut",
         "FloorObservation",
         "SpeechDecision",
+        "SpeechOrder",
+        "SpeechSchedulerInput",
+        "SpeechPressureState",
+        "SpeechSchedulerWeights",
+        "SpeechSchedulerThresholds",
+        "SpeechSchedulerOutput",
+        "SemanticSaturationResult",
         "UserStatusObservation",
         "ContextSnapshot",
         "ConversationHistoryItem",
@@ -137,3 +154,55 @@ def test_context_snapshot_keeps_structured_children() -> None:
     assert snapshot.to_dict()["recent_history"][1]["speaker"] == "tomoko"
     assert snapshot.to_dict()["summaries"][0]["keyword"] == "DDD"
     assert snapshot.to_dict()["user_status"]["activity_label"] == "coding_or_terminal"
+
+
+def test_speech_order_and_scheduler_dtos_round_trip_with_slots() -> None:
+    order = SpeechOrder(
+        text="返事するね",
+        mode=SpeechOrderMode.REPLACE_CURRENT,
+        reason="reply pressure crossed threshold",
+        priority=80,
+    )
+    scheduler_input = SpeechSchedulerInput(
+        final_stt_text="トモコ、今いい?",
+        stable_prefix="トモコ、今いい?",
+        semantic_saturation=0.92,
+        silence_ms=520,
+        p_yielding=0.95,
+        current_speech_order=order,
+        current_speech_score=0.2,
+    )
+    restored_input = SpeechSchedulerInput.from_dict(scheduler_input.to_dict())
+    assert restored_input.current_speech_order == order
+    assert restored_input.current_speech_order.mode == SpeechOrderMode.REPLACE_CURRENT
+
+    output = SpeechSchedulerOutput(
+        action=SpeechSchedulerAction.REPLACE_CURRENT,
+        text_intent=SpeechTextIntent.REPLY,
+        llm_prompt_basis="user_reply: トモコ、今いい?",
+        reason="reply pressure crossed threshold",
+        score=0.95,
+        score_breakdown={"reply": 0.6, "saturation": 0.35},
+    )
+    assert SpeechSchedulerOutput.from_dict(output.to_dict()) == output
+
+    saturation = SemanticSaturationResult(
+        saturation=0.8,
+        source="deterministic",
+        basis_text="トモコ、今いい?",
+    )
+    assert SemanticSaturationResult.from_dict(saturation.to_dict()) == saturation
+    assert hasattr(SpeechOrder, "__slots__")
+    assert hasattr(SpeechSchedulerOutput, "__slots__")
+
+
+def test_scheduler_weight_and_pressure_defaults_are_serializable() -> None:
+    pressure = SpeechPressureState(reply_pressure=0.5)
+    weights = SpeechSchedulerWeights()
+    thresholds = SpeechSchedulerThresholds()
+
+    assert SpeechPressureState.from_dict(pressure.to_dict()) == pressure
+    assert SpeechSchedulerWeights.from_dict(weights.to_dict()) == weights
+    assert SpeechSchedulerThresholds.from_dict(thresholds.to_dict()) == thresholds
+    assert thresholds.speak_threshold > 0
+    assert weights.saturation_weight > 0

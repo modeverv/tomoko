@@ -70,6 +70,10 @@ def _deserialize_value(value: Any, annotation: Any) -> Any:
         return bytes(value)
     if isinstance(annotation, type) and issubclass(annotation, StrEnum):
         return annotation(str(value))
+    if isinstance(annotation, type) and is_dataclass(annotation):
+        if issubclass(annotation, SerializableDto):
+            return annotation.from_dict(dict(value))
+        return annotation(**dict(value))
     if origin is tuple:
         args = get_args(annotation)
         item_type = args[0] if args else Any
@@ -162,6 +166,29 @@ class StopArbitration(StrEnum):
     ALLOW_ONE_MORE = "allow_one_more"
 
 
+class SpeechOrderMode(StrEnum):
+    REPLACE_CURRENT = "replace_current"
+    APPEND_AFTER_CURRENT = "append_after_current"
+    STOP = "stop"
+
+
+class SpeechSchedulerAction(StrEnum):
+    SUPPRESS = "suppress"
+    ENQUEUE = "enqueue"
+    REPLACE_CURRENT = "replace_current"
+    APPEND_AFTER_CURRENT = "append_after_current"
+    STOP = "stop"
+
+
+class SpeechTextIntent(StrEnum):
+    REPLY = "reply"
+    INITIATIVE = "initiative"
+    CALENDAR_NOTICE = "calendar_notice"
+    FOLLOWUP = "followup"
+    CORRECTION = "correction"
+    STOP = "stop"
+
+
 @dataclass(slots=True)
 class AudioSpeechSegment(SerializableDto):
     samples: tuple[float, ...]
@@ -209,6 +236,19 @@ class DurableUtterance(SerializableDto):
 
 
 @dataclass(slots=True)
+class SpeechOrder(SerializableDto):
+    text: str
+    mode: SpeechOrderMode
+    reason: str
+    priority: int
+    id: UUID = field(default_factory=new_id)
+    supersedes_order_id: UUID | None = None
+    scheduler_decision_id: UUID | None = None
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
 class ConversationHistoryItem(SerializableDto):
     speaker: str
     text: str
@@ -251,6 +291,91 @@ class SpeechDecision(SerializableDto):
     floor_observation_id: UUID | None = None
     prompt_request_id: UUID | None = None
     log_only: bool = False
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class SpeechPressureState(SerializableDto):
+    reply_pressure: float = 0.0
+    initiative_pressure: float = 0.0
+    calendar_pressure: float = 0.0
+    curiosity_pressure: float = 0.0
+    followup_pressure: float = 0.0
+    interruption_penalty: float = 0.0
+    recent_rejection_penalty: float = 0.0
+    fatigue: float = 0.0
+    last_spoke_at: datetime | None = None
+    last_user_spoke_at: datetime | None = None
+
+
+@dataclass(slots=True)
+class SpeechSchedulerWeights(SerializableDto):
+    reply_weight: float = 0.9
+    initiative_weight: float = 0.45
+    calendar_weight: float = 0.75
+    curiosity_weight: float = 0.25
+    memory_weight: float = 0.35
+    maai_weight: float = 0.2
+    saturation_weight: float = 0.65
+    interruption_penalty_weight: float = 1.1
+    rejection_penalty_weight: float = 0.8
+    fatigue_weight: float = 0.6
+
+
+@dataclass(slots=True)
+class SpeechSchedulerThresholds(SerializableDto):
+    speak_threshold: float = 0.55
+    append_threshold: float = 0.55
+    replace_margin: float = 0.25
+    stop_threshold: float = 0.8
+    interruption_suppress_threshold: float = 0.55
+
+
+@dataclass(slots=True)
+class SpeechSchedulerInput(SerializableDto):
+    partial_stt_text: str = ""
+    final_stt_text: str = ""
+    stable_prefix: str = ""
+    semantic_saturation: float = 0.0
+    silence_ms: int = 0
+    p_yielding: float | None = None
+    user_speaking: bool = False
+    user_present: bool = True
+    tomoko_currently_speaking: bool = False
+    current_speech_order: SpeechOrder | None = None
+    current_speech_score: float = 0.0
+    candidate_pressure: float = 0.0
+    calendar_urgency: float = 0.0
+    curiosity_pressure: float = 0.0
+    memory_relevance: float = 0.0
+    recent_rejection_penalty: float = 0.0
+    fatigue: float = 0.0
+    stop_intent: float = 0.0
+    pressure_state: SpeechPressureState = field(default_factory=SpeechPressureState)
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class SpeechSchedulerOutput(SerializableDto):
+    action: SpeechSchedulerAction
+    text_intent: SpeechTextIntent
+    llm_prompt_basis: str
+    reason: str
+    score: float
+    score_breakdown: dict[str, float]
+    id: UUID = field(default_factory=new_id)
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class SemanticSaturationResult(SerializableDto):
+    saturation: float
+    source: str
+    basis_text: str
+    id: UUID = field(default_factory=new_id)
     trace_id: UUID = field(default_factory=new_id)
     created_at: datetime = field(default_factory=utc_now)
 

@@ -7,6 +7,7 @@ V2_NOTIFY_CHANNELS: frozenset[str] = frozenset(
     {
         "v2_stt_observation",
         "v2_prompt_request",
+        "v2_speech_order",
         "v2_model_output",
         "v2_candidate",
         "v2_user_status",

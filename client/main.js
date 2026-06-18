@@ -69,6 +69,20 @@ async function connect() {
         `${payload.audio_chunks ?? 0} chunks / ${payload.audio_bytes ?? 0} bytes`,
       );
     }
+    if (payload.type === "scheduler_decision") {
+      appendTimelineItem(
+        "plan",
+        `${payload.action || "unknown"} / ${payload.text_intent || "unknown"}`,
+        `score=${Number(payload.score || 0).toFixed(3)}`,
+      );
+    }
+    if (payload.type === "speech_order") {
+      appendTimelineItem(
+        "order",
+        payload.text || payload.mode || "(blank)",
+        `${payload.mode || "unknown"} / priority=${payload.priority ?? 0}`,
+      );
+    }
     debugEl.textContent = payload.type;
   });
   ws.addEventListener("close", () => {

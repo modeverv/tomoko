@@ -1,5 +1,62 @@
 # LOG.md
 
+## 2026-06-18 セッション13
+
+### やること（開始時に書く）
+- `PLAN.md` の Phase S1-S12 を上から最後まで対応する。
+- テスト先行で speech-order DTO、semantic saturation、scheduler、tomoko-process 側 LLM 発話生成、hot-path speech-order executor、縦切り smoke、DB/NOTIFY bridge、runtime smoke/report まで実装する。
+- 実機依存の real runtime / live overlap / calendar smoke は、可能な限り自動 smoke と readiness で確認し、未実行条件は `LOG.md` / `_docs/latency.md` に明記する。
+
+### やったこと
+- `SpeechOrder` / `SpeechSchedulerInput` / `SpeechSchedulerOutput` / `SemanticSaturationResult` などの DTO を追加し、round-trip / slots / enum test で固定した。
+- `SemanticSaturationJudge` と固定行 `SATURATION=...` parser、deterministic fallback、stable prefix helper を追加した。
+- `SpeechScheduler` を pressure model + threshold selection として実装し、replace / append / stop / suppress と `score_breakdown` logging を追加した。
+- `server/llm/chat.py` を追加し、tomoko-process 側 `TomokoConversationCore` が LLMで発話本文だけを生成して `SpeechOrder` を返す経路を作った。
+- `SpeechOrderExecutor` を追加し、replace / append queue / stop / generation guard を hot-path 側で実行できるようにした。
+- `/ws` audio path は新しい scheduler 経路で `scheduler_decision` / `speech_order` event と binary WAV を返すようにした。旧 prompt event 互換 path は残した。
+- `v2_speech_orders` / `v2_speech_scheduler_decisions` / `v2_semantic_saturation_observations` と `v2_speech_order` NOTIFY channel を追加した。
+- `make v2-scheduler-conversation-smoke` / `make v2-scheduler-say-latency-smoke` / `make v2-scheduler-report` を追加した。
+- client timeline は scheduler decision と speech order を表示するだけにし、判断ロジックは持たせていない。
+- `PLAN.md` のチェックボックスを実施済み範囲だけ更新し、未実行の常駐LISTEN / live overlap / calendar smoke / final divergence は未チェックで残した。
+
+### 詰まったこと・解決したこと
+- S7 の DB 分離は schema / SQL bridge / integration DDL test までは実装したが、常駐 LISTEN worker と hot-path の DB 書き込み接続はまだ本線に入れていない。
+- S8 は tmux runtime が既に `tomoko-v2-runtime` として起動済みだったため二重起動せず、`make v2-runtime-ready` と real scheduler say smoke で確認した。
+- 現在の `/ws` scheduler audio path は `TomokoConversationCore` が LLM stream を内部で集約してから返すため、client 側の `model_delta` は first content の真の時刻ではなく batch 表示になる。first audio は artifact に記録した。
+
+### 検証
+- `make check`
+  - ruff passed
+  - unit 62 passed / 1 deselected
+- `uv run pytest -m integration -q`
+  - 1 skipped / 62 deselected (`TEST_DATABASE_URL` 未設定)
+- `node --check client/main.js`
+  - passed
+- `git diff --check`
+  - passed
+- `make v2-scheduler-conversation-smoke`
+  - fake vertical slice passed
+  - artifact `logs/scheduler-conversation-smoke-20260618-131947.json`
+- `make v2-conversation-smoke`
+  - fake `/ws` scheduler path passed
+  - event sequence includes `scheduler_decision` and `speech_order`
+- `make v2-runtime-ready`
+  - dflash `8081` / `8082` ready
+  - VOICEVOX `50122` ready
+  - STT/OCR sidecar source availability printed
+- `make v2-scheduler-say-latency-smoke`
+  - STT `智子短く返事して`
+  - reply `了解。短く話すね。`
+  - voice-end to first audio 2862.5ms
+  - artifact `logs/scheduler-say-latency-20260618-132107.json`
+- `make v2-scheduler-report`
+  - generated `reports/v2-scheduler-report.html`
+
+### 次のセッションでやること
+- DB 常駐分離を本線化する: hot-path STT insert + `v2_stt_observation` NOTIFY、tomoko-process LISTEN、speech-order insert + NOTIFY、hot-path speech-order LISTEN、recovery polling。
+- live overlap / stop / calendar append をブラウザ実操作または専用 replay で確認する。
+- partial -> final divergence 時の replace / suppress を fake replay で固定する。
+
 ## 2026-06-18 セッション12
 
 ### やること（開始時に書く）

@@ -39,6 +39,12 @@ url = "http://127.0.0.1:8081"
 model = "gemma-4-31b-it-mlx"
 draft_model = "z-lab/gemma-4-31B-it-DFlash"
 
+[scheduler]
+speak_threshold = 0.55
+append_threshold = 0.55
+replace_margin = 0.25
+stop_threshold = 0.8
+
 [ocr]
 capture_command = "screencapture"
 primary_ocr = "vision"

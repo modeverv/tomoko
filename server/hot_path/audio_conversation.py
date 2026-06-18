@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from server.audio.stt import AppleSpeechStreamingBackend, StreamingSttEvent, observation_events
 from server.audio.vad import VADProcessor
 from server.hot_path.model_executor import PromptExecutionResult, PromptExecutor
+from server.hot_path.speech_executor import SpeechOrderExecutor
 from server.shared.models import (
     AudioSpeechSegment,
     ContextSnapshot,
@@ -16,10 +17,15 @@ from server.shared.models import (
     DurableUtterance,
     PartialTranscriptObservation,
     PromptRequest,
+    SpeechOrder,
+    SpeechSchedulerOutput,
 )
 from server.tomoko.context import ContextSnapshotBuilderV2
+from server.tomoko.conversation import TomokoConversationCore
 from server.tomoko.main import TomokoProcessCore
 from server.tomoko.prompt import PromptBuilderV2
+from server.tomoko.scheduler import SpeechScheduler
+from server.tomoko.semantic import SemanticSaturationJudge
 from server.tomoko.session import SessionBoundaryModel
 
 logger = logging.getLogger(__name__)
@@ -39,15 +45,19 @@ class HotPathConversationResult:
     context_snapshot: ContextSnapshot | None
     prompt_request: PromptRequest | None
     execution_result: PromptExecutionResult
+    scheduler_output: SpeechSchedulerOutput | None = None
+    speech_order: SpeechOrder | None = None
 
 
 @dataclass(slots=True)
 class HotPathAudioConversation:
     vad: VADProcessor
     stt_backend: StreamingSttBackend
-    tomoko_core: TomokoProcessCore
-    prompt_builder: PromptBuilderV2
-    prompt_executor: PromptExecutor
+    tomoko_core: TomokoProcessCore | None = None
+    prompt_builder: PromptBuilderV2 | None = None
+    prompt_executor: PromptExecutor | None = None
+    conversation_core: TomokoConversationCore | None = None
+    speech_executor: SpeechOrderExecutor | None = None
     speech_rms_threshold: float = 0.02
     context_builder: ContextSnapshotBuilderV2 = field(default_factory=ContextSnapshotBuilderV2)
     _audio_clock_ms: float = 0.0
@@ -96,6 +106,41 @@ class HotPathAudioConversation:
             (observation for observation in observations if observation.is_final),
             None,
         )
+        if self.conversation_core is not None and self.speech_executor is not None:
+            observation = final_observation or (observations[-1] if observations else None)
+            if observation is None:
+                _console_event("stt_no_observation")
+                return HotPathConversationResult(
+                    observations=observations,
+                    durable_utterance=None,
+                    context_snapshot=None,
+                    prompt_request=None,
+                    execution_result=PromptExecutionResult(),
+                )
+            turn = await self.conversation_core.handle_observation(observation)
+            execution_result = PromptExecutionResult(model_events=list(turn.model_events))
+            if turn.speech_order is not None:
+                _console_event(
+                    "speech_order",
+                    order_id=str(turn.speech_order.id),
+                    mode=turn.speech_order.mode.value,
+                    reason=turn.speech_order.reason,
+                )
+                audio_result = await self.speech_executor.execute(turn.speech_order)
+                execution_result.audio_chunks.extend(audio_result.audio_chunks)
+            return HotPathConversationResult(
+                observations=observations,
+                durable_utterance=turn.durable_utterance,
+                context_snapshot=turn.context_snapshot,
+                prompt_request=turn.prompt_request,
+                execution_result=execution_result,
+                scheduler_output=turn.scheduler_output,
+                speech_order=turn.speech_order,
+            )
+
+        assert self.tomoko_core is not None
+        assert self.prompt_builder is not None
+        assert self.prompt_executor is not None
         durable = (
             self.tomoko_core.adopt_final_observation(final_observation)
             if final_observation is not None
@@ -175,12 +220,19 @@ class HotPathAudioConversation:
 
 
 def create_default_audio_conversation(prompt_executor: PromptExecutor) -> HotPathAudioConversation:
+    chat_backend = prompt_executor._chat_backend
+    tts_backend = prompt_executor._tts_backend
     return HotPathAudioConversation(
         vad=VADProcessor(),
         stt_backend=AppleSpeechStreamingBackend(),
-        tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
-        prompt_builder=PromptBuilderV2(),
-        prompt_executor=prompt_executor,
+        conversation_core=TomokoConversationCore(
+            session_model=SessionBoundaryModel(),
+            saturation_judge=SemanticSaturationJudge(),
+            scheduler=SpeechScheduler(),
+            chat_backend=chat_backend,
+            tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
+        ),
+        speech_executor=SpeechOrderExecutor(tts_backend),
     )
 
 

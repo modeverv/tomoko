@@ -64,6 +64,59 @@ CREATE TABLE IF NOT EXISTS v2_speech_decisions (
     trace_id uuid NOT NULL DEFAULT gen_random_uuid()
 );
 
+CREATE TABLE IF NOT EXISTS v2_semantic_saturation_observations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    stt_observation_id uuid REFERENCES v2_stt_observations(id) ON DELETE SET NULL,
+    saturation double precision NOT NULL CHECK (saturation >= 0 AND saturation <= 1),
+    source text NOT NULL,
+    basis_text text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    source_event_id uuid,
+    trace_id uuid NOT NULL DEFAULT gen_random_uuid()
+);
+
+CREATE TABLE IF NOT EXISTS v2_speech_scheduler_decisions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    stt_observation_id uuid REFERENCES v2_stt_observations(id) ON DELETE SET NULL,
+    semantic_saturation_id uuid REFERENCES v2_semantic_saturation_observations(id)
+        ON DELETE SET NULL,
+    action text NOT NULL CHECK (
+        action IN (
+            'suppress',
+            'enqueue',
+            'replace_current',
+            'append_after_current',
+            'stop'
+        )
+    ),
+    text_intent text NOT NULL,
+    llm_prompt_basis text NOT NULL,
+    reason text NOT NULL,
+    score double precision NOT NULL,
+    score_breakdown jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    source_event_id uuid,
+    trace_id uuid NOT NULL DEFAULT gen_random_uuid()
+);
+
+CREATE TABLE IF NOT EXISTS v2_speech_orders (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    scheduler_decision_id uuid REFERENCES v2_speech_scheduler_decisions(id)
+        ON DELETE SET NULL,
+    text text NOT NULL,
+    mode text NOT NULL CHECK (
+        mode IN ('replace_current', 'append_after_current', 'stop')
+    ),
+    reason text NOT NULL,
+    priority integer NOT NULL DEFAULT 0,
+    supersedes_order_id uuid REFERENCES v2_speech_orders(id) ON DELETE SET NULL,
+    executed_at timestamptz,
+    status text NOT NULL DEFAULT 'pending',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    source_event_id uuid,
+    trace_id uuid NOT NULL DEFAULT gen_random_uuid()
+);
+
 CREATE TABLE IF NOT EXISTS v2_user_status_observations (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     present boolean NOT NULL,
@@ -257,6 +310,7 @@ BEGIN
     IF channel_name NOT IN (
         'v2_stt_observation',
         'v2_prompt_request',
+        'v2_speech_order',
         'v2_model_output',
         'v2_candidate',
         'v2_user_status',

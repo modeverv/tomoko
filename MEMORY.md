@@ -112,3 +112,23 @@ V2.20 の 10 分 live conversation smoke は Apple Speech / VOICEVOX / LLM runti
 
 ### root `MEMORY.md` は Phase V2.0 で作成された
 作業開始時点では root `MEMORY.md` が無く、v1 の `MEMORY.md` と root `LOG.md` の前回記録を参照した。
+
+## 2026-06-18 セッション13 確定した判断
+
+### v2 main conversation は SpeechOrder を主契約にする
+`PromptRequest` は互換用に残すが、音声会話の主線は
+`STT observation -> SemanticSaturationJudge -> SpeechScheduler -> LLM text -> SpeechOrder -> SpeechOrderExecutor`
+に寄せる。LLM は発話本文だけを生成し、speak / suppress / replace / append / stop の判断は
+`SpeechScheduler` が `score_breakdown` 付きで行う。
+
+### scheduler smoke は fake と real say の二段に分ける
+`make v2-scheduler-conversation-smoke` は外部 runtime なしで縦切り contract を固定し、
+`make v2-scheduler-say-latency-smoke` は起動済み dflash / VOICEVOX / Apple Speech で
+実 `/ws` audio path を測る。2026-06-18 の real smoke では voice-end to first audio が
+2862.5ms、artifact は `logs/scheduler-say-latency-20260618-132107.json`。
+
+### DB 分離は schema と bridge helper を先に固定する
+`v2_speech_orders` / `v2_speech_scheduler_decisions` /
+`v2_semantic_saturation_observations` と `v2_speech_order` NOTIFY channel を追加した。
+常駐 LISTEN worker と hot-path の DB 書き込み接続は次の実装単位として残し、現時点の実 `/ws`
+会話は in-process vertical path で動かす。

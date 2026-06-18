@@ -23,9 +23,13 @@ from server.hot_path.model_executor import (
     create_default_real_prompt_executor,
 )
 from server.hot_path.protocol import encode_server_event, parse_browser_message
+from server.hot_path.speech_executor import SpeechOrderExecutor
 from server.shared.models import CancelPolicy, PromptRequest, PromptScope
+from server.tomoko.conversation import TomokoConversationCore
 from server.tomoko.main import TomokoProcessCore
 from server.tomoko.prompt import PromptBuilderV2
+from server.tomoko.scheduler import SpeechScheduler
+from server.tomoko.semantic import SemanticSaturationJudge
 from server.tomoko.session import SessionBoundaryModel
 
 app = FastAPI(title="Tomoko v2 hot-path-process")
@@ -103,6 +107,39 @@ async def _send_audio_conversation_result(
                 text=result.durable_utterance.text,
                 session_id=str(result.durable_utterance.session_id),
                 utterance_id=str(result.durable_utterance.id),
+            )
+        )
+    if result.scheduler_output is not None:
+        _console_event(
+            "scheduler_decision",
+            action=result.scheduler_output.action.value,
+            text_intent=result.scheduler_output.text_intent.value,
+            score=result.scheduler_output.score,
+        )
+        await websocket.send_text(
+            encode_server_event(
+                "scheduler_decision",
+                action=result.scheduler_output.action.value,
+                text_intent=result.scheduler_output.text_intent.value,
+                score=result.scheduler_output.score,
+                reason=result.scheduler_output.reason,
+                score_breakdown=result.scheduler_output.score_breakdown,
+            )
+        )
+    if result.speech_order is not None:
+        _console_event(
+            "speech_order",
+            order_id=str(result.speech_order.id),
+            mode=result.speech_order.mode.value,
+        )
+        await websocket.send_text(
+            encode_server_event(
+                "speech_order",
+                order_id=str(result.speech_order.id),
+                text=result.speech_order.text,
+                mode=result.speech_order.mode.value,
+                reason=result.speech_order.reason,
+                priority=result.speech_order.priority,
             )
         )
     if result.prompt_request is None:
@@ -228,6 +265,10 @@ def _audio_conversation() -> HotPathAudioConversation:
     conversation = getattr(app.state, "audio_conversation", None)
     if conversation is None:
         if _fake_runtime_enabled():
+            chat_backend = StaticChatBackend(
+                [os.environ.get("TOMOKO_V2_FAKE_REPLY", "うん、聞こえてるよ。")]
+            )
+            tts_backend = StaticWavTtsBackend([b"RIFFxxxxWAVEdata"])
             conversation = HotPathAudioConversation(
                 vad=VADProcessor(),
                 stt_backend=StaticStreamingSttBackend(
@@ -239,9 +280,15 @@ def _audio_conversation() -> HotPathAudioConversation:
                         )
                     ]
                 ),
-                tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
-                prompt_builder=PromptBuilderV2(),
-                prompt_executor=_prompt_executor(),
+                conversation_core=TomokoConversationCore(
+                    session_model=SessionBoundaryModel(),
+                    saturation_judge=SemanticSaturationJudge(),
+                    scheduler=SpeechScheduler(),
+                    chat_backend=chat_backend,
+                    tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
+                    prompt_builder=PromptBuilderV2(),
+                ),
+                speech_executor=SpeechOrderExecutor(tts_backend),
             )
         else:
             conversation = create_default_audio_conversation(_prompt_executor())

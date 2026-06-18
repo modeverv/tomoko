@@ -109,7 +109,10 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     assert "v2-runtime-ready:" in makefile
     assert "v2-ocr-smoke" in makefile
     assert "v2-conversation-smoke:" in makefile
+    assert "v2-scheduler-conversation-smoke:" in makefile
     assert "v2-say-latency-smoke:" in makefile
+    assert "v2-scheduler-say-latency-smoke:" in makefile
+    assert "v2-scheduler-report:" in makefile
     assert "TOMOKO_V2_VOICEVOX_SPEED ?= 1.5" in makefile
     assert makefile.index("-n llm-run") < makefile.index("-n hot-path")
     assert "tmux send-keys -t $(TMUX_SESSION):hot-path C-c" in makefile
@@ -206,6 +209,9 @@ def test_ddl_has_core_tables_and_id_only_notify_function() -> None:
         "v2_prompt_requests",
         "v2_model_output_events",
         "v2_audio_output_events",
+        "v2_speech_orders",
+        "v2_speech_scheduler_decisions",
+        "v2_semantic_saturation_observations",
         "v2_floor_observations",
         "v2_speech_decisions",
         "v2_context_snapshots",
@@ -221,4 +227,11 @@ def test_ddl_has_core_tables_and_id_only_notify_function() -> None:
     ]:
         assert f"CREATE TABLE IF NOT EXISTS {table}" in ddl
     assert "PERFORM pg_notify(channel_name, event_id::text)" in ddl
+    assert "'v2_speech_order'" in ddl
     assert "json" not in ddl.split("CREATE OR REPLACE FUNCTION v2_notify_id", 1)[1].lower()
+
+
+def test_notify_accepts_speech_order_channel() -> None:
+    event_id = UUID("00000000-0000-0000-0000-000000000321")
+    message = build_notify_message("v2_speech_order", event_id)
+    assert message.payload == event_id
