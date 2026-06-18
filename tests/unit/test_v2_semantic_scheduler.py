@@ -8,6 +8,7 @@ import pytest
 from server.shared.logging import JsonlLogger
 from server.shared.models import (
     CancelPolicy,
+    DurableUtterance,
     PromptRequest,
     PromptScope,
     SpeechOrder,
@@ -18,12 +19,16 @@ from server.shared.models import (
     SpeechSchedulerThresholds,
 )
 from server.tomoko.db_bridge import (
+    close_conversation_session_sql,
     insert_audio_output_event_sql,
+    insert_conversation_session_sql,
     insert_prompt_request_for_order_sql,
     insert_prompt_request_sql,
     insert_scheduler_decision_sql,
     insert_speech_order_sql,
+    insert_utterance_sql,
     notify_speech_order_sql,
+    update_conversation_session_activity_sql,
 )
 from server.tomoko.scheduler import SpeechScheduler, detect_stop_intent
 from server.tomoko.semantic import (
@@ -233,3 +238,39 @@ def test_prompt_request_sql_does_not_reference_unpersisted_snapshot_fk() -> None
     assert request.context_snapshot_id not in sql.params
     assert request.utterance_id not in sql.params
     assert request.candidate_id not in sql.params
+
+
+def test_conversation_session_and_utterance_db_bridge_sql() -> None:
+    session_id = uuid4()
+    trace_id = uuid4()
+    utterance = DurableUtterance(
+        session_id=session_id,
+        speaker="user",
+        text="最初に短く返事して",
+        stt_observation_id=uuid4(),
+        trace_id=trace_id,
+    )
+
+    session_sql = insert_conversation_session_sql(
+        session_id=session_id,
+        activity_at=utterance.created_at,
+        trace_id=trace_id,
+    )
+    touch_sql = update_conversation_session_activity_sql(
+        session_id=session_id,
+        activity_at=utterance.created_at,
+    )
+    close_sql = close_conversation_session_sql(
+        session_id=session_id,
+        ended_at=utterance.created_at,
+        reason="idle_gap",
+    )
+    utterance_sql = insert_utterance_sql(utterance)
+
+    assert "v2_conversation_sessions" in session_sql.query
+    assert "ended_at IS NULL" not in session_sql.query
+    assert "last_activity_at" in touch_sql.query
+    assert "close_reason" in close_sql.query
+    assert "v2_utterances" in utterance_sql.query
+    assert utterance.session_id in utterance_sql.params
+    assert utterance.text in utterance_sql.params

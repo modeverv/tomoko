@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from uuid import UUID
 
 from server.llm.chat import ChatBackend, create_default_real_chat_backend
 from server.shared.models import (
@@ -55,18 +56,24 @@ class TomokoConversationCore:
     async def handle_observation(
         self,
         observation: PartialTranscriptObservation,
+        *,
+        session_id_override: UUID | None = None,
+        prior_session_history: list[ConversationHistoryItem] | None = None,
     ) -> TomokoConversationResult:
         text = observation.text.strip()
         core = self.tomoko_core or TomokoProcessCore(self.session_model)
-        durable = core.adopt_final_observation(observation) if observation.is_final else None
+        durable = (
+            core.adopt_final_observation(
+                observation,
+                session_id_override=session_id_override,
+            )
+            if observation.is_final
+            else None
+        )
         if observation.is_final and durable is None:
             return self._blocked_result(observation, text, core)
 
         if durable is not None:
-            self._recent_utterances.append(durable.text)
-            self._recent_history.append(
-                ConversationHistoryItem(speaker="user", text=durable.text)
-            )
             basis_text = durable.text
             session_id = durable.session_id
         else:
@@ -93,6 +100,11 @@ class TomokoConversationCore:
                 trace_id=observation.trace_id,
             )
         )
+        prompt_history = (
+            prior_session_history
+            if prior_session_history is not None
+            else self._recent_history[-8:]
+        )
         snapshot = self.context_builder.build(
             session_id=session_id,
             recent_utterances=self._recent_utterances[-8:],
@@ -100,10 +112,15 @@ class TomokoConversationCore:
             calendar_loader=lambda: {},
             user_status=None,
             candidates=[],
-            recent_history=self._recent_history[-8:],
+            recent_history=prompt_history,
         )
 
         if scheduler_output.action == SpeechSchedulerAction.STOP:
+            if durable is not None and prior_session_history is None:
+                self._recent_utterances.append(durable.text)
+                self._recent_history.append(
+                    ConversationHistoryItem(speaker="user", text=durable.text)
+                )
             order = SpeechOrder(
                 text="",
                 mode=SpeechOrderMode.STOP,
@@ -125,6 +142,11 @@ class TomokoConversationCore:
             )
 
         if scheduler_output.action == SpeechSchedulerAction.SUPPRESS:
+            if durable is not None and prior_session_history is None:
+                self._recent_utterances.append(durable.text)
+                self._recent_history.append(
+                    ConversationHistoryItem(speaker="user", text=durable.text)
+                )
             return TomokoConversationResult(
                 observation=observation,
                 durable_utterance=durable,
@@ -151,10 +173,16 @@ class TomokoConversationCore:
         )
         self.current_speech_order = order
         self.current_speech_score = scheduler_output.score
-        if text_out:
+        if durable is not None and prior_session_history is None:
+            self._recent_utterances.append(durable.text)
             self._recent_history.append(
-                ConversationHistoryItem(speaker="tomoko", text=text_out)
+                ConversationHistoryItem(speaker="user", text=durable.text)
             )
+        if text_out:
+            if prior_session_history is None:
+                self._recent_history.append(
+                    ConversationHistoryItem(speaker="tomoko", text=text_out)
+                )
         _console_event(
             "speech_order_created",
             order_id=str(order.id),

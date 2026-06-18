@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from uuid import UUID
 
 from server.shared.models import DurableUtterance, PartialTranscriptObservation
 from server.tomoko.session import SessionBoundaryModel
@@ -16,13 +17,18 @@ class TomokoProcessCore:
     def adopt_final_observation(
         self,
         observation: PartialTranscriptObservation,
+        *,
+        session_id_override: UUID | None = None,
     ) -> DurableUtterance | None:
         if self.block_reason_for_final_observation(observation) is not None:
             return None
 
-        boundary = self.session_model.observe_utterance(observation.audio_ended_at)
+        session_id = session_id_override
+        if session_id is None:
+            boundary = self.session_model.observe_utterance(observation.audio_ended_at)
+            session_id = boundary.session_id
         return DurableUtterance(
-            session_id=boundary.session_id,
+            session_id=session_id,
             speaker="user",
             text=observation.text,
             stt_observation_id=observation.id,

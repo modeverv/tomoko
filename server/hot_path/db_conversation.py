@@ -54,7 +54,7 @@ class HotPathDbSplitConversation:
     speech_rms_threshold: float = 0.02
     order_timeout_sec: float = 30.0
     recovery_poll_interval_sec: float = 0.05
-    _audio_clock_ms: float = 0.0
+    _audio_clock_ms: float = field(default_factory=lambda: time.time() * 1000.0)
     _listener: psycopg.AsyncConnection[object] | None = field(
         default=None,
         init=False,

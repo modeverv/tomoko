@@ -411,3 +411,24 @@ S1-S6 と S8/S12 の主線は実装・検証済み。
 
 未チェックで残すものは、DB 常駐 LISTEN worker / recovery polling、発話途中の live overlap 確認、
 fake/live calendar append smoke、final STT divergence による上書きである。
+
+## Phase S13: DB-backed conversation session prompt history
+
+ARCHITECTURE.md の「会話セッション境界を DB に明示する」を DB split 本線に入れる。
+hot-path は引き続き raw STT observation だけを書き、session id の発番と durable utterance 化は
+tomoko-process が行う。
+
+### 実装手順
+
+- [x] tomoko-process が final STT を受けた時、open session が無ければ `v2_conversation_sessions` を発番する。
+- [x] open session があり、`last_activity_at` から無音 gap を超えた場合は旧 session を close して新 session を発番する。
+- [x] `v2_utterances` に同一 session の user 発話を保存する。
+- [x] Tomoko の返答も同じ session の `v2_utterances` に保存する。
+- [x] prompt の `STABLE_CONTEXT` は同一 session の過去発話から作り、現在の user 発話は `CURRENT_USER_UTTERANCE` だけに置く。
+- [x] 5ターン smoke artifact で LLM prompt に同一 session の履歴が積まれることを確認する。
+
+### 完了条件
+
+- [x] `pytest -m unit` が通る。
+- [x] DB split smoke が通り、session / utterance / speech-order が DB に残る。
+- [x] 5ターン目 prompt で現在発話が stable context と current の両方に重複しない。

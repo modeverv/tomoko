@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -10,6 +11,7 @@ from server.hot_path.speech_executor import SpeechOrderExecutor
 from server.llm.chat import StaticChatBackend
 from server.shared.models import (
     AudioSpeechSegment,
+    ConversationHistoryItem,
     PartialTranscriptObservation,
     SpeechOrder,
     SpeechOrderMode,
@@ -51,6 +53,9 @@ async def test_tomoko_conversation_core_turns_final_stt_into_speech_order() -> N
     assert result.speech_order.mode == SpeechOrderMode.REPLACE_CURRENT
     assert result.speech_order.reason == result.scheduler_output.reason
     assert result.model_events[-1].text == "了解。短く返すね。"
+    assert result.prompt_request is not None
+    assert "recent_user_raw=トモコ、短く返事して" not in result.prompt_request.prompt_text
+    assert "CURRENT_USER_UTTERANCE:\nトモコ、短く返事して" in result.prompt_request.prompt_text
 
 
 @pytest.mark.asyncio
@@ -102,6 +107,46 @@ async def test_tomoko_conversation_core_turns_stop_intent_into_stop_order() -> N
     assert result.speech_order is not None
     assert result.speech_order.mode == SpeechOrderMode.STOP
     assert result.speech_order.text == ""
+
+
+@pytest.mark.asyncio
+async def test_tomoko_conversation_core_uses_same_session_history_without_duplication() -> None:
+    now = utc_now()
+    session_id = uuid4()
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=SemanticSaturationJudge(),
+        scheduler=SpeechScheduler(),
+        chat_backend=StaticChatBackend(["今は短く整っているよ。"]),
+    )
+
+    result = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="最後に今の状態を短くまとめて",
+            is_final=True,
+            stability=1.0,
+            audio_started_at=now,
+            audio_ended_at=now,
+        ),
+        session_id_override=session_id,
+        prior_session_history=[
+            ConversationHistoryItem(speaker="user", text="最初に短く返事して"),
+            ConversationHistoryItem(speaker="tomoko", text="了解。短く話すね。"),
+            ConversationHistoryItem(speaker="user", text="今の返事ちゃんと聞こえてる"),
+            ConversationHistoryItem(speaker="tomoko", text="うん、ちゃんと聞こえてるよ。"),
+        ],
+    )
+
+    assert result.durable_utterance is not None
+    assert result.durable_utterance.session_id == session_id
+    assert result.context_snapshot is not None
+    assert result.context_snapshot.session_id == session_id
+    assert result.prompt_request is not None
+    prompt = result.prompt_request.prompt_text
+    assert "recent_user_raw=最初に短く返事して" in prompt
+    assert "recent_tomoko_raw=了解。短く話すね。" in prompt
+    assert "CURRENT_USER_UTTERANCE:\n最後に今の状態を短くまとめて" in prompt
+    assert "recent_user_raw=最後に今の状態を短くまとめて" not in prompt
 
 
 @pytest.mark.asyncio

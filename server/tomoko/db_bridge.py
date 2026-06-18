@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from server.shared.models import (
     AudioChunkOut,
     CancelPolicy,
+    DurableUtterance,
     PartialTranscriptObservation,
     PromptRequest,
     PromptScope,
@@ -56,6 +58,98 @@ def insert_stt_observation_sql(observation: PartialTranscriptObservation) -> Sql
             observation.recommended_silence_ms,
             observation.source_event_id,
             observation.trace_id,
+        ),
+    )
+
+
+def insert_conversation_session_sql(
+    *,
+    session_id: UUID,
+    activity_at: datetime,
+    trace_id: UUID,
+) -> SqlCommand:
+    return SqlCommand(
+        """
+        INSERT INTO v2_conversation_sessions (
+            id,
+            started_at,
+            last_activity_at,
+            trace_id
+        )
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (id) DO NOTHING
+        RETURNING id
+        """,
+        (
+            session_id,
+            activity_at,
+            activity_at,
+            trace_id,
+        ),
+    )
+
+
+def update_conversation_session_activity_sql(
+    *,
+    session_id: UUID,
+    activity_at: datetime,
+) -> SqlCommand:
+    return SqlCommand(
+        """
+        UPDATE v2_conversation_sessions
+        SET last_activity_at = %s
+        WHERE id = %s
+        """,
+        (
+            activity_at,
+            session_id,
+        ),
+    )
+
+
+def close_conversation_session_sql(
+    *,
+    session_id: UUID,
+    ended_at: datetime,
+    reason: str,
+) -> SqlCommand:
+    return SqlCommand(
+        """
+        UPDATE v2_conversation_sessions
+        SET ended_at = %s,
+            close_reason = %s
+        WHERE id = %s
+        """,
+        (
+            ended_at,
+            reason,
+            session_id,
+        ),
+    )
+
+
+def insert_utterance_sql(utterance: DurableUtterance) -> SqlCommand:
+    return SqlCommand(
+        """
+        INSERT INTO v2_utterances (
+            id,
+            session_id,
+            stt_observation_id,
+            speaker,
+            text,
+            trace_id
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (id) DO NOTHING
+        RETURNING id
+        """,
+        (
+            utterance.id,
+            utterance.session_id,
+            utterance.stt_observation_id,
+            utterance.speaker,
+            utterance.text,
+            utterance.trace_id,
         ),
     )
 

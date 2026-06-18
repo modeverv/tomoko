@@ -1,5 +1,43 @@
 # LOG.md
 
+## 2026-06-18 セッション17
+
+### やること（開始時に書く）
+- DB split 版で、tomoko-process が無音 gap を元に conversation session を DB に明示発番する。
+- `v2_utterances` に同一 session の user / tomoko 発話を積み、prompt は同一 session の過去発話から作る。
+- 5ターン smoke の prompt で、現在発話の重複と LAST n による片側欠落をなくす。
+
+### やったこと
+- `tomoko-db` worker が final STT ごとに open session を DB から読み、open session が無い場合は新規発番、idle gap 超過時は旧 session を `idle_gap` close して新規発番するようにした。
+- DB split path で user durable utterance と Tomoko speech order text を同じ `v2_utterances.session_id` に保存するようにした。
+- `TomokoConversationCore` は DB worker から渡された `session_id_override` と `prior_session_history` を使って prompt を作れるようにした。
+- prompt は現在発話を履歴へ append する前に作るよう変更し、`STABLE_CONTEXT` は過去発話、`CURRENT_USER_UTTERANCE` は現在発話だけに分離した。
+- hot-path / DB split の VAD audio clock 初期値を wall-clock epoch ms にし、1970 年 timestamp で DB session gap が壊れないようにした。
+
+### 詰まったこと・解決したこと
+- SQL の `NULL < 現在` は true ではなく unknown になるため、session 発番条件は `open session が存在しない` を明示条件にした。
+- fake DB split smoke の VAD timestamp が 1970 年になっており、既存 open session との gap が負になる問題を見つけた。audio clock を現在時刻初期化にして解決した。
+- 5ターン smoke の 1ターン目で current user が stable context に重複した原因は、`recent_history` ではなく `recent_utterances` fallback に current を先に入れていたことだった。prompt 作成後 append に統一した。
+
+### 検証
+- `uv run pytest -m unit -q`
+  - 67 passed, 1 deselected
+- `uv run ruff check server/hot_path/audio_conversation.py server/hot_path/db_conversation.py server/tomoko/db_worker.py server/tomoko/db_bridge.py server/tomoko/conversation.py server/tomoko/main.py tests/unit/test_v2_speech_order_flow.py tests/unit/test_v2_semantic_scheduler.py`
+  - passed
+- `git diff --check`
+  - passed
+- `make v2-db-split-smoke`
+  - artifact `logs/db-split-smoke-20260618-144044.json`
+  - total 58.7ms / transcript->order 0.1ms / order->first audio 0.2ms
+  - latest DB session `d2d16008-5b82-4475-a15a-09ae8d8ec34f` に user / tomoko の 2 utterance が残ることを SQL で確認した。
+- temp server `ws://127.0.0.1:62191/ws` で `uv run python -m scripts.v2_five_turn_smoke --url ws://127.0.0.1:62191/ws --voice Kyoko`
+  - artifact `logs/five-turn-smoke-20260618-143934.json`
+  - 1ターン目の `STABLE_CONTEXT` は空、5ターン目は同一 session の過去4ターンが入り、現在発話は `CURRENT_USER_UTTERANCE` のみに出る。
+
+### 次のセッションでやること
+- 既存 8000 番の reload process は古い app state を握ることがあるため、確認時は process restart または別 port temp server を使う。
+- DB に過去 smoke 由来の 1970 年 open session が残っているため、必要なら dev DB cleanup 用の運用メモか maintenance SQL を追加する。
+
 ## 2026-06-18 セッション16
 
 ### やること（開始時に書く）

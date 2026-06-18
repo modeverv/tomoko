@@ -9,17 +9,27 @@ from psycopg.rows import dict_row
 
 from server.llm.chat import ChatBackend, StaticChatBackend, create_default_real_chat_backend
 from server.shared.logging import JsonlLogger
-from server.shared.models import PartialTranscriptObservation
+from server.shared.models import (
+    ConversationHistoryItem,
+    DurableUtterance,
+    PartialTranscriptObservation,
+    new_id,
+)
 from server.shared.notify import parse_id_payload
 from server.tomoko.conversation import TomokoConversationCore, TomokoConversationResult
 from server.tomoko.db_bridge import (
     SqlCommand,
+    close_conversation_session_sql,
+    insert_conversation_session_sql,
     insert_prompt_request_sql,
     insert_saturation_sql,
     insert_scheduler_decision_sql,
     insert_speech_order_sql,
+    insert_utterance_sql,
     notify_speech_order_sql,
+    update_conversation_session_activity_sql,
 )
+from server.tomoko.main import TomokoProcessCore
 from server.tomoko.scheduler import SpeechScheduler
 from server.tomoko.semantic import SemanticSaturationJudge
 from server.tomoko.session import SessionBoundaryModel
@@ -54,7 +64,25 @@ class TomokoDbWorker:
             final=observation.is_final,
             text=observation.text,
         )
-        result = await self.conversation_core.handle_observation(observation)
+        session_id: UUID | None = None
+        prior_session_history: list[ConversationHistoryItem] | None = None
+        if await should_assign_session(self.conversation_core, observation):
+            session_id = await assign_conversation_session(
+                conn,
+                observation,
+                idle_gap_to_new_session_ms=(
+                    self.conversation_core.session_model.idle_gap_to_new_session_ms
+                ),
+            )
+            prior_session_history = await load_session_history(conn, session_id)
+
+        result = await self.conversation_core.handle_observation(
+            observation,
+            session_id_override=session_id,
+            prior_session_history=prior_session_history,
+        )
+        if result.durable_utterance is not None and session_id is not None:
+            await execute_command(conn, insert_utterance_sql(result.durable_utterance))
         await execute_command(
             conn,
             insert_saturation_sql(result.saturation, stt_observation_id=observation.id),
@@ -71,6 +99,18 @@ class TomokoDbWorker:
             await execute_command(conn, insert_prompt_request_sql(result.prompt_request))
         if result.speech_order is not None:
             await execute_command(conn, insert_speech_order_sql(result.speech_order))
+            if result.speech_order.text and session_id is not None:
+                await execute_command(
+                    conn,
+                    insert_utterance_sql(
+                        DurableUtterance(
+                            session_id=session_id,
+                            speaker="tomoko",
+                            text=result.speech_order.text,
+                            trace_id=result.speech_order.trace_id,
+                        )
+                    ),
+                )
             query, params = notify_speech_order_sql(result.speech_order.id)
             await conn.execute(query, params)
             _console_event(
@@ -142,6 +182,111 @@ async def load_stt_observation(
         trace_id=row["trace_id"],
         created_at=row["created_at"],
     )
+
+
+async def should_assign_session(
+    conversation_core: TomokoConversationCore,
+    observation: PartialTranscriptObservation,
+) -> bool:
+    if not observation.is_final:
+        return False
+    core = conversation_core.tomoko_core or TomokoProcessCore(conversation_core.session_model)
+    return core.block_reason_for_final_observation(observation) is None
+
+
+async def assign_conversation_session(
+    conn: psycopg.AsyncConnection[dict[str, object]],
+    observation: PartialTranscriptObservation,
+    *,
+    idle_gap_to_new_session_ms: int,
+) -> UUID:
+    activity_at = observation.audio_ended_at
+    cursor = await conn.execute(
+        """
+        SELECT id, last_activity_at
+        FROM v2_conversation_sessions
+        WHERE ended_at IS NULL
+        ORDER BY last_activity_at DESC, created_at DESC
+        LIMIT 1
+        """
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        session_id = new_id()
+        await execute_command(
+            conn,
+            insert_conversation_session_sql(
+                session_id=session_id,
+                activity_at=activity_at,
+                trace_id=observation.trace_id,
+            ),
+        )
+        _console_event("session_created", session_id=str(session_id), reason="no_open")
+        return session_id
+
+    session_id = row["id"]
+    last_activity_at = row["last_activity_at"]
+    gap_ms = (activity_at - last_activity_at).total_seconds() * 1000
+    if gap_ms >= idle_gap_to_new_session_ms:
+        await execute_command(
+            conn,
+            close_conversation_session_sql(
+                session_id=session_id,
+                ended_at=activity_at,
+                reason="idle_gap",
+            ),
+        )
+        new_session_id = new_id()
+        await execute_command(
+            conn,
+            insert_conversation_session_sql(
+                session_id=new_session_id,
+                activity_at=activity_at,
+                trace_id=observation.trace_id,
+            ),
+        )
+        _console_event(
+            "session_created",
+            session_id=str(new_session_id),
+            reason="idle_gap",
+            closed_session_id=str(session_id),
+            gap_ms=round(gap_ms, 1),
+        )
+        return new_session_id
+
+    await execute_command(
+        conn,
+        update_conversation_session_activity_sql(
+            session_id=session_id,
+            activity_at=activity_at,
+        ),
+    )
+    _console_event(
+        "session_reused",
+        session_id=str(session_id),
+        gap_ms=round(gap_ms, 1),
+    )
+    return session_id
+
+
+async def load_session_history(
+    conn: psycopg.AsyncConnection[dict[str, object]],
+    session_id: UUID,
+) -> list[ConversationHistoryItem]:
+    cursor = await conn.execute(
+        """
+        SELECT speaker, text
+        FROM v2_utterances
+        WHERE session_id = %s
+        ORDER BY created_at ASC, id ASC
+        """,
+        (session_id,),
+    )
+    rows = await cursor.fetchall()
+    return [
+        ConversationHistoryItem(speaker=str(row["speaker"]), text=str(row["text"]))
+        for row in rows
+    ]
 
 
 async def execute_command(

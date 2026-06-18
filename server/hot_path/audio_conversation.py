@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import math
 import struct
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
@@ -60,7 +61,7 @@ class HotPathAudioConversation:
     speech_executor: SpeechOrderExecutor | None = None
     speech_rms_threshold: float = 0.02
     context_builder: ContextSnapshotBuilderV2 = field(default_factory=ContextSnapshotBuilderV2)
-    _audio_clock_ms: float = 0.0
+    _audio_clock_ms: float = field(default_factory=lambda: time.time() * 1000.0)
     _recent_utterances: list[str] = field(default_factory=list)
     _recent_history: list[ConversationHistoryItem] = field(default_factory=list)
 
@@ -187,8 +188,6 @@ class HotPathAudioConversation:
                 execution_result=PromptExecutionResult(),
             )
 
-        self._recent_utterances.append(durable.text)
-        self._recent_history.append(ConversationHistoryItem(speaker="user", text=durable.text))
         snapshot = self.context_builder.build(
             session_id=durable.session_id,
             recent_utterances=self._recent_utterances[-8:],
@@ -206,6 +205,8 @@ class HotPathAudioConversation:
         )
         execution_result = await self.prompt_executor.execute(request)
         tomoko_text = text_from_execution_result(execution_result)
+        self._recent_utterances.append(durable.text)
+        self._recent_history.append(ConversationHistoryItem(speaker="user", text=durable.text))
         if tomoko_text.strip():
             self._recent_history.append(
                 ConversationHistoryItem(speaker="tomoko", text=tomoko_text)
