@@ -246,3 +246,21 @@ Gemma E2B semantic lane の観測は `mlx_lm.server` など別 OpenAI 互換 end
 estimated decision 3281.3ms from speech start となり、full final STT available 3634.0ms より
 352.7ms 早く `would_start_llm=true` になった。artifact は
 `logs/semantic-early-smoke-20260618-151319.json`。
+
+## 2026-06-18 セッション20 確定した判断
+
+### v2 Apple Speech partial は v1 と同じ pseudo streaming 方式で戻す
+v1 の `AppleSpeechStreamingBackend` は Swift sidecar の true partial ではなく、Python 側で
+音声 chunk を累積し、`stream_min_audio_ms` を超えた後に `stream_interval_ms` 間隔で
+Apple Speech final transcription を再実行して `is_final=False` として扱っていた。
+v2 も同じ方式で `streaming` / `stream_interval_ms` / `stream_min_audio_ms` /
+`_last_stream_text` 抑制を移植した。
+
+### 実 `/ws` path で final 前の E2B speech-order は確認できたが hot-path としてはまだ重い
+`logs/say-latency-20260618-152817.json` では、partial `その今日の予定を教えて` が
+elapsed 9168.0ms で出て、Gemma E2B saturation 0.8 相当、scheduler `replace_current`、
+speech-order 作成まで進んだ。final transcript は elapsed 14276.5ms なので、
+final STT より 5108.4ms 早い。
+ただし first audio は voice-end から 4492.5ms 後で、ユーザー発話終了前の発話開始にはなっていない。
+原因は partial STT / E2B saturation / LLM / TTS を WebSocket audio receive loop 内で await しており、
+音声受信と VAD final 検出が詰まるため。次は partial 処理を audio receive loop から非同期に逃がす。

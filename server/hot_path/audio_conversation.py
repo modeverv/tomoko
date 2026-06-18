@@ -6,6 +6,7 @@ import struct
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from server.audio.stt import AppleSpeechStreamingBackend, StreamingSttEvent, observation_events
 from server.audio.vad import VADProcessor
@@ -26,7 +27,7 @@ from server.tomoko.conversation import TomokoConversationCore
 from server.tomoko.main import TomokoProcessCore
 from server.tomoko.prompt import PromptBuilderV2
 from server.tomoko.scheduler import SpeechScheduler
-from server.tomoko.semantic import SemanticSaturationJudge
+from server.tomoko.semantic import SemanticSaturationJudge, create_default_semantic_llm_backend
 from server.tomoko.session import SessionBoundaryModel
 
 logger = logging.getLogger(__name__)
@@ -76,16 +77,21 @@ class HotPathAudioConversation:
             return None
         now_ms = self._audio_clock_ms
         self._audio_clock_ms += len(samples) / self.vad.sample_rate * 1000.0
+        speech_probability = speech_probability_from_rms(
+            samples,
+            threshold=self.speech_rms_threshold,
+        )
         segment = self.vad.process_chunk(
             samples,
-            speech_probability=speech_probability_from_rms(
-                samples,
-                threshold=self.speech_rms_threshold,
-            ),
+            speech_probability=speech_probability,
             now_ms=now_ms,
         )
+        partial_result = None
+        if speech_probability >= self.vad.speech_threshold:
+            partial_result = await self.process_streaming_partial(samples, now_ms)
         if segment is None:
-            return None
+            return partial_result
+        self._reset_stt_stream()
         _console_event(
             "vad_segment",
             samples=len(segment.samples),
@@ -94,6 +100,67 @@ class HotPathAudioConversation:
             ended_at=segment.ended_at.isoformat(),
         )
         return await self.process_segment(segment)
+
+    async def process_streaming_partial(
+        self,
+        samples: tuple[float, ...],
+        now_ms: float,
+    ) -> HotPathConversationResult | None:
+        process_stream_chunk = getattr(self.stt_backend, "process_stream_chunk", None)
+        if process_stream_chunk is None:
+            return None
+        event = await process_stream_chunk(
+            samples,
+            sample_rate=self.vad.sample_rate,
+            started_at_ms=now_ms,
+        )
+        if event is None:
+            return None
+        observation = PartialTranscriptObservation(
+            text=event.text,
+            is_final=False,
+            stability=event.stability,
+            p_yielding=event.p_yielding,
+            recommended_silence_ms=event.recommended_silence_ms,
+            audio_started_at=_datetime_from_ms(now_ms),
+            audio_ended_at=_datetime_from_ms(
+                now_ms + len(samples) / self.vad.sample_rate * 1000.0
+            ),
+        )
+        _console_event("stt_partial", text=observation.text)
+        if self.conversation_core is None or self.speech_executor is None:
+            return HotPathConversationResult(
+                observations=[observation],
+                durable_utterance=None,
+                context_snapshot=None,
+                prompt_request=None,
+                execution_result=PromptExecutionResult(),
+            )
+        turn = await self.conversation_core.handle_observation(observation)
+        execution_result = PromptExecutionResult(model_events=list(turn.model_events))
+        if turn.speech_order is not None:
+            _console_event(
+                "partial_speech_order",
+                order_id=str(turn.speech_order.id),
+                mode=turn.speech_order.mode.value,
+                reason=turn.speech_order.reason,
+            )
+            audio_result = await self.speech_executor.execute(turn.speech_order)
+            execution_result.audio_chunks.extend(audio_result.audio_chunks)
+        return HotPathConversationResult(
+            observations=[observation],
+            durable_utterance=None,
+            context_snapshot=turn.context_snapshot,
+            prompt_request=turn.prompt_request,
+            execution_result=execution_result,
+            scheduler_output=turn.scheduler_output,
+            speech_order=turn.speech_order,
+        )
+
+    def _reset_stt_stream(self) -> None:
+        reset_stream = getattr(self.stt_backend, "reset_stream", None)
+        if reset_stream is not None:
+            reset_stream()
 
     async def process_segment(self, segment: AudioSpeechSegment) -> HotPathConversationResult:
         _console_event("stt_start", samples=len(segment.samples))
@@ -228,7 +295,7 @@ def create_default_audio_conversation(prompt_executor: PromptExecutor) -> HotPat
         stt_backend=AppleSpeechStreamingBackend(),
         conversation_core=TomokoConversationCore(
             session_model=SessionBoundaryModel(),
-            saturation_judge=SemanticSaturationJudge(),
+            saturation_judge=_default_saturation_judge(),
             scheduler=SpeechScheduler(),
             chat_backend=chat_backend,
             tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
@@ -256,6 +323,22 @@ def text_from_execution_result(result: PromptExecutionResult) -> str:
         (event.text for event in result.model_events if event.event_kind == "complete"),
         "",
     )
+
+
+def _default_saturation_judge() -> SemanticSaturationJudge:
+    if _semantic_llm_enabled():
+        return SemanticSaturationJudge(llm_backend=create_default_semantic_llm_backend())
+    return SemanticSaturationJudge()
+
+
+def _semantic_llm_enabled() -> bool:
+    import os
+
+    return os.environ.get("TOMOKO_V2_SEMANTIC_LLM", "0") == "1"
+
+
+def _datetime_from_ms(ms: float) -> datetime:
+    return datetime.fromtimestamp(ms / 1000.0, tz=UTC)
 
 
 def _console_event(event: str, **fields: object) -> None:

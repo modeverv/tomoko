@@ -47,6 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--voice", default="Kyoko")
     parser.add_argument("--chunk-samples", type=int, default=128)
     parser.add_argument("--trailing-silence-ms", type=int, default=2500)
+    parser.add_argument("--continue-after-first-audio", action="store_true")
     parser.add_argument("--timeout-sec", type=float, default=45.0)
     parser.add_argument("--output-dir", default="logs")
     return parser.parse_args()
@@ -173,7 +174,7 @@ async def measure(args: argparse.Namespace, wav_path: Path) -> SayLatencyResult:
         silence_chunk = (0.0,) * args.chunk_samples
         silence_chunks = math.ceil(silence_samples / args.chunk_samples)
         for _ in range(silence_chunks):
-            if first_audio_seen.is_set():
+            if first_audio_seen.is_set() and not args.continue_after_first_audio:
                 break
             await websocket.send(pack_float32(silence_chunk))
             await asyncio.sleep(args.chunk_samples / sample_rate)

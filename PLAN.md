@@ -476,3 +476,28 @@ replay し、実 streaming partial が同じ時刻で得られた場合の lead 
 - [x] `ruff check` が通る。
 - [x] Gemma E2B 実 endpoint で saturation 判定が実行できる。
 - [x] full final STT より前に `would_start_llm=true` が出るか、出ないならその offset と理由が artifact で分かる。
+
+## Phase S16: v1 Apple Speech pseudo streaming partial for v2
+
+S15 の prefix-window 推定を、実 `/ws` audio path の partial event として確認する。
+v1 の Apple Speech backend は Swift sidecar の true partial ではなく、Python 側で音声を累積し、
+一定間隔で Apple Speech final transcription を再実行して partial 扱いにしていた。
+v2 でも同じ `streaming` / `stream_interval_ms` / `stream_min_audio_ms` /
+`_last_stream_text` 抑制を移植し、VAD segment 完了前に `PartialTranscriptObservation` を流す。
+
+### 実装手順
+
+- [x] v2 `AppleSpeechStreamingBackend` に pseudo streaming partial を移植する。
+- [x] `process_audio_samples()` で VAD final segment が返る前に partial STT を処理する。
+- [x] partial saturation が閾値未満なら speech-order を出さない gate を追加する。
+- [x] focused unit test で partial emit / duplicate suppression / hot-path partial speech-order を固定する。
+- [x] 実 `/ws` smoke で final transcript 前の partial speech-order を artifact に残す。
+- [ ] partial STT / E2B / LLM / TTS を WebSocket audio receive loop から非同期に逃がす。
+- [ ] partial 由来 speech-order 後の final STT で重複発話しないように reconcile する。
+
+### 完了条件
+
+- [x] `pytest -m unit` の focused test が通る。
+- [x] `ruff check` が通る。
+- [x] 実 E2B endpoint で partial 由来の scheduler `replace_current` が final transcript 前に出る。
+- [ ] first audio がユーザー発話終了前、または終了直後の目標範囲に入る。

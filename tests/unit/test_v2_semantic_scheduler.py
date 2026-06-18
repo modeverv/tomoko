@@ -126,6 +126,20 @@ def test_speech_scheduler_user_reply_replace_current_and_breakdown() -> None:
     assert output.llm_prompt_basis
 
 
+def test_speech_scheduler_suppresses_low_saturation_partial_start() -> None:
+    output = SpeechScheduler().decide(
+        SpeechSchedulerInput(
+            partial_stt_text="トモコ",
+            stable_prefix="トモコ",
+            semantic_saturation=0.3,
+            p_yielding=0.95,
+        )
+    )
+
+    assert output.action == "suppress"
+    assert "partial semantic saturation" in output.reason
+
+
 def test_speech_scheduler_appends_calendar_while_speaking() -> None:
     current = SpeechOrder(
         text="先に返事しているよ",

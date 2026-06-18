@@ -114,6 +114,14 @@ class SpeechScheduler:
             and score < self.thresholds.speak_threshold
         ):
             return SpeechSchedulerAction.SUPPRESS, "interruption penalty is too high"
+        if (
+            scheduler_input.partial_stt_text
+            and scheduler_input.semantic_saturation
+            < self.thresholds.partial_start_saturation_threshold
+        ):
+            return SpeechSchedulerAction.SUPPRESS, (
+                "partial semantic saturation is below start threshold"
+            )
         if scheduler_input.current_speech_order is not None:
             if score > scheduler_input.current_speech_score + self.thresholds.replace_margin:
                 return SpeechSchedulerAction.REPLACE_CURRENT, (

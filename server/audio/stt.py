@@ -9,6 +9,7 @@ import tempfile
 import wave
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from server.shared.models import AudioSpeechSegment, PartialTranscriptObservation
@@ -49,6 +50,9 @@ class AppleSpeechStreamingBackend:
         on_device: bool = True,
         contextual_strings: tuple[str, ...] = DEFAULT_CONTEXTUAL_STRINGS,
         timeout_s: float = 30.0,
+        streaming: bool = True,
+        stream_interval_ms: int = 400,
+        stream_min_audio_ms: int = 1000,
     ) -> None:
         self.command = command or str(DEFAULT_BINARY)
         self.source_path = Path(source_path) if source_path else DEFAULT_SOURCE
@@ -57,6 +61,14 @@ class AppleSpeechStreamingBackend:
         self.on_device = on_device
         self.contextual_strings = contextual_strings
         self.timeout_s = timeout_s
+        self.streaming = streaming
+        self.stream_interval_ms = stream_interval_ms
+        self.stream_min_audio_ms = stream_min_audio_ms
+        self._stream_buffer: list[tuple[float, ...]] = []
+        self._stream_samples = 0
+        self._stream_samples_since_emit = 0
+        self._stream_started_at_ms: float | None = None
+        self._last_stream_text = ""
 
     async def transcribe_stream(
         self,
@@ -66,6 +78,53 @@ class AppleSpeechStreamingBackend:
         text = await asyncio.to_thread(self._transcribe_audio, segment)
         _console_event("apple_speech_done", text=text)
         yield StreamingSttEvent(text=text, is_final=True, stability=1.0)
+
+    async def process_stream_chunk(
+        self,
+        chunk: tuple[float, ...],
+        *,
+        sample_rate: int,
+        started_at_ms: float,
+    ) -> StreamingSttEvent | None:
+        if not self.streaming:
+            return None
+        if not chunk:
+            return None
+        if self._stream_started_at_ms is None:
+            self._stream_started_at_ms = started_at_ms
+        self._stream_buffer.append(tuple(chunk))
+        self._stream_samples += len(chunk)
+        self._stream_samples_since_emit += len(chunk)
+        min_samples = int(sample_rate * self.stream_min_audio_ms / 1000)
+        interval_samples = int(sample_rate * self.stream_interval_ms / 1000)
+        if self._stream_samples < min_samples:
+            return None
+        if self._stream_samples_since_emit < interval_samples:
+            return None
+
+        self._stream_samples_since_emit = 0
+        samples = tuple(sample for buffered in self._stream_buffer for sample in buffered)
+        started_at = _datetime_from_ms(self._stream_started_at_ms)
+        segment = AudioSpeechSegment(
+            samples=samples,
+            sample_rate=sample_rate,
+            started_at=started_at,
+            ended_at=started_at + timedelta(milliseconds=len(samples) / sample_rate * 1000.0),
+        )
+        _console_event("apple_speech_partial_start", samples=len(segment.samples), rate=sample_rate)
+        text = await asyncio.to_thread(self._transcribe_audio, segment)
+        _console_event("apple_speech_partial_done", text=text)
+        if not text or text == self._last_stream_text:
+            return None
+        self._last_stream_text = text
+        return StreamingSttEvent(text=text, is_final=False, stability=0.85)
+
+    def reset_stream(self) -> None:
+        self._stream_buffer = []
+        self._stream_samples = 0
+        self._stream_samples_since_emit = 0
+        self._stream_started_at_ms = None
+        self._last_stream_text = ""
 
     async def warm_up(self) -> None:
         await asyncio.to_thread(self._ensure_command)
@@ -180,6 +239,22 @@ class StaticStreamingSttBackend:
         for event in self._events:
             yield event
 
+    async def process_stream_chunk(
+        self,
+        _chunk: tuple[float, ...],
+        *,
+        sample_rate: int,
+        started_at_ms: float,
+    ) -> StreamingSttEvent | None:
+        del sample_rate, started_at_ms
+        for index, event in enumerate(self._events):
+            if not event.is_final:
+                return self._events.pop(index)
+        return None
+
+    def reset_stream(self) -> None:
+        return None
+
 
 async def observation_events(
     segment: AudioSpeechSegment,
@@ -240,6 +315,10 @@ def _is_no_speech_error(detail: str) -> bool:
     except json.JSONDecodeError:
         return NO_SPEECH_ERROR in detail
     return str(payload.get("error", "")).strip() == NO_SPEECH_ERROR
+
+
+def _datetime_from_ms(ms: float) -> datetime:
+    return datetime.fromtimestamp(ms / 1000.0, tz=UTC)
 
 
 def _console_event(event: str, **fields: object) -> None:

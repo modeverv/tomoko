@@ -35,6 +35,7 @@ from server.hot_path.protocol import (
     is_audio_control,
     parse_browser_message,
 )
+from server.hot_path.speech_executor import SpeechOrderExecutor
 from server.llm.chat import _messages_for_request as tomoko_messages_for_request
 from server.shared.models import (
     AudioSpeechSegment,
@@ -49,9 +50,12 @@ from server.shared.models import (
     utc_now,
 )
 from server.tomoko.context import ContextSnapshotBuilderV2
+from server.tomoko.conversation import TomokoConversationCore
 from server.tomoko.floor import SpeechDecisionModel
 from server.tomoko.main import TomokoProcessCore, normalize_stt_block_text
 from server.tomoko.prompt import PromptBuilderV2
+from server.tomoko.scheduler import SpeechScheduler
+from server.tomoko.semantic import SemanticSaturationJudge
 from server.tomoko.session import SessionBoundaryModel
 
 pytestmark = pytest.mark.unit
@@ -120,6 +124,51 @@ async def test_apple_speech_backend_writes_wav_and_yields_final_event(
     assert not observed_audio_paths[0].exists()
 
 
+@pytest.mark.asyncio
+async def test_apple_speech_backend_streams_partial_and_suppresses_duplicates() -> None:
+    backend = AppleSpeechStreamingBackend(
+        command="/bin/echo",
+        stream_min_audio_ms=200,
+        stream_interval_ms=100,
+    )
+    texts = iter(["途中", "途中", "続き"])
+
+    def fake_transcribe(segment: AudioSpeechSegment) -> str:
+        assert segment.sample_rate == 1000
+        return next(texts)
+
+    backend._transcribe_audio = fake_transcribe  # type: ignore[method-assign]
+
+    first = await backend.process_stream_chunk(
+        (0.2,) * 100,
+        sample_rate=1000,
+        started_at_ms=1000.0,
+    )
+    second = await backend.process_stream_chunk(
+        (0.2,) * 100,
+        sample_rate=1000,
+        started_at_ms=1100.0,
+    )
+    duplicate = await backend.process_stream_chunk(
+        (0.2,) * 100,
+        sample_rate=1000,
+        started_at_ms=1200.0,
+    )
+    third = await backend.process_stream_chunk(
+        (0.2,) * 100,
+        sample_rate=1000,
+        started_at_ms=1300.0,
+    )
+
+    assert first is None
+    assert second == StreamingSttEvent("途中", False, 0.85)
+    assert duplicate is None
+    assert third == StreamingSttEvent("続き", False, 0.85)
+
+    backend.reset_stream()
+    assert backend._last_stream_text == ""
+
+
 class _RecordingSttBackend:
     def __init__(self, text: str = "トモコ、返事して") -> None:
         self.text = text
@@ -131,6 +180,29 @@ class _RecordingSttBackend:
     ) -> AsyncIterator[StreamingSttEvent]:
         self.segments.append(segment)
         yield StreamingSttEvent(self.text, True, 1.0)
+
+
+class _PartialThenFinalSttBackend(_RecordingSttBackend):
+    def __init__(self) -> None:
+        super().__init__(text="トモコ、予定を一言で教えて")
+        self.partial_sent = False
+        self.reset_count = 0
+
+    async def process_stream_chunk(
+        self,
+        _chunk: tuple[float, ...],
+        *,
+        sample_rate: int,
+        started_at_ms: float,
+    ) -> StreamingSttEvent | None:
+        del sample_rate, started_at_ms
+        if self.partial_sent:
+            return None
+        self.partial_sent = True
+        return StreamingSttEvent("トモコ、予定を一言で教え", False, 0.85)
+
+    def reset_stream(self) -> None:
+        self.reset_count += 1
 
 
 @pytest.mark.asyncio
@@ -161,6 +233,43 @@ async def test_hot_path_audio_conversation_runs_vad_stt_tomoko_prompt_with_prero
     assert stt_backend.segments[0].samples[:100] == (0.002,) * 100
     assert stt_backend.segments[0].samples[100:200] == (0.004,) * 100
     assert stt_backend.segments[0].samples[200:300] == (0.2,) * 100
+
+
+@pytest.mark.asyncio
+async def test_hot_path_can_emit_partial_speech_order_before_vad_final() -> None:
+    stt_backend = _PartialThenFinalSttBackend()
+    conversation = HotPathAudioConversation(
+        vad=VADProcessor(sample_rate=1000, pre_roll_ms=0, silence_ms=100),
+        stt_backend=stt_backend,
+        conversation_core=TomokoConversationCore(
+            session_model=SessionBoundaryModel(),
+            saturation_judge=SemanticSaturationJudge(),
+            scheduler=SpeechScheduler(),
+            chat_backend=StaticChatBackend(["先に答えるね。"]),
+            tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
+            prompt_builder=PromptBuilderV2(),
+        ),
+        speech_executor=SpeechOrderExecutor(StaticWavTtsBackend([b"RIFFxxxxWAVEdata"])),
+        speech_rms_threshold=0.02,
+    )
+
+    partial = await conversation.process_audio_samples((0.2,) * 100)
+
+    assert partial is not None
+    assert partial.observations[0].is_final is False
+    assert partial.observations[0].text == "トモコ、予定を一言で教え"
+    assert partial.durable_utterance is None
+    assert partial.scheduler_output is not None
+    assert partial.speech_order is not None
+    assert partial.prompt_request is not None
+    assert partial.execution_result.audio_chunks[0].chunk == b"RIFFxxxxWAVEdata"
+
+    assert await conversation.process_audio_samples((0.0,) * 100) is None
+    final = await conversation.process_audio_samples((0.0,) * 100)
+
+    assert final is not None
+    assert final.observations[0].is_final is True
+    assert stt_backend.reset_count == 1
 
 
 async def test_hot_path_does_not_prompt_for_blank_final_stt() -> None:

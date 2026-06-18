@@ -1,5 +1,59 @@
 # LOG.md
 
+## 2026-06-18 セッション20
+
+### やること（開始時に書く）
+- v1 の Apple Speech streaming partial 実装（`streaming`, `stream_interval_ms`, `stream_min_audio_ms`, `_last_stream_text` 抑制）を v2 に移植する。
+- `process_audio_samples()` が VAD segment 完了前に partial observation を返し、E2B semantic 判定から speech-order 開始判断まで進めるようにする。
+- 実 `/ws` audio path で final transcript 前に partial 由来の scheduler decision / speech-order が出るか smoke する。
+
+### やったこと
+- `AppleSpeechStreamingBackend` に v1 と同じ pseudo streaming partial を移植した。
+  - `streaming` / `stream_interval_ms` / `stream_min_audio_ms`
+  - accumulated stream buffer
+  - `_last_stream_text` による同一 partial 抑制
+  - `reset_stream()` による VAD final segment 境界での partial state reset
+- `HotPathAudioConversation.process_audio_samples()` で、VAD final segment が出る前にも
+  speech probability が閾値以上なら `process_stream_chunk()` を呼び、partial observation を
+  conversation core / scheduler / speech executor に流すようにした。
+- partial の semantic saturation が低い場合に speech-order を作らない gate を scheduler に追加した。
+- `scripts/v2_say_latency_smoke.py` に `--continue-after-first-audio` を追加し、
+  first audio 後も silence を送り続けて final transcript との順序を artifact で確認できるようにした。
+
+### 詰まったこと・解決したこと
+- v1 の Apple Speech partial は Swift sidecar の true partial ではなく、Python 側の accumulated audio を
+  定期的に Apple Speech final transcription へ通す pseudo streaming だった。
+  - 解決: v2 もこの方式として移植した。
+- 短い partial `今日の予定は` / `今日の予定で` は E2B saturation 0.3 相当になり、
+  scheduler は `partial semantic saturation is below start threshold` で suppress した。
+- 実 `/ws` smoke では発話 `トモコ今日の予定を教えてそれだけで大丈夫です` で
+  partial `その今日の予定を教えて` が E2B saturation 0.8 相当になり、final transcript 前に
+  scheduler `replace_current` / speech-order が出た。
+- ただし first audio は voice-end から 4492.5ms 後だった。partial STT / E2B / LLM / TTS を
+  audio receive loop 内で await しているため、音声受信と final VAD 検出が詰まっている。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_audio_tomoko_prompt.py::test_apple_speech_backend_streams_partial_and_suppresses_duplicates tests/unit/test_v2_audio_tomoko_prompt.py::test_hot_path_can_emit_partial_speech_order_before_vad_final tests/unit/test_v2_semantic_scheduler.py::test_speech_scheduler_suppresses_low_saturation_partial_start -q`
+  - 3 passed
+- `uv run ruff check server/audio/stt.py server/hot_path/audio_conversation.py server/tomoko/scheduler.py server/shared/models.py tests/unit/test_v2_audio_tomoko_prompt.py tests/unit/test_v2_semantic_scheduler.py`
+  - passed
+- `mlx_lm.server --model mlx-community/gemma-4-e2b-it-OptiQ-4bit --port 8083`
+  - E2B saturation endpoint として起動した。
+- `TOMOKO_V2_SEMANTIC_LLM=1 TOMOKO_V2_SEMANTIC_LLM_URL=http://127.0.0.1:8083 TOMOKO_V2_SEMANTIC_LLM_MODEL=mlx-community/gemma-4-e2b-it-OptiQ-4bit uv run uvicorn server.hot_path.app:app --host 127.0.0.1 --port 62234`
+  - 実 `/ws` hot-path smoke 用に起動した。
+- `uv run python -m scripts.v2_say_latency_smoke --url ws://127.0.0.1:62234/ws --voice Kyoko --text 'トモコ今日の予定を教えてそれだけで大丈夫です' --continue-after-first-audio --timeout-sec 90`
+  - artifact `logs/say-latency-20260618-152817.json`
+  - partial `その今日の予定を教えて` at elapsed 9168.0ms
+  - scheduler `replace_current` / semantic saturation 0.8 相当
+  - final transcript at elapsed 14276.5ms
+  - partial speech-order は final より 5108.4ms 早い
+  - voice-end to first audio は 4492.5ms
+
+### 次のセッションでやること
+- partial STT / E2B / LLM / TTS を WebSocket audio receive loop から非同期に逃がし、
+  発話受信と VAD final 検出を止めない。
+- partial 由来 speech-order 後に final STT が来た時、同一 utterance の重複発話を抑制する。
+
 ## 2026-06-18 セッション19
 
 ### やること（開始時に書く）

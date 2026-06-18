@@ -330,6 +330,7 @@ class SpeechSchedulerThresholds(SerializableDto):
     replace_margin: float = 0.25
     stop_threshold: float = 0.8
     interruption_suppress_threshold: float = 0.55
+    partial_start_saturation_threshold: float = 0.75
 
 
 @dataclass(slots=True)
