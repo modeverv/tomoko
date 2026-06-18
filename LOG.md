@@ -1,5 +1,27 @@
 # LOG.md
 
+## 2026-06-18 セッション12
+
+### やること（開始時に書く）
+- 旧 `PLAN.md` を `PLAN.old.md` に退避する。
+- `ARCHITECTURE.md` の新方針に合わせ、まず計算モデルを持って会話する Tomoko を実現するための新しい `PLAN.md` を作る。
+- 既に完了した bootstrapping / runtime / DTO / smoke の成果は否定せず、新計画の前提として扱う。
+
+### やったこと
+- 旧 `PLAN.md` を `PLAN.old.md` に退避した。
+- 新 `PLAN.md` を、`SpeechScheduler -> tomoko-process LLM -> speech-order -> hot-path TTS/audio` の縦切りを最初の主目標にして作り直した。
+- Phase S1-S12 として、speech-order DTO、意味飽和度、SpeechScheduler、tomoko 側 LLM、hot-path speech executor、DB/NOTIFY bridge、real runtime smoke、overlap/append/partial/tuning の順に編纂した。
+- 完了済みの root v2 bootstrap / runtime launcher / STT / OCR / VOICEVOX / dflash / smoke は、新 PLAN の前提として残した。
+
+### 検証
+- `PLAN.old.md` が存在することを確認した。
+- 新 `PLAN.md` の Phase 見出しが S0-S12 まで揃っていることを確認した。
+- `git diff --check -- PLAN.md PLAN.old.md LOG.md`
+  - passed
+
+### 次のセッションでやること
+- Phase S1: `SpeechOrder` / `SpeechSchedulerInput` / `SpeechSchedulerOutput` などの DTO contract を実装し、unit test で固定する。
+
 ## 2026-06-18 セッション11
 
 ### やること（開始時に書く）
