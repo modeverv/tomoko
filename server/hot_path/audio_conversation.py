@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import io
+import logging
 import math
 import struct
-import wave
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
@@ -21,6 +20,8 @@ from server.tomoko.context import ContextSnapshotBuilderV2
 from server.tomoko.main import TomokoProcessCore
 from server.tomoko.prompt import PromptBuilderV2
 from server.tomoko.session import SessionBoundaryModel
+
+logger = logging.getLogger(__name__)
 
 
 class StreamingSttBackend:
@@ -48,19 +49,8 @@ class HotPathAudioConversation:
     prompt_executor: PromptExecutor
     speech_rms_threshold: float = 0.02
     context_builder: ContextSnapshotBuilderV2 = field(default_factory=ContextSnapshotBuilderV2)
-    tomoko_echo_grace_ms: int = 800
     _audio_clock_ms: float = 0.0
-    _ignore_audio_until_ms: float = 0.0
     _recent_utterances: list[str] = field(default_factory=list)
-
-    def mark_tomoko_audio_sent(self, chunk: bytes) -> None:
-        duration_ms = wav_duration_ms(chunk) or 0.0
-        hold_ms = duration_ms + self.tomoko_echo_grace_ms
-        self._ignore_audio_until_ms = max(
-            self._ignore_audio_until_ms,
-            self._audio_clock_ms + hold_ms,
-        )
-        self.vad.reset()
 
     async def process_audio_bytes(self, payload: bytes) -> HotPathConversationResult | None:
         return await self.process_audio_samples(audio_bytes_to_samples(payload))
@@ -73,8 +63,6 @@ class HotPathAudioConversation:
             return None
         now_ms = self._audio_clock_ms
         self._audio_clock_ms += len(samples) / self.vad.sample_rate * 1000.0
-        if now_ms < self._ignore_audio_until_ms:
-            return None
         segment = self.vad.process_chunk(
             samples,
             speech_probability=speech_probability_from_rms(
@@ -99,6 +87,11 @@ class HotPathAudioConversation:
             else None
         )
         if durable is None:
+            if final_observation is not None and final_observation.is_final:
+                logger.info(
+                    "blank_final_stt_ignored observation_id=%s",
+                    final_observation.id,
+                )
             return HotPathConversationResult(
                 observations=observations,
                 durable_utterance=None,
@@ -142,17 +135,6 @@ def audio_bytes_to_samples(payload: bytes) -> tuple[float, ...]:
     if sample_count <= 0:
         return ()
     return struct.unpack(f"<{sample_count}f", payload[: sample_count * 4])
-
-
-def wav_duration_ms(payload: bytes) -> float | None:
-    try:
-        with wave.open(io.BytesIO(payload), "rb") as wav:
-            frame_rate = wav.getframerate()
-            if frame_rate <= 0:
-                return None
-            return wav.getnframes() / frame_rate * 1000.0
-    except (EOFError, wave.Error):
-        return None
 
 
 def speech_probability_from_rms(samples: tuple[float, ...], *, threshold: float) -> float:

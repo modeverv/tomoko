@@ -1,5 +1,37 @@
 # LOG.md
 
+## 2026-06-18 セッション6
+
+### やること（開始時に書く）
+- ヘッドセット前提では Tomoko 発話中に mic を抑止する前回対応が barge-in を壊すため、echo suppression を戻す。
+- 発話ループの別原因として、空 final STT が durable utterance / prompt request になる経路を確認し、空 STT を会話ターンにしない。
+
+### やったこと
+- セッション5の server-owned echo suppression を hot-path から外し、Tomoko 発話中も mic bytes は VAD/STT へ流れる状態に戻した。
+- `TomokoProcessCore.adopt_final_observation()` で空白 final STT を durable utterance として採用しないようにした。
+- blank final STT を落とした時に `blank_final_stt_ignored` を server log に残すようにした。
+- unit test を「Tomoko音声中にmicを落とす」ではなく「空 final STT は prompt にならない」契約へ差し替えた。
+
+### 詰まったこと・解決したこと
+- 前回の推定は、ヘッドセット前提では barge-in を壊す過剰対策だった。
+- 別原因として、VAD がノイズを speech segment として切り出し、Apple Speech が空文字を返し、その空発話を prompt へ流す経路が見つかった。
+
+### 検証
+- `uv run pytest tests/unit/test_v2_audio_tomoko_prompt.py -q`
+  - 14 passed
+- `make check`
+  - unit: 37 passed, 1 deselected
+  - ruff: passed
+- `git diff --check`
+  - passed
+- `make v2-conversation-smoke`
+  - fake runtime で通常の non-empty STT conversation path が引き続き通ることを確認
+- live hot-path uvicorn `--reload` が変更を検知し、server process が再起動済みであることを確認
+
+### 次のセッションでやること
+- 実ブラウザ会話で `blank_final_stt_ignored` が出るか、または non-empty transcript が繰り返されているかを確認する。
+- non-empty transcript が繰り返される場合は、STT結果・VAD RMS・segment長をログへ追加して原因を切り分ける。
+
 ## 2026-06-18 セッション5
 
 ### やること（開始時に書く）

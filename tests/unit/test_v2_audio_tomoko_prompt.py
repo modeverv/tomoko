@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import wave
 from collections.abc import AsyncIterator
@@ -17,11 +16,7 @@ from server.audio.stt import (
     observation_events,
 )
 from server.audio.vad import VADProcessor
-from server.hot_path.audio_conversation import (
-    HotPathAudioConversation,
-    audio_bytes_to_samples,
-    wav_duration_ms,
-)
+from server.hot_path.audio_conversation import HotPathAudioConversation, audio_bytes_to_samples
 from server.hot_path.model_executor import (
     MultipartMixedParser,
     PromptExecutor,
@@ -81,11 +76,6 @@ def test_audio_bytes_are_decoded_as_float32_chunks() -> None:
     assert audio_bytes_to_samples(b"\x00\x00\x00\x00\x00\x00\x00?") == (0.0, 0.5)
 
 
-def test_wav_duration_ms_reads_complete_wav_header() -> None:
-    assert wav_duration_ms(_wav_bytes((0,) * 250, sample_rate=1000)) == 250.0
-    assert wav_duration_ms(b"RIFFxxxxWAVEdata") is None
-
-
 @pytest.mark.asyncio
 async def test_apple_speech_backend_writes_wav_and_yields_final_event(
     tmp_path: Path,
@@ -124,7 +114,8 @@ async def test_apple_speech_backend_writes_wav_and_yields_final_event(
 
 
 class _RecordingSttBackend:
-    def __init__(self) -> None:
+    def __init__(self, text: str = "トモコ、返事して") -> None:
+        self.text = text
         self.segments: list[AudioSpeechSegment] = []
 
     async def transcribe_stream(
@@ -132,7 +123,7 @@ class _RecordingSttBackend:
         segment: AudioSpeechSegment,
     ) -> AsyncIterator[StreamingSttEvent]:
         self.segments.append(segment)
-        yield StreamingSttEvent("トモコ、返事して", True, 1.0)
+        yield StreamingSttEvent(self.text, True, 1.0)
 
 
 @pytest.mark.asyncio
@@ -165,31 +156,28 @@ async def test_hot_path_audio_conversation_runs_vad_stt_tomoko_prompt_with_prero
     assert stt_backend.segments[0].samples[200:300] == (0.2,) * 100
 
 
-@pytest.mark.asyncio
-async def test_hot_path_ignores_tomoko_audio_echo_before_vad_and_stt() -> None:
-    stt_backend = _RecordingSttBackend()
+async def test_hot_path_does_not_prompt_for_blank_final_stt() -> None:
+    stt_backend = _RecordingSttBackend(text="")
     conversation = HotPathAudioConversation(
         vad=VADProcessor(sample_rate=1000, pre_roll_ms=300, silence_ms=100),
         stt_backend=stt_backend,
         tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
         prompt_builder=PromptBuilderV2(),
-        prompt_executor=PromptExecutor(StaticChatBackend(["うん"]), StaticWavTtsBackend([])),
+        prompt_executor=PromptExecutor(
+            StaticChatBackend(["この返答は出てはいけない"]),
+            StaticWavTtsBackend([b"RIFFxxxxWAVEdata"]),
+        ),
         speech_rms_threshold=0.02,
-        tomoko_echo_grace_ms=100,
     )
 
-    conversation.mark_tomoko_audio_sent(_wav_bytes((2000,) * 300, sample_rate=1000))
-    assert await conversation.process_audio_samples((0.3,) * 100) is None
-    assert await conversation.process_audio_samples((0.3,) * 100) is None
-    assert await conversation.process_audio_samples((0.3,) * 100) is None
-    assert await conversation.process_audio_samples((0.0,) * 100) is None
-    assert stt_backend.segments == []
-
-    assert await conversation.process_audio_samples((0.4,) * 100) is None
+    assert await conversation.process_audio_samples((0.2,) * 100) is None
     assert await conversation.process_audio_samples((0.0,) * 100) is None
     result = await conversation.process_audio_samples((0.0,) * 100)
     assert result is not None
-    assert stt_backend.segments
+    assert result.observations[0].text == ""
+    assert result.durable_utterance is None
+    assert result.prompt_request is None
+    assert result.execution_result.audio_chunks == []
 
 
 @pytest.mark.asyncio
@@ -346,13 +334,3 @@ async def test_prompt_executor_requires_complete_wav_chunks() -> None:
     bad = PromptExecutor(StaticChatBackend(["x"]), StaticWavTtsBackend([b"not wav"]))
     with pytest.raises(ValueError):
         await bad.execute(request)
-
-
-def _wav_bytes(samples: tuple[int, ...], *, sample_rate: int) -> bytes:
-    data = io.BytesIO()
-    with wave.open(data, "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(sample_rate)
-        wav.writeframes(b"".join(sample.to_bytes(2, "little", signed=True) for sample in samples))
-    return data.getvalue()

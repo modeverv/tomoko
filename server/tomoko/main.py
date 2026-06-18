@@ -16,6 +16,8 @@ class TomokoProcessCore:
     ) -> DurableUtterance | None:
         if not observation.is_final:
             return None
+        if not observation.text.strip():
+            return None
         boundary = self.session_model.observe_utterance(observation.audio_ended_at)
         return DurableUtterance(
             session_id=boundary.session_id,
