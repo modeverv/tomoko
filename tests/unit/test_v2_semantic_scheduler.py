@@ -140,6 +140,20 @@ def test_speech_scheduler_suppresses_low_saturation_partial_start() -> None:
     assert "partial semantic saturation" in output.reason
 
 
+def test_speech_scheduler_allows_partial_when_score_is_high_enough() -> None:
+    output = SpeechScheduler().decide(
+        SpeechSchedulerInput(
+            partial_stt_text="こんにちは今の気分を教えて下さい",
+            stable_prefix="こんにちは今の気分を教えて下さい",
+            semantic_saturation=0.5,
+        )
+    )
+
+    assert output.action == "replace_current"
+    assert output.reason == "reply pressure crossed threshold"
+    assert output.score == pytest.approx(0.775)
+
+
 def test_speech_scheduler_appends_calendar_while_speaking() -> None:
     current = SpeechOrder(
         text="先に返事しているよ",

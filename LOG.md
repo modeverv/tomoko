@@ -1,5 +1,30 @@
 # LOG.md
 
+## 2026-06-18 セッション23
+
+### やること（開始時に書く）
+- partial 開始 gate を saturation 単独ではなく、総合 score も併用する設計に変える。
+- `こんにちは今の気分を教えて下さい` 程度の partial は saturation が 0.75 未満でも score が十分なら開始できるようにする。
+- 低情報 partial は引き続き suppress されることを unit test で固定する。
+
+### やったこと
+- `SpeechSchedulerThresholds` に `partial_start_score_threshold=0.75` を追加した。
+- partial gate を `semantic_saturation < 0.75` の単独判定から、`semantic_saturation < 0.75` かつ `score < 0.75` の時だけ suppress する判定へ変更した。
+- `semantic_saturation=0.5` / score `0.775` の partial は `replace_current` できる unit test を追加した。
+
+### 詰まったこと・解決したこと
+- `こんにちは今の気分を教えて下さい` の artifact では raw saturation は 0.5 相当だったが、総合 score は 0.775 まで出ていた。
+  - 解決: partial の false start 防止は残しつつ、score が十分高い request-like partial は開始できるようにした。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_semantic_scheduler.py::test_speech_scheduler_suppresses_low_saturation_partial_start tests/unit/test_v2_semantic_scheduler.py::test_speech_scheduler_allows_partial_when_score_is_high_enough -q`
+  - 2 passed
+- `uv run ruff check server/shared/models.py server/tomoko/scheduler.py tests/unit/test_v2_semantic_scheduler.py`
+  - passed
+
+### 次のセッションでやること
+- 実 runtime が起動している状態で `_reference/test.m4a` を再 smoke し、`こんにちは今の気分を教えて下さい` partial で早期 speech-order が出るか確認する。
+
 ## 2026-06-18 セッション22
 
 ### やること（開始時に書く）

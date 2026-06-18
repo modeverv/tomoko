@@ -305,3 +305,12 @@ reconcile 判定では `トモコ` / `智子` / `その` / `えっと` / `あの
 `afconvert` は m4a 入力で Python 3.11 の `wave` が読めない WAVE_FORMAT_EXTENSIBLE を出す場合があるため、
 `ffmpeg` が存在する環境では `ffmpeg -ac 1 -ar 16000 -sample_fmt s16` を優先する。
 clean smoke `logs/say-latency-20260618-161626.json` では `_reference/test.m4a` を実測できた。
+
+## 2026-06-18 セッション23 確定した判断
+
+### partial start gate は saturation 単独ではなく総合 score も見る
+`こんにちは今の気分を教えて下さい` の artifact では raw semantic saturation は 0.5 相当だったが、
+reply pressure と saturation weight を足した総合 score は 0.775 まで出ていた。
+この状態を `partial_start_saturation_threshold=0.75` だけで suppress するのは保守的すぎる。
+今後は partial について、saturation が 0.75 未満でも score が 0.75 以上なら開始を許す。
+低情報 partial は saturation と score の両方が低い時だけ suppress する。

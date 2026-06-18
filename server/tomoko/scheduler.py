@@ -118,9 +118,10 @@ class SpeechScheduler:
             scheduler_input.partial_stt_text
             and scheduler_input.semantic_saturation
             < self.thresholds.partial_start_saturation_threshold
+            and score < self.thresholds.partial_start_score_threshold
         ):
             return SpeechSchedulerAction.SUPPRESS, (
-                "partial semantic saturation is below start threshold"
+                "partial semantic saturation and score are below start thresholds"
             )
         if scheduler_input.current_speech_order is not None:
             if score > scheduler_input.current_speech_score + self.thresholds.replace_margin:
