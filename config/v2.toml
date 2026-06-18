@@ -1,0 +1,22 @@
+[runtime]
+database_url_env = "TOMOKO_DATABASE_URL"
+jsonl_log = "logs/v2-runtime.jsonl"
+
+[vad]
+sample_rate = 16000
+speech_threshold = 0.5
+silence_ms = 400
+pre_roll_ms = 500
+
+[vap]
+min_silence_ms = 150
+delta_silence_ms = 650
+yielding_threshold = 0.90
+
+[tts.voicevox_chunked]
+segment_length_sec = 0.6
+content_type = "audio/wav"
+
+[user_status]
+capture_interval_sec = 60
+artifact_retention_sec = 300
