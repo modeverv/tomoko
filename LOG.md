@@ -1,5 +1,34 @@
 # LOG.md
 
+## 2026-06-18 セッション24
+
+### やること（開始時に書く）
+- `make run` / `tmux-runtime` に Gemma E2B semantic saturation endpoint の model load を混ぜる。
+- hot-path 起動時に E2B endpoint を使う環境変数も渡す。
+- readiness / stop / unit test の Makefile contract を更新する。
+
+### やったこと
+- `semantic-e2b-run` target を追加し、`mlx_lm.server --model mlx-community/gemma-4-e2b-it-OptiQ-4bit --port 8083` を起動できるようにした。
+- `make run` / `tmux-runtime` で `semantic-e2b` tmux window を `hot-path` より前に作るようにした。
+- `TOMOKO_V2_LLM_READY_URLS` に `http://127.0.0.1:8083/v1/models` を追加し、hot-path 起動前の readiness で E2B も待つようにした。
+- hot-path tmux window へ `TOMOKO_V2_SEMANTIC_LLM=1` / URL / model を渡すようにした。
+- `tmux-stop` で `semantic-e2b` window にも Ctrl-C を送るようにした。
+
+### 詰まったこと・解決したこと
+- E2B は dflash draft ではなく `mlx_lm.server` で起動する既存運用だった。
+  - 解決: main LLM の `llm-run` には混ぜず、独立した tmux window と readiness URL として扱った。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_runtime_foundation.py::test_makefile_exposes_v2_runtime_targets_in_order -q`
+  - 1 passed
+- `make -n tmux-runtime`
+  - `semantic-e2b` window が `hot-path` より前に作られることを確認した。
+- `make -n semantic-e2b-run v2-runtime-ready`
+  - `mlx_lm.server` 起動 command と `8083/v1/models` readiness を確認した。
+
+### 次のセッションでやること
+- 実 `make run` で 8083 E2B readiness と hot-path の semantic LLM 有効化を確認する。
+
 ## 2026-06-18 セッション23
 
 ### やること（開始時に書く）

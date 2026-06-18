@@ -18,7 +18,10 @@ TMUX_SESSION ?= tomoko-v2-runtime
 TMUX_MOUSE ?= on
 TMUX_RUNTIME_READY_TIMEOUT_SEC ?= 600
 TMUX_RUNTIME_READY_INTERVAL_SEC ?= 2
-TOMOKO_V2_LLM_READY_URLS ?= http://127.0.0.1:8081/v1/models http://127.0.0.1:8082/v1/models
+TOMOKO_V2_SEMANTIC_LLM_URL ?= http://127.0.0.1:8083
+TOMOKO_V2_SEMANTIC_LLM_MODEL ?= mlx-community/gemma-4-e2b-it-OptiQ-4bit
+TOMOKO_V2_SEMANTIC_LLM_PORT ?= 8083
+TOMOKO_V2_LLM_READY_URLS ?= http://127.0.0.1:8081/v1/models http://127.0.0.1:8082/v1/models $(TOMOKO_V2_SEMANTIC_LLM_URL)/v1/models
 TOMOKO_V2_VOICEVOX_READY_URL ?= http://127.0.0.1:50122/version
 TOMOKO_V2_LLM_URL ?= http://127.0.0.1:8082
 TOMOKO_V2_LLM_MODEL ?= gemma-4-26b-a4b-it-mlx
@@ -43,7 +46,7 @@ WS_LATENCY_VOICE ?= Kyoko
 .PHONY: information-collect-world information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
 .PHONY: background-once background-watch background-dry-run
 .PHONY: tmux-runtime tmux-run tmux-attach tmux-stop tmux-list run stop a
-.PHONY: v2-runtime v2-stop v2-runtime-ready llm-run llm-stop voicevox-run v2-ocr-smoke ocr-smoke
+.PHONY: v2-runtime v2-stop v2-runtime-ready llm-run llm-stop semantic-e2b-run voicevox-run v2-ocr-smoke ocr-smoke
 .PHONY: v2-initiative-sim v2-floor-bench v2-report-latest v2-scheduler-report v2-llm-tts-smoke v2-conversation-smoke v2-scheduler-conversation-smoke v2-db-split-smoke v2-say-latency-smoke v2-scheduler-say-latency-smoke v2-five-turn-smoke v2-semantic-early-smoke
 .PHONY: db-up db-stop db-down db-dump test-unit test-integration lint check smoke-ws-voice-latency log-report monitor system-monitor
 
@@ -123,6 +126,10 @@ llm-stop:
 voicevox-run:
 	VOICEVOX_COMMAND="$(VOICEVOX_COMMAND)" bash scripts/run_voicevox.sh
 
+semantic-e2b-run:
+	mkdir -p logs
+	mlx_lm.server --model "$(TOMOKO_V2_SEMANTIC_LLM_MODEL)" --port "$(TOMOKO_V2_SEMANTIC_LLM_PORT)" 2>&1 | tee -a logs/mlx-lm-e2b-semantic.log
+
 v2-runtime-ready:
 	TOMOKO_RUNTIME_WAIT_TIMEOUT_SEC=$(TMUX_RUNTIME_READY_TIMEOUT_SEC) TOMOKO_RUNTIME_WAIT_INTERVAL_SEC=$(TMUX_RUNTIME_READY_INTERVAL_SEC) TOMOKO_V2_LLM_READY_URLS="$(TOMOKO_V2_LLM_READY_URLS)" TOMOKO_V2_VOICEVOX_READY_URL="$(TOMOKO_V2_VOICEVOX_READY_URL)" bash scripts/wait_runtime_dependencies.sh
 
@@ -136,8 +143,9 @@ v2-runtime tmux-runtime:
 	fi
 	tmux new-session -d -s $(TMUX_SESSION) -n llm-run 'cd "$(CURDIR)" && DFLASH_TMUX_SESSION="$(TMUX_SESSION)" DFLASH_TMUX_EMBED=1 DFLASH_TMUX_MOUSE="$(TMUX_MOUSE)" make llm-run; exec zsh -l'
 	tmux set-option -t $(TMUX_SESSION) mouse $(TMUX_MOUSE)
+	tmux new-window -t $(TMUX_SESSION): -n semantic-e2b 'cd "$(CURDIR)" && exec make semantic-e2b-run'
 	tmux new-window -t $(TMUX_SESSION): -n voicevox 'cd "$(CURDIR)" && make voicevox-run; exit_code=$$?; echo; echo "voicevox-run exited with status $$exit_code; keeping window open."; while :; do sleep 3600; done'
-	tmux new-window -t $(TMUX_SESSION): -n hot-path 'cd "$(CURDIR)" && make v2-runtime-ready && exec make server-debug'
+	tmux new-window -t $(TMUX_SESSION): -n hot-path 'cd "$(CURDIR)" && make v2-runtime-ready && TOMOKO_V2_SEMANTIC_LLM=1 TOMOKO_V2_SEMANTIC_LLM_URL="$(TOMOKO_V2_SEMANTIC_LLM_URL)" TOMOKO_V2_SEMANTIC_LLM_MODEL="$(TOMOKO_V2_SEMANTIC_LLM_MODEL)" exec make server-debug'
 	tmux new-window -t $(TMUX_SESSION): -n tomoko 'cd "$(CURDIR)" && exec make v2-tomoko'
 	tmux new-window -t $(TMUX_SESSION): -n info 'cd "$(CURDIR)" && exec make v2-info'
 	tmux new-window -t $(TMUX_SESSION): -n user-status 'cd "$(CURDIR)" && exec make v2-user-status'
@@ -162,6 +170,7 @@ v2-stop tmux-stop:
 		tmux send-keys -t $(TMUX_SESSION):llm-run C-c 2>/dev/null || true; \
 		tmux send-keys -t $(TMUX_SESSION):llm-31b C-c 2>/dev/null || true; \
 		tmux send-keys -t $(TMUX_SESSION):llm-26b C-c 2>/dev/null || true; \
+		tmux send-keys -t $(TMUX_SESSION):semantic-e2b C-c 2>/dev/null || true; \
 		tmux send-keys -t $(TMUX_SESSION):hot-path C-c 2>/dev/null || true; \
 		tmux send-keys -t $(TMUX_SESSION):voicevox C-c 2>/dev/null || true; \
 		tmux send-keys -t $(TMUX_SESSION):tomoko C-c 2>/dev/null || true; \

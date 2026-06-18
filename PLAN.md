@@ -536,3 +536,10 @@ partial 開始 gate を saturation 単独から、saturation と総合 score の
 `semantic_saturation < 0.75` でも `score >= 0.75` なら request-like partial として開始を許す。
 これにより artifact `logs/say-latency-20260618-161626.json` の
 `こんにちは今の気分を教えて下さい` 相当の partial は次回 smoke で早期 speech-order 候補になる。
+
+## 2026-06-18 セッション24 進捗追記
+
+`make run` / `tmux-runtime` に Gemma E2B semantic endpoint を追加した。
+`semantic-e2b` window で `mlx_lm.server --model mlx-community/gemma-4-e2b-it-OptiQ-4bit --port 8083`
+を起動し、hot-path 起動前の readiness で `8083/v1/models` も待つ。
+hot-path window には `TOMOKO_V2_SEMANTIC_LLM=1` と E2B URL/model を渡す。
