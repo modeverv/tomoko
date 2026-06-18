@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tomoko — Turn-taking v2 シグナル/データフロー</title>
+<style>
+  :root {
+    --bg: #0f172a; --bg2: #1e293b; --bg3: #334155;
+    --text: #e2e8f0; --muted: #94a3b8; --dim: #64748b;
+    --audio: #38bdf8; --stt: #4ade80; --db: #fbbf24; --adv: #c084fc; --main: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Hiragino Sans', 'Inter', sans-serif; padding: 28px; max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; color: var(--audio); margin-bottom: 4px; }
+  h2 { font-size: 1.05rem; color: var(--muted); margin: 36px 0 12px; border-bottom: 1px solid var(--bg3); padding-bottom: 6px; }
+  .meta { font-size: 0.8rem; color: var(--dim); margin-bottom: 20px; }
+  svg { background: var(--bg2); border: 1px solid var(--bg3); border-radius: 12px; display: block; max-width: 100%; height: auto; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.78rem; color: var(--muted); margin-top: 10px; }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 4px; border-radius: 2px; display: inline-block; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.84rem; background: var(--bg2); border-radius: 10px; overflow: hidden; }
+  th { background: var(--bg3); padding: 9px 12px; text-align: left; color: var(--muted); }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--bg3); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .mono { font-family: ui-monospace, monospace; font-size: 0.8rem; color: var(--stt); }
+  ul.principles { margin: 8px 0 0 20px; line-height: 1.9; font-size: 0.9rem; }
+  ul.principles li b { color: var(--db); }
+  .note { font-size: 0.8rem; color: var(--dim); margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>🎙️ Tomoko — Turn-taking v2 シグナル/データフロー</h1>
+<p class="meta">
+  対象: <code>make server-debug</code>（配信プロセス）+ <code>make turn-taking-v2-worker</code>（シャドウワーカー）。
+  プロセス間のシグナルは PostgreSQL の pg_notify 2チャネルのみ。データは常に一方向に流れ、逆流はない。
+</p>
+
+<h2>1. プロセス間データフロー（全体像）</h2>
+<svg viewBox="0 0 1140 1070" width="1140" height="1070" font-family="Hiragino Sans, sans-serif">
+  <defs>
+    <marker id="arr-audio" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="#38bdf8"/></marker>
+    <marker id="arr-stt" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="#4ade80"/></marker>
+    <marker id="arr-db" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="#fbbf24"/></marker>
+    <marker id="arr-adv" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="#c084fc"/></marker>
+    <marker id="arr-main" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="#f87171"/></marker>
+  </defs>
+
+  <!-- レーンヘッダ -->
+  <text x="230" y="30" text-anchor="middle" font-size="14" fill="#38bdf8" font-weight="bold">server-debug プロセス（uvicorn server.edge.main:app）</text>
+  <text x="580" y="30" text-anchor="middle" font-size="14" fill="#fbbf24" font-weight="bold">PostgreSQL（一方向バス）</text>
+  <text x="925" y="30" text-anchor="middle" font-size="14" fill="#c084fc" font-weight="bold">shadow worker プロセス（別プロセス）</text>
+
+  <!-- レーン背景 -->
+  <rect x="32" y="40" width="396" height="1000" fill="#38bdf8" opacity="0.04" rx="12"/>
+  <rect x="462" y="40" width="236" height="1000" fill="#fbbf24" opacity="0.04" rx="12"/>
+  <rect x="732" y="40" width="386" height="1000" fill="#c084fc" opacity="0.04" rx="12"/>
+
+  <!-- ===== server 列 ===== -->
+  <rect x="40" y="50" width="380" height="74" fill="#1e293b" stroke="#38bdf8" rx="10"/>
+  <text x="230" y="76" text-anchor="middle" font-size="13" fill="#e2e8f0" font-weight="bold">🎤 ブラウザ（client/index.html）</text>
+  <text x="230" y="96" text-anchor="middle" font-size="11" fill="#94a3b8">マイク取得 → WebSocket /ws（PCM float32）／ 応答音声の再生</text>
+
+  <rect x="40" y="160" width="380" height="60" fill="#1e293b" stroke="#334155" rx="10"/>
+  <text x="230" y="184" text-anchor="middle" font-size="12.5" fill="#e2e8f0" font-weight="bold">TomoroSession.process_audio_chunk</text>
+  <text x="230" y="202" text-anchor="middle" font-size="11" fill="#94a3b8">server/session.py</text>
+
+  <rect x="40" y="252" width="380" height="96" fill="#1e293b" stroke="#334155" rx="10"/>
+  <text x="230" y="274" text-anchor="middle" font-size="12.5" fill="#e2e8f0" font-weight="bold">MaaiBackchannelTap（gateway/maai_backchannel.py）</text>
+  <text x="230" y="294" text-anchor="middle" font-size="11" fill="#94a3b8">bc_2type: 相槌提案 ／ vap: p_yielding（ターン譲渡確率）</text>
+  <text x="230" y="312" text-anchor="middle" font-size="11" fill="#94a3b8">p_yielding → recommended_silence_ms = 150 + (1−p)×650</text>
+  <text x="230" y="330" text-anchor="middle" font-size="11" fill="#64748b">TT-v2.10a: get_p_yielding() で生値も保持</text>
+
+  <rect x="40" y="384" width="380" height="84" fill="#1e293b" stroke="#334155" rx="10"/>
+  <text x="230" y="408" text-anchor="middle" font-size="12.5" fill="#e2e8f0" font-weight="bold">VADProcessor 状態機械</text>
+  <text x="230" y="428" text-anchor="middle" font-size="11" fill="#94a3b8">idle → listening → processing</text>
+  <text x="230" y="446" text-anchor="middle" font-size="11" fill="#64748b">silence_ms は VAP 推奨値で動的更新（TT-v2.5、150〜800ms）</text>
+
+  <rect x="40" y="500" width="380" height="60" fill="#1e293b" stroke="#4ade80" rx="10"/>
+  <text x="230" y="524" text-anchor="middle" font-size="12.5" fill="#e2e8f0" font-weight="bold">ストリーミング STT（partial transcript）</text>
+  <text x="230" y="542" text-anchor="middle" font-size="11" fill="#94a3b8">_maybe_emit_partial_transcript（listening 中のみ）</text>
+
+  <rect x="40" y="592" width="380" height="64" fill="#1e293b" stroke="#4ade80" rx="10"/>
+  <text x="230" y="616" text-anchor="middle" font-size="12.5" fill="#e2e8f0" font-weight="bold">save_observation(raw_text, vad_state,</text>
+  <text x="230" y="636" text-anchor="middle" font-size="12.5" fill="#e2e8f0" font-weight="bold">audio_level_db, p_yielding)</text>
+
+  <rect x="40" y="712" width="380" height="64" fill="#1e293b" stroke="#c084fc" rx="10"/>
+  <text x="230" y="736" text-anchor="middle" font-size="12.5" fill="#e2e8f0" font-weight="bold">_listen_v2_advisories → _process_v2_advisory</text>
+  <text x="230" y="754" text-anchor="middle" font-size="11" fill="#94a3b8">LISTEN turn_taking_v2_advisory</text>
+
+  <rect x="40" y="808" width="380" height="84" fill="#1e293b" stroke="#c084fc" rx="10"/>
+  <text x="230" y="830" text-anchor="middle" font-size="12.5" fill="#e2e8f0" font-weight="bold">仮推論 provisional inference（TT-v2.4）</text>
+  <text x="230" y="850" text-anchor="middle" font-size="11" fill="#94a3b8">would_start_inference=True で起動・後続 partial の乖離で破棄</text>
+  <text x="230" y="868" text-anchor="middle" font-size="11" fill="#64748b">fusion フラグは記録のみ（log-only、TT-v2.10b）</text>
+
+  <rect x="40" y="928" width="380" height="92" fill="#1e293b" stroke="#f87171" rx="10"/>
+  <text x="230" y="950" text-anchor="middle" font-size="12.5" fill="#e2e8f0" font-weight="bold">メインレーン（final transcript 処理）</text>
+  <text x="230" y="970" text-anchor="middle" font-size="11" fill="#94a3b8">参加判定 → thinking（文脈/記憶）→ router → MLX LLM</text>
+  <text x="230" y="988" text-anchor="middle" font-size="11" fill="#94a3b8">→ TTS → WebSocket 音声 → ブラウザ再生</text>
+  <text x="230" y="1006" text-anchor="middle" font-size="11" fill="#64748b">logs/turn-taking-main.jsonl に決定を記録</text>
+
+  <!-- ===== DB 列 ===== -->
+  <rect x="470" y="560" width="220" height="96" fill="#1e293b" stroke="#fbbf24" rx="10"/>
+  <text x="580" y="584" text-anchor="middle" font-size="12" fill="#e2e8f0" font-weight="bold">partial_transcript_</text>
+  <text x="580" y="600" text-anchor="middle" font-size="12" fill="#e2e8f0" font-weight="bold">observations</text>
+  <text x="580" y="620" text-anchor="middle" font-size="10.5" fill="#94a3b8">+ p_yielding（TT-v2.10a）</text>
+  <text x="580" y="640" text-anchor="middle" font-size="10.5" fill="#fbbf24">NOTIFY …_observation</text>
+
+  <rect x="470" y="700" width="220" height="96" fill="#1e293b" stroke="#fbbf24" rx="10"/>
+  <text x="580" y="724" text-anchor="middle" font-size="12" fill="#e2e8f0" font-weight="bold">turn_taking_v2_advisories</text>
+  <text x="580" y="744" text-anchor="middle" font-size="10.5" fill="#94a3b8">+ fusion_score</text>
+  <text x="580" y="760" text-anchor="middle" font-size="10.5" fill="#94a3b8">+ would_start_inference_fusion</text>
+  <text x="580" y="780" text-anchor="middle" font-size="10.5" fill="#fbbf24">NOTIFY …_advisory</text>
+
+  <!-- ===== worker 列 ===== -->
+  <rect x="740" y="160" width="370" height="64" fill="#1e293b" stroke="#c084fc" rx="10"/>
+  <text x="925" y="184" text-anchor="middle" font-size="12.5" fill="#e2e8f0" font-weight="bold">TurnTakingV2Worker</text>
+  <text x="925" y="204" text-anchor="middle" font-size="11" fill="#94a3b8">LISTEN turn_taking_v2_observation + リカバリポーリング</text>
+
+  <rect x="740" y="252" width="370" height="48" fill="#1e293b" stroke="#334155" rx="10"/>
+  <text x="925" y="280" text-anchor="middle" font-size="12" fill="#e2e8f0">TranscriptValidity（幻覚/ノイズ除外）</text>
+
+  <rect x="740" y="324" width="370" height="60" fill="#1e293b" stroke="#334155" rx="10"/>
+  <text x="925" y="348" text-anchor="middle" font-size="12" fill="#e2e8f0">StablePrefixExtractor</text>
+  <text x="925" y="366" text-anchor="middle" font-size="11" fill="#94a3b8">stable/unstable 分離・tail_stable 判定</text>
+
+  <rect x="740" y="408" width="370" height="74" fill="#1e293b" stroke="#334155" rx="10"/>
+  <text x="925" y="430" text-anchor="middle" font-size="12" fill="#e2e8f0">SemanticFinishJudge</text>
+  <text x="925" y="448" text-anchor="middle" font-size="11" fill="#94a3b8">Gemma LLM 構造化2キー ／ ルール fallback</text>
+  <text x="925" y="466" text-anchor="middle" font-size="11" fill="#64748b">semantic_saturation / remaining_info_risk</text>
+
+  <rect x="740" y="506" width="370" height="84" fill="#1e293b" stroke="#c084fc" rx="10"/>
+  <text x="925" y="528" text-anchor="middle" font-size="12" fill="#e2e8f0">SpeechMotivationEvaluator</text>
+  <text x="925" y="546" text-anchor="middle" font-size="11" fill="#94a3b8">speech_decision_score / proposal / would_start_inference</text>
+  <text x="925" y="564" text-anchor="middle" font-size="11" fill="#fbbf24">+ fusion_score（quiet・tail_stable・p_yielding の加重和）</text>
+  <text x="925" y="580" text-anchor="middle" font-size="10.5" fill="#64748b">log-only（TT-v2.10b）</text>
+
+  <rect x="740" y="614" width="370" height="64" fill="#1e293b" stroke="#334155" rx="10"/>
+  <text x="925" y="638" text-anchor="middle" font-size="12" fill="#e2e8f0">save_advisory + log_v2_shadow_advisory</text>
+  <text x="925" y="656" text-anchor="middle" font-size="11" fill="#94a3b8">logs/turn-taking-v2.jsonl</text>
+
+  <!-- ===== 矢印（server 列内 縦） ===== -->
+  <line x1="230" y1="124" x2="230" y2="156" stroke="#38bdf8" stroke-width="2" marker-end="url(#arr-audio)"/>
+  <text x="242" y="146" font-size="11" fill="#38bdf8">① 音声チャンク</text>
+  <line x1="230" y1="220" x2="230" y2="248" stroke="#38bdf8" stroke-width="2" marker-end="url(#arr-audio)"/>
+  <text x="242" y="240" font-size="11" fill="#38bdf8">② 16kHz音声を供給</text>
+  <line x1="230" y1="348" x2="230" y2="380" stroke="#38bdf8" stroke-width="2" marker-end="url(#arr-audio)"/>
+  <text x="242" y="370" font-size="11" fill="#38bdf8">③ recommended_silence_ms</text>
+  <line x1="230" y1="468" x2="230" y2="496" stroke="#4ade80" stroke-width="2" marker-end="url(#arr-stt)"/>
+  <text x="242" y="488" font-size="11" fill="#4ade80">④ listening 中のチャンク</text>
+  <line x1="230" y1="560" x2="230" y2="588" stroke="#4ade80" stroke-width="2" marker-end="url(#arr-stt)"/>
+  <text x="242" y="580" font-size="11" fill="#4ade80">⑤ partial テキスト</text>
+
+  <!-- S6 → D1（INSERT+NOTIFY） -->
+  <line x1="420" y1="624" x2="466" y2="612" stroke="#fbbf24" stroke-width="2" marker-end="url(#arr-db)"/>
+  <text x="443" y="600" font-size="11" fill="#fbbf24" text-anchor="middle">⑥ INSERT</text>
+
+  <!-- D1 → W1（NOTIFY → LISTEN） -->
+  <path d="M 690 580 L 715 580 L 715 192 L 736 192" fill="none" stroke="#fbbf24" stroke-width="2" marker-end="url(#arr-db)"/>
+  <text x="713" y="392" font-size="11" fill="#fbbf24" transform="rotate(-90 713 392)" text-anchor="middle">⑦ NOTIFY（observation_id）</text>
+
+  <!-- worker 列内 縦 -->
+  <line x1="925" y1="224" x2="925" y2="248" stroke="#c084fc" stroke-width="2" marker-end="url(#arr-adv)"/>
+  <text x="937" y="244" font-size="11" fill="#c084fc">⑧ 評価パイプライン（上から順に）</text>
+  <line x1="925" y1="300" x2="925" y2="320" stroke="#c084fc" stroke-width="2" marker-end="url(#arr-adv)"/>
+  <line x1="925" y1="384" x2="925" y2="404" stroke="#c084fc" stroke-width="2" marker-end="url(#arr-adv)"/>
+  <line x1="925" y1="482" x2="925" y2="502" stroke="#c084fc" stroke-width="2" marker-end="url(#arr-adv)"/>
+  <line x1="925" y1="590" x2="925" y2="610" stroke="#c084fc" stroke-width="2" marker-end="url(#arr-adv)"/>
+
+  <!-- W6 → D2（INSERT+NOTIFY） -->
+  <path d="M 740 646 L 715 646 L 715 748 L 694 748" fill="none" stroke="#fbbf24" stroke-width="2" marker-end="url(#arr-db)"/>
+  <text x="713" y="700" font-size="11" fill="#fbbf24" transform="rotate(-90 713 700)" text-anchor="middle">⑨ INSERT</text>
+
+  <!-- D2 → S7（NOTIFY → LISTEN） -->
+  <line x1="470" y1="744" x2="424" y2="744" stroke="#c084fc" stroke-width="2" marker-end="url(#arr-adv)"/>
+  <text x="447" y="734" font-size="11" fill="#c084fc" text-anchor="middle">⑩</text>
+
+  <!-- S7 → S8 -->
+  <line x1="230" y1="776" x2="230" y2="804" stroke="#c084fc" stroke-width="2" marker-end="url(#arr-adv)"/>
+  <text x="242" y="796" font-size="11" fill="#c084fc">⑪ would_start_inference=True</text>
+
+  <!-- S4 → S9（VAD発火 → メインレーン、左マージン） -->
+  <path d="M 40 426 L 20 426 L 20 974 L 36 974" fill="none" stroke="#f87171" stroke-width="2" marker-end="url(#arr-main)"/>
+  <text x="18" y="700" font-size="11" fill="#f87171" transform="rotate(-90 18 700)" text-anchor="middle">⑫ VAD発火（沈黙 silence_ms 経過）→ final transcript</text>
+</svg>
+
+<div class="legend">
+  <span><span class="dot" style="background:var(--audio)"></span> 音声・VAD/VAP 信号</span>
+  <span><span class="dot" style="background:var(--stt)"></span> STT テキスト</span>
+  <span><span class="dot" style="background:var(--db)"></span> DB 書き込み + pg_notify</span>
+  <span><span class="dot" style="background:var(--adv)"></span> シャドウ評価・advisory</span>
+  <span><span class="dot" style="background:var(--main)"></span> メインレーン（応答生成）</span>
+</div>
+
+<h2>2. 1ターンのタイミングモデル（ベンチ TT-v2.9 で計測済み）</h2>
+<svg viewBox="0 0 1100 240" width="1100" height="240" font-family="Hiragino Sans, sans-serif">
+  <defs>
+    <marker id="t-arr" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="#4ade80"/></marker>
+  </defs>
+  <!-- 時間軸: 0..4500ms → x 80..1040 -->
+  <line x1="80" y1="150" x2="1060" y2="150" stroke="#334155" stroke-width="1"/>
+  <!-- 発話音声 0..3000ms -->
+  <rect x="80" y="138" width="640" height="24" fill="#334155" rx="4"/>
+  <text x="400" y="132" text-anchor="middle" font-size="12" fill="#94a3b8">ユーザー発話音声（D = 例 3000ms）</text>
+  <!-- partial 到着（STT遅延 ~200ms） -->
+  <g fill="#4ade80">
+    <circle cx="220" cy="186" r="4"/><circle cx="350" cy="186" r="4"/><circle cx="480" cy="186" r="4"/><circle cx="610" cy="186" r="4"/><circle cx="762" cy="186" r="4"/>
+  </g>
+  <text x="480" y="210" text-anchor="middle" font-size="11" fill="#4ade80">STT partial 到着（約200ms遅延）→ それぞれ observation として DB へ → shadow が評価</text>
+  <!-- 無音区間 D..D+wait -->
+  <rect x="720" y="138" width="171" height="24" fill="#1e3a5f" rx="4"/>
+  <text x="805" y="132" text-anchor="middle" font-size="11" fill="#64748b">VAD 無音待ち（VAPで150〜800ms）</text>
+  <!-- VAD発火 + final -->
+  <line x1="891" y1="120" x2="891" y2="180" stroke="#f87171" stroke-width="2"/>
+  <text x="891" y="110" text-anchor="middle" font-size="11" fill="#f87171">VAD発火</text>
+  <rect x="918" y="142" width="8" height="16" fill="#e2e8f0"/>
+  <text x="924" y="132" text-anchor="middle" font-size="11" fill="#e2e8f0">final確定(+150ms) → main LLM 開始</text>
+  <!-- fusion 発火 -->
+  <polygon points="795,162 788,176 802,176" fill="#fb923c"/>
+  <text x="795" y="62" text-anchor="middle" font-size="11" fill="#fb923c">fusion 発火（静か + テキスト確定 + 意味完了 + VAP）</text>
+  <line x1="795" y1="68" x2="795" y2="158" stroke="#fb923c" stroke-width="1" stroke-dasharray="3,3"/>
+  <!-- リード矢印 -->
+  <line x1="795" y1="92" x2="918" y2="92" stroke="#4ade80" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#t-arr)"/>
+  <text x="856" y="84" text-anchor="middle" font-size="11" fill="#4ade80">実効リード ≈ 600ms（miss 0 / ベンチ N=120）</text>
+  <!-- 軸ラベル -->
+  <text x="80" y="172" font-size="10" fill="#64748b">0ms</text>
+  <text x="720" y="172" font-size="10" fill="#64748b">D</text>
+  <text x="1040" y="172" font-size="10" fill="#64748b">t→</text>
+</svg>
+<p class="note">
+  fusion は log-only で並走中。実機ログ突合（TT-v2.10d）でベンチ予測と一致を確認後、仮推論のトリガーを fusion に切り替える。
+  prefill API（TT-v2.10c）はバックエンドプリミティブ実装済み・結線はトリガー切替と同時。
+</p>
+
+<h2>3. データの着地点（誰が書き、誰が読むか）</h2>
+<table>
+  <thead><tr><th>場所</th><th>書き手</th><th>読み手</th><th>主な内容</th></tr></thead>
+  <tbody>
+    <tr>
+      <td class="mono">partial_transcript_observations</td>
+      <td>session（_maybe_emit_partial_transcript）</td>
+      <td>shadow worker（LISTEN/リカバリ）</td>
+      <td>raw_text, vad_state, audio_level_db, <b>p_yielding</b>（TT-v2.10a）</td>
+    </tr>
+    <tr>
+      <td class="mono">turn_taking_v2_advisories</td>
+      <td>shadow worker（save_advisory）</td>
+      <td>session（advisory リスナー）</td>
+      <td>saturation, proposal, would_start_inference, <b>fusion_score / would_start_inference_fusion</b>（TT-v2.10b）</td>
+    </tr>
+    <tr>
+      <td class="mono">logs/turn-taking-main.jsonl</td>
+      <td>session（メインレーン・仮推論イベント）</td>
+      <td>analyze_turn_taking_v2.py</td>
+      <td>final transcript の決定、provisional_inference の start/discard</td>
+    </tr>
+    <tr>
+      <td class="mono">logs/turn-taking-v2.jsonl</td>
+      <td>shadow worker（log_v2_shadow_advisory）</td>
+      <td>analyze_turn_taking_v2.py（fusion 比較付き）</td>
+      <td>advisory 全件（p_yielding, fusion_score 含む）</td>
+    </tr>
+    <tr>
+      <td class="mono">logs/server-debug.log</td>
+      <td>make server-debug（tee）</td>
+      <td>人間</td>
+      <td>uvicorn / DEBUG ログ全文</td>
+    </tr>
+    <tr>
+      <td class="mono">logs/turn-taking-v2-worker.log</td>
+      <td>make turn-taking-v2-worker</td>
+      <td>人間</td>
+      <td>worker の処理ログ（LLM判定の生応答含む）</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>4. 設計原則（このフローが守っている規約）</h2>
+<ul class="principles">
+  <li><b>一方向フロー</b>: gateway → observations → worker → advisories → session。逆向きの書き込みは存在しない。</li>
+  <li><b>プロセス間シグナルは pg_notify 2チャネルのみ</b>: <code>turn_taking_v2_observation</code> と <code>turn_taking_v2_advisory</code>。payload は UUID のみで、データ本体は必ずテーブルから読む。</li>
+  <li><b>shadow は助言のみ</b>: worker はメインレーンの動作を直接変更しない。session 側が advisory を読んで仮推論を起動/破棄する。</li>
+  <li><b>log-only で検証してから切替</b>: fusion 判定（TT-v2.10b）は記録のみ。実機ログとベンチ予測の突合（TT-v2.10d）後にトリガーを切り替える。</li>
+  <li><b>状態はコンポーネント内に閉じる</b>: KVキャッシュ（prefill、TT-v2.10c）は MLXLMBackend 内のみ。ターン内 append-only・ターン終了で破棄。</li>
+</ul>
+
+<p class="note">生成: 2026-06-12 ／ 配信URL: <code>/v2.html</code>（server-debug 起動中）／ ソース: <code>client/v2.html</code></p>
+
+</body>
+</html>

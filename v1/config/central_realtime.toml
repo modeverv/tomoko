@@ -1,0 +1,276 @@
+[node]
+role = "central_realtime"
+
+[database]
+dsn = "postgresql://tomoko:tomoko@localhost:5432/tomoko"
+
+[audio]
+sample_rate = 16000
+chunk_ms = 32
+vad_silence_ms = 400
+vad_pre_roll_ms = 500
+vap_hybrid_enabled = true
+vap_hybrid_min_silence_ms = 150
+vap_hybrid_delta_silence_ms = 650
+vap_hybrid_threshold_probability = 0.90
+
+[inference]
+conversation_backend = "lmstudio_gemma4_26b_a4b"
+conversation_fallback = "local_gemma4_e2b_mlx"
+session_summary_backend = "lmstudio_gemma4_26b_a4b"
+session_summary_fallback = "local_gemma4_e2b_mlx"
+memory_extraction_backend = "lmstudio_gemma4_31b"
+memory_extraction_fallback = "local_gemma4_e2b_mlx"
+persona_update_backend = "lmstudio_gemma4_31b"
+persona_update_fallback = "local_gemma4_e2b_mlx"
+candidate_gen_backend = "lmstudio_gemma4_26b_a4b"
+candidate_gen_fallback = "local_gemma4_e2b_mlx"
+diary_backend = "lmstudio_gemma4_26b_a4b"
+diary_fallback = "local_gemma4_e2b_mlx"
+stt_backend = "local_apple_speech_ja"
+#stt_backend = "local_whisper_mlx_large_turbo_q4"
+vad_backend = "silero_vad"
+tts_backend = "voicevox_tsumugi_chunked"
+#tts_backend = "voicevox_tsumugi"
+embedding_backend = "local_bge_m3"
+speech_normalizer_enabled = false
+
+[backends.local_qwen7b]
+type = "ollama"
+url = "http://localhost:11434"
+model = "qwen2.5:7b"
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.local_qwen_mlx]
+type = "mlx"
+model = "mlx-community/Qwen2.5-7B-Instruct-4bit"
+max_latency_ms = 300
+privacy_allowed = true
+
+[backends.local_gemma4_e2b_mlx]
+type = "gemma_mlx"
+model = "mlx-community/gemma-4-e2b-it-4bit"
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.local_lfm25_12b_jp_mlx]
+type = "mlx_lm"
+model = "lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit"
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.lmstudio_gemma4_e2b]
+type = "lm_studio"
+url = "http://localhost:1234"
+model = "gemma-4-e2b-it-mlx"
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.lmstudio_gemma4_e4b]
+type = "lm_studio"
+url = "http://localhost:1234"
+model = "gemma-4-e4b-it-mlx"
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.lmstudio_gemma4_31b]
+type = "lm_studio"
+url = "http://localhost:8081"
+model = "gemma-4-31b-it-mlx"
+chat_template_kwargs = { enable_thinking = false }
+max_latency_ms = 60000
+privacy_allowed = true
+
+[backends.lmstudio_gemma4_26b_a4b]
+type = "lm_studio"
+url = "http://localhost:8082"
+model = "gemma-4-26b-a4b-it-mlx"
+chat_template_kwargs = { enable_thinking = false }
+max_latency_ms = 5000
+privacy_allowed = true
+
+[backends.local_whisper_small]
+type = "faster_whisper"
+model = "small"
+privacy_allowed = true
+
+[backends.local_whisper_mlx_small]
+type = "mlx_whisper"
+model = "mlx-community/whisper-small-mlx"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
+
+[backends.local_whisper_mlx_large_turbo_q4]
+type = "mlx_whisper"
+model = "mlx-community/whisper-large-v3-turbo-q4"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
+
+[backends.local_whisper_coreml_small]
+type = "whisper_coreml"
+model_path = "models/whisper/ggml-small.bin"
+command = "whisper-cli"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
+
+[backends.local_whisperkit_coreml_small]
+type = "whisper_coreml"
+model = "small"
+command = "whisperkit-cli"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
+
+[backends.local_whisperkit_serve_small]
+type = "whisperkit_serve"
+url = "http://127.0.0.1:50060"
+model = "small"
+command = "whisperkit-cli"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
+
+[backends.local_whisperkit_serve_large]
+type = "whisperkit_serve"
+url = "http://127.0.0.1:50061"
+model = "large-v3-v20240930_626MB"
+command = "whisperkit-cli"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
+
+[backends.local_whisperkit_serve_large_turbo_632m_cpu_ne]
+type = "whisperkit_serve"
+url = "http://127.0.0.1:50062"
+model = "large-v3-v20240930_turbo_632MB"
+command = "whisperkit-cli"
+compute_units = "cpuAndNeuralEngine"
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 1000
+stream_min_audio_ms = 1000
+
+[backends.local_apple_speech_ja]
+type = "apple_speech"
+language = "ja-JP"
+on_device = true
+timeout_s = 30
+privacy_allowed = true
+streaming = true
+stream_interval_ms = 500 
+stream_min_audio_ms = 500
+
+[backends.local_bge_m3]
+type = "bge_m3"
+model = "BAAI/bge-m3"
+dimensions = 1024
+max_latency_ms = 300
+privacy_allowed = true
+
+[backends.silero_vad]
+type = "silero_vad"
+model = "snakers4/silero-vad"
+privacy_allowed = true
+
+[backends.say]
+type = "say"
+voice = "Kyoko"
+max_latency_ms = 10
+privacy_allowed = true
+
+[backends.kokoro_mlx]
+type = "kokoro_mlx"
+model = "mlx-community/Kokoro-82M-bf16"
+voice = "jf_alpha"
+sample_rate = 24000
+max_latency_ms = 200
+privacy_allowed = true
+
+[backends.voicevox_tsumugi]
+type = "voicevox"
+url = "http://127.0.0.1:50021"
+voice = "8"
+sample_rate = 16000
+speed = 1.0
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.voicevox_tsumugi_stream]
+type = "voicevox_stream"
+url = "http://127.0.0.1:50021"
+voice = "8"
+sample_rate = 16000
+speed = 1.0
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.voicevox_tsumugi_chunked]
+type = "voicevox_chunked"
+url = "http://127.0.0.1:50122"
+voice = "8"
+sample_rate = 24000
+speed = 1.0
+chunk_min_accent_phrases = 1
+segment_length = 0.6
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.kokoro_coreml]
+type = "kokoro_coreml"
+command = "kokoro"
+voice = "jf_alpha"
+sample_rate = 24000
+max_latency_ms = 200
+privacy_allowed = true
+streaming = true
+
+[backends.supertonic_coreml_f1]
+type = "supertonic_coreml"
+model = "FluidInference/supertonic-3-coreml"
+model_path = "models/supertonic-3-coreml"
+voice = "F1"
+language = "ja"
+sample_rate = 24000
+total_step = 8
+speed = 1.05
+compute_units = "CPU_AND_NE"
+max_latency_ms = 200
+privacy_allowed = true
+
+[backends.irodori_mlx]
+type = "irodori_mlx"
+model = "mlx-community/Irodori-TTS-500M-v3-8bit"
+voice = "none"
+max_latency_ms = 3500
+privacy_allowed = true
+
+[backends.irodori_mlx_stream]
+type = "irodori_mlx_stream"
+model = "mlx-community/Irodori-TTS-500M-v3-8bit"
+voice = "none"
+max_latency_ms = 500
+privacy_allowed = true
+
+[backends.qwen3_tts_mlx_small]
+type = "qwen3_mlx"
+model = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit"
+voice = "none"
+max_latency_ms = 800
+privacy_allowed = true
+
+[backends.qwen3_tts_mlx_large]
+type = "qwen3_mlx"
+model = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
+voice = "none"
+max_latency_ms = 1200
+privacy_allowed = true

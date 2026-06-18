@@ -1,0 +1,35 @@
+from __future__ import annotations
+
+import pytest
+
+from _tools.smoke_research_mcp_flow import run_research_smoke
+
+
+@pytest.mark.integration
+async def test_research_mcp_smoke_runs_session_command_through_subprocess() -> None:
+    summary = await run_research_smoke(
+        speech_text="ともこ、今日のOpenAI関連ニュースを短く調べて",
+    )
+
+    assert summary["ok"] is True
+    assert summary["detected_query"] == "今日のOpenAI関連ニュースを短く"
+    assert summary["command_count"] == 1
+    assert summary["event_types"][:2] == [
+        "research_request_accepted",
+        "research_result_ready",
+    ]
+    assert summary["answer_requested"] is True
+    assert summary["reply_text_deltas"] == [
+        "調べ終わったよ。結果を教えてって言ってね。",
+        "今日のOpenAI関連ニュースを短く についての smoke 応答です。"
+    ]
+    assert summary["reply_done_count"] == 2
+    assert summary["ingested_research_count"] == 1
+    assert summary["deep_research_summaries"] == [
+        "今日のOpenAI関連ニュースを短く の外部調査結果をdeep context用に要約したメモです。"
+    ]
+    assert summary["status"] == "completed"
+    assert summary["speakable"] is True
+    assert summary["notice_text"] == "調べ終わったよ。結果を教えてって言ってね。"
+    assert summary["citation_count"] == 1
+    assert summary["provider_trace_id"] == "fake-trace-1"

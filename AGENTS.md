@@ -3,6 +3,10 @@
 このファイルはこのリポジトリで作業する AI コーディングエージェント
 （Claude Code / Cursor / その他）向けの指示書です。
 
+一旦完成したので、ここまでの結果をv1ディレクトリに全て移動した経緯がある。
+v1には知見が大量にあるため、活用すること。
+
+
 ---
 
 ## 禁止事項
@@ -42,20 +46,7 @@ cat PLAN.md     # 今のマイルストーンと対象 Phase を確認する
 
 PLAN.md の完了条件（✅）を確認して、何をもって完了とするかを把握してから実装を始める。
 
-### Step 3: 関連するリファレンス実装を確認する
-
-```bash
-ls _reference/   # 参考実装の一覧を確認する
-```
-
-`_reference/` ディレクトリには過去の実装経験から得た参考コードが置いてある。
-実装に入る前に関連するファイルを読んで、同じ苦労を繰り返さないようにする。
-
-特に以下は必ず確認する：
-- `_reference/unity/MyAIRoomScript.cs` — 音声録音・VAD・API通信の実装経験
-- `_reference/server/api.py` — サーバー側の旧実装。今回はここに書いてあることの逆をやる
-
-### Step 4: LOG.md に作業開始を記録する
+### Step 3: LOG.md に作業開始を記録する
 
 ```markdown
 ## YYYY-MM-DD セッションN
@@ -127,10 +118,6 @@ git commit -m "feat(phase-X): ..."
 ## _reference/ ディレクトリについて
 
 `_reference/` には過去の実装経験から得た参考コードを置いている。
-**そのまま使うのではなく、設計の参考として読む。**
-
-今回の実装で解決したかった課題がここに記録されている。
-同じ轍を踏まないために読む。
 
 ```
 _reference/
@@ -143,11 +130,6 @@ _reference/
                             OGG→MP3変換・Base64・REST一括返却の苦肉の策
                             今回はこの種の変換を一切しない
 ```
-
-参考にする観点：
-- `MyAIRoomScript.cs` の `gaman`（無音待機時間）→ 今回は Silero VAD に置き換える
-- `api.py` の `convert_ogg_to_mp3` → 今回は float32 をそのまま流すので不要
-- `api.py` の `get_response_wave_from_text` → 今回はストリーミングに分解する
 
 ---
 
@@ -192,86 +174,14 @@ _reference/
 
 ### 4. 状態機械を分散させない
 
-会話のステートは `server/session.py` の `TomoroSession` クラス一箇所で管理します。
-別の場所に "is_processing" フラグなどを生やさないでください。
-
-**3 年前の Unity 実装で `isRecording` `isCommunicating` `isAITalking` が
-分散して苦しんだ過去があります。同じ轍を踏まないこと。**
-
 ### 5. 会話セッション境界を DB に明示する
 
-`conversation_logs` は会話原本の role 行であり、会話のまとまりそのものではない。
-M2 Phase 8.5 以降は、会話のまとまりを `conversation_sessions` で表す。
-
-- `attention_mode` が `ambient -> engaged` になった時、または最初の `should_participate=True` 発話で active session を作る
-- `engaged` / `cooldown` 中の user / tomoko turn は同じ `conversation_session_id` で `conversation_logs` に保存する
-- `cooldown -> ambient` または `withdrawn` で session を閉じる
-- session の開始・終了判断は `TomoroSession` に集約し、クライアントや worker に移さない
-- ambient / observer 発話は `ambient_logs` に残し、会話 session へ混ぜない
 
 ### 6. セッション要約は原本ではなく索引として扱う
 
-`conversation_sessions.summary_text` と `summary_embedding` は、会話検索と文脈復元のための派生データである。
-会話の原本は常に `conversation_logs` とする。
-
-- `conversation_sessions` に session metadata / summary / summary embedding をまとめる
-- 要約 embedding 用に別テーブルを増やさない。複数 embedding モデルや履歴管理が必要になるまで一本化を維持する
-- 要約と embedding 生成はオンライン会話経路で実行しない
-- `TomoroSession` は session を閉じて `summary_status='pending'` にするだけにする
-- 別プロセス（`session_summarizer` または `journalist` の前段）が pending session を拾い、要約と embedding を保存する
-- 要約が間違っても原本を上書きしない。再生成可能なキャッシュ/索引として扱う
 
 ### 7. 用語集と人格状態は versioned JSONB snapshot として扱う
 
-用語集・関係性・人格状態は、後から変動点を追跡できるように versioned snapshot として保存する。
-正規化テーブルを細かく増やすのではなく、まずは PostgreSQL `jsonb` カラムに「その時点の全体像」を1レコードで持つ。
-
-- `persona_lexicon_versions.lexicon_json` は用語集・印象的フレーズ・関係性マーカーの全体 snapshot
-- `persona_state_versions.state_json` は性格傾向・話し方・関係性状態の全体 snapshot
-- `diff_json` は前 version からの変更点を保存する
-- `schema_version` を必ず持たせる
-- 外部分析では PostgreSQL の `jsonb` / jsonpath / GIN index を使える形にする
-- アプリケーションコードでは生の `dict` を持ち回らず、`server/shared/models.py` のモデルクラスへ変換して使う
-- JSON schema を変える場合は loader / migration を用意し、古い snapshot を読めるようにする
-- これらは原本ではなく、`conversation_logs` / `conversation_sessions` から再生成可能な解釈ログとして扱う
-
-### 8. LLM に渡す文脈は ContextSnapshotBuilder で組み立てる
-
-短期記憶、長期記憶、セッション要約、用語集、人格スナップショットを `ThinkingMode` が個別に読む設計にしない。
-M2 Phase 8.8 以降は、LLM に渡す文脈を `ContextSnapshotBuilder` で一箇所に集約する。
-
-- `TomoroSession` は状態遷移と active session ID を決める
-- `ContextSnapshotBuilder` は読み取り専用で、DB から必要な文脈を予算内に組み立てる
-- `ThinkingMode` は `TomokoContextSnapshot` DTO を使って返答する
-- builder は session 開始/終了、persona 更新、要約生成などの副作用を持たない
-- `depth` は `fast` / `normal` / `deep` / `reflective` を基本にする
-- online 会話では `fast` / `normal` / 必要時の `deep` までにし、`reflective` は background worker 用にする
-- snapshot build の elapsed ms と採用した source counts をログに残す
-- perf test で `fast` / `normal` / `deep` の絶対ラウンドトリップ目標を固定する
-- context build は `ContextBuildPolicy.max_build_ms` に従う best-effort runtime とする
-- timeout は応答失敗ではなく degraded context として扱う
-- same session recent turns を baseline とし、長期記憶・用語集・人格 slice は optional enrichment とする
-- 複数 source は deadline 付き parallel DB I/O として読み、返却順ではなく priority / relevance / recency / salience / token budget で assemble する
-- `ContextBuildTrace` を必ず返し、budget / elapsed / skipped source / stage timings / cache hit / source error をログに出せるようにする
-- 単一サーバー運用では Redis を導入せず、process-local TTL cache は DB read の speed-up に限定して使う
-- cache は source of truth ではない。active session / attention / playback / barge-in など authoritative state は cache しない
-
-### 9. TomoroSession を stateful control core として扱う
-
-M2 Phase 8.8.5 以降は、メイン層に participation / playback / session lifecycle の最終判断を残さない。
-メイン層は WebSocket / timer / backend result を `SessionEvent` に変換し、
-`TomoroSession` から返された `StateEmission` / `SessionCommand` を実行する薄い adapter として扱う。
-
-- 状態変更の入口は `TomoroSession.post_event(event)` に寄せる
-- 外部は `TomoroSession.get_now_state()` で snapshot を読んでよいが、state を直接変更しない
-- `TomoroRuntimeState` は「今どうなっているか」だけを持ち、制御ロジックを持たない
-- 制御判断は `TomoroSession._reduce()` / `_resolve_transcript_event()` などに閉じ込める
-- `_reduce()` では原則 `await` しない
-- DB / context build / LLM / TTS / WebSocket send は `SessionCommand` として外に出す
-- command の結果は必ず `SessionEvent` として `TomoroSession` に戻す
-- `session_id` / `turn_id` / `chunk_id` / `context_build_id` で stale result を捨てる
-- M2 では本格的な EventBus / event sourcing / 外部 pub-sub / Redis queue は導入しない
-- 自発発話や arrival で競合が増えたら Phase 10.5 として event queue / drain loop / 個別 event dataclass を強化する
 
 ## コード規約
 
@@ -294,7 +204,6 @@ M2 Phase 8.8.5 以降は、メイン層に participation / playback / session li
 ### ファイル分割
 
 - 1 ファイルは原則 300 行以下
-- 例外: `session.py` は状態機械の都合で長くなる可能性がある（500 行まで許容）
 
 ## やってほしくないこと
 
@@ -311,7 +220,7 @@ M2 Phase 8.8.5 以降は、メイン層に participation / playback / session li
 ## やってほしいこと
 
 - **レイテンシーを毎回計測する**: 変更を入れたら必ず実測してメモを残す（`_docs/latency.md`）。
-- **状態遷移をログに残す**: `TomoroSession` の state が変わったら必ず log.info で記録。
+- **状態遷移をログに残す**: state が変わったら必ず log.info で記録。
 - **「なぜそうしたか」をコミットメッセージに書く**: what より why を重視する。
 - **ARCHITECTURE.md を update する**: 設計判断が変わったら必ず反映する。
 - **設定ファイルを変えたらテストを再実行する**: `config/*.toml` を変更したら必ず `pytest -m unit` を通す。
@@ -320,11 +229,12 @@ M2 Phase 8.8.5 以降は、メイン層に participation / playback / session li
 
 テストは3層で管理する：
 
-| マーカー | 内容 | 実行タイミング |
-|---|---|---|
-| `unit` | 外部依存なし、MockのみOK | 常に（CI含む） |
-| `integration` | 実際のミドルウェアが必要 | 手元でのみ |
-| `perf` | レイテンシー計測 | 手元でのみ |
+| マーカー          | 内容                 | 実行タイミング |
+|---------------|--------------------|---|
+| `unit`        | 外部依存なし、MockのみOK    | 常に（CI含む） |
+| `integration` | 実際のミドルウェアが必要       | 手元でのみ |
+| `perf`        | レイテンシー計測           | 手元でのみ |
+| `e2e`         | 人間による体験をシミュレーションする | 手元でのみ |
 
 ```bash
 pytest -m unit                   # CI で常時
@@ -336,20 +246,11 @@ pytest -m perf --tb=short       # レイテンシー計測
 - `InferenceRouter` のバックエンド選択ロジック（全パターン）
 - `ParticipationJudge` の参加判断
 - `DirectSpeakerResolver` の正規発話元選択
-- `DuplicateSpeechFilter` の回り込み検出
-- TomoroSession の状態遷移
 - E2E レイテンシー 800ms 以内
 
 **テストしないこと**:
 - LLM の応答内容そのもの（揺れるから）
 - WebSocket の接続自体（手動テストで十分）
-
-## InferenceRouter に関する規約
-
-- コアロジック（session.py / thinking/*.py）は `InferenceRouter` を介してのみバックエンドを呼ぶ
-- バックエンドを直接 import してはいけない
-- `privacy="privacy"` のタスクはクラウドに出してはいけない（テストで保証する）
-- 設定ファイルを変えてテストが通れば、その構成は「動作保証済み」とみなす
 
 ## 層間 DTO に関する規約
 
@@ -367,12 +268,12 @@ transcript = stt.transcribe(segment)  # Transcript が流れる
 judge.judge(transcript)
 ```
 
-全ての DTO は `server/shared/models.py` に集約する。
+全ての DTO は 一つのpythonファイル に集約する。
 新しい境界を作る時は必ずここに DTO を追加してから実装する。
 
 ## ホットループのオーバーヘッド回避規約
 
-VAD のホットループ（32ms ごと）は例外として**プリミティブのまま**処理する。
+VAD のホットループは例外として**プリミティブのまま**処理する。
 
 ```python
 # NG: ホットループ内で DTO を生成する
@@ -537,13 +438,6 @@ git push --force        # 絶対禁止
 
 #### memo
 git pushは現段階では許可する。
-<!-- git push origin main    # 絶対禁止-->
-<!-- git push origin master  # 絶対禁止-->
-<!--git push                # origin への push は全て禁止-->
-<!--**origin への push は人間だけが行う。**-->
-<!--**LLM がリモートに変更を加えてはいけない。**-->
-
-<!--push が必要だと判断した場合は MEMORY.md に記録して人間に委譲する。-->
 
 ### コミットの粒度
 
@@ -566,18 +460,6 @@ Phase 単位ではなく**テストが通る単位でコミットする**：
 
 **「全体が動かない」と言わずに、どこで止まっているかを特定してから報告してください**。
 
-## 既存コードの参考資料
-
-この設計は次の過去の経験を踏まえています：
-
-- **Unity 版（3 年前）**: `MyAIRoomScript.cs` 相当の実装。音量閾値 VAD、OGG エンコード、
-  REST 一括 API という構成だった。今回はその逆をやる。
-- **api.py（3 年前）**: OGG → MP3 変換を挟む苦肉のサーバー実装。今回はこの種の変換を
-  一切しない（float32 を生で流す）。
-- **Zettelkasten プロジェクト**: PostgreSQL の pgvector + PGroonga 利用ノウハウ。
-  記憶層の実装で活用する。
-- **過去の Tomoko 人格プロンプト**: 感情状態を持つキャラクター設計。
-  `prompts/base_persona.md` のベースに使う。
 
 ## 質問
 

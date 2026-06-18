@@ -21,9 +21,18 @@ task.acceptance.md
 summary.md
 .claude
 
-lora/data/
-lora/adapters/
-lora/fused_model/
+loras/lora/data/
+loras/lora/adapters/
+loras/lora/fused_model/
+v1/loras/lora/data/
+v1/loras/lora/adapters/
+v1/loras/lora/fused_model/
+v1/loras/short/data/
+v1/loras/short/adapters/
+v1/loras/short/fused_model_quantized_unreliable/
+v1/loras/short/fused_model/
+
+
 reports/
 
 memo.md
@@ -35,4 +44,7 @@ loras/short/data
 loras/short/adapters
 loras/short/fused_model
 loras/short/fused_model*
+
+v1/informations/archived
+v1/informations/failed
 

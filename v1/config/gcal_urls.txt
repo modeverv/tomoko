@@ -1,0 +1,4 @@
+# Copy this file to config/gcal_urls.txt and put one private iCal URL per line.
+# config/gcal_urls.txt is git-ignored because Google Calendar private iCal URLs are secrets.
+https://calendar.google.com/calendar/ical/modeverv%40gmail.com/private-a4cfaae50bae856f0d4b74a6be191929/basic.ics
+https://calendar.google.com/calendar/ical/family02133736678121559666%40group.calendar.google.com/private-290bc238a6c20e1dc2b4652e6ec14b71/basic.ics
