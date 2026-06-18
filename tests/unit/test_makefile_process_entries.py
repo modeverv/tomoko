@@ -80,6 +80,26 @@ def test_makefile_has_grouped_background_maintenance_entries() -> None:
     for target in ["background-once", "background-dry-run"]:
         assert f"{target}:" in MAKEFILE_TEXT
 
+    background_once_line = next(
+        line for line in MAKEFILE_TEXT.splitlines() if line.startswith("background-once:")
+    )
+    for target in [
+        "information-collect-world",
+        "information-ingest-once",
+        "information-interpret-once",
+        "thinker-once",
+    ]:
+        assert target in background_once_line
+    assert background_once_line.index("information-collect-world") < background_once_line.index(
+        "information-ingest-once"
+    )
+    assert background_once_line.index("information-ingest-once") < background_once_line.index(
+        "information-interpret-once"
+    )
+    assert background_once_line.index("information-interpret-once") < background_once_line.index(
+        "thinker-once"
+    )
+
     dry_run_body = _target_body("background-dry-run")
     for target in [
         "gateway",
@@ -187,10 +207,15 @@ def test_makefile_exposes_world_observation_operator_collection() -> None:
 def test_makefile_exposes_thinker2_runtime_entries() -> None:
     body = _target_body("thinker2")
     once_body = _target_body("thinker2-once")
+    capture_once_body = _target_body("thinker2-capture-once")
 
     assert "background-process/run_thinker2.py" in body
     assert "background-process/run_thinker2.py" in once_body
+    assert "background-process/run_thinker2.py" in capture_once_body
     assert "TOMOKO_LOG_FILE=$(THINKER2_LOG_FILE)" in body
     assert "--watch" in body
     assert "--once" in once_body
     assert "--inspection-output $(THINKER2_INSPECTION_HTML)" in once_body
+    assert "--capture-perception" in capture_once_body
+    assert "--infer-perception" in capture_once_body
+    assert "--vlm-model $(THINKER2_VLM_MODEL)" in capture_once_body

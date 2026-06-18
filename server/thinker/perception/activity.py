@@ -178,7 +178,7 @@ def parse_activity_inference_json(
     activity_label = payload.get("activity_label")
     if not isinstance(activity_label, str) or not activity_label.strip():
         raise ValueError("activity inference JSON requires non-empty activity_label")
-    confidence = payload.get("confidence")
+    confidence = payload.get("confidence", 0.5)
     if not isinstance(confidence, int | float):
         raise ValueError("activity inference JSON requires numeric confidence")
     raw_reason_json = {
@@ -204,13 +204,11 @@ def coherent_activity_label(
     return activity_label
 
 
-_ACTIVITY_PROMPT = """画像の人間が何をしているかを一言で判定してください。
-出力は次の JSON object だけにしてください:
-{
-  "activity_label": "typing | reading | idle | away | unknown など短いラベル",
-  "confidence": 0.0-1.0,
-  "reason": "短い理由"
-}
+_ACTIVITY_PROMPT = """Return only valid compact JSON.
+Schema: {"activity_label": "short label", "confidence": 0.0 to 1.0, "reason": "short"}
+Question: What is the visible person doing? Prefer conservative labels such as
+seated_or_leaning, looking_at_camera, typing, reading, standing, walking, away,
+or unknown. If only the face/head/upper body is visible, do not say walking.
 """
 
 
@@ -259,10 +257,20 @@ def _parse_json_object(text: str) -> dict[str, object]:
         stripped = stripped.strip("`").strip()
         if stripped.startswith("json"):
             stripped = stripped[4:].strip()
-    try:
-        payload = json.loads(stripped)
-    except json.JSONDecodeError as exc:
-        raise ValueError("activity inference output was not valid JSON") from exc
+    payload = _first_json_object(stripped)
     if not isinstance(payload, dict):
         raise ValueError("activity inference output must be a JSON object")
     return dict(payload)
+
+
+def _first_json_object(text: str) -> object:
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        return payload
+    raise ValueError("activity inference output was not valid JSON")

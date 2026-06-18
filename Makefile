@@ -72,6 +72,9 @@ THINKER_CANDIDATE_INTERVAL_SEC ?= 60
 THINKER_ARRIVAL_INTERVAL_SEC ?= 180
 THINKER2_INTERVAL_SEC ?= 60
 THINKER2_INSPECTION_HTML ?= reports/thinker2/latest.html
+THINKER2_CAMERA_INDEX ?= 0
+THINKER2_PERCEPTION_ARTIFACT_DIR ?= logs/perception
+THINKER2_VLM_MODEL ?= mlx-community/Qwen2.5-VL-3B-Instruct-4bit
 JOURNALIST_INTERVAL_SEC ?= 3600
 JOURNALIST_DATE ?=
 SCREEN_SESSION ?= tomoko-runtime
@@ -86,7 +89,7 @@ TMUX_VOICEVOX_READY_URL ?= http://127.0.0.1:50122/version
 
 .PHONY: deps prepare download-models download-optional-models server server-reload server-debug gateway gateway-reload edge-kitchen edge-kitchen-reload
 .PHONY: session-summarizer session-summarizer-once turn-embedder turn-embedder-once
-.PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once thinker2 thinker2-once journalist journalist-once turn-taking-worker turn-taking-worker-once turn-taking-v2-worker
+.PHONY: persona-seed-initial persona-updater persona-updater-once thinker thinker-once thinker2 thinker2-once thinker2-capture thinker2-capture-once journalist journalist-once turn-taking-worker turn-taking-worker-once turn-taking-v2-worker
 .PHONY: information-collect-world information-ingest information-ingest-once information-ingest-dry-run information-interpret-once information-interpret gcal
 .PHONY: background-once background-watch background-dry-run screen-runtime screen-runtime-full screen-attach screen-stop screen-list tmux-runtime tmux-run tmux-attach tmux-stop tmux-list
 .PHONY: db-up db-stop db-down db-dump test-unit bench-stt soak-stt soak-voice-stack smoke-maai-tap smoke-maai-real smoke-maai-dialogue smoke-maai-material smoke-research-mcp smoke-research-session smoke-ws-voice-latency log-report monitor system-monitor lint check analyze-v2 analyze-v2-latest analyze-v2-list analyze-v2-html initiative-candidates initiative-sim initiative-silence initiative-dryrun
@@ -175,6 +178,30 @@ thinker2-once:
 		--interval-sec $(THINKER2_INTERVAL_SEC) \
 		--inspection-output $(THINKER2_INSPECTION_HTML)
 
+thinker2-capture:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(THINKER2_LOG_FILE) mise exec -- uv run python background-process/run_thinker2.py \
+		--config $(CENTRAL_CONFIG) \
+		--watch \
+		--interval-sec $(THINKER2_INTERVAL_SEC) \
+		--inspection-output $(THINKER2_INSPECTION_HTML) \
+		--capture-perception \
+		--infer-perception \
+		--vlm-model $(THINKER2_VLM_MODEL) \
+		--camera-index $(THINKER2_CAMERA_INDEX) \
+		--perception-artifact-dir $(THINKER2_PERCEPTION_ARTIFACT_DIR)
+
+thinker2-capture-once:
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(THINKER2_LOG_FILE) mise exec -- uv run python background-process/run_thinker2.py \
+		--config $(CENTRAL_CONFIG) \
+		--once \
+		--interval-sec $(THINKER2_INTERVAL_SEC) \
+		--inspection-output $(THINKER2_INSPECTION_HTML) \
+		--capture-perception \
+		--infer-perception \
+		--vlm-model $(THINKER2_VLM_MODEL) \
+		--camera-index $(THINKER2_CAMERA_INDEX) \
+		--perception-artifact-dir $(THINKER2_PERCEPTION_ARTIFACT_DIR)
+
 journalist:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(JOURNALIST_LOG_FILE) mise exec -- uv run python background-process/run_journalist.py \
 		--config $(CENTRAL_CONFIG) \
@@ -247,7 +274,7 @@ gcal:
 		--days-before $(GCAL_DAYS_BEFORE) \
 		--days-ahead $(GCAL_DAYS_AHEAD)
 
-background-once: persona-seed-initial session-summarizer-once turn-embedder-once persona-updater-once information-ingest-once information-interpret-once gcal thinker-once thinker2-once journalist-once
+background-once: persona-seed-initial session-summarizer-once turn-embedder-once persona-updater-once information-collect-world information-ingest-once information-interpret-once gcal thinker-once thinker2-once journalist-once
 
 background-watch:
 	@echo "Run long-lived processes in separate terminals:"

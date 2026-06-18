@@ -232,27 +232,30 @@ def parse_presence_inference_json(
     *,
     model: str,
 ) -> HumanPresenceInferenceResult:
-    if not isinstance(payload.get("present"), bool):
-        raise ValueError("presence inference JSON requires boolean present")
+    present = payload.get("person_visible", payload.get("present"))
+    if not isinstance(present, bool):
+        raise ValueError("presence inference JSON requires boolean present/person_visible")
     confidence = payload.get("confidence")
     if not isinstance(confidence, int | float):
         raise ValueError("presence inference JSON requires numeric confidence")
     raw_reason_json = {
         key: value
         for key, value in payload.items()
-        if key not in {"present", "confidence"}
+        if key not in {"present", "person_visible", "confidence"}
     }
     return HumanPresenceInferenceResult(
-        present=bool(payload["present"]),
+        present=bool(present),
         confidence=float(confidence),
         model=model,
         raw_reason_json=raw_reason_json,
     )
 
 
-_PRESENCE_PROMPT = """画像に人間が写っているかだけを判定してください。
-出力は次の JSON object だけにしてください:
-{"present": true | false, "confidence": 0.0-1.0, "reason": "短い理由"}
+_PRESENCE_PROMPT = """Return only valid compact JSON.
+Schema:
+{"person_visible": true or false, "confidence": 0.0 to 1.0, "reason": "short"}
+Question: Is any person visible in this image? Count a visible face, head, torso,
+or partial body as a visible person.
 """
 
 
@@ -301,10 +304,20 @@ def _parse_json_object(text: str) -> dict[str, object]:
         stripped = stripped.strip("`").strip()
         if stripped.startswith("json"):
             stripped = stripped[4:].strip()
-    try:
-        payload = json.loads(stripped)
-    except json.JSONDecodeError as exc:
-        raise ValueError("presence inference output was not valid JSON") from exc
+    payload = _first_json_object(stripped)
     if not isinstance(payload, dict):
         raise ValueError("presence inference output must be a JSON object")
     return dict(payload)
+
+
+def _first_json_object(text: str) -> object:
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        return payload
+    raise ValueError("presence inference output was not valid JSON")

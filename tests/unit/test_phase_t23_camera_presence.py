@@ -65,6 +65,45 @@ def test_parse_presence_inference_json_validates_schema() -> None:
 
 
 @pytest.mark.unit
+def test_parse_presence_inference_json_accepts_person_visible_key() -> None:
+    parsed = parse_presence_inference_json(
+        {"person_visible": True, "confidence": 0.95, "reason": "face visible"},
+        model="qwen-vl-presence",
+    )
+
+    assert parsed == HumanPresenceInferenceResult(
+        present=True,
+        confidence=0.95,
+        model="qwen-vl-presence",
+        raw_reason_json={"reason": "face visible"},
+    )
+
+
+@pytest.mark.unit
+async def test_presence_backend_extracts_json_from_fenced_output() -> None:
+    def fake_loader(model_name: str):
+        assert model_name == "gemma-e12b-presence"
+        return object(), object()
+
+    def fake_stream_generator(model, processor, prompt, image, max_tokens):
+        del model, processor, prompt, image, max_tokens
+        yield '```json\n{"present": true, "confidence": 0.82, "reason": "person"}\n```'
+
+    backend = MlxVlmPresenceBackend(
+        model="gemma-e12b-presence",
+        model_loader=fake_loader,
+        stream_generator=fake_stream_generator,
+    )
+
+    result = await backend.infer_presence(
+        "logs/perception/camera/frame.jpg",
+        frame_id=UUID("00000000-0000-0000-0000-000000000001"),
+    )
+
+    assert result.present is True
+
+
+@pytest.mark.unit
 def test_parse_presence_inference_json_rejects_invalid_confidence() -> None:
     with pytest.raises(ValueError, match="confidence"):
         parse_presence_inference_json(
@@ -81,9 +120,9 @@ async def test_mlx_vlm_presence_backend_parses_json_from_image_generation() -> N
 
     def fake_stream_generator(model, processor, prompt, image, max_tokens):
         del model, processor, max_tokens
-        assert "present" in prompt
+        assert "person_visible" in prompt
         assert image == "logs/perception/camera/frame.jpg"
-        yield '{"present": true, "confidence": 0.93, "reason": "person visible"}'
+        yield '{"person_visible": true, "confidence": 0.93, "reason": "person visible"}'
 
     backend = MlxVlmPresenceBackend(
         model="gemma-e12b-presence",
