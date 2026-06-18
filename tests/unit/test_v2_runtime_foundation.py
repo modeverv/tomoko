@@ -150,6 +150,7 @@ def test_five_turn_smoke_has_five_default_turns() -> None:
     assert source.count('"最後に、今の状態を短くまとめて。"') == 1
     assert "average_first_audio_ms" in source
     assert "p95_first_audio_ms" in source
+    assert "llm_prompt" in source
 
 
 def test_ocr_runtime_availability_reports_expected_keys() -> None:
@@ -196,6 +197,7 @@ def test_hot_path_websocket_uses_prompt_executor_for_text_prompt() -> None:
 
             websocket.send_json({"type": "prompt", "text": "トモコ、返事して"})
 
+            prompt = json.loads(websocket.receive_text())
             delta = json.loads(websocket.receive_text())
             complete = json.loads(websocket.receive_text())
             tts_result = json.loads(websocket.receive_text())
@@ -205,6 +207,9 @@ def test_hot_path_websocket_uses_prompt_executor_for_text_prompt() -> None:
     finally:
         del app.state.prompt_executor
 
+    assert prompt["type"] == "llm_prompt"
+    assert prompt["prompt_text"] == "トモコ、返事して"
+    assert prompt["prompt_chars"] == len("トモコ、返事して")
     assert delta["type"] == "model_delta"
     assert delta["text_delta"] == "うん"
     assert complete["type"] == "model_complete"

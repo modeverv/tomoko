@@ -58,6 +58,7 @@ class TurnResult:
     voice_end_to_first_audio_ms: float | None = None
     first_audio_bytes: int | None = None
     final_transcript: str | None = None
+    llm_prompt: str | None = None
     model_text: str | None = None
     tts_text: str | None = None
     audio_chunks: int = 0
@@ -133,6 +134,8 @@ async def run_smoke(args: argparse.Namespace, output_dir: Path, stamp: str) -> F
                 result.final_transcript = str(payload.get("text", ""))
                 if state.first_transcript_at is None:
                     state.first_transcript_at = now
+            elif event_type == "llm_prompt":
+                result.llm_prompt = str(payload.get("prompt_text", ""))
             elif event_type == "model_complete":
                 result.model_text = str(payload.get("text", ""))
             elif event_type == "tts_result":

@@ -23,6 +23,11 @@
   - artifact `logs/five-turn-smoke-20260618-140934.json`
   - avg first audio 3491.2ms / p95 4387.7ms / max 4387.7ms
   - turn first audio: 2505.4 / 2869.6 / 3511.1 / 4182.1 / 4387.7ms
+- 追試: `llm_prompt` event と artifact field を追加して `make v2-five-turn-smoke` を再実行
+  - artifact `logs/five-turn-smoke-20260618-141915.json`
+  - 各 turn に会話 LLM へ渡した `llm_prompt` を保存
+  - prompt chars: 136 / 199 / 260 / 341 / 379
+  - avg first audio 2717.7ms / p95 3642.5ms
 
 ### 次のセッションでやること
 - 5ターン smoke を DB split URL でも回し、通常 hot-path と DB split の multi-turn 劣化傾向を比較する。

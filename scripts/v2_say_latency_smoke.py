@@ -31,6 +31,7 @@ class SayLatencyResult:
     voice_end_to_first_audio_ms: float | None
     first_audio_bytes: int | None
     final_transcript: str | None
+    llm_prompt: str | None
     tts_text: str | None
     model_text: str | None
     event_counts: dict[str, int] = field(default_factory=dict)
@@ -110,6 +111,7 @@ async def measure(args: argparse.Namespace, wav_path: Path) -> SayLatencyResult:
     first_audio_at: float | None = None
     first_audio_bytes: int | None = None
     final_transcript: str | None = None
+    llm_prompt: str | None = None
     tts_text: str | None = None
     model_text: str | None = None
     events: list[dict[str, Any]] = []
@@ -124,6 +126,7 @@ async def measure(args: argparse.Namespace, wav_path: Path) -> SayLatencyResult:
         nonlocal first_audio_at
         nonlocal first_audio_bytes
         nonlocal final_transcript
+        nonlocal llm_prompt
         nonlocal tts_text
         nonlocal model_text
 
@@ -146,6 +149,8 @@ async def measure(args: argparse.Namespace, wav_path: Path) -> SayLatencyResult:
                 final_transcript = str(payload.get("text", ""))
                 if first_transcript_at is None:
                     first_transcript_at = now
+            elif event_type == "llm_prompt":
+                llm_prompt = str(payload.get("prompt_text", ""))
             elif event_type == "model_complete":
                 model_text = str(payload.get("text", ""))
             elif event_type == "tts_result":
@@ -205,6 +210,7 @@ async def measure(args: argparse.Namespace, wav_path: Path) -> SayLatencyResult:
         voice_end_to_first_audio_ms=delta_ms(first_audio_at),
         first_audio_bytes=first_audio_bytes,
         final_transcript=final_transcript,
+        llm_prompt=llm_prompt,
         tts_text=tts_text,
         model_text=model_text,
         event_counts=event_counts,

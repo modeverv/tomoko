@@ -185,6 +185,14 @@ async def _send_prompt_execution_result(
     request: PromptRequest,
     result: PromptExecutionResult,
 ) -> None:
+    await websocket.send_text(
+        encode_server_event(
+            "llm_prompt",
+            request_id=str(request.id),
+            prompt_text=request.prompt_text,
+            prompt_chars=len(request.prompt_text),
+        )
+    )
     for event in result.model_events:
         if event.event_kind == "delta":
             _console_event(

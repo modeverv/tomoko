@@ -180,3 +180,8 @@ model text / TTS text / first audio latency と全体 average / p95 / max を JS
 2026-06-18 の実行では artifact `logs/five-turn-smoke-20260618-140934.json`、avg first audio
 3491.2ms、p95 4387.7ms。turn 別 first audio は 2505.4 / 2869.6 / 3511.1 / 4182.1 / 4387.7ms。
 turn が進むほど遅くなる傾向が見えたため、prompt/history増加と dflash cache hit を別途見る。
+
+### 5ターン smoke artifact には会話 LLM prompt を保存する
+`_send_prompt_execution_result` は `llm_prompt` event を `/ws` に流し、5ターン smoke は turn ごとの
+`llm_prompt` を JSON に保存する。2026-06-18 の再実行 artifact は
+`logs/five-turn-smoke-20260618-141915.json`。prompt chars は 136 / 199 / 260 / 341 / 379。
