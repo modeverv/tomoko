@@ -44,7 +44,7 @@ WS_LATENCY_VOICE ?= Kyoko
 .PHONY: background-once background-watch background-dry-run
 .PHONY: tmux-runtime tmux-run tmux-attach tmux-stop tmux-list run stop a
 .PHONY: v2-runtime v2-stop v2-runtime-ready llm-run llm-stop voicevox-run v2-ocr-smoke ocr-smoke
-.PHONY: v2-initiative-sim v2-floor-bench v2-report-latest v2-scheduler-report v2-llm-tts-smoke v2-conversation-smoke v2-scheduler-conversation-smoke v2-db-split-smoke v2-say-latency-smoke v2-scheduler-say-latency-smoke v2-five-turn-smoke
+.PHONY: v2-initiative-sim v2-floor-bench v2-report-latest v2-scheduler-report v2-llm-tts-smoke v2-conversation-smoke v2-scheduler-conversation-smoke v2-db-split-smoke v2-say-latency-smoke v2-scheduler-say-latency-smoke v2-five-turn-smoke v2-semantic-early-smoke
 .PHONY: db-up db-stop db-down db-dump test-unit test-integration lint check smoke-ws-voice-latency log-report monitor system-monitor
 
 deps:
@@ -202,6 +202,9 @@ v2-scheduler-say-latency-smoke:
 
 v2-five-turn-smoke:
 	$(PYTHON) -m scripts.v2_five_turn_smoke --url "$(WS_LATENCY_URL)" --voice "$(WS_LATENCY_VOICE)"
+
+v2-semantic-early-smoke:
+	$(PYTHON) -m scripts.v2_semantic_early_smoke --voice "$(WS_LATENCY_VOICE)"
 
 v2-initiative-sim:
 	$(PYTHON) -m scripts.v2_initiative_sim

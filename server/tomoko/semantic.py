@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
+
+import httpx
 
 from server.shared.logging import JsonlLogger
 from server.shared.models import SemanticSaturationResult
@@ -28,6 +31,66 @@ HIGH_CUES = (
 
 class SaturationLlmBackend(Protocol):
     async def complete(self, prompt: str) -> str: ...
+
+
+class OpenAICompatibleSaturationBackend:
+    def __init__(
+        self,
+        *,
+        url: str,
+        model: str,
+        max_tokens: int = 16,
+        temperature: float = 0.0,
+        timeout_sec: float = 15.0,
+    ) -> None:
+        self.url = url.rstrip("/")
+        self.model = model
+        self.max_tokens = max_tokens
+        self.temperature = temperature
+        self.timeout_sec = timeout_sec
+
+    async def complete(self, prompt: str) -> str:
+        timeout = httpx.Timeout(self.timeout_sec, connect=5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                f"{self.url}/v1/chat/completions",
+                json=self.payload(prompt),
+            )
+            response.raise_for_status()
+        payload = response.json()
+        choices = payload.get("choices") or []
+        if not choices:
+            return ""
+        message = choices[0].get("message") or {}
+        return str(message.get("content", "")).strip()
+
+    def payload(self, prompt: str) -> dict[str, Any]:
+        return {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Return only one line: SATURATION=<number>.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "stream": False,
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+
+
+def create_default_semantic_llm_backend() -> OpenAICompatibleSaturationBackend:
+    return OpenAICompatibleSaturationBackend(
+        url=os.environ.get("TOMOKO_V2_SEMANTIC_LLM_URL", "http://127.0.0.1:8083"),
+        model=os.environ.get(
+            "TOMOKO_V2_SEMANTIC_LLM_MODEL",
+            "mlx-community/gemma-4-e2b-it-OptiQ-4bit",
+        ),
+        max_tokens=int(os.environ.get("TOMOKO_V2_SEMANTIC_LLM_MAX_TOKENS", "16")),
+        timeout_sec=float(os.environ.get("TOMOKO_V2_SEMANTIC_LLM_TIMEOUT_SEC", "15.0")),
+    )
 
 
 @dataclass(slots=True)
@@ -71,8 +134,16 @@ class SemanticSaturationJudge:
 
 def saturation_prompt(text: str) -> str:
     return (
-        "次の日本語発話が、Tomokoが返答を始めてよい程度に意味的に飽和しているかを"
-        "0.0から1.0で返す。出力は必ず SATURATION=<number> の1行だけ。\n"
+        "Return one line only: SATURATION=<number>.\n"
+        "High means the user utterance is complete enough for Tomoko to start replying.\n"
+        "Examples:\n"
+        "TEXT=えっと\n"
+        "SATURATION=0.1\n"
+        "TEXT=トモコ、今日の予定を教えて\n"
+        "SATURATION=0.95\n"
+        "TEXT=ただ、やっぱり\n"
+        "SATURATION=0.2\n"
+        "Now:\n"
         f"TEXT={text}"
     )
 

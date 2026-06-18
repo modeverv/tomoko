@@ -222,3 +222,27 @@ message list に分解すると、2ターン目以降で dflash `prefix cache hi
 2026-06-18 の smoke artifact は `logs/five-turn-smoke-20260618-145708.json`。
 dflash log では `prefix cache hit 40/63`, `59/86`, `82/112`, `108/132` tokens、
 `prefill_tokens_saved` は 1822 から 2111 まで増えた。avg first audio は 2354.5ms、p95 は 3073.2ms。
+
+## 2026-06-18 セッション19 確定した判断
+
+### semantic saturation LLM は Gemma E2B を別 endpoint で見る
+既存 dflash 8081/8082 は request の `model` 指定を受けても起動中の 31B/26B で返す。
+また dflash は Gemma E2B 用 draft が無く、`mlx-community/gemma-4-e2b-it-OptiQ-4bit` を直接 serve できない。
+Gemma E2B semantic lane の観測は `mlx_lm.server` など別 OpenAI 互換 endpoint を使う。
+今回の smoke では `mlx_lm.server --model mlx-community/gemma-4-e2b-it-OptiQ-4bit --port 8083` を使った。
+
+### Gemma E2B semantic prompt は compact few-shot にする
+従来の説明文だけの saturation prompt では、Gemma E2B が
+`トモコ、今日の予定を教えて` に `SATURATION=0.1` を返した。
+`えっと -> 0.1`、`トモコ、今日の予定を教えて -> 0.95`、
+`ただ、やっぱり -> 0.2` の compact few-shot prompt にすると同じ入力で
+`SATURATION=0.95` を 290〜440ms 程度で返した。
+
+### prefix-window smoke では final 前 early OK が観測できた
+現行 Apple Speech sidecar は final-only のため、今回の実測は say 音声 prefix window を
+疑似 partial として replay する推定である。`トモコ、今日の予定を一言で教えて。` では、
+2400ms partial `智子今日の予定を` までは saturation 0.3 で OK なし。
+3000ms partial `智子今日の予定を一言で教え` で saturation 0.8、E2B 判定 281.3ms、
+estimated decision 3281.3ms from speech start となり、full final STT available 3634.0ms より
+352.7ms 早く `would_start_llm=true` になった。artifact は
+`logs/semantic-early-smoke-20260618-151319.json`。

@@ -32,9 +32,11 @@ from server.tomoko.db_bridge import (
 )
 from server.tomoko.scheduler import SpeechScheduler, detect_stop_intent
 from server.tomoko.semantic import (
+    OpenAICompatibleSaturationBackend,
     SemanticSaturationJudge,
     deterministic_saturation,
     parse_saturation_output,
+    saturation_prompt,
     stable_prefix,
 )
 
@@ -54,6 +56,33 @@ def test_parse_saturation_output_accepts_only_single_fixed_line() -> None:
     ]:
         with pytest.raises(ValueError):
             parse_saturation_output(output)
+
+
+def test_openai_saturation_backend_builds_small_non_stream_payload() -> None:
+    backend = OpenAICompatibleSaturationBackend(
+        url="http://127.0.0.1:8083",
+        model="mlx-community/gemma-4-e2b-it-OptiQ-4bit",
+    )
+
+    payload = backend.payload("TEXT=トモコ、予定を教えて")
+
+    assert payload["model"] == "mlx-community/gemma-4-e2b-it-OptiQ-4bit"
+    assert payload["stream"] is False
+    assert payload["max_tokens"] == 16
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+    assert payload["messages"] == [
+        {"role": "system", "content": "Return only one line: SATURATION=<number>."},
+        {"role": "user", "content": "TEXT=トモコ、予定を教えて"},
+    ]
+
+
+def test_saturation_prompt_uses_compact_examples_for_e2b() -> None:
+    prompt = saturation_prompt("トモコ、今日の予定を教えて")
+
+    assert "Return one line only: SATURATION=<number>." in prompt
+    assert "TEXT=えっと\nSATURATION=0.1" in prompt
+    assert "TEXT=トモコ、今日の予定を教えて\nSATURATION=0.95" in prompt
+    assert prompt.endswith("TEXT=トモコ、今日の予定を教えて")
 
 
 def test_deterministic_saturation_fallback_handles_representative_cases() -> None:

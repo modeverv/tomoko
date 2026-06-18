@@ -114,6 +114,7 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     assert "v2-say-latency-smoke:" in makefile
     assert "v2-scheduler-say-latency-smoke:" in makefile
     assert "v2-five-turn-smoke:" in makefile
+    assert "v2-semantic-early-smoke:" in makefile
     assert "v2-scheduler-report:" in makefile
     assert "TOMOKO_V2_VOICEVOX_SPEED ?= 1.5" in makefile
     assert makefile.index("-n llm-run") < makefile.index("-n hot-path")

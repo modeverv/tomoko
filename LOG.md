@@ -1,5 +1,44 @@
 # LOG.md
 
+## 2026-06-18 セッション19
+
+### やること（開始時に書く）
+- 意味飽和判定 LLM として Gemma 4 E2B MLX を導入し、実測できる smoke を追加する。
+- 現行 Apple Speech sidecar は final のみ返すため、同じ say 音声を時間窓で切った疑似 partial を作り、full STT final より前に `LLM開始判定OK` が出るか観測する。
+- E2B saturation latency、partial offset、full final STT latency、early OK lead time を JSON artifact と `_docs/latency.md` に残す。
+
+### やったこと
+- semantic saturation 専用の `OpenAICompatibleSaturationBackend` を追加し、`TOMOKO_V2_SEMANTIC_LLM_URL` / `TOMOKO_V2_SEMANTIC_LLM_MODEL` で E2B 系 OpenAI 互換 server を指定できるようにした。
+- E2B では従来 prompt が明らかな依頼文にも `SATURATION=0.1` を返したため、`saturation_prompt()` を compact few-shot 形式に変更した。
+- `scripts/v2_semantic_early_smoke.py` / `make v2-semantic-early-smoke` を追加し、`say` 音声の prefix window を疑似 partial として Apple Speech に通し、Gemma E2B saturation 判定が full final STT より前に OK を出せるか推定できるようにした。
+- `mlx_lm.server --model mlx-community/gemma-4-e2b-it-OptiQ-4bit --port 8083` で E2B を一時起動して smoke を実行した。
+
+### 詰まったこと・解決したこと
+- dflash は Gemma E2B 用 draft が無く、`mlx-community/gemma-4-e2b-it-OptiQ-4bit` を直接 serve できなかった。
+  - 解決: 今回の観測では `mlx_lm.server` を使った。
+- 既存 8081/8082 の dflash server は request の `model` 指定を受けても起動中の 31B/26B で返したため、E2B 観測には別 port が必要だった。
+- 現行 Apple Speech sidecar は streaming partial を返さないため、今回の smoke は「prefix window replay による推定」であり、実運用には streaming partial source の追加が必要。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_semantic_scheduler.py::test_openai_saturation_backend_builds_small_non_stream_payload tests/unit/test_v2_semantic_scheduler.py::test_saturation_prompt_uses_compact_examples_for_e2b tests/unit/test_v2_runtime_foundation.py::test_makefile_exposes_v2_runtime_targets_in_order -q`
+  - 3 passed
+- `uv run ruff check server/tomoko/semantic.py scripts/v2_semantic_early_smoke.py tests/unit/test_v2_semantic_scheduler.py tests/unit/test_v2_runtime_foundation.py`
+  - passed
+- E2B probe
+  - old prompt: `SATURATION=0.1` for `トモコ、今日の予定を教えて`
+  - compact few-shot prompt: `SATURATION=0.95`, 290〜440ms
+- `TOMOKO_V2_SEMANTIC_LLM_URL=http://127.0.0.1:8083 TOMOKO_V2_SEMANTIC_LLM_MODEL=mlx-community/gemma-4-e2b-it-OptiQ-4bit uv run python -m scripts.v2_semantic_early_smoke --voice Kyoko --text 'トモコ、今日の予定を一言で教えて。' --offset-ms 800 --offset-ms 1200 --offset-ms 1600 --offset-ms 2000 --offset-ms 2400 --threshold 0.75`
+  - artifact `logs/semantic-early-smoke-20260618-151302.json`
+  - 2400ms までの partial は saturation 0.3 で early OK なし
+- 同条件で `--offset-ms 2400 --offset-ms 2800 --offset-ms 3000 --offset-ms 3200`
+  - artifact `logs/semantic-early-smoke-20260618-151319.json`
+  - 3000ms partial `智子今日の予定を一言で教え` で saturation 0.8、E2B 判定 281.3ms
+  - full final STT available 3634.0ms from speech start に対し、estimated decision 3281.3ms、lead 352.7ms
+
+### 次のセッションでやること
+- Apple Speech sidecar か別 STT backend で実 streaming partial を出し、prefix-window 推定ではなく実 event 時刻で early OK を測る。
+- 早期 OK 後に final STT が diverge した場合の cancel / replace を Phase S11 の残タスクとして実装する。
+
 ## 2026-06-18 セッション18
 
 ### やること（開始時に書く）
