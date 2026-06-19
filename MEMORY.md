@@ -162,6 +162,57 @@ manual anchor 1000 eval は binary_accuracy 0.989、MAE 0.0453、RMSE 0.0619。
 `今日の予定を教えて` は `predict_saturation.py` 既定の partial 扱いでは 0.4986、
 `--final` 付きでは 0.9313。完了発話として評価する代表例は `--final` を付ける。
 
+### contrastive anchor 1000件追加で逆説末尾を低くする
+2026-06-20 セッション10で、`make_anchor_teacher_labels.py --kind contrastive` を追加し、
+`しかし` / `けど` / `だが` / `だけど` / `とはいえ` などで終わる final 発話を
+`manual_contrastive_anchor` として 1000件追加した。
+8000 teacher + 1000 general anchor + 1000 contrastive anchor で train した結果、
+`それが良いと思うがしかし --final` は 0.8711 から 0.3536 に下がった。
+`今日の予定を教えて --final` は 0.9345 で高いまま。
+held-out JDD eval は binary_accuracy 0.8135、MAE 0.1877、RMSE 0.2410 と少し下がる。
+逆説を強く抑える版として扱い、採用前に shadow 比較する。
+
+### `contrastive_tail` 明示特徴で逆説低ラベルの漏れを減らす
+2026-06-20 セッション11で、hash-ridge saturation scorer に `contrastive_tail` extra feature を追加した。
+旧 artifact は追加特徴を無視して互換 predict できる。
+同じ 10000件 train で再学習した `contrastive-tail-feature` model は、
+`それが良いと思うがしかし --final` 0.3228、`それが良いと思うけど --final` 0.1869、
+`それが良いと思う --final` 0.6226、`今日の予定を教えて --final` 0.9381。
+JDD held-out eval は binary_accuracy 0.8210、MAE 0.1833、RMSE 0.2359。
+逆説なし前半文は 0.4033 から 0.6226 に戻ったが、まだ中程度なので必要なら positive counter-anchor を足す。
+
+### referential positive anchor 1000件で指示語系を上げる
+2026-06-20 セッション12で、`make_anchor_teacher_labels.py --kind referential` を追加した。
+`それが良いと思う` / `それで問題ない` / `その方向でいい` / `これは違うと思う` などの
+指示語・照応系完了文を `manual_referential_anchor` として 1000件追加した。
+8000 teacher + 1000 general + 1000 contrastive + 1000 referential で train した結果、
+`それが良いと思う --final` は 0.6226 から 0.7170 に上がった。
+`それが良いと思うがしかし --final` は 0.3336 で低く維持し、
+`今日の予定を教えて --final` は 0.9391。
+JDD held-out eval は binary_accuracy 0.8215、MAE 0.1818、RMSE 0.2349。
+referential anchor は MAE 0.0441 と近いが 0.75 threshold 付近の label が多く、binary_accuracy は 0.769。
+
+### runtime semantic saturation は E2B endpoint ではなく蒸留 scorer を使う
+2026-06-20 セッション13で、2026-06-18 セッション24の
+`make run` が `semantic-e2b` window を起動する判断を上書きした。
+今後の hot-path semantic saturation は
+`make-model/artifacts/jdd-gemma26b-10000-plus-anchors-contrastive-tail-referential-saturation-model.json`
+を resident load する蒸留 hash-ridge scorer を使う。
+partial early start は partial 文字列でも `--final` 相当の特徴で採点し、0.75 以上が2回連続した時だけ通す。
+ただし `はい` / `うん` など短い final STT は STT から即 final が来て1回しか判定できないため、
+蒸留 scorer 側の short-ack ルールで低 saturation に clamp して吸収する。
+
+### MaAI は hot-path 固定相槌専用センサーとして既定有効にする
+2026-06-20 セッション15で、MaAI を VAP/VAD silence 制御ではなく、
+hot-path の相槌専用 detector として使うことにした。
+相槌候補は `うん` / `へえ` / `ほう` の3種に固定し、
+`assets/backchannels/un.wav` / `hee.wav` / `hou.wav` を VOICEVOX speaker 8 / 1.5x /
+16kHz mono WAV で事前生成した。相槌では main LLM と VOICEVOX runtime を呼ばず、
+MaAI result の react/emo score が閾値以上、cooldown 外、Tomoko 音声出力中ではない時だけ
+cached WAV を `/ws` から binary audio として返す。
+`TOMOKO_V2_MAAI_BACKCHANNEL` は Makefile 既定で `1`。MaAI package が無い場合や
+asset load に失敗した場合は hot-path 起動を落とさず no-op にする。
+
 ## 未解決の疑問（人間への確認待ち）
 
 ### [2026-06-18] live acceptance の実機検証タイミング

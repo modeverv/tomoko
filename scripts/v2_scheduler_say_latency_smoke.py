@@ -26,6 +26,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--voice", default="Kyoko")
     parser.add_argument("--chunk-samples", type=int, default=128)
     parser.add_argument("--trailing-silence-ms", type=int, default=2500)
+    parser.add_argument("--continue-after-first-audio", action="store_true")
+    parser.add_argument("--post-first-audio-ms", type=int, default=0)
     parser.add_argument("--timeout-sec", type=float, default=45.0)
     parser.add_argument("--output-dir", default="logs")
     parser.add_argument("--start-server", action=argparse.BooleanOptionalAction, default=True)
@@ -109,7 +111,8 @@ def append_latency_log(output_path: Path, payload: dict[str, object]) -> None:
     result = f"{first_audio:.1f}ms" if isinstance(first_audio, float) else "not measured"
     with path.open("a", encoding="utf-8") as handle:
         handle.write(
-            "| 2026-06-18 | Tomoko v2 scheduler real say latency smoke | "
+            f"| {datetime.now().strftime('%Y-%m-%d')} | "
+            "Tomoko v2 scheduler real say latency smoke | "
             "`say -> /ws -> Apple Speech -> scheduler -> dflash -> speech-order -> VOICEVOX` | "
             f"voice-end to first audio {result} | artifact `{output_path}`. |\n"
         )

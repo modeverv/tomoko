@@ -277,6 +277,143 @@ predict "今日の予定を教えて":
 `predict_saturation.py` は既定では `is_final=False` の partial 扱い。
 完了発話として見たい時は `--final` を付ける。
 
+### 逆説 anchor 1000件をさらに足す
+
+`しかし` / `けど` / `だが` / `だけど` / `とはいえ` などで終わる発話は、
+`--final` でも「まだ続きそう」と扱う anchor を足せる。
+
+```bash
+uv run python make-model/make_anchor_teacher_labels.py \
+  --kind contrastive \
+  --out make-model/data/japanese-daily-dialogue/teacher-labels-manual-contrastive-anchors-1000.jsonl \
+  --count 1000
+
+cat \
+  make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train-plus-anchors.jsonl \
+  make-model/data/japanese-daily-dialogue/teacher-labels-manual-contrastive-anchors-1000.jsonl \
+  > make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train-plus-anchors-contrastive.jsonl
+
+uv run python make-model/train_saturation_model.py \
+  --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train-plus-anchors-contrastive.jsonl \
+  --out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-contrastive-saturation-model.json \
+  --metrics-out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-contrastive-train-metrics.json
+```
+
+2026-06-20 の contrastive anchor 追加実行結果:
+
+```text
+train labels:
+  teacher_llm: 8000
+  manual_anchor: 1000
+  manual_contrastive_anchor: 1000
+
+held-out JDD eval:
+  binary_accuracy: 0.8135
+  mae: 0.1877
+  rmse: 0.2410
+
+manual contrastive anchor eval:
+  binary_accuracy: 1.0
+  mae: 0.0661
+  rmse: 0.0858
+
+predict --final:
+  "それが良いと思うがしかし": 0.3536
+  "それが良いと思うけど":     0.2716
+  "今日は進めたい。だけど":   0.1820
+  "今日の予定を教えて":       0.9345
+```
+
+### `contrastive_tail` 明示特徴つきで再学習する
+
+hash n-gram だけだと、逆説 anchor の低ラベルが `それが良いと思う` のような前半にも漏れる。
+`make_model.model` は `contrastive_tail` extra feature を持つため、逆説末尾を明示特徴として扱える。
+
+```bash
+uv run python make-model/train_saturation_model.py \
+  --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train-plus-anchors-contrastive.jsonl \
+  --out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-contrastive-tail-feature-saturation-model.json \
+  --metrics-out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-contrastive-tail-feature-train-metrics.json
+```
+
+2026-06-20 の `contrastive_tail` 追加実行結果:
+
+```text
+held-out JDD eval:
+  binary_accuracy: 0.8210
+  mae: 0.1833
+  rmse: 0.2359
+
+manual anchor eval:
+  binary_accuracy: 0.984
+  mae: 0.0499
+  rmse: 0.0657
+
+manual contrastive anchor eval:
+  binary_accuracy: 1.0
+  mae: 0.0585
+  rmse: 0.0884
+
+predict --final:
+  "それが良いと思うがしかし": 0.3228
+  "それが良いと思うけど":     0.1869
+  "今日は進めたい。だけど":   0.2015
+  "それが良いと思う":         0.6226
+  "今日の予定を教えて":       0.9381
+```
+
+古い artifact は `contrastive_tail` feature を持たないが、推論時は追加特徴を無視して互換読み込みできる。
+
+### 指示語・照応系 positive anchor 1000件を足す
+
+`それが良いと思う` / `それで問題ない` / `その方向でいい` のような、
+文脈依存だが完了発話として返してよい表面パターンを追加できる。
+
+```bash
+uv run python make-model/make_anchor_teacher_labels.py \
+  --kind referential \
+  --out make-model/data/japanese-daily-dialogue/teacher-labels-manual-referential-anchors-1000.jsonl \
+  --count 1000
+
+cat \
+  make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train-plus-anchors-contrastive.jsonl \
+  make-model/data/japanese-daily-dialogue/teacher-labels-manual-referential-anchors-1000.jsonl \
+  > make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train-plus-anchors-contrastive-referential.jsonl
+
+uv run python make-model/train_saturation_model.py \
+  --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train-plus-anchors-contrastive-referential.jsonl \
+  --out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-contrastive-tail-referential-saturation-model.json \
+  --metrics-out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-contrastive-tail-referential-train-metrics.json
+```
+
+2026-06-20 の referential anchor 追加実行結果:
+
+```text
+train labels:
+  teacher_llm: 8000
+  manual_anchor: 1000
+  manual_contrastive_anchor: 1000
+  manual_referential_anchor: 1000
+
+held-out JDD eval:
+  binary_accuracy: 0.8215
+  mae: 0.1818
+  rmse: 0.2349
+
+manual referential anchor eval:
+  binary_accuracy: 0.769
+  mae: 0.0441
+  rmse: 0.0567
+
+predict --final:
+  "それが良いと思う":         0.7170
+  "それが良いと思うがしかし": 0.3336
+  "それで問題ない":           0.7440
+  "その方向でいい":           0.6623
+  "これは違うと思う":         0.8539
+  "今日の予定を教えて":       0.9391
+```
+
 ## 1. prefix dataset を作る
 
 ユーザーが言っていた「一文字ずつ入れる」は `--stride-chars 1` で行う。

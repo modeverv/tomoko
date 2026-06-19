@@ -105,11 +105,13 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     makefile = Path("Makefile").read_text(encoding="utf-8")
     assert "v2-runtime tmux-runtime:" in makefile
     assert "llm-run:" in makefile
-    assert "semantic-e2b-run:" in makefile
     assert "voicevox-run:" in makefile
     assert "v2-runtime-ready:" in makefile
-    assert "TOMOKO_V2_SEMANTIC_LLM_URL ?= http://127.0.0.1:8083" in makefile
-    assert "TOMOKO_V2_SEMANTIC_LLM=1" in makefile
+    assert "TOMOKO_V2_DISTILLED_SATURATION_MODEL ?=" in makefile
+    assert "TOMOKO_V2_SEMANTIC_LLM=1" not in makefile
+    assert "semantic-e2b" not in makefile
+    assert "TOMOKO_V2_MAAI_BACKCHANNEL ?= 1" in makefile
+    assert "TOMOKO_V2_BACKCHANNEL_ASSET_DIR ?= assets/backchannels" in makefile
     assert "v2-ocr-smoke" in makefile
     assert "v2-conversation-smoke:" in makefile
     assert "v2-scheduler-conversation-smoke:" in makefile
@@ -120,10 +122,10 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     assert "v2-semantic-early-smoke:" in makefile
     assert "v2-scheduler-report:" in makefile
     assert "TOMOKO_V2_VOICEVOX_SPEED ?= 1.5" in makefile
-    assert makefile.index("-n llm-run") < makefile.index("-n semantic-e2b")
-    assert makefile.index("-n semantic-e2b") < makefile.index("-n hot-path")
+    assert makefile.index("-n llm-run") < makefile.index("-n hot-path")
+    assert makefile.index("-n voicevox") < makefile.index("-n hot-path")
+    assert 'TOMOKO_V2_MAAI_BACKCHANNEL="$(TOMOKO_V2_MAAI_BACKCHANNEL)"' in makefile
     assert "tmux send-keys -t $(TMUX_SESSION):hot-path C-c" in makefile
-    assert "tmux send-keys -t $(TMUX_SESSION):semantic-e2b C-c" in makefile
     assert "v2-report-latest:" in makefile
 
 

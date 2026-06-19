@@ -1,5 +1,269 @@
 # LOG.md
 
+## 2026-06-20 セッション15
+
+### やること（開始時に書く）
+- MaAI を VAP/VAD 制御ではなく hot-path の相槌専用センサーとして使う。
+- 相槌は `うん` / `へえ` / `ほう` の3種に固定し、事前生成 WAV asset を `assets/backchannels/` に置く。
+- `PLAN.md` に新 Phase を追記し、unit test で hot-path 相槌契約を固定してから実装する。
+
+### やったこと
+- `PLAN.md` 末尾に Phase S17: MaAI fixed backchannel hot-path lane を追記した。
+- `server.hot_path.backchannel` を追加し、MaAI `bc_2type` result の `p_bc_react` / `p_bc_emo` が閾値以上の時だけ fixed WAV 相槌を返す detector を作った。
+- `/ws` の audio receive loop で user audio chunk を detector に渡し、相槌 emission は result queue から `backchannel` event + binary WAV として返すようにした。
+- 相槌は `うん` / `へえ` / `ほう` の3種に固定した。
+- `assets/backchannels/un.wav` / `hee.wav` / `hou.wav` を起動中 VOICEVOX `127.0.0.1:50122`、speaker 8、speedScale 1.5、16kHz mono WAV で生成した。
+- `Makefile` に `TOMOKO_V2_MAAI_BACKCHANNEL` / threshold / cooldown / asset dir を追加し、既定を有効 `1` にした。
+- MaAI package が無い場合や detector start に失敗した場合は hot-path を落とさず no-op にするようにした。
+- `MEMORY.md` に MaAI fixed backchannel の確定判断を追記した。
+- `ARCHITECTURE.md` に未来メモ「口喧嘩できる Tomoko」を追記し、残る中心課題は motivation 設計であることを書いた。
+
+### 詰まったこと・解決したこと
+- 最初に `say` で asset を生成したが、ユーザー指定に合わせて VOICEVOX 生成 WAV に置き換えた。
+- `scripts` ではなく hot-path app 直下に繋いだため、main LLM / VOICEVOX runtime を相槌ごとに呼ばない。
+- `TOMOKO_V2_MAAI_BACKCHANNEL=1` が既定だが、MaAI 未導入なら `backchannel_disabled` を出して no-op に落ちる。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_hot_path_backchannel.py tests/unit/test_v2_runtime_foundation.py tests/unit/test_v2_audio_tomoko_prompt.py -q`
+  - 44 passed
+- `uv run pytest -m unit tests/unit/test_v2_runtime_foundation.py tests/unit/test_v2_hot_path_backchannel.py -q`
+  - 18 passed
+- `uv run pytest -m unit -q`
+  - 103 passed, 1 deselected
+- `uv run ruff check server/hot_path/backchannel.py server/hot_path/app.py tests/unit/test_v2_hot_path_backchannel.py tests/unit/test_v2_runtime_foundation.py`
+  - passed
+- `git diff --check`
+  - passed
+- `make -n tmux-runtime`
+  - hot-path に `TOMOKO_V2_MAAI_BACKCHANNEL="1"` と `TOMOKO_V2_BACKCHANNEL_ASSET_DIR="assets/backchannels"` が渡ることを確認した。
+- `BackchannelAssetStore(Path("assets/backchannels"))`
+  - `うん` 9942 bytes / `へえ` 10966 bytes / `ほう` 10966 bytes、いずれも RIFF/WAVE。
+
+### 次のセッションでやること
+- 実 `make run` で MaAI package が利用可能な状態を確認し、体感上の相槌頻度に合わせて threshold / cooldown を調整する。
+
+## 2026-06-20 セッション14
+
+### やること（開始時に書く）
+- 蒸留 scorer 切り替え後の `/ws` say latency smoke を実行し、過去の E2B runtime 記録と比較する。
+- smoke wrapper の引数不整合で測れない場合は、測定できる状態に直す。
+
+### やったこと
+- `scripts.v2_scheduler_say_latency_smoke` が `measure()` に渡す `post_first_audio_ms` / `continue_after_first_audio` を持っておらず落ちたため追加した。
+- `scripts.v2_scheduler_say_latency_smoke` と `scripts.v2_semantic_early_smoke` の `_docs/latency.md` 追記日付を実行日ベースにし、semantic early smoke の説明を E2B から distilled saturation に更新した。
+- 起動済み `tomoko-v2-runtime` の `/ws` に対して scheduler say latency smoke を2本実行した。
+- distilled semantic early-start smoke を実行し、prefix replay 上の開始可能タイミングを確認した。
+
+### 結果
+- `/ws` smoke `トモコ、今日の予定を一言で教えて。`
+  - artifact: `logs/scheduler-say-latency-20260620-033825.json`
+  - voice-end to first audio: 4999.1ms
+  - partial は `今日の` / `今日の予定は` / `今日の予定で` で止まり、0.75 gate を超えず final 待ちになった。
+- `/ws` smoke `トモコ、短く返事して。`
+  - artifact: `logs/scheduler-say-latency-20260620-033846.json`
+  - voice-end to first audio: 1599.3ms
+  - partial は `と` のみで、final 後に `了解。` を返した。
+- distilled semantic early-start smoke `トモコ、今日の予定を一言で教えて。`
+  - artifact: `logs/semantic-early-smoke-20260620-033913.json`
+  - first OK: speech start +1600.8ms
+  - full final STT available: speech start +3600.1ms
+  - lead: 1999.3ms
+  - saturation latency: 0.52ms / 0.77ms / 0.85ms / 0.55ms / 0.57ms
+
+### 比較
+- 2026-06-18 E2B semantic early smoke は first OK 3281.3ms、lead 352.7ms だった。
+- 今回の distilled semantic early smoke は first OK 1600.8ms、lead 1999.3ms で、semantic 判断単体では約1680ms 前倒し、final への余裕は約5.7倍になった。
+- 実 `/ws` best は 2026-06-18 の async partial/final lanes が 860.5ms、final-confirm run が 1515.6ms。今回の短文 smoke 1599.3ms は final-confirm run とほぼ同等だが、partial early start ではなく final 起点だった。
+- 今回の長め smoke 4999.1ms は Apple Speech partial が開始可能な粒度で出なかったため悪化した。蒸留 scorer 自体ではなく STT partial の出方が支配している。
+
+### 検証
+- `uv run ruff check scripts/v2_scheduler_say_latency_smoke.py scripts/v2_semantic_early_smoke.py`
+  - passed
+- `uv run pytest -m unit tests/unit/test_v2_runtime_foundation.py tests/unit/test_v2_semantic_scheduler.py -q`
+  - 29 passed
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること
+- 実 `/ws` で semantic early smoke と同じ粒度の partial を出せるか、Apple Speech pseudo streaming の chunk/offset/coalescing を調整する。
+
+## 2026-06-20 セッション13
+
+### やること（開始時に書く）
+- E2B semantic endpoint を runtime 経路から外し、resident の蒸留 saturation scorer を使う。
+- partial early start は蒸留モデルを final 特徴で採点し、0.75 以上が2回連続した時だけ通す。
+- 短い final STT（例: `はい`）は1回しか判定できないため、semantic scorer 側のルールで吸収する。
+
+### やったこと
+- `server.tomoko.semantic` に `DistilledSaturationBackend` と default loader を追加した。
+- default artifact を `jdd-gemma26b-10000-plus-anchors-contrastive-tail-referential-saturation-model.json` にし、partial も `--final` 相当の特徴で採点するようにした。
+- `はい` / `うん` / `了解` など短い final/backchannel は `short_ack_rule` で saturation 0.35 以下に clamp するようにした。
+- hot-path と default conversation core を、E2B LLM backend ではなく蒸留 scorer backend へ差し替えた。
+- partial start gate の saturation threshold を 0.85 から 0.75 に変更し、既存の2回連続確認は維持した。
+- `Makefile` から `semantic-e2b-run`、`semantic-e2b` tmux window、semantic LLM readiness URL を外した。
+- `scripts/v2_semantic_early_smoke.py` を蒸留 scorer 用の smoke に更新した。
+- この判断を `MEMORY.md` に確定判断として追記した。
+
+### 詰まったこと・解決したこと
+- E2B backend class は比較用・既存 unit 用に残したが、runtime default / `make run` 経路からは外した。
+- 実 artifact の smoke では `今日の予定を教えて` が 0.9391、`それが良いと思うがしかし` が 0.3336、`はい` が short-ack rule で 0.3500 になった。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_semantic_scheduler.py tests/unit/test_v2_runtime_foundation.py tests/unit/test_v2_speech_order_flow.py -q`
+  - 39 passed
+- `uv run pytest -m unit -q`
+  - 98 passed, 1 deselected
+- `uv run ruff check server/tomoko/semantic.py server/tomoko/conversation.py server/hot_path/audio_conversation.py scripts/v2_semantic_early_smoke.py tests/unit/test_v2_semantic_scheduler.py tests/unit/test_v2_runtime_foundation.py`
+  - passed
+- `git diff --check`
+  - passed
+- `make -n tmux-runtime`
+  - `semantic-e2b` window なし、hot-path に `TOMOKO_V2_DISTILLED_SATURATION_MODEL` が渡ることを確認した。
+
+### 次のセッションでやること
+- 実 `make run` 起動後に partial early start の発火ログを確認し、0.75 2連続 gate の体感と過発火を観測する。
+
+## 2026-06-20 セッション12
+
+### やること（開始時に書く）
+- `それが良いと思う --final` が 0.6226 と低めなので、指示語・照応系の positive surface anchors を追加する。
+- `それ/その/これ/この` 系の逆説なし完了文を train に足し、再 train/evaluate/predict する。
+
+### やったこと
+- `make-model/make_anchor_teacher_labels.py` に `--kind referential` を追加した。
+- `それが良いと思う` / `それで問題ない` / `その方向でいい` / `これは違うと思う` などの指示語・照応系完了文を `manual_referential_anchor` として1000件生成できるようにした。
+- unit test で referential anchors が1000件生成され、代表例が高 saturation label を持つことを固定した。
+- 既存 10000件 train labels に referential anchors 1000件を足し、11000件で train した。
+- README と MEMORY に手順と結果を追記した。
+
+### 詰まったこと・解決したこと
+- `jq` 確認を anchor 生成と並列実行したため、確認側が先にファイルを読みに行って一度失敗した。
+  - 解決: 生成後に確認を再実行した。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_make_model_pipeline.py -q`
+  - 17 passed
+- `uv run ruff check make-model tests/unit/test_make_model_pipeline.py`
+  - passed
+- `uv run python make-model/make_anchor_teacher_labels.py --kind referential --out make-model/data/japanese-daily-dialogue/teacher-labels-manual-referential-anchors-1000.jsonl --count 1000`
+  - 1000 manual referential anchors written
+- combined train labels:
+  - 11000 rows: 8000 teacher_llm / 1000 manual_anchor / 1000 manual_contrastive_anchor / 1000 manual_referential_anchor
+- `uv run python make-model/train_saturation_model.py --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train-plus-anchors-contrastive-referential.jsonl --out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-contrastive-tail-referential-saturation-model.json --metrics-out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-contrastive-tail-referential-train-metrics.json`
+  - train time about 1.95s
+  - train binary_accuracy 0.8464 / MAE 0.1306 / RMSE 0.1809
+- held-out JDD eval:
+  - binary_accuracy 0.8215 / MAE 0.1818 / RMSE 0.2349
+- manual anchor eval:
+  - binary_accuracy 0.986 / MAE 0.0483 / RMSE 0.0644
+- contrastive anchor eval:
+  - binary_accuracy 1.0 / MAE 0.0631 / RMSE 0.0989
+- referential anchor eval:
+  - binary_accuracy 0.769 / MAE 0.0441 / RMSE 0.0567
+- representative predict with `--final`:
+  - `それが良いと思う`: 0.7170
+  - `それが良いと思うがしかし`: 0.3336
+  - `それで問題ない`: 0.7440
+  - `その方向でいい`: 0.6623
+  - `これは違うと思う`: 0.8539
+  - `今日の予定を教えて`: 0.9391
+- hot predict latency:
+  - mean 0.0733ms / p95 0.0806ms
+
+### 次のセッションでやること
+- `それが良いと思う` を 0.75 以上へ確実に上げるなら、referential labels を 0.85-0.90 寄りへ上げるか、referential phrase feature を追加する。
+
+## 2026-06-20 セッション11
+
+### やること（開始時に書く）
+- hash-ridge saturation scorer に `contrastive_tail` 明示特徴を追加する。
+- 逆説末尾の低ラベルが前半本文へ漏れすぎないか、contrastive anchor 版を再 train/evaluate して確認する。
+
+### やったこと
+- `make_model.model.EXTRA_FEATURES` に `contrastive_tail` を追加した。
+- `hashed_features()` が `しかし` / `けど` / `だが` / `だけど` / `とはいえ` などの逆説末尾を明示特徴として立てるようにした。
+- 旧 artifact は weight 次元が1つ少ないため、`align_features_for_weights()` で追加特徴を無視して互換 predict できるようにした。
+- unit test で `contrastive_tail` が逆説末尾だけに立つこと、旧 artifact 次元でも predict できることを固定した。
+- 同じ 10000件 train labels で `contrastive-tail-feature` artifact を再学習し、README と MEMORY に結果を追記した。
+
+### 詰まったこと・解決したこと
+- feature 追加直後、新コードで旧 artifact を読むと weight/features の次元不一致で落ちた。
+  - 解決: 旧 artifact は新しい末尾 feature を無視して推論できる互換 path を追加した。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_make_model_pipeline.py -q`
+  - 16 passed
+- `uv run ruff check make-model tests/unit/test_make_model_pipeline.py`
+  - passed
+- `uv run python make-model/train_saturation_model.py --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train-plus-anchors-contrastive.jsonl --out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-contrastive-tail-feature-saturation-model.json --metrics-out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-contrastive-tail-feature-train-metrics.json`
+  - train time about 1.96s
+  - train binary_accuracy 0.8538 / MAE 0.1385 / RMSE 0.1875
+- held-out JDD eval:
+  - binary_accuracy 0.8210 / MAE 0.1833 / RMSE 0.2359
+- manual anchor eval:
+  - binary_accuracy 0.984 / MAE 0.0499 / RMSE 0.0657
+- contrastive anchor eval:
+  - binary_accuracy 1.0 / MAE 0.0585 / RMSE 0.0884
+- representative predict with `--final`:
+  - `それが良いと思うがしかし`: 0.3228
+  - `それが良いと思うけど`: 0.1869
+  - `今日は進めたい。だけど`: 0.2015
+  - `それが良いと思う`: 0.6226
+  - `今日の予定を教えて`: 0.9381
+- hot predict latency:
+  - mean 0.1075ms / p95 0.1491ms
+
+### 次のセッションでやること
+- `それが良いと思う` をさらに上げたい場合は positive counter-anchor を足す。
+
+## 2026-06-20 セッション10
+
+### やること（開始時に書く）
+- `それが良いと思うがしかし --final` が 0.8711 と高く出るため、逆説末尾の手作り anchor labels を1000件追加する。
+- 逆説 anchor 追加後に train/evaluate/predict を再実行する。
+
+### やったこと
+- `make-model/make_anchor_teacher_labels.py` に `--kind contrastive` を追加した。
+- `しかし` / `けど` / `だが` / `だけど` / `とはいえ` などで終わる final 発話を、低 saturation の `manual_contrastive_anchor` として1000件生成できるようにした。
+- unit test で `それが良いと思うがしかし=0.22`、`それが良いと思うけど < 0.35`、`今日は進めたい。だけど < 0.35` を固定した。
+- 既存 9000件 train split に contrastive anchors 1000件を足し、10000件で train した。
+- README と MEMORY に手順と結果を追記した。
+
+### 詰まったこと・解決したこと
+- 最初の contrastive 候補は 980件で、1000件に少し足りなかった。
+  - 解決: base 文を追加した。
+- `今日は進めたい。だけど` のような `。だけど` 形がなかった。
+  - 解決: `CONTRASTIVE_ENDINGS` に `。だけど` を追加した。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_make_model_pipeline.py -q`
+  - 14 passed
+- `uv run ruff check make-model tests/unit/test_make_model_pipeline.py`
+  - passed
+- `uv run python make-model/make_anchor_teacher_labels.py --kind contrastive --out make-model/data/japanese-daily-dialogue/teacher-labels-manual-contrastive-anchors-1000.jsonl --count 1000`
+  - 1000 manual contrastive anchors written
+- combined train labels:
+  - 10000 rows: 8000 teacher_llm / 1000 manual_anchor / 1000 manual_contrastive_anchor
+- `uv run python make-model/train_saturation_model.py --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train-plus-anchors-contrastive.jsonl --out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-contrastive-saturation-model.json --metrics-out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-contrastive-train-metrics.json`
+  - train time about 1.78s
+  - train binary_accuracy 0.8507 / MAE 0.1424 / RMSE 0.1908
+- held-out JDD eval:
+  - binary_accuracy 0.8135 / MAE 0.1877 / RMSE 0.2410
+- manual anchor eval:
+  - binary_accuracy 0.979 / MAE 0.0577 / RMSE 0.0739
+- contrastive anchor eval:
+  - binary_accuracy 1.0 / MAE 0.0661 / RMSE 0.0858
+- representative predict with `--final`:
+  - `それが良いと思うがしかし`: 0.3536
+  - `それが良いと思うけど`: 0.2716
+  - `今日は進めたい。だけど`: 0.1820
+  - `今日の予定を教えて`: 0.9345
+- hot predict latency:
+  - mean 0.0840ms / p95 0.1010ms
+
+### 次のセッションでやること
+- JDD held-out accuracy が少し下がったため、contrastive 版は shadow 比較で採用判断する。
+
 ## 2026-06-19 セッション9
 
 ### やること（開始時に書く）

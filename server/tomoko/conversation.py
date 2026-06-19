@@ -22,10 +22,13 @@ from server.tomoko.context import ContextSnapshotBuilderV2
 from server.tomoko.main import TomokoProcessCore
 from server.tomoko.prompt import PromptBuilderV2
 from server.tomoko.scheduler import SpeechScheduler, detect_stop_intent
-from server.tomoko.semantic import SemanticSaturationJudge
+from server.tomoko.semantic import (
+    SemanticSaturationJudge,
+    create_default_distilled_saturation_backend,
+)
 from server.tomoko.session import SessionBoundaryModel
 
-PARTIAL_CONFIRM_SATURATION_THRESHOLD = 0.85
+PARTIAL_CONFIRM_SATURATION_THRESHOLD = 0.75
 PARTIAL_CONFIRM_REQUIRED_COUNT = 2
 
 
@@ -396,7 +399,9 @@ class TomokoConversationCore:
 def create_default_conversation_core() -> TomokoConversationCore:
     return TomokoConversationCore(
         session_model=SessionBoundaryModel(),
-        saturation_judge=SemanticSaturationJudge(),
+        saturation_judge=SemanticSaturationJudge(
+            distilled_backend=create_default_distilled_saturation_backend()
+        ),
         scheduler=SpeechScheduler(),
         chat_backend=create_default_real_chat_backend(),
     )

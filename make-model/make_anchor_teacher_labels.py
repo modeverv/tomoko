@@ -7,6 +7,8 @@ from pathlib import Path
 from make_model.schema import TeacherLabel, write_jsonl
 
 MANUAL_TEACHER_MODEL = "manual-anchor-v1"
+CONTRASTIVE_TEACHER_MODEL = "manual-contrastive-anchor-v1"
+REFERENTIAL_TEACHER_MODEL = "manual-referential-anchor-v1"
 
 HIGH_ANCHORS = [
     ("今日の予定を教えて", 0.95),
@@ -165,6 +167,206 @@ MID_PATTERNS = [
     "{topic}はだいたい分かりました",
 ]
 
+CONTRASTIVE_BASES = [
+    "それが良いと思う",
+    "今日は進めたい",
+    "この案でいい",
+    "予定は合っている",
+    "返事はこれでいい",
+    "明日は空いている",
+    "この設定で大丈夫",
+    "いったん保存したい",
+    "このまま進めたい",
+    "それは正しい",
+    "結論は出ている",
+    "準備はできている",
+    "話は分かった",
+    "内容は理解した",
+    "予定は決まった",
+    "今日は行ける",
+    "今ならできる",
+    "それで問題ない",
+    "この説明で足りる",
+    "その方向でよい",
+    "タスクは終わった",
+    "確認はできた",
+    "返答は短くていい",
+    "この手順で進む",
+    "だいたい合っている",
+    "今の判断でいい",
+    "その予定でいい",
+    "一旦これで進める",
+    "今日は休める",
+    "もう大丈夫",
+    "このコードで動く",
+    "ログは問題ない",
+    "評価は悪くない",
+    "学習は進んでいる",
+    "精度は上がっている",
+    "速度は十分速い",
+    "この返事でいい",
+    "今の説明でいい",
+    "予定を見れば分かる",
+    "今日はその方がいい",
+    "短く答えればいい",
+    "それは便利だ",
+    "結果は出ている",
+    "データは足りている",
+    "ファイルは揃っている",
+    "推論は成功している",
+    "評価は通っている",
+    "テストは通っている",
+    "このモデルで使える",
+    "今の状態で十分",
+    "方向性は良い",
+    "話としては自然",
+    "返し始めてもよい",
+    "意味は取れている",
+    "質問として成立している",
+    "依頼として分かる",
+    "確認として分かる",
+    "答えはありそう",
+    "予定は知りたい",
+    "説明はできる",
+    "今日は大丈夫",
+    "それはそう",
+    "今なら分かる",
+    "もう聞こえている",
+    "ちゃんと届いている",
+    "このままでも良い",
+    "追加しなくていい",
+    "変更しなくていい",
+    "覚えておけばいい",
+    "後で見ればいい",
+    "返してもよさそう",
+    "話してもよさそう",
+    "始めてもよさそう",
+    "確認してもよさそう",
+    "教えてもらえそう",
+    "お願いできそう",
+]
+
+CONTRASTIVE_ENDINGS = [
+    "がしかし",
+    "が",
+    "けど",
+    "だけど",
+    "ですが",
+    "だが",
+    "とはいえ",
+    "ものの",
+    "、でも",
+    "、ただ",
+    "、しかし",
+    "。でも",
+    "。ただ",
+    "。しかし",
+    "。だけど",
+]
+
+CONTRASTIVE_SATURATION = {
+    "がしかし": 0.22,
+    "が": 0.26,
+    "けど": 0.24,
+    "だけど": 0.24,
+    "ですが": 0.24,
+    "だが": 0.24,
+    "とはいえ": 0.28,
+    "ものの": 0.28,
+    "、でも": 0.20,
+    "、ただ": 0.20,
+    "、しかし": 0.20,
+    "。でも": 0.18,
+    "。ただ": 0.18,
+    "。しかし": 0.18,
+    "。だけど": 0.18,
+}
+
+REFERENTIAL_ANCHORS = [
+    ("それが良いと思う", 0.82),
+    ("それで問題ない", 0.85),
+    ("その方向でいい", 0.84),
+    ("これは違うと思う", 0.78),
+    ("それでいいと思う", 0.84),
+    ("それは正しいと思う", 0.82),
+    ("その案でいいと思う", 0.84),
+    ("このままで大丈夫", 0.82),
+    ("これで大丈夫", 0.84),
+    ("それで合っている", 0.83),
+]
+
+REFERENTIAL_SUBJECTS = [
+    "それ",
+    "それが",
+    "それは",
+    "それで",
+    "その方向",
+    "その案",
+    "その予定",
+    "その判断",
+    "その説明",
+    "その返事",
+    "これ",
+    "これが",
+    "これは",
+    "これで",
+    "この案",
+    "この方向",
+    "この予定",
+    "この判断",
+    "この説明",
+    "この返事",
+    "あれ",
+    "あれは",
+    "あの案",
+    "あの方向",
+    "今の案",
+    "今の判断",
+    "今の説明",
+    "さっきの案",
+    "さっきの話",
+    "話の流れ",
+    "今の流れ",
+    "その流れ",
+    "この流れ",
+    "その内容",
+    "この内容",
+    "その方法",
+    "この方法",
+    "そのやり方",
+    "このやり方",
+    "今のやり方",
+]
+
+REFERENTIAL_PREDICATES = [
+    ("良いと思う", 0.82),
+    ("いいと思う", 0.82),
+    ("正しいと思う", 0.82),
+    ("合っていると思う", 0.82),
+    ("大丈夫だと思う", 0.80),
+    ("問題ないと思う", 0.82),
+    ("自然だと思う", 0.78),
+    ("便利だと思う", 0.78),
+    ("使えると思う", 0.80),
+    ("良さそう", 0.78),
+    ("よさそう", 0.78),
+    ("大丈夫そう", 0.78),
+    ("問題なさそう", 0.80),
+    ("合っていそう", 0.78),
+    ("正しそう", 0.78),
+    ("いい", 0.82),
+    ("良い", 0.82),
+    ("大丈夫", 0.82),
+    ("問題ない", 0.85),
+    ("合っている", 0.83),
+    ("正しい", 0.82),
+    ("違うと思う", 0.78),
+    ("少し違うと思う", 0.74),
+    ("それでいい", 0.84),
+    ("このままでいい", 0.82),
+    ("そのままでいい", 0.82),
+]
+
 
 def build_anchor_labels(*, count: int = 1000) -> list[TeacherLabel]:
     if count <= 0:
@@ -215,13 +417,101 @@ def build_anchor_labels(*, count: int = 1000) -> list[TeacherLabel]:
     ]
 
 
+def build_contrastive_anchor_labels(*, count: int = 1000) -> list[TeacherLabel]:
+    if count <= 0:
+        raise ValueError("count must be positive")
+
+    rows: list[tuple[str, float]] = [("それが良いと思うがしかし", 0.22)]
+    for base in CONTRASTIVE_BASES:
+        for ending in CONTRASTIVE_ENDINGS:
+            rows.append((f"{base}{ending}", CONTRASTIVE_SATURATION[ending]))
+
+    unique_rows: list[tuple[str, float]] = []
+    seen: set[str] = set()
+    for text, saturation in rows:
+        normalized = text.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        unique_rows.append((normalized, saturation))
+        if len(unique_rows) >= count:
+            break
+    if len(unique_rows) < count:
+        raise ValueError(f"only built {len(unique_rows)} unique contrastive anchors")
+
+    return [
+        TeacherLabel(
+            utterance_id=f"manual-contrastive-anchor-{index:04d}",
+            prefix_index=0,
+            prefix_text=text,
+            full_text=text,
+            saturation=saturation,
+            teacher_model=CONTRASTIVE_TEACHER_MODEL,
+            source="manual-contrastive-anchor:v1",
+            is_final=True,
+            label_source="manual_contrastive_anchor",
+            raw_output=f"SATURATION={saturation:.2f}",
+        )
+        for index, (text, saturation) in enumerate(unique_rows, start=1)
+    ]
+
+
+def build_referential_anchor_labels(*, count: int = 1000) -> list[TeacherLabel]:
+    if count <= 0:
+        raise ValueError("count must be positive")
+
+    rows: list[tuple[str, float]] = list(REFERENTIAL_ANCHORS)
+    for subject in REFERENTIAL_SUBJECTS:
+        for predicate, saturation in REFERENTIAL_PREDICATES:
+            rows.append((f"{subject}{predicate}", saturation))
+
+    unique_rows: list[tuple[str, float]] = []
+    seen: set[str] = set()
+    for text, saturation in rows:
+        normalized = text.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        unique_rows.append((normalized, saturation))
+        if len(unique_rows) >= count:
+            break
+    if len(unique_rows) < count:
+        raise ValueError(f"only built {len(unique_rows)} unique referential anchors")
+
+    return [
+        TeacherLabel(
+            utterance_id=f"manual-referential-anchor-{index:04d}",
+            prefix_index=0,
+            prefix_text=text,
+            full_text=text,
+            saturation=saturation,
+            teacher_model=REFERENTIAL_TEACHER_MODEL,
+            source="manual-referential-anchor:v1",
+            is_final=True,
+            label_source="manual_referential_anchor",
+            raw_output=f"SATURATION={saturation:.2f}",
+        )
+        for index, (text, saturation) in enumerate(unique_rows, start=1)
+    ]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Write handcrafted saturation anchor labels.")
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--count", default=1000, type=int)
+    parser.add_argument(
+        "--kind",
+        default="general",
+        choices=("general", "contrastive", "referential"),
+    )
     args = parser.parse_args()
 
-    anchors = build_anchor_labels(count=args.count)
+    if args.kind == "contrastive":
+        anchors = build_contrastive_anchor_labels(count=args.count)
+    elif args.kind == "referential":
+        anchors = build_referential_anchor_labels(count=args.count)
+    else:
+        anchors = build_anchor_labels(count=args.count)
     write_jsonl(args.out, (anchor.to_json() for anchor in anchors))
     print(f"wrote {len(anchors)} manual anchor labels to {args.out}")
 

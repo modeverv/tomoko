@@ -15,7 +15,7 @@ from server.shared.models import AudioSpeechSegment, SpeechSchedulerInput, utc_n
 from server.tomoko.scheduler import SpeechScheduler
 from server.tomoko.semantic import (
     SemanticSaturationJudge,
-    create_default_semantic_llm_backend,
+    create_default_distilled_saturation_backend,
 )
 
 
@@ -43,7 +43,7 @@ class SemanticEarlySmokeResult:
     voice: str
     input_wav: str
     input_duration_ms: float
-    semantic_url: str
+    semantic_backend: str
     semantic_model: str
     saturation_threshold: float
     estimation_mode: str
@@ -61,7 +61,7 @@ class SemanticEarlySmokeResult:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Estimate whether Gemma 4 E2B semantic saturation can allow LLM start "
+            "Estimate whether distilled semantic saturation can allow LLM start "
             "before the full Apple Speech final STT is available."
         )
     )
@@ -90,8 +90,8 @@ async def run_smoke(
         if 0 < offset < input_duration_ms
     ]
     stt_backend = AppleSpeechStreamingBackend()
-    saturation_backend = create_default_semantic_llm_backend()
-    judge = SemanticSaturationJudge(llm_backend=saturation_backend)
+    saturation_backend = create_default_distilled_saturation_backend()
+    judge = SemanticSaturationJudge(distilled_backend=saturation_backend)
     scheduler = SpeechScheduler()
 
     final_started = time.perf_counter()
@@ -197,8 +197,8 @@ async def run_smoke(
         voice=args.voice,
         input_wav=str(wav_path),
         input_duration_ms=input_duration_ms,
-        semantic_url=saturation_backend.url,
-        semantic_model=saturation_backend.model,
+        semantic_backend="distilled_hash_ridge",
+        semantic_model=str(saturation_backend.model_path),
         saturation_threshold=args.threshold,
         estimation_mode=(
             "prefix-window replay: assumes a real streaming STT partial with the same text "
@@ -253,8 +253,9 @@ def append_latency_row(result: SemanticEarlySmokeResult) -> None:
     latency_path.write_text(
         latency_path.read_text(encoding="utf-8")
         + (
-            f"| 2026-06-18 | Tomoko v2 semantic E2B early-start smoke | "
-            f"`say prefix windows -> Apple Speech -> Gemma E2B saturation` | "
+            f"| {datetime.now().strftime('%Y-%m-%d')} | "
+            f"Tomoko v2 distilled semantic early-start smoke | "
+            f"`say prefix windows -> Apple Speech -> distilled saturation` | "
             f"{metric} | final STT available at "
             f"{result.full_final_available_from_speech_start_ms:.1f}ms, artifact "
             f"`{result.artifact_path}`. |\n"

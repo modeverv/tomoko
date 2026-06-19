@@ -559,3 +559,80 @@ STT / user-status / candidate / calendar
 ```
 
 このログが、後から「なぜ今しゃべったか」「なぜ黙ったか」「なぜ上書きしたか」を説明する材料になる。
+
+## 未来メモ: 口喧嘩できる Tomoko
+
+Tomoko の中長期的な到達点のひとつは、「口喧嘩できる Tomoko」である。
+これは攻撃的な発話を増やす、という意味ではない。
+人間の会話が盛り上がった時に起こる、
+相手が完全に話し終える前に少し前のめりに入り、
+時には勘違いし、揚げ足を取り、相手から「ちょっとちゃんと聞いてよ」と言われるような、
+関係性のあるリアルな応答を作る、という意味である。
+
+この挙動は単一の LLM prompt ではなく、複数の軽量な信号の合成で作る。
+
+```text
+semantic_saturation:
+  意味的にもう返せるか / どれくらい確からしく返せるか
+
+MaAI backchannel:
+  聞いている感じを固定相槌として出す
+
+VAP / p_yielding:
+  音響的に相手が譲り始めているか
+
+motivation:
+  Tomoko が今どれくらい話したいか、反論したいか、茶々を入れたいか
+
+partial gate:
+  早すぎる発話のブレーキ
+
+final reconcile:
+  前のめりに入った後で final STT と整合しなかった時の回復
+```
+
+現時点で、ピースは揃いつつある。
+
+- semantic saturation は蒸留 scorer 化でき、hot path でほぼゼロコストに近い。
+- partial STT から final 前に main reply を準備する経路がある。
+- partial gate は連続確認と閾値で過発火を抑えられる。
+- final reconcile により、前のめり発話後の重複発話を抑えられる。
+- MaAI fixed backchannel lane により、本文返答とは独立して相槌を返せる。
+- scheduler は score_breakdown を持ち、なぜ話したか / 黙ったかを後から調整できる。
+
+残る中心課題は motivation の設計である。
+
+motivation は、単なる「話す頻度」ではなく、
+閾値を動かす圧力として扱う。
+Tomoko が静かに聞きたい時は final や明確な無音まで待ち、
+Tomoko が強く反論したい時、盛り上がっている時、茶々を入れたい時は、
+semantic_saturation が少し低くても、VAP が終端寄りなら前のめりに入る。
+
+```text
+semantic high + motivation normal:
+  普通に返答する
+
+semantic high + VAP yielding + motivation high:
+  final 前に main reply を準備または発話する
+
+semantic medium + motivation high:
+  短く前のめりに入る
+  例: 「いや、それってさ」
+
+semantic low + motivation very high:
+  勘違い / 茶々 / 揚げ足取りとして短く入る
+  例: 「待って、今の言い方ずるくない？」
+
+semantic low + motivation low:
+  黙る、または fixed backchannel だけ返す
+```
+
+低 semantic で発話する場合は、断定的な回答ではなく、
+撤回可能な短い割り込みとして扱う。
+ここでの誤解は必ずしも失敗ではなく、
+人間側が「違う違う」「ちゃんと聞いて」と返せる関係性イベントになる。
+
+この方向に進める時も、hot-path-process に人格状態を持たせない。
+hot-path は音声シグナル、MaAI、cached backchannel、低レイテンシー出力を担当する。
+motivation の所有者は tomoko-process 側に置き、
+hot-path には、その時点の閾値やモードだけを渡す。

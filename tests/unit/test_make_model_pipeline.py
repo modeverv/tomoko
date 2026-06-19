@@ -10,13 +10,23 @@ sys.path.insert(0, str(MAKE_MODEL_DIR))
 
 from benchmark_saturation_latency import measure_predict_latency  # noqa: E402
 from generate_teacher_labels import select_prefix_rows  # noqa: E402
-from make_anchor_teacher_labels import build_anchor_labels  # noqa: E402
+from make_anchor_teacher_labels import (  # noqa: E402
+    build_anchor_labels,
+    build_contrastive_anchor_labels,
+    build_referential_anchor_labels,
+)
 from make_model.corpus import CorpusUtterance, build_prefix_examples, load_corpus  # noqa: E402
 from make_model.japanese_daily_dialogue import (  # noqa: E402
     convert_japanese_daily_dialogue,
     load_japanese_daily_dialogue,
 )
-from make_model.model import HashRidgeSaturationModel, evaluate_model  # noqa: E402
+from make_model.model import (  # noqa: E402
+    EXTRA_FEATURES,
+    HashRidgeConfig,
+    HashRidgeSaturationModel,
+    evaluate_model,
+    hashed_features,
+)
 from make_model.schema import PrefixExample, TeacherLabel, read_jsonl, write_jsonl  # noqa: E402
 from make_model.teacher import (  # noqa: E402
     OpenAICompatibleTeacher,
@@ -218,6 +228,57 @@ def test_build_anchor_labels_contains_manual_high_and_low_examples() -> None:
     assert by_text["聞こえますか"].saturation == pytest.approx(0.9)
     assert by_text["えっと"].saturation == pytest.approx(0.1)
     assert by_text["ただ、やっぱり"].saturation == pytest.approx(0.2)
+
+
+def test_build_contrastive_anchor_labels_marks_trailing_reversal_as_low() -> None:
+    anchors = build_contrastive_anchor_labels(count=1000)
+
+    assert len(anchors) == 1000
+    assert len({anchor.utterance_id for anchor in anchors}) == 1000
+    assert all(anchor.label_source == "manual_contrastive_anchor" for anchor in anchors)
+
+    by_text = {anchor.prefix_text: anchor for anchor in anchors}
+    assert by_text["それが良いと思うがしかし"].saturation == pytest.approx(0.22)
+    assert by_text["それが良いと思うがしかし"].is_final is True
+    assert by_text["それが良いと思うけど"].saturation < 0.35
+    assert by_text["今日は進めたい。だけど"].saturation < 0.35
+
+
+def test_build_referential_anchor_labels_marks_pronoun_completion_as_high() -> None:
+    anchors = build_referential_anchor_labels(count=1000)
+
+    assert len(anchors) == 1000
+    assert len({anchor.utterance_id for anchor in anchors}) == 1000
+    assert all(anchor.label_source == "manual_referential_anchor" for anchor in anchors)
+
+    by_text = {anchor.prefix_text: anchor for anchor in anchors}
+    assert by_text["それが良いと思う"].saturation == pytest.approx(0.82)
+    assert by_text["それで問題ない"].saturation == pytest.approx(0.85)
+    assert by_text["その方向でいい"].saturation == pytest.approx(0.84)
+    assert by_text["これは違うと思う"].saturation == pytest.approx(0.78)
+
+
+def test_hashed_features_marks_contrastive_tail_without_penalizing_prefix() -> None:
+    config = HashRidgeConfig(hash_size=16, ngram_min=1, ngram_max=2)
+    contrastive_index = config.hash_size + EXTRA_FEATURES.index("contrastive_tail")
+
+    assert hashed_features("それが良いと思うがしかし", config)[contrastive_index] == 1.0
+    assert hashed_features("それが良いと思うけど", config)[contrastive_index] == 1.0
+    assert hashed_features("今日は進めたい。だけど", config)[contrastive_index] == 1.0
+    assert hashed_features("それが良いと思う", config)[contrastive_index] == 0.0
+
+
+def test_hash_ridge_model_can_predict_old_artifact_without_new_extra_feature() -> None:
+    config = HashRidgeConfig(hash_size=16, ngram_min=1, ngram_max=2)
+    old_feature_count = config.hash_size + len(EXTRA_FEATURES) - 1
+    model = HashRidgeSaturationModel(
+        config=config,
+        weights=[0.0] * old_feature_count,
+        bias=0.5,
+        metadata={},
+    )
+
+    assert model.predict("それが良いと思うがしかし", is_final=True) == pytest.approx(0.5)
 
 
 def test_make_model_teacher_uses_runtime_e2b_saturation_prompt_contract() -> None:

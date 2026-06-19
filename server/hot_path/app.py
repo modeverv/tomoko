@@ -22,6 +22,10 @@ from server.hot_path.audio_conversation import (
     audio_bytes_to_samples,
     create_default_audio_conversation,
 )
+from server.hot_path.backchannel import (
+    BackchannelEmission,
+    create_backchannel_detector_from_env,
+)
 from server.hot_path.db_conversation import HotPathDbSplitConversation
 from server.hot_path.model_executor import (
     PromptExecutionResult,
@@ -33,7 +37,13 @@ from server.hot_path.model_executor import (
 from server.hot_path.protocol import encode_server_event, parse_browser_message
 from server.hot_path.speech_executor import SpeechOrderExecutor
 from server.shared.db import default_dsn
-from server.shared.models import AudioSpeechSegment, CancelPolicy, PromptRequest, PromptScope
+from server.shared.models import (
+    AudioSpeechSegment,
+    CancelPolicy,
+    ModelOutputEvent,
+    PromptRequest,
+    PromptScope,
+)
 from server.tomoko.conversation import TomokoConversationCore
 from server.tomoko.main import TomokoProcessCore
 from server.tomoko.prompt import PromptBuilderV2
@@ -62,6 +72,20 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await conversation.warm_connections()
     result_queue: asyncio.Queue[HotPathConversationResult] = asyncio.Queue()
     result_sender = asyncio.create_task(_send_audio_result_queue(websocket, result_queue))
+    backchannel_detector = create_backchannel_detector_from_env(
+        playback_active=lambda: _conversation_playback_active(conversation),
+        emission_callback=lambda emission: result_queue.put(_backchannel_result(emission)),
+    )
+    if backchannel_detector is not None:
+        try:
+            await backchannel_detector.start()
+        except Exception as exc:
+            _console_event(
+                "backchannel_disabled",
+                reason="start_failed",
+                error=type(exc).__name__,
+            )
+            backchannel_detector = None
     partial_lane = (
         AudioPartialLane(conversation, result_queue)
         if isinstance(conversation, HotPathAudioConversation)
@@ -80,10 +104,12 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 _console_event("ws_disconnected")
                 return
             if "bytes" in message and message["bytes"] is not None:
+                samples = audio_bytes_to_samples(message["bytes"])
+                if backchannel_detector is not None:
+                    backchannel_detector.observe_user_audio(samples)
                 if partial_lane is None:
-                    result = await conversation.process_audio_bytes(message["bytes"])
+                    result = await conversation.process_audio_samples(samples)
                 else:
-                    samples = audio_bytes_to_samples(message["bytes"])
                     result = await conversation.process_audio_samples(
                         samples,
                         process_partials=False,
@@ -114,6 +140,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             await final_lane.stop()
         if partial_lane is not None:
             await partial_lane.stop()
+        if backchannel_detector is not None:
+            await backchannel_detector.stop()
         result_sender.cancel()
         with suppress(asyncio.CancelledError):
             await result_sender
@@ -322,6 +350,8 @@ async def _send_audio_conversation_result(
             )
         )
     if result.prompt_request is None:
+        if result.execution_result.audio_chunks:
+            await _send_backchannel_execution_result(websocket, result.execution_result)
         return
     if result.speech_order is not None and not result.execution_result.audio_chunks:
         _console_event(
@@ -441,6 +471,67 @@ async def _send_prompt_execution_result(
 
     await websocket.send_text(encode_server_event("prompt_complete", request_id=str(request.id)))
     _console_event("prompt_complete", request_id=str(request.id))
+
+
+async def _send_backchannel_execution_result(
+    websocket: WebSocket,
+    result: PromptExecutionResult,
+) -> None:
+    text = next(
+        (event.text for event in result.model_events if event.event_kind == "complete"),
+        "",
+    )
+    audio_bytes = sum(len(chunk.chunk) for chunk in result.audio_chunks)
+    request_id = str(result.audio_chunks[0].request_id)
+    _console_event("backchannel", request_id=request_id, text=text, bytes=audio_bytes)
+    await websocket.send_text(
+        encode_server_event(
+            "backchannel",
+            request_id=request_id,
+            text=text,
+            audio_chunks=len(result.audio_chunks),
+            audio_bytes=audio_bytes,
+            content_type=result.audio_chunks[-1].content_type,
+        )
+    )
+    for chunk in result.audio_chunks:
+        await websocket.send_bytes(chunk.chunk)
+        if chunk.is_final:
+            await websocket.send_text(
+                encode_server_event(
+                    "audio_complete",
+                    request_id=str(chunk.request_id),
+                    sample_rate=chunk.sample_rate,
+                    content_type=chunk.content_type,
+                )
+            )
+
+
+def _backchannel_result(emission: BackchannelEmission) -> HotPathConversationResult:
+    return HotPathConversationResult(
+        observations=[],
+        durable_utterance=None,
+        context_snapshot=None,
+        prompt_request=None,
+        execution_result=PromptExecutionResult(
+            model_events=[
+                ModelOutputEvent(
+                    request_id=emission.audio_chunk.request_id,
+                    event_kind="complete",
+                    text=emission.text,
+                    trace_id=emission.audio_chunk.trace_id,
+                )
+            ],
+            audio_chunks=[emission.audio_chunk],
+        ),
+    )
+
+
+def _conversation_playback_active(
+    conversation: HotPathAudioConversation | HotPathDbSplitConversation,
+) -> bool:
+    speech_executor = getattr(conversation, "speech_executor", None)
+    return bool(speech_executor is not None and speech_executor.current_order is not None)
 
 
 def _prompt_executor() -> PromptExecutor:

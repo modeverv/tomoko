@@ -11,8 +11,31 @@ import numpy as np
 
 from make_model.schema import TeacherLabel
 
-EXTRA_FEATURES = ("length", "question_tail", "is_final", "lowering_prefix")
+EXTRA_FEATURES = (
+    "length",
+    "question_tail",
+    "is_final",
+    "lowering_prefix",
+    "contrastive_tail",
+)
 LOWERING_PREFIXES = ("ただ", "でも", "いや", "というか", "一個だけ", "ひとつだけ")
+CONTRASTIVE_TAILS = (
+    "がしかし",
+    "しかし",
+    "けど",
+    "だけど",
+    "ですが",
+    "だが",
+    "とはいえ",
+    "ものの",
+    "、でも",
+    "、ただ",
+    "、しかし",
+    "。でも",
+    "。ただ",
+    "。しかし",
+    "。だけど",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +55,9 @@ class HashRidgeSaturationModel:
 
     def predict(self, text: str, *, is_final: bool = False) -> float:
         features = hashed_features(text, self.config, is_final=is_final)
-        score = float(np.dot(np.array(self.weights, dtype=np.float64), features) + self.bias)
+        weights = np.array(self.weights, dtype=np.float64)
+        features = align_features_for_weights(features, weights)
+        score = float(np.dot(weights, features) + self.bias)
         return max(0.0, min(1.0, score))
 
     def save(self, path: Path) -> None:
@@ -40,6 +65,7 @@ class HashRidgeSaturationModel:
         payload = {
             "model_type": "hash_ridge_saturation",
             "config": asdict(self.config),
+            "extra_features": list(EXTRA_FEATURES),
             "weights": self.weights,
             "bias": self.bias,
             "metadata": self.metadata,
@@ -112,7 +138,16 @@ def hashed_features(text: str, config: HashRidgeConfig, *, is_final: bool = Fals
     features[offset + 1] = 1.0 if normalized.endswith(("?", "？", "か")) else 0.0
     features[offset + 2] = 1.0 if is_final else 0.0
     features[offset + 3] = 1.0 if normalized.startswith(LOWERING_PREFIXES) else 0.0
+    features[offset + 4] = 1.0 if normalized.endswith(CONTRASTIVE_TAILS) else 0.0
     return features
+
+
+def align_features_for_weights(features: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    if features.shape[0] == weights.shape[0]:
+        return features
+    if features.shape[0] > weights.shape[0]:
+        return features[: weights.shape[0]]
+    return np.pad(features, (0, weights.shape[0] - features.shape[0]))
 
 
 def evaluate_model(

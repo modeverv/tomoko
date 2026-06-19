@@ -32,6 +32,7 @@ from server.tomoko.db_bridge import (
 )
 from server.tomoko.scheduler import SpeechScheduler, detect_stop_intent
 from server.tomoko.semantic import (
+    DistilledSaturationBackend,
     OpenAICompatibleSaturationBackend,
     SemanticSaturationJudge,
     deterministic_saturation,
@@ -101,6 +102,28 @@ def test_deterministic_saturation_fallback_handles_representative_cases() -> Non
     assert deterministic_saturation("これでいい?").saturation >= 0.75
     assert deterministic_saturation("ただ、やっぱり").saturation < 0.45
     assert stable_prefix(["トモコ、今日の予定", "トモコ、今日の予定を"]) == "トモコ、今日の予定"
+
+
+def test_distilled_saturation_scores_partials_as_final_and_clamps_short_acks() -> None:
+    class FakeModel:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, bool]] = []
+
+        def predict(self, text: str, *, is_final: bool = False) -> float:
+            self.calls.append((text, is_final))
+            return 0.92
+
+    model = FakeModel()
+    backend = DistilledSaturationBackend(model=model)
+
+    partial = backend.judge_sync("今日の予定を教えて", partial=True)
+    short_final = backend.judge_sync("はい", partial=False)
+
+    assert model.calls[0] == ("今日の予定を教えて", True)
+    assert partial.source == "distilled_partial_finalish"
+    assert partial.saturation == pytest.approx(0.92)
+    assert short_final.source == "distilled_short_ack_rule"
+    assert short_final.saturation == pytest.approx(0.35)
 
 
 @pytest.mark.asyncio

@@ -543,3 +543,28 @@ partial 開始 gate を saturation 単独から、saturation と総合 score の
 `semantic-e2b` window で `mlx_lm.server --model mlx-community/gemma-4-e2b-it-OptiQ-4bit --port 8083`
 を起動し、hot-path 起動前の readiness で `8083/v1/models` も待つ。
 hot-path window には `TOMOKO_V2_SEMANTIC_LLM=1` と E2B URL/model を渡す。
+
+## Phase S17: MaAI fixed backchannel hot-path lane
+
+MaAI を VAP/VAD 制御ではなく、hot-path の相槌専用センサーとして使う。
+本文返答、semantic saturation、VAD final endpointing には直接混ぜない。
+MaAI の react/emo score が閾値を超えた時だけ、事前生成済みの固定 WAV asset を短く返す。
+
+相槌候補は `うん` / `へえ` / `ほう` の3種に限定する。
+音声は `assets/backchannels/` 配下の WAV を使い、相槌のために main LLM や VOICEVOX を呼ばない。
+
+### 実装手順
+
+- [x] `assets/backchannels/` に `un.wav` / `hee.wav` / `hou.wav` を置く。
+- [x] hot-path 用の MaAI backchannel detector を追加し、MaAI 未導入/無効時は no-op にする。
+- [x] detector は `TOMOKO_V2_MAAI_BACKCHANNEL=1` の時だけ有効にする。
+- [x] MaAI result の react/emo score が閾値以上、cooldown 中でない、Tomoko 音声出力中でない時だけ相槌を返す。
+- [x] `/ws` の audio receive loop で user audio chunk を detector に渡し、相槌 WAV は result queue 経由で binary audio として返す。
+- [x] unit test で閾値、cooldown、asset cycling、無効時 no-op、WAV chunk 送信を固定する。
+
+### 完了条件
+
+- [x] `pytest -m unit` の focused test が通る。
+- [x] `ruff check` が通る。
+- [x] `TOMOKO_V2_MAAI_BACKCHANNEL=0` では既存 `/ws` 音声経路が変わらない。
+- [x] `TOMOKO_V2_MAAI_BACKCHANNEL=1` かつ MaAI suggestion が閾値を超えた時、固定相槌 WAV が main LLM/TTS を呼ばずに返る。

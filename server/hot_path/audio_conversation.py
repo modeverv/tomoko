@@ -27,7 +27,10 @@ from server.tomoko.conversation import TomokoConversationCore
 from server.tomoko.main import TomokoProcessCore
 from server.tomoko.prompt import PromptBuilderV2
 from server.tomoko.scheduler import SpeechScheduler
-from server.tomoko.semantic import SemanticSaturationJudge, create_default_semantic_llm_backend
+from server.tomoko.semantic import (
+    SemanticSaturationJudge,
+    create_default_distilled_saturation_backend,
+)
 from server.tomoko.session import SessionBoundaryModel
 
 logger = logging.getLogger(__name__)
@@ -336,15 +339,9 @@ def text_from_execution_result(result: PromptExecutionResult) -> str:
 
 
 def _default_saturation_judge() -> SemanticSaturationJudge:
-    if _semantic_llm_enabled():
-        return SemanticSaturationJudge(llm_backend=create_default_semantic_llm_backend())
-    return SemanticSaturationJudge()
-
-
-def _semantic_llm_enabled() -> bool:
-    import os
-
-    return os.environ.get("TOMOKO_V2_SEMANTIC_LLM", "0") == "1"
+    return SemanticSaturationJudge(
+        distilled_backend=create_default_distilled_saturation_backend()
+    )
 
 
 def _datetime_from_ms(ms: float) -> datetime:

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
@@ -31,6 +33,26 @@ HIGH_CUES = (
     "ともこ",
     "Tomoko",
 )
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_DISTILLED_SATURATION_MODEL_PATH = (
+    REPO_ROOT
+    / "make-model"
+    / "artifacts"
+    / "jdd-gemma26b-10000-plus-anchors-contrastive-tail-referential-saturation-model.json"
+)
+SHORT_FINAL_ACKS = {
+    "はい",
+    "うん",
+    "そう",
+    "了解",
+    "りょうかい",
+    "わかった",
+    "分かった",
+    "ありがとう",
+    "ok",
+    "OK",
+}
+SHORT_FINAL_MAX_SATURATION = 0.35
 
 
 class SaturationLlmBackend(Protocol):
@@ -98,11 +120,82 @@ def create_default_semantic_llm_backend() -> OpenAICompatibleSaturationBackend:
 
 
 @dataclass(slots=True)
+class DistilledSaturationBackend:
+    model_path: Path | None = None
+    model: Any | None = None
+    score_partials_as_final: bool = True
+    short_final_max_saturation: float = SHORT_FINAL_MAX_SATURATION
+
+    def __post_init__(self) -> None:
+        if self.model is None:
+            if self.model_path is None:
+                raise ValueError("model_path is required when model is not provided")
+            self.model = _load_distilled_saturation_model(self.model_path)
+
+    async def judge(self, text: str, *, partial: bool = False) -> SemanticSaturationResult:
+        return self.judge_sync(text, partial=partial)
+
+    def judge_sync(self, text: str, *, partial: bool = False) -> SemanticSaturationResult:
+        model = self.model
+        if model is None:
+            raise RuntimeError("distilled saturation model is not loaded")
+        is_final_feature = True if self.score_partials_as_final else not partial
+        saturation = float(model.predict(text, is_final=is_final_feature))
+        source = (
+            "distilled_partial_finalish"
+            if partial and self.score_partials_as_final
+            else "distilled_partial"
+            if partial
+            else "distilled"
+        )
+        if _is_short_final_ack(text):
+            saturation = min(saturation, self.short_final_max_saturation)
+            source = f"{source}_short_ack_rule"
+        return SemanticSaturationResult(
+            saturation=max(0.0, min(1.0, saturation)),
+            source=source,
+            basis_text=text,
+        )
+
+
+def create_default_distilled_saturation_backend() -> DistilledSaturationBackend:
+    model_path = Path(
+        os.environ.get(
+            "TOMOKO_V2_DISTILLED_SATURATION_MODEL",
+            str(DEFAULT_DISTILLED_SATURATION_MODEL_PATH),
+        )
+    )
+    return DistilledSaturationBackend(
+        model_path=model_path,
+        score_partials_as_final=os.environ.get(
+            "TOMOKO_V2_DISTILLED_SCORE_PARTIALS_AS_FINAL",
+            "1",
+        )
+        == "1",
+    )
+
+
+@dataclass(slots=True)
 class SemanticSaturationJudge:
+    distilled_backend: DistilledSaturationBackend | None = None
     llm_backend: SaturationLlmBackend | None = None
     logger: JsonlLogger | None = None
 
     async def judge(self, text: str, *, partial: bool = False) -> SemanticSaturationResult:
+        if self.distilled_backend is not None:
+            try:
+                result = await self.distilled_backend.judge(text, partial=partial)
+            except Exception:
+                result = deterministic_saturation(
+                    text,
+                    source=(
+                        "deterministic_fallback_partial"
+                        if partial
+                        else "deterministic_fallback"
+                    ),
+                )
+            self._log(result)
+            return result
         if self.llm_backend is None:
             result = deterministic_saturation(
                 text,
@@ -208,6 +301,23 @@ def deterministic_saturation(
         source=source,
         basis_text=text,
     )
+
+
+def _load_distilled_saturation_model(model_path: Path) -> Any:
+    make_model_dir = REPO_ROOT / "make-model"
+    path_text = str(make_model_dir)
+    if path_text not in sys.path:
+        sys.path.insert(0, path_text)
+    from make_model.model import HashRidgeSaturationModel
+
+    return HashRidgeSaturationModel.load(model_path)
+
+
+def _is_short_final_ack(text: str) -> bool:
+    normalized = "".join(text.split()).strip("。.!！？?、,")
+    if normalized in SHORT_FINAL_ACKS:
+        return True
+    return len(normalized) <= 2 and not any(cue in normalized for cue in HIGH_CUES)
 
 
 def stable_prefix(texts: list[str] | tuple[str, ...]) -> str:
