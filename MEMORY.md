@@ -102,6 +102,34 @@ block された時は console に `stt_rule_blocked` / `stt_hallucination_blocke
 `recent_user_raw` だけでなく、LLM complete text を `recent_tomoko_raw` として次 turn に載せる。
 履歴は `ConversationHistoryItem(speaker, text)` として `ContextSnapshot.recent_history` に保持する。
 
+### saturation 蒸留モデル作成は root `make-model/` の offline workbench に閉じる
+2026-06-19 セッション1で、Gemma 4 26B MLX 4bit / OpenAI-compatible endpoint を教師にして
+partial prefix ごとの `SATURATION=0.0..1.0` ラベルを作り、hashed character n-gram +
+ridge regression の軽量 scorer へ蒸留する `make-model/` を追加した。
+初期学生モデルは runtime 採用ではなく、JSON artifact を作って Gemma semantic lane と
+shadow 比較するための offline workbench とする。
+
+### Japanese Daily Dialogue は ignored data として prefix dataset 化する
+2026-06-19 セッション2で、Japanese Daily Dialogue を `make-model/data/external/` に clone し、
+`make-model/data/japanese-daily-dialogue/corpus.jsonl` と `prefixes.jsonl` に変換した。
+CC BY-NC-ND 4.0 / 非商用研究目的 / 再配布不可の扱いに合わせ、raw data、変換 corpus、
+teacher labels、model artifacts は `.gitignore` された `make-model/data/` / `make-model/artifacts/`
+配下に置き、repo には importer と README 手順だけを残す。
+
+### JDD 1000件 teacher label は pipeline smoke であり本命評価ではない
+2026-06-19 セッション3で、JDD prefix 先頭 1000 件を Gemma 4 26B teacher label 化し、
+hash-ridge scorer を train/evaluate した。1000 label 作成は約19分で、評価は
+binary_accuracy 0.817、MAE 0.1347、RMSE 0.1777。
+ただし `--limit 1000` は先頭から取るため 43 utterances 分に偏り、
+`今日の予定を教えて` の予測も 0.1294 と低かった。これは model 採用判断ではなく
+end-to-end pipeline smoke として扱う。次は utterance 全体から prefix をサンプリングする。
+
+### Gemma teacher input subset は seed 付きランダム抽出にする
+2026-06-19 セッション4で、`make-model/generate_teacher_labels.py` に
+`--sample-size` / `--sample-seed` を追加した。JDD 1000件評価は旧 `--limit 1000`
+ではなく `--sample-size 1000 --sample-seed 20260619` を使い、JDD prefix 全体から
+再現可能なランダム subset を作る。`--limit` は smoke 用の先頭 N 件として残す。
+
 ## 未解決の疑問（人間への確認待ち）
 
 ### [2026-06-18] live acceptance の実機検証タイミング
@@ -112,6 +140,23 @@ V2.20 の 10 分 live conversation smoke は Apple Speech / VOICEVOX / LLM runti
 
 ### root `MEMORY.md` は Phase V2.0 で作成された
 作業開始時点では root `MEMORY.md` が無く、v1 の `MEMORY.md` と root `LOG.md` の前回記録を参照した。
+
+### pseudo partial STT は誤 partial でも speech-order を作ることがある
+2026-06-18 セッション26の `logs/server-debug.log` では、同一ユーザー発話内で
+partial `これは誰`、partial `これはダブルで出てるのか`、final `これはダブルで出ているのかST Tが`
+がそれぞれ `append_after_current` speech-order を作り、3つの TTS が出た。
+既存の active partial/final reconcile はテキスト類似時だけ効くため、Apple Speech pseudo partial の
+途中誤認識が後続 partial/final と似ていない場合に網を抜ける。
+対策候補は、同一 trace/VAD segment 内の partial は append せず replace/suppress へ寄せること、
+または active partial がある間の後続 partial/final を「同じ発話の更新」として扱うことである。
+
+### partial 応答開始は2回連続 high confirmation を要求する
+2026-06-18 セッション27で、root v2 の partial speech-order 開始 gate を追加した。
+partial で LLM/TTS へ進むには、`semantic_saturation >= 0.85`、scheduler score が
+`partial_start_score_threshold` 以上、前回 high partial と normalize 後に大きく矛盾しないこと、
+かつその状態が2回連続することを要求する。
+1回目の high partial は `partial start gate is waiting for confirmation` で hold し、
+矛盾する後続 partial は `partial start gate text changed too much` で hold する。
 
 ## 2026-06-18 セッション13 確定した判断
 

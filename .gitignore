@@ -45,6 +45,8 @@ loras/short/adapters
 loras/short/fused_model
 loras/short/fused_model*
 
+make-model/data/
+make-model/artifacts/
+
 v1/informations/archived
 v1/informations/failed
-

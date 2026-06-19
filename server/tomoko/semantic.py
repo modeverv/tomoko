@@ -70,7 +70,10 @@ class OpenAICompatibleSaturationBackend:
             "messages": [
                 {
                     "role": "system",
-                    "content": "Return only one line: SATURATION=<number>.",
+                    "content": (
+                        "あなたは会話発話可能判定器です。"
+                        "必ず SATURATION=<0.0から1.0の数値> の1行だけを返してください。"
+                    ),
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -134,16 +137,27 @@ class SemanticSaturationJudge:
 
 def saturation_prompt(text: str) -> str:
     return (
-        "Return one line only: SATURATION=<number>.\n"
-        "High means the user utterance is complete enough for Tomoko to start replying.\n"
-        "Examples:\n"
+        "入力された日本語の途中/最終発話について、"
+        "会話相手が今返し始めてよい度合いを 0.0 から 1.0 で判定してください。\n\n"
+        "高い値:\n"
+        "- 質問、依頼、確認、呼びかけ、返答待ちが明確\n"
+        "- 文が完結している、または途中でも相手が短く返せる\n"
+        "- 「聞こえますか」「いますか」「どうですか」「お願い」「教えて」など\n\n"
+        "低い値:\n"
+        "- 「えっと」「あの」「ただ」「でも」「というか」など、まだ続きそう\n"
+        "- 文の途中で、相手が返すと割り込みになりそう\n"
+        "- 意味が取れない短すぎる断片\n\n"
+        "例:\n"
         "TEXT=えっと\n"
-        "SATURATION=0.1\n"
-        "TEXT=トモコ、今日の予定を教えて\n"
+        "SATURATION=0.10\n"
+        "TEXT=今日の予定を教えて\n"
         "SATURATION=0.95\n"
         "TEXT=ただ、やっぱり\n"
-        "SATURATION=0.2\n"
-        "Now:\n"
+        "SATURATION=0.20\n"
+        "TEXT=今の返事ちゃんと聞こえてる\n"
+        "SATURATION=0.85\n"
+        "TEXT=あのさ、昨日の\n"
+        "SATURATION=0.25\n\n"
         f"TEXT={text}"
     )
 

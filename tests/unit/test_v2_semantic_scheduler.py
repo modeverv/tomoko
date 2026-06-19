@@ -71,18 +71,27 @@ def test_openai_saturation_backend_builds_small_non_stream_payload() -> None:
     assert payload["max_tokens"] == 16
     assert payload["chat_template_kwargs"] == {"enable_thinking": False}
     assert payload["messages"] == [
-        {"role": "system", "content": "Return only one line: SATURATION=<number>."},
+        {
+            "role": "system",
+            "content": (
+                "あなたは会話発話可能判定器です。"
+                "必ず SATURATION=<0.0から1.0の数値> の1行だけを返してください。"
+            ),
+        },
         {"role": "user", "content": "TEXT=トモコ、予定を教えて"},
     ]
 
 
-def test_saturation_prompt_uses_compact_examples_for_e2b() -> None:
-    prompt = saturation_prompt("トモコ、今日の予定を教えて")
+def test_saturation_prompt_uses_conversation_readiness_examples_for_e2b() -> None:
+    prompt = saturation_prompt("こんにちは聞こえますか")
 
-    assert "Return one line only: SATURATION=<number>." in prompt
-    assert "TEXT=えっと\nSATURATION=0.1" in prompt
-    assert "TEXT=トモコ、今日の予定を教えて\nSATURATION=0.95" in prompt
-    assert prompt.endswith("TEXT=トモコ、今日の予定を教えて")
+    assert "会話相手が今返し始めてよい度合い" in prompt
+    assert "TEXT=えっと\nSATURATION=0.10" in prompt
+    assert "TEXT=今日の予定を教えて\nSATURATION=0.95" in prompt
+    assert "TEXT=今の返事ちゃんと聞こえてる\nSATURATION=0.85" in prompt
+    assert "Tomoko" not in prompt
+    assert "トモコ" not in prompt
+    assert prompt.endswith("TEXT=こんにちは聞こえますか")
 
 
 def test_deterministic_saturation_fallback_handles_representative_cases() -> None:

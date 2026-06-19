@@ -13,6 +13,7 @@ from server.shared.models import (
     AudioSpeechSegment,
     ConversationHistoryItem,
     PartialTranscriptObservation,
+    SemanticSaturationResult,
     SpeechOrder,
     SpeechOrderMode,
     utc_now,
@@ -23,6 +24,18 @@ from server.tomoko.semantic import SemanticSaturationJudge
 from server.tomoko.session import SessionBoundaryModel
 
 pytestmark = pytest.mark.unit
+
+
+class FixedSaturationJudge:
+    def __init__(self, saturation: float) -> None:
+        self.saturation = saturation
+
+    async def judge(self, text: str, *, partial: bool = False) -> SemanticSaturationResult:
+        return SemanticSaturationResult(
+            saturation=self.saturation,
+            source="fixed_partial" if partial else "fixed_final",
+            basis_text=text,
+        )
 
 
 @pytest.mark.asyncio
@@ -66,12 +79,12 @@ async def test_tomoko_conversation_core_can_emit_early_order_from_partial_stt() 
     now = utc_now()
     core = TomokoConversationCore(
         session_model=SessionBoundaryModel(),
-        saturation_judge=SemanticSaturationJudge(),
+        saturation_judge=FixedSaturationJudge(0.95),
         scheduler=SpeechScheduler(),
         chat_backend=StaticChatBackend(["先に答え始めるね。"]),
     )
 
-    result = await core.handle_observation(
+    first = await core.handle_observation(
         PartialTranscriptObservation(
             text="その今の予定を教えて",
             is_final=False,
@@ -80,11 +93,61 @@ async def test_tomoko_conversation_core_can_emit_early_order_from_partial_stt() 
             audio_ended_at=now,
         )
     )
+    second = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="その今の予定を教えてください",
+            is_final=False,
+            stability=0.85,
+            audio_started_at=now,
+            audio_ended_at=now,
+            trace_id=first.observation.trace_id,
+        )
+    )
 
-    assert result.durable_utterance is None
-    assert result.speech_order is not None
-    assert result.speech_order.mode == SpeechOrderMode.REPLACE_CURRENT
-    assert "partial" in result.saturation.source
+    assert first.durable_utterance is None
+    assert first.speech_order is None
+    assert first.prompt_request is None
+    assert first.scheduler_output.reason == "partial start gate is waiting for confirmation"
+    assert second.durable_utterance is None
+    assert second.speech_order is not None
+    assert second.speech_order.mode == SpeechOrderMode.REPLACE_CURRENT
+    assert "partial" in second.saturation.source
+
+
+@pytest.mark.asyncio
+async def test_tomoko_conversation_core_holds_partial_when_text_conflicts() -> None:
+    now = utc_now()
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=FixedSaturationJudge(0.95),
+        scheduler=SpeechScheduler(),
+        chat_backend=StaticChatBackend(["呼ばれないはず。"]),
+    )
+
+    first = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="これは誰",
+            is_final=False,
+            stability=0.85,
+            audio_started_at=now,
+            audio_ended_at=now,
+        )
+    )
+    second = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="これはダブルで出てるのか",
+            is_final=False,
+            stability=0.85,
+            audio_started_at=now,
+            audio_ended_at=now,
+            trace_id=first.observation.trace_id,
+        )
+    )
+
+    assert first.speech_order is None
+    assert first.scheduler_output.reason == "partial start gate is waiting for confirmation"
+    assert second.speech_order is None
+    assert second.scheduler_output.reason == "partial start gate text changed too much"
 
 
 @pytest.mark.asyncio
@@ -92,18 +155,28 @@ async def test_tomoko_conversation_core_reconciles_final_after_partial_order() -
     now = utc_now()
     core = TomokoConversationCore(
         session_model=SessionBoundaryModel(),
-        saturation_judge=SemanticSaturationJudge(),
+        saturation_judge=FixedSaturationJudge(0.95),
         scheduler=SpeechScheduler(),
         chat_backend=StaticChatBackend(["先に答えるね。", "重複しないでね。"]),
     )
 
-    partial = await core.handle_observation(
+    first_partial = await core.handle_observation(
         PartialTranscriptObservation(
             text="その今の予定を教えて",
             is_final=False,
             stability=0.85,
             audio_started_at=now,
             audio_ended_at=now,
+        )
+    )
+    partial = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="その今の予定を教えてください",
+            is_final=False,
+            stability=0.85,
+            audio_started_at=now,
+            audio_ended_at=now,
+            trace_id=first_partial.observation.trace_id,
         )
     )
     final = await core.handle_observation(

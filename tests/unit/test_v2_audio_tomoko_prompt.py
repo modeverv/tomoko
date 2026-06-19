@@ -45,6 +45,7 @@ from server.shared.models import (
     FloorState,
     PromptRequest,
     PromptScope,
+    SemanticSaturationResult,
     SessionSummary,
     SpeechDecisionKind,
     utc_now,
@@ -55,10 +56,21 @@ from server.tomoko.floor import SpeechDecisionModel
 from server.tomoko.main import TomokoProcessCore, normalize_stt_block_text
 from server.tomoko.prompt import PromptBuilderV2
 from server.tomoko.scheduler import SpeechScheduler
-from server.tomoko.semantic import SemanticSaturationJudge
 from server.tomoko.session import SessionBoundaryModel
 
 pytestmark = pytest.mark.unit
+
+
+class FixedSaturationJudge:
+    def __init__(self, saturation: float) -> None:
+        self.saturation = saturation
+
+    async def judge(self, text: str, *, partial: bool = False) -> SemanticSaturationResult:
+        return SemanticSaturationResult(
+            saturation=self.saturation,
+            source="fixed_partial" if partial else "fixed_final",
+            basis_text=text,
+        )
 
 
 def test_vad_preroll_is_joined_at_speech_start() -> None:
@@ -185,7 +197,10 @@ class _RecordingSttBackend:
 class _PartialThenFinalSttBackend(_RecordingSttBackend):
     def __init__(self) -> None:
         super().__init__(text="トモコ、予定を一言で教えて")
-        self.partial_sent = False
+        self.partials = [
+            "トモコ、予定を一言で教え",
+            "トモコ、予定を一言で教えて",
+        ]
         self.reset_count = 0
 
     async def process_stream_chunk(
@@ -196,10 +211,9 @@ class _PartialThenFinalSttBackend(_RecordingSttBackend):
         started_at_ms: float,
     ) -> StreamingSttEvent | None:
         del sample_rate, started_at_ms
-        if self.partial_sent:
+        if not self.partials:
             return None
-        self.partial_sent = True
-        return StreamingSttEvent("トモコ、予定を一言で教え", False, 0.85)
+        return StreamingSttEvent(self.partials.pop(0), False, 0.85)
 
     def reset_stream(self) -> None:
         self.reset_count += 1
@@ -243,7 +257,7 @@ async def test_hot_path_can_emit_partial_speech_order_before_vad_final() -> None
         stt_backend=stt_backend,
         conversation_core=TomokoConversationCore(
             session_model=SessionBoundaryModel(),
-            saturation_judge=SemanticSaturationJudge(),
+            saturation_judge=FixedSaturationJudge(0.95),
             scheduler=SpeechScheduler(),
             chat_backend=StaticChatBackend(["先に答えるね。"]),
             tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
@@ -260,6 +274,15 @@ async def test_hot_path_can_emit_partial_speech_order_before_vad_final() -> None
     assert partial.observations[0].text == "トモコ、予定を一言で教え"
     assert partial.durable_utterance is None
     assert partial.scheduler_output is not None
+    assert partial.speech_order is None
+    assert partial.prompt_request is None
+    assert partial.execution_result.audio_chunks == []
+
+    partial = await conversation.process_audio_samples((0.2,) * 100)
+
+    assert partial is not None
+    assert partial.observations[0].is_final is False
+    assert partial.observations[0].text == "トモコ、予定を一言で教えて"
     assert partial.speech_order is not None
     assert partial.prompt_request is not None
     assert partial.execution_result.audio_chunks[0].chunk == b"RIFFxxxxWAVEdata"
@@ -291,7 +314,10 @@ async def test_hot_path_can_enqueue_partial_without_awaiting_partial_stt() -> No
     assert result is None
     assert len(submitted) == 1
     assert submitted[0][0] == 100
-    assert stt_backend.partial_sent is False
+    assert stt_backend.partials == [
+        "トモコ、予定を一言で教え",
+        "トモコ、予定を一言で教えて",
+    ]
 
 
 async def test_hot_path_does_not_prompt_for_blank_final_stt() -> None:

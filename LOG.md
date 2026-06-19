@@ -1,5 +1,214 @@
 # LOG.md
 
+## 2026-06-19 セッション4
+
+### やること（開始時に書く）
+- `make-model/generate_teacher_labels.py` が Gemma 4 26B teacher に渡す prefix rows を seed 付きランダム抽出できるようにする。
+- `make-model/README.md` の 1000 件 teacher label 作成コマンドを先頭 1000 件ではなくランダム 1000 件に変更する。
+
+### やったこと
+- `generate_teacher_labels.py` に `--sample-size` と `--sample-seed` を追加し、Gemma teacher input を再現可能なランダム subset から作れるようにした。
+- `--limit` は smoke 用の先頭 N 件として残し、`--sample-size` との同時指定は拒否するようにした。
+- `make-model/README.md` の 1000 件 teacher label 作成手順を `--sample-size 1000 --sample-seed 20260619` に変更した。
+- unit test で seeded random sampling、旧 `--limit`、同時指定拒否を固定した。
+
+### 詰まったこと・解決したこと
+- 旧 1000 件 artifact は先頭 1000 件のままなので作り直し対象。
+  - 解決: README では旧 `--limit 1000` の実測値を pipeline smoke と明記し、今後の評価用コマンドをランダム抽出に切り替えた。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_make_model_pipeline.py -q`
+  - 9 passed
+- `uv run ruff check make-model tests/unit/test_make_model_pipeline.py`
+  - passed
+- `uv run python make-model/generate_teacher_labels.py --prefixes make-model/data/japanese-daily-dialogue/prefixes.jsonl --out make-model/data/japanese-daily-dialogue/teacher-labels-random-smoke.jsonl --sample-size 10 --sample-seed 123 --deterministic-only`
+  - 10 labels written
+
+### 次のセッションでやること
+- 必要なら `--sample-size 1000 --sample-seed 20260619` で JDD random 1000 件の Gemma teacher label を作り直し、train/evaluate を再実行する。
+
+## 2026-06-19 セッション3
+
+### やること（開始時に書く）
+- Japanese Daily Dialogue prefix dataset から Gemma 4 26B teacher label を 1000 件作成する。
+- 作成した 1000 件ラベルで saturation scorer を train し、evaluate まで実行する。
+- `make-model/README.md` に 1000 件 teacher label 作成、train、evaluate の一連のコマンドを追記する。
+
+### やったこと
+- `make-model/README.md` に 1000件 teacher label 作成、train、evaluate、単発 predict のコマンドを追記した。
+- `http://127.0.0.1:8082/v1/models` に `mlx-community/gemma-4-26b-a4b-it-4bit` が見えていることを確認した。
+- JDD prefix 先頭 1000 件を Gemma 4 26B で teacher label 化した。
+  - output: `make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-1000.jsonl`
+  - 1000 rows
+  - `label_source=teacher_llm`: 1000
+  - saturation avg 0.39655、`>=0.75`: 254
+- 1000 件ラベルで hash-ridge saturation scorer を train した。
+  - model: `make-model/artifacts/jdd-gemma26b-1000-saturation-model.json`
+  - metrics: `make-model/artifacts/jdd-gemma26b-1000-train-metrics.json`
+- evaluate と単発 predict を実行した。
+  - binary_accuracy 0.817
+  - MAE 0.13467446691436838
+  - RMSE 0.17769236473241526
+  - `今日の予定を教えて` -> `SATURATION=0.1294`
+
+### 詰まったこと・解決したこと
+- 1000 件 teacher label 作成は逐次実行で約19分かかった。
+- `--limit 1000` は先頭から取るため、今回の1000件は43 utterancesに偏った。
+  - 解決: README に「pipeline smoke としては有効だが本命評価ではない」と明記した。
+  - 次は発話全体から prefix をサンプリングする script を足す。
+
+### 検証
+- `uv run python make-model/generate_teacher_labels.py --prefixes make-model/data/japanese-daily-dialogue/prefixes.jsonl --out make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-1000.jsonl --limit 1000 --url http://127.0.0.1:8082 --model mlx-community/gemma-4-26b-a4b-it-4bit`
+  - 1000 labels written
+- `uv run python make-model/train_saturation_model.py --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-1000.jsonl --out make-model/artifacts/jdd-gemma26b-1000-saturation-model.json --metrics-out make-model/artifacts/jdd-gemma26b-1000-train-metrics.json`
+  - passed
+- `uv run python make-model/evaluate_saturation_model.py --model make-model/artifacts/jdd-gemma26b-1000-saturation-model.json --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-1000.jsonl --threshold 0.75`
+  - binary_accuracy 0.817 / MAE 0.1347 / RMSE 0.1777
+- `uv run pytest -m unit tests/unit/test_make_model_pipeline.py -q`
+  - 7 passed
+
+### 次のセッションでやること
+- JDD 全体から utterance-balanced prefix sampling を行う script を足し、同じ 1000 件でも先頭偏りのない teacher label / train / evaluate を比較する。
+
+## 2026-06-19 セッション2
+
+### やること（開始時に書く）
+- Japanese Daily Dialogue を repo 外扱いの ignored data として落とし、Gemma 4 26B teacher label 生成へ渡せる prefix dataset に変換する。
+- JDD 固有の nested JSON (`data/*.json` -> dialogues -> utterances) を読み、`make-model` の標準 corpus/prefix JSONL に落とす importer と README 手順を追加する。
+- 実データ・teacher labels・model artifacts は公開しない前提なので `.gitignore` で除外する。
+
+### やったこと
+- `.gitignore` に `make-model/data/` と `make-model/artifacts/` を追加した。
+- `make_model.japanese_daily_dialogue` と `prepare_japanese_daily_dialogue.py` を追加し、JDD の nested JSON を標準 corpus/prefix JSONL と manifest に変換できるようにした。
+- `make-model/README.md` に JDD download/convert と Gemma 4 26B teacher label 生成手順を追記した。
+- `prepare_japanese_daily_dialogue.py --min-chars 1 --stride-chars 1` で実 JDD を clone/変換した。
+  - utterances: 41,737
+  - prefixes: 1,151,948
+  - output: `make-model/data/japanese-daily-dialogue/{corpus.jsonl,prefixes.jsonl,manifest.json}`
+- 実 `http://127.0.0.1:8082` に `mlx-community/gemma-4-26b-a4b-it-4bit` が見えていることを確認し、`--limit 5` で Gemma 26B teacher label smoke を通した。
+
+### 詰まったこと・解決したこと
+- JDD README の構造説明と実装時に想定される JSON 形が list root / dict root で揺れる可能性があるため、`dialogues` 配列あり/なしの両方を importer で吸収した。
+- 全 prefix は約115万件で、全件 Gemma 採点は時間がかかるため、まず `--limit` 付きの small run で teacher contract を確認する運用にした。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_make_model_pipeline.py -q`
+  - 7 passed
+- `uv run pytest -m unit -q`
+  - 87 passed, 1 deselected
+- `uv run ruff check server scripts tests make-model`
+  - passed
+- `git diff --check`
+  - passed
+- `uv run python make-model/generate_teacher_labels.py --prefixes make-model/data/japanese-daily-dialogue/prefixes.jsonl --out make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-smoke.jsonl --limit 5 --url http://127.0.0.1:8082 --model mlx-community/gemma-4-26b-a4b-it-4bit`
+  - 5 labels written
+
+### 次のセッションでやること
+- Gemma 26B teacher label を本番作成する前に、`--limit 100` / `--limit 1000` で saturation 分布と短 prefix の揺れを確認し、必要なら prefix sampling や prompt に `full_text` context を足すか判断する。
+
+## 2026-06-19 セッション1
+
+### やること（開始時に書く）
+- root に `make-model/` を追加し、Gemma 4 26B MLX 4bit の OpenAI-compatible endpoint を教師として semantic saturation 教師データを作る。
+- `0.0..1.0` の意味飽和度を出力する軽量蒸留 scorer を学習・評価・推論できる Python 群と README を追加する。
+- runtime 本線には接続せず、unit test でデータ生成・ラベル parsing・学習 artifact contract を固定する。
+
+### やったこと
+- `make-model/` に corpus loader、prefix dataset builder、Gemma teacher label generator、hash-ridge saturation scorer、train/evaluate/predict CLI、README を追加した。
+- 教師ラベル生成は既存 `server.tomoko.semantic.saturation_prompt()` / `parse_saturation_output()` と同じ `SATURATION=0.0..1.0` contract を使うようにした。
+- 初期の学生モデルは JSON 保存できる hashed character n-gram + ridge regression とし、runtime 本線には接続していない。
+- unit test で text/jsonl corpus 読み込み、1文字 step prefix、teacher label parsing、train/evaluate/reload/predict contract を固定した。
+
+### 詰まったこと・解決したこと
+- `make-model` はディレクトリ名に hyphen があるため、その中に import 可能な `make_model` package を置いた。
+- CLI smoke では実 Gemma endpoint を叩かずにパイプライン形状だけ確認したかったため、`generate_teacher_labels.py --deterministic-only` を smoke 用に追加した。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_make_model_pipeline.py -q`
+  - 5 passed
+- `uv run pytest -m unit -q`
+  - 85 passed, 1 deselected
+- `uv run ruff check server scripts tests make-model`
+  - passed
+- temp corpus で `build_prefix_dataset.py -> generate_teacher_labels.py --deterministic-only -> train_saturation_model.py -> predict_saturation.py -> evaluate_saturation_model.py`
+  - passed
+
+### 次のセッションでやること
+- 実 Gemma 4 26B MLX 4bit endpoint を起動した状態で、少量の実コーパスから teacher labels を作り、Gemma lane との一致率と false start / missed early-start を測る。
+
+## 2026-06-18 セッション27
+
+### やること（開始時に書く）
+- partial 応答開始を「意味飽和 high が2回連続」「semantic_saturation >= 0.85」「score >= partial_start_score_threshold」「前回 partial と大きく矛盾しない」に絞る。
+- unit test で 1回目 high partial は hold、2回連続 high partial は speech-order 作成、矛盾 partial は hold になることを固定する。
+
+### やったこと
+- `TomokoConversationCore` に partial start confirmation gate を追加した。
+- partial speech-order 開始前に `semantic_saturation >= 0.85`、scheduler score 閾値以上、前回 high partial との normalize 類似、2回連続 confirmation を要求するようにした。
+- 1回目 high partial は LLM/TTS を呼ばず hold し、矛盾する後続 partial も hold する unit test を追加した。
+- hot-path の partial speech-order test を、2回目 partial で発話する期待へ更新した。
+
+### 詰まったこと・解決したこと
+- 既存 test は「partial 1回で speech-order 作成」を前提にしていた。
+  - 解決: 新仕様に合わせ、1回目は `partial start gate is waiting for confirmation`、2回目で speech-order 作成に更新した。
+- deterministic saturation では test 文が 0.85 未満になるケースがあった。
+  - 解決: gate の仕様 test では fixed saturation judge を使い、confirmation 条件だけを検証した。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py tests/unit/test_v2_audio_tomoko_prompt.py tests/unit/test_v2_semantic_scheduler.py -q`
+  - 51 passed
+- `uv run pytest -m unit -q`
+  - 80 passed, 1 deselected
+- `uv run ruff check server/tomoko/conversation.py tests/unit/test_v2_speech_order_flow.py tests/unit/test_v2_audio_tomoko_prompt.py`
+  - passed
+
+### 次のセッションでやること
+- 実 `make run` の live 会話で、`これは誰` のような単発誤 partial が hold され、2回連続 high partial でだけ発話開始することを `logs/server-debug.log` で確認する。
+
+## 2026-06-18 セッション26
+
+### やること（開始時に書く）
+- 最新のサーバーログを確認し、二重応答に見える挙動が partial/final reconcile の想定内か、実際の重複 speech-order かを切り分ける。
+
+### やったこと
+- `logs/server-debug.log` の最新末尾と該当箇所を確認した。
+- `これは誰` -> `これはダブルで出てるのか` -> `これはダブルで出ているのかST Tが` の同一発話内で、partial / partial / final がそれぞれ speech-order を作っていることを確認した。
+
+### 詰まったこと・解決したこと
+- 既存の active partial/final reconcile は「先行 partial と後続 partial/final が十分似ている」場合だけ効くため、Apple Speech pseudo partial の途中誤認識 `これは誰` が後続 text と似ておらず、reconcile されなかった。
+- 音声回り込みよりも、同一 VAD segment 内の partial 更新を `append_after_current` として扱ってしまう scheduler/core 側の問題として見るのが妥当。
+
+### 検証
+- ログ確認のみ。コード変更とテスト実行は未実施。
+
+### 次のセッションでやること
+- 同一 trace/VAD segment の後続 partial/final は append せず、active partial の更新として replace/suppress/reconcile する設計を unit test から固定する。
+
+## 2026-06-18 セッション25
+
+### やること（開始時に書く）
+- E2B semantic saturation prompt を会話発話可能判定器の二段構成へ変更する。
+- `Tomoko` 固有名を prompt から外し、接続確認・返答待ち発話を高 saturation として扱えるよう unit test で固定する。
+
+### やったこと
+- `OpenAICompatibleSaturationBackend` の system message を日本語の会話発話可能判定器 role に変更した。
+- `saturation_prompt` を「会話相手が今返し始めてよい度合い」判定に変更し、`Tomoko` 固有名を examples から外した。
+- `聞こえますか` / `今の返事ちゃんと聞こえてる` 系の返答待ちを高 saturation として扱う prompt contract を unit test で固定した。
+
+### 詰まったこと・解決したこと
+- なし。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_semantic_scheduler.py -q`
+  - 15 passed
+- `uv run ruff check server/tomoko/semantic.py tests/unit/test_v2_semantic_scheduler.py`
+  - passed
+- `uv run pytest -m unit -q`
+  - 79 passed, 1 deselected
+
+### 次のセッションでやること
+- 実 `make run` 後に `こんにちは聞こえますか` の live `/ws` で `SATURATION=0.90` 相当の scheduler score と発話開始を確認する。
+
 ## 2026-06-18 セッション24
 
 ### やること（開始時に書く）

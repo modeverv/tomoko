@@ -25,6 +25,9 @@ from server.tomoko.scheduler import SpeechScheduler, detect_stop_intent
 from server.tomoko.semantic import SemanticSaturationJudge
 from server.tomoko.session import SessionBoundaryModel
 
+PARTIAL_CONFIRM_SATURATION_THRESHOLD = 0.85
+PARTIAL_CONFIRM_REQUIRED_COUNT = 2
+
 
 @dataclass(slots=True)
 class TomokoConversationResult:
@@ -55,6 +58,9 @@ class TomokoConversationCore:
     _active_partial_order: SpeechOrder | None = None
     _active_partial_basis_text: str = ""
     _last_reconciled_final_text: str = ""
+    _partial_start_confirm_text: str = ""
+    _partial_start_confirm_count: int = 0
+    _partial_start_gate_last_reason: str = ""
 
     async def handle_observation(
         self,
@@ -167,6 +173,28 @@ class TomokoConversationCore:
             recent_history=prompt_history,
         )
 
+        if (
+            not observation.is_final
+            and scheduler_output.action
+            not in (SpeechSchedulerAction.SUPPRESS, SpeechSchedulerAction.STOP)
+            and not self._partial_start_gate_allows(
+                basis_text,
+                saturation=saturation.saturation,
+                score=scheduler_output.score,
+            )
+        ):
+            scheduler_output.action = SpeechSchedulerAction.SUPPRESS
+            scheduler_output.reason = self._partial_start_gate_last_reason
+            return TomokoConversationResult(
+                observation=observation,
+                durable_utterance=durable,
+                saturation=saturation,
+                scheduler_output=scheduler_output,
+                context_snapshot=snapshot,
+                prompt_request=None,
+                speech_order=None,
+            )
+
         if scheduler_output.action == SpeechSchedulerAction.STOP:
             if durable is not None and prior_session_history is None:
                 self._recent_utterances.append(durable.text)
@@ -232,6 +260,8 @@ class TomokoConversationCore:
         if not observation.is_final:
             self._active_partial_order = order
             self._active_partial_basis_text = basis_text
+            self._partial_start_confirm_text = basis_text
+            self._partial_start_confirm_count = 0
         if durable is not None and prior_session_history is None:
             self._recent_utterances.append(durable.text)
             self._recent_history.append(
@@ -273,6 +303,40 @@ class TomokoConversationCore:
         if observation.is_final:
             return _similar_enough(self._active_partial_basis_text, basis_text)
         return _similar_enough(self._active_partial_basis_text, basis_text)
+
+    def _partial_start_gate_allows(
+        self,
+        basis_text: str,
+        *,
+        saturation: float,
+        score: float,
+    ) -> bool:
+        if (
+            saturation < PARTIAL_CONFIRM_SATURATION_THRESHOLD
+            or score < self.scheduler.thresholds.partial_start_score_threshold
+        ):
+            self._partial_start_confirm_text = ""
+            self._partial_start_confirm_count = 0
+            self._partial_start_gate_last_reason = (
+                "partial start gate is below confirmation thresholds"
+            )
+            return False
+        if not self._partial_start_confirm_text:
+            self._partial_start_confirm_text = basis_text
+            self._partial_start_confirm_count = 1
+            self._partial_start_gate_last_reason = (
+                "partial start gate is waiting for confirmation"
+            )
+            return False
+        if not _similar_enough(self._partial_start_confirm_text, basis_text):
+            self._partial_start_confirm_text = basis_text
+            self._partial_start_confirm_count = 1
+            self._partial_start_gate_last_reason = "partial start gate text changed too much"
+            return False
+        self._partial_start_confirm_text = basis_text
+        self._partial_start_confirm_count += 1
+        self._partial_start_gate_last_reason = ""
+        return self._partial_start_confirm_count >= PARTIAL_CONFIRM_REQUIRED_COUNT
 
     async def _generate_model_events(self, request: PromptRequest) -> list[ModelOutputEvent]:
         events: list[ModelOutputEvent] = []
