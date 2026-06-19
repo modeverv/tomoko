@@ -20,6 +20,7 @@ _semantic = importlib.import_module("server.tomoko.semantic")
 deterministic_saturation = _semantic.deterministic_saturation
 parse_saturation_output = _semantic.parse_saturation_output
 saturation_prompt = _semantic.saturation_prompt
+SATURATION_SYSTEM_PROMPT = _semantic.SATURATION_SYSTEM_PROMPT
 
 DEFAULT_TEACHER_URL = "http://127.0.0.1:8082"
 DEFAULT_TEACHER_MODEL = "mlx-community/gemma-4-26b-a4b-it-4bit"
@@ -73,10 +74,7 @@ class OpenAICompatibleTeacher:
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "あなたは会話の意味飽和度を採点する教師モデルです。"
-                        "必ず SATURATION=<0.0から1.0の数値> の1行だけを返してください。"
-                    ),
+                    "content": SATURATION_SYSTEM_PROMPT,
                 },
                 {"role": "user", "content": prompt},
             ],

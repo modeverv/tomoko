@@ -11,6 +11,10 @@ from server.shared.logging import JsonlLogger
 from server.shared.models import SemanticSaturationResult
 
 SATURATION_RE = re.compile(r"^SATURATION=([01](?:\.\d+)?)$")
+SATURATION_SYSTEM_PROMPT = (
+    "あなたは会話発話可能判定器です。"
+    "必ず SATURATION=<0.0から1.0の数値> の1行だけを返してください。"
+)
 LOWERING_PREFIXES = ("ただ", "でも", "いや", "というか", "一個だけ", "ひとつだけ")
 HIGH_CUES = (
     "?",
@@ -70,10 +74,7 @@ class OpenAICompatibleSaturationBackend:
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "あなたは会話発話可能判定器です。"
-                        "必ず SATURATION=<0.0から1.0の数値> の1行だけを返してください。"
-                    ),
+                    "content": SATURATION_SYSTEM_PROMPT,
                 },
                 {"role": "user", "content": prompt},
             ],

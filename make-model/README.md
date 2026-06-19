@@ -136,6 +136,28 @@ uv run python make-model/predict_saturation.py \
   "今日の予定を教えて"
 ```
 
+CLI 起動込みではない hot predict latency を測る:
+
+```bash
+uv run python make-model/benchmark_saturation_latency.py \
+  --model make-model/artifacts/jdd-gemma26b-1000-saturation-model.json \
+  --repeats 1000 \
+  --warmup 100 \
+  "今日の予定を教えて"
+```
+
+2026-06-19 の hot predict 実測:
+
+```text
+model load: 0.4254ms
+repeats: 10000
+warmup: 1000
+mean: 0.074437ms
+p50: 0.073375ms
+p95: 0.087840ms
+max: 2.134708ms
+```
+
 2026-06-19 の旧 `--limit 1000` 実行結果:
 
 ```text
@@ -152,6 +174,108 @@ predict "今日の予定を教えて":
 注意: 旧 `--limit 1000` は先頭から取るため、この実行では 43 utterances 分に偏った。
 これは pipeline smoke としては有効だが、本命評価ではない。
 以後の 1000件評価は `--sample-size 1000 --sample-seed 20260619` で JDD 全体から取る。
+
+### 10000件を 8000 train / 2000 eval に分ける
+
+まず teacher label を 10000件作る。出力ファイル名も 10000 に合わせる。
+
+```bash
+uv run python make-model/generate_teacher_labels.py \
+  --prefixes make-model/data/japanese-daily-dialogue/prefixes.jsonl \
+  --out make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000.jsonl \
+  --sample-size 10000 \
+  --sample-seed 20260619 \
+  --url http://127.0.0.1:8082 \
+  --model mlx-community/gemma-4-26b-a4b-it-4bit
+```
+
+同じ seed で再現できる train/eval split を作る。
+
+```bash
+uv run python make-model/split_teacher_labels.py \
+  --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000.jsonl \
+  --train-out make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train.jsonl \
+  --eval-out make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-eval.jsonl \
+  --train-size 8000 \
+  --seed 20260619
+```
+
+train は train split だけを見る。
+
+```bash
+uv run python make-model/train_saturation_model.py \
+  --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train.jsonl \
+  --out make-model/artifacts/jdd-gemma26b-10000-saturation-model.json \
+  --metrics-out make-model/artifacts/jdd-gemma26b-10000-train-metrics.json
+```
+
+held-out eval は eval split だけを見る。
+
+```bash
+uv run python make-model/evaluate_saturation_model.py \
+  --model make-model/artifacts/jdd-gemma26b-10000-saturation-model.json \
+  --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-eval.jsonl \
+  --threshold 0.75
+```
+
+### 手作り anchor 1000件を train に足す
+
+明らかな質問・依頼・確認を高 saturation、言い淀み・接続語・途中文を低 saturation
+として、手作り anchor labels を追加できる。eval split には混ぜず、train split にだけ足す。
+
+```bash
+uv run python make-model/make_anchor_teacher_labels.py \
+  --out make-model/data/japanese-daily-dialogue/teacher-labels-manual-anchors-1000.jsonl \
+  --count 1000
+
+cat \
+  make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train.jsonl \
+  make-model/data/japanese-daily-dialogue/teacher-labels-manual-anchors-1000.jsonl \
+  > make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train-plus-anchors.jsonl
+```
+
+anchor 追加済み train split で学習する。
+
+```bash
+uv run python make-model/train_saturation_model.py \
+  --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train-plus-anchors.jsonl \
+  --out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-saturation-model.json \
+  --metrics-out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-train-metrics.json
+```
+
+held-out eval は同じ 2000件 eval split で見る。
+
+```bash
+uv run python make-model/evaluate_saturation_model.py \
+  --model make-model/artifacts/jdd-gemma26b-10000-plus-anchors-saturation-model.json \
+  --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-eval.jsonl \
+  --threshold 0.75
+```
+
+2026-06-19 の anchor 追加実行結果:
+
+```text
+train labels:
+  teacher_llm: 8000
+  manual_anchor: 1000
+
+held-out JDD eval:
+  binary_accuracy: 0.8265
+  mae: 0.1802
+  rmse: 0.2334
+
+manual anchor eval:
+  binary_accuracy: 0.989
+  mae: 0.0453
+  rmse: 0.0619
+
+predict "今日の予定を教えて":
+  partial/default: SATURATION=0.4986
+  --final:        SATURATION=0.9313
+```
+
+`predict_saturation.py` は既定では `is_final=False` の partial 扱い。
+完了発話として見たい時は `--final` を付ける。
 
 ## 1. prefix dataset を作る
 
@@ -228,7 +352,10 @@ uv run python make-model/generate_teacher_labels.py \
   --model mlx-community/gemma-4-26b-a4b-it-4bit
 ```
 
-教師には既存の `saturation_prompt()` と `parse_saturation_output()` を使う。
+教師には runtime の Gemma E2B semantic lane と同じ system prompt、
+既存の `saturation_prompt()`、`parse_saturation_output()` を使う。
+`saturation_prompt()` は「会話相手が今返し始めてよい度合い」の定義と few-shot を含む。
+この詳細説明と few-shot は、Gemma 26B teacher への user message にそのまま入る。
 受け付ける出力は次の1行だけ。
 
 ```text

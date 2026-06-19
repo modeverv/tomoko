@@ -1,5 +1,163 @@
 # LOG.md
 
+## 2026-06-19 セッション9
+
+### やること（開始時に書く）
+- 既存 Gemma 26B teacher labels の train split に、手作り anchor labels 1000件を追加する。
+- anchor 追加後の model を train し、held-out 2000 eval と代表例 `今日の予定を教えて` を確認する。
+
+### やったこと
+- `make-model/make_anchor_teacher_labels.py` を追加し、質問・依頼・確認の高 saturation、言い淀み・途中文の低 saturation、自己完結文の中間 saturation を含む手作り anchor labels 1000件を生成できるようにした。
+- unit test で anchor が 1000件、`manual_anchor`、代表例 `今日の予定を教えて=0.95` / `聞こえますか=0.90` / `えっと=0.10` / `ただ、やっぱり=0.20` を含むことを固定した。
+- 既存 8000 teacher train split と manual anchors 1000件を結合し、9000件で train した。
+- held-out JDD 2000 eval、manual anchor 1000 eval、代表例 predict、hot latency を確認した。
+- `make-model/README.md` と `MEMORY.md` に結果を追記した。
+
+### 詰まったこと・解決したこと
+- 最初の anchor 候補は 765件しかなく、1000件に届かなかった。
+  - 解決: topic と high/mid patterns を増やし、1000 unique anchors を作れるようにした。
+- `predict_saturation.py` の既定は `is_final=False` の partial 扱いなので、完了発話の代表例を見るには `--final` が必要だった。
+  - `今日の予定を教えて`: partial/default 0.4986、`--final` 0.9313。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_make_model_pipeline.py -q`
+  - 13 passed
+- `uv run ruff check make-model tests/unit/test_make_model_pipeline.py`
+  - passed
+- `uv run python make-model/make_anchor_teacher_labels.py --out make-model/data/japanese-daily-dialogue/teacher-labels-manual-anchors-1000.jsonl --count 1000`
+  - 1000 manual anchors written
+- `cat teacher-labels-gemma26b-10000-train.jsonl teacher-labels-manual-anchors-1000.jsonl > teacher-labels-gemma26b-10000-train-plus-anchors.jsonl`
+  - 9000 rows: 8000 teacher_llm / 1000 manual_anchor
+- `uv run python make-model/train_saturation_model.py --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train-plus-anchors.jsonl --out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-saturation-model.json --metrics-out make-model/artifacts/jdd-gemma26b-10000-plus-anchors-train-metrics.json`
+  - train time about 2.44s
+  - train binary_accuracy 0.8441 / MAE 0.1441 / RMSE 0.1925
+- held-out JDD eval:
+  - binary_accuracy 0.8265 / MAE 0.1802 / RMSE 0.2334
+- manual anchor eval:
+  - binary_accuracy 0.989 / MAE 0.0453 / RMSE 0.0619
+- representative predict:
+  - `今日の予定を教えて` partial/default 0.4986
+  - `今日の予定を教えて --final` 0.9313
+  - `聞こえますか --final` 1.0000
+  - `えっと` partial/default 0.1223
+- hot predict latency:
+  - mean 0.0743ms / p95 0.0792ms
+
+### 次のセッションでやること
+- partial でも完全文らしい依頼を高く出したい場合は、manual anchors に `is_final=False` の完全文 high examples も追加するか、runtime 側の partial/final feature の扱いを見直す。
+
+## 2026-06-19 セッション8
+
+### やること（開始時に書く）
+- 10000件 teacher label JSONL を seed 付きで 8000 train / 2000 eval に分ける CLI を `make-model` に追加する。
+- README に split -> train -> held-out eval のコマンドを追記する。
+
+### やったこと
+- `make-model/split_teacher_labels.py` を追加し、teacher label JSONL を seed 付き shuffle で train/eval に分けられるようにした。
+- unit test で split の再現性、8000/2000 件数、train/eval の重複なしを固定した。
+- `make-model/README.md` に 10000件 teacher label 作成、8000/2000 split、train、held-out eval のコマンドを追記した。
+- 手元の 10000件 labels を 8000 train / 2000 eval に分割し、train/evaluate を実行した。
+
+### 詰まったこと・解決したこと
+- 既存ファイル名は `teacher-labels-gemma26b-1000.jsonl` のままだが、中身は 10000 件だった。
+  - 解決: 新しい split outputs と model artifact は `10000` を含むファイル名にした。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_make_model_pipeline.py -q`
+  - 12 passed
+- `uv run ruff check make-model tests/unit/test_make_model_pipeline.py`
+  - passed
+- `uv run python make-model/split_teacher_labels.py --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-1000.jsonl --train-out make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train.jsonl --eval-out make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-eval.jsonl --train-size 8000 --seed 20260619`
+  - train 8000 / eval 2000
+- `uv run python make-model/train_saturation_model.py --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-train.jsonl --out make-model/artifacts/jdd-gemma26b-10000-saturation-model.json --metrics-out make-model/artifacts/jdd-gemma26b-10000-train-metrics.json`
+  - train time about 1.56s
+  - train binary_accuracy 0.82725 / MAE 0.1539 / RMSE 0.2005
+- `uv run python make-model/evaluate_saturation_model.py --model make-model/artifacts/jdd-gemma26b-10000-saturation-model.json --labels make-model/data/japanese-daily-dialogue/teacher-labels-gemma26b-10000-eval.jsonl --threshold 0.75`
+  - held-out eval binary_accuracy 0.8285 / MAE 0.1795 / RMSE 0.2327
+- `uv run python make-model/predict_saturation.py --model make-model/artifacts/jdd-gemma26b-10000-saturation-model.json "今日の予定を教えて"`
+  - SATURATION=0.3556
+
+### 次のセッションでやること
+- 必要なら labels file 自体も `teacher-labels-gemma26b-10000.jsonl` にリネームして、README の命名と揃える。
+
+## 2026-06-19 セッション7
+
+### やること（開始時に書く）
+- `make-model` の teacher payload に、`saturation_prompt()` の定義文・高い値/低い値・few-shot が入ることを明示的に test で固定する。
+- teacher label 作成時に、短い system prompt だけでなく「会話相手が今返し始めてよい度合い」の詳細説明が Gemma 26B に渡ることを確認する。
+
+### やったこと
+- `tests/unit/test_make_model_pipeline.py` の teacher payload test を強化し、`saturation_prompt()` の定義文、高い値/低い値、few-shot 全体が user message に入ることを固定した。
+- `make-model/README.md` に、詳細説明と few-shot が Gemma 26B teacher の user message に入ることを追記した。
+- `MEMORY.md` に、teacher payload の詳細 prompt contract を unit test で固定したことを追記した。
+
+### 詰まったこと・解決したこと
+- 実装自体は前セッションの時点で `teacher.complete(saturation_prompt(...))` になっていた。
+  - 解決: 仕様として曖昧にならないよう、引用された詳細 prompt 断片を test で明示的に固定した。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_make_model_pipeline.py tests/unit/test_v2_semantic_scheduler.py -q`
+  - 26 passed
+- `uv run ruff check make-model tests/unit/test_make_model_pipeline.py server/tomoko/semantic.py tests/unit/test_v2_semantic_scheduler.py`
+  - passed
+
+### 次のセッションでやること
+- 新 prompt で random 1000件 teacher label を作り直し、train/evaluate を再実行する。
+
+## 2026-06-19 セッション6
+
+### やること（開始時に書く）
+- `make-model` の Gemma 26B teacher prompt を、runtime の Gemma E2B semantic lane と同じ prompt contract に揃える。
+- `意味飽和度` という曖昧な system 文言を避け、`会話相手が今返し始めてよい度合い` の定義を含む既存 `saturation_prompt()` を teacher でもそのまま使っていることを test で固定する。
+
+### やったこと
+- `server/tomoko/semantic.py` の E2B semantic system prompt を `SATURATION_SYSTEM_PROMPT` として定数化した。
+- `make-model/make_model/teacher.py` が同じ `SATURATION_SYSTEM_PROMPT` を使うようにし、旧 `会話の意味飽和度を採点する教師モデルです` 文言を削除した。
+- `teacher.payload(saturation_prompt(...))` が runtime E2B lane と同じ system/user prompt contract になることを unit test で固定した。
+- `make-model/README.md` と `MEMORY.md` に、teacher label prompt は runtime E2B semantic lane と同じ contract に揃える判断を追記した。
+
+### 詰まったこと・解決したこと
+- なし。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_make_model_pipeline.py tests/unit/test_v2_semantic_scheduler.py -q`
+  - 26 passed
+- `uv run ruff check make-model tests/unit/test_make_model_pipeline.py server/tomoko/semantic.py tests/unit/test_v2_semantic_scheduler.py`
+  - passed
+
+### 次のセッションでやること
+- 既存 `jdd-gemma26b-1000` artifact は旧 teacher prompt 由来なので、評価用には random 1000 件 teacher label を新 prompt で作り直す。
+
+## 2026-06-19 セッション5
+
+### やること（開始時に書く）
+- `make-model` に、モデルを1回ロードしてから predict を1000回以上繰り返す latency benchmark CLI を追加する。
+- `今日の予定を教えて` で実行し、CLI起動込みではない hot predict latency を実測する。
+
+### やったこと
+- `make-model/benchmark_saturation_latency.py` を追加し、モデルロード時間と hot predict の mean / p50 / p95 / min / max を測れるようにした。
+- unit test で benchmark helper の統計出力 contract を固定した。
+- `make-model/README.md` と `_docs/latency.md` に実測コマンドと結果を追記した。
+- `MEMORY.md` に、CLI 起動込み 111ms と resident model の hot predict 0.1ms 前後は別物として扱う判断を追記した。
+
+### 詰まったこと・解決したこと
+- なし。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_make_model_pipeline.py -q`
+  - 10 passed
+- `uv run ruff check make-model tests/unit/test_make_model_pipeline.py`
+  - passed
+- `uv run python make-model/benchmark_saturation_latency.py --model make-model/artifacts/jdd-gemma26b-1000-saturation-model.json --repeats 1000 --warmup 100 "今日の予定を教えて"`
+  - mean 0.079825ms / p50 0.066209ms / p95 0.122440ms
+- `uv run python make-model/benchmark_saturation_latency.py --model make-model/artifacts/jdd-gemma26b-1000-saturation-model.json --repeats 10000 --warmup 1000 "今日の予定を教えて"`
+  - model load 0.4254ms
+  - last saturation 0.1294
+  - mean 0.074437ms / p50 0.073375ms / p95 0.087840ms / max 2.134708ms
+
+### 次のセッションでやること
+- Tomoko runtime に組み込む場合は、artifact を process 起動時に1回ロードし、turn-taking hot path では `predict()` だけを呼ぶ。
+
 ## 2026-06-19 セッション4
 
 ### やること（開始時に書く）

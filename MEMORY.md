@@ -130,6 +130,38 @@ end-to-end pipeline smoke として扱う。次は utterance 全体から prefix
 ではなく `--sample-size 1000 --sample-seed 20260619` を使い、JDD prefix 全体から
 再現可能なランダム subset を作る。`--limit` は smoke 用の先頭 N 件として残す。
 
+### 蒸留 saturation scorer の hot predict は sub-ms
+2026-06-19 セッション5で、`make-model/benchmark_saturation_latency.py` を追加し、
+`jdd-gemma26b-1000-saturation-model.json` を1回ロードした後に
+`今日の予定を教えて` を warmup 1000 / repeats 10000 で測定した。
+結果は mean 0.0744ms、p50 0.0734ms、p95 0.0878ms、max 2.1347ms。
+CLI の `uv run python predict_saturation.py ...` で見える 111ms は起動・ロード・print 込みであり、
+Tomoko runtime に resident model として組み込む場合の hot 判定コストは 0.1ms 前後と見る。
+
+### teacher label prompt は runtime E2B semantic lane と同じ contract にする
+2026-06-19 セッション6で、`make-model` の Gemma 26B teacher system prompt を
+runtime の `OpenAICompatibleSaturationBackend` と同じ `SATURATION_SYSTEM_PROMPT` に揃えた。
+user message も既存 `saturation_prompt()` を使い、「会話相手が今返し始めてよい度合い」の定義と
+few-shot を含める。旧 `意味飽和度を採点する教師モデルです` だけの system 文言は使わない。
+既存の `jdd-gemma26b-1000` artifact は旧 teacher prompt 由来なので、採用評価用には作り直す。
+2026-06-19 セッション7で、teacher payload の user message に `saturation_prompt()` の
+高い値/低い値の説明と few-shot が入ることを unit test で明示的に固定した。
+
+### 10000件 teacher labels は train/eval split で評価する
+2026-06-19 セッション8で、`make-model/split_teacher_labels.py` を追加した。
+seed 付き shuffle で 10000 labels を 8000 train / 2000 eval に分ける。
+手元の 10000 labels は `label_source=teacher_llm` 10000件で、8000 train の train metrics は
+binary_accuracy 0.82725、MAE 0.1539、RMSE 0.2005。held-out 2000 eval は
+binary_accuracy 0.8285、MAE 0.1795、RMSE 0.2327。
+
+### manual anchor 1000件追加で final 代表例は改善する
+2026-06-19 セッション9で、`make-model/make_anchor_teacher_labels.py` を追加し、
+手作り `manual_anchor` 1000件を 8000 teacher train split に足して 9000件で train した。
+held-out JDD 2000 eval は binary_accuracy 0.8265、MAE 0.1802、RMSE 0.2334。
+manual anchor 1000 eval は binary_accuracy 0.989、MAE 0.0453、RMSE 0.0619。
+`今日の予定を教えて` は `predict_saturation.py` 既定の partial 扱いでは 0.4986、
+`--final` 付きでは 0.9313。完了発話として評価する代表例は `--final` を付ける。
+
 ## 未解決の疑問（人間への確認待ち）
 
 ### [2026-06-18] live acceptance の実機検証タイミング

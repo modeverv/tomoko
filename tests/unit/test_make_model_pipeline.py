@@ -8,7 +8,9 @@ import pytest
 MAKE_MODEL_DIR = Path(__file__).resolve().parents[2] / "make-model"
 sys.path.insert(0, str(MAKE_MODEL_DIR))
 
+from benchmark_saturation_latency import measure_predict_latency  # noqa: E402
 from generate_teacher_labels import select_prefix_rows  # noqa: E402
+from make_anchor_teacher_labels import build_anchor_labels  # noqa: E402
 from make_model.corpus import CorpusUtterance, build_prefix_examples, load_corpus  # noqa: E402
 from make_model.japanese_daily_dialogue import (  # noqa: E402
     convert_japanese_daily_dialogue,
@@ -16,8 +18,15 @@ from make_model.japanese_daily_dialogue import (  # noqa: E402
 )
 from make_model.model import HashRidgeSaturationModel, evaluate_model  # noqa: E402
 from make_model.schema import PrefixExample, TeacherLabel, read_jsonl, write_jsonl  # noqa: E402
-from make_model.teacher import TeacherConfig, label_prefix_examples  # noqa: E402
+from make_model.teacher import (  # noqa: E402
+    OpenAICompatibleTeacher,
+    TeacherConfig,
+    label_prefix_examples,
+)
 from make_model.training import TrainConfig, train_hash_ridge_model  # noqa: E402
+from split_teacher_labels import split_rows  # noqa: E402
+
+from server.tomoko.semantic import SATURATION_SYSTEM_PROMPT, saturation_prompt  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -157,6 +166,94 @@ def test_select_prefix_rows_keeps_limit_and_rejects_mixed_selection_modes() -> N
     assert select_prefix_rows(rows, limit=3) == rows[:3]
     with pytest.raises(ValueError, match="cannot be used together"):
         select_prefix_rows(rows, limit=3, sample_size=3)
+
+
+def test_measure_predict_latency_reports_hot_loop_stats() -> None:
+    def predict(text: str, *, is_final: bool = False) -> float:
+        assert text == "今日の予定を教えて"
+        assert is_final is False
+        return 0.5
+
+    result = measure_predict_latency(
+        predict,
+        text="今日の予定を教えて",
+        repeats=5,
+        warmup=2,
+        is_final=False,
+    )
+
+    assert result["repeats"] == 5
+    assert result["warmup"] == 2
+    assert result["last_prediction"] == 0.5
+    assert result["mean_ms"] >= 0.0
+    assert result["p50_ms"] >= 0.0
+    assert result["p95_ms"] >= result["p50_ms"]
+
+
+def test_split_rows_creates_seeded_disjoint_train_eval_sets() -> None:
+    rows = [{"utterance_id": f"u{index}", "prefix_index": index} for index in range(10)]
+
+    train_rows, eval_rows = split_rows(rows, train_size=8, seed=42)
+
+    assert split_rows(rows, train_size=8, seed=42) == (train_rows, eval_rows)
+    assert len(train_rows) == 8
+    assert len(eval_rows) == 2
+    train_ids = {(row["utterance_id"], row["prefix_index"]) for row in train_rows}
+    eval_ids = {(row["utterance_id"], row["prefix_index"]) for row in eval_rows}
+    assert train_ids.isdisjoint(eval_ids)
+    assert train_ids | eval_ids == {
+        (row["utterance_id"], row["prefix_index"]) for row in rows
+    }
+
+
+def test_build_anchor_labels_contains_manual_high_and_low_examples() -> None:
+    anchors = build_anchor_labels(count=1000)
+
+    assert len(anchors) == 1000
+    assert len({anchor.utterance_id for anchor in anchors}) == 1000
+    assert all(anchor.label_source == "manual_anchor" for anchor in anchors)
+
+    by_text = {anchor.prefix_text: anchor for anchor in anchors}
+    assert by_text["今日の予定を教えて"].saturation == pytest.approx(0.95)
+    assert by_text["聞こえますか"].saturation == pytest.approx(0.9)
+    assert by_text["えっと"].saturation == pytest.approx(0.1)
+    assert by_text["ただ、やっぱり"].saturation == pytest.approx(0.2)
+
+
+def test_make_model_teacher_uses_runtime_e2b_saturation_prompt_contract() -> None:
+    teacher = OpenAICompatibleTeacher(
+        url="http://127.0.0.1:8082",
+        model="mlx-community/gemma-4-26b-a4b-it-4bit",
+    )
+
+    expected_user_prompt = saturation_prompt("こんにちは聞こえますか")
+    payload = teacher.payload(expected_user_prompt)
+    user_prompt = payload["messages"][1]["content"]
+
+    assert payload["messages"] == [
+        {"role": "system", "content": SATURATION_SYSTEM_PROMPT},
+        {"role": "user", "content": expected_user_prompt},
+    ]
+    assert "意味飽和度を採点" not in payload["messages"][0]["content"]
+    assert "会話相手が今返し始めてよい度合い" in user_prompt
+    for required_fragment in [
+        "入力された日本語の途中/最終発話について、",
+        "高い値:",
+        "- 質問、依頼、確認、呼びかけ、返答待ちが明確",
+        "- 文が完結している、または途中でも相手が短く返せる",
+        "- 「聞こえますか」「いますか」「どうですか」「お願い」「教えて」など",
+        "低い値:",
+        "- 「えっと」「あの」「ただ」「でも」「というか」など、まだ続きそう",
+        "- 文の途中で、相手が返すと割り込みになりそう",
+        "- 意味が取れない短すぎる断片",
+        "TEXT=えっと\nSATURATION=0.10",
+        "TEXT=今日の予定を教えて\nSATURATION=0.95",
+        "TEXT=ただ、やっぱり\nSATURATION=0.20",
+        "TEXT=今の返事ちゃんと聞こえてる\nSATURATION=0.85",
+        "TEXT=あのさ、昨日の\nSATURATION=0.25",
+        "TEXT=こんにちは聞こえますか",
+    ]:
+        assert required_fragment in user_prompt
 
 
 @pytest.mark.asyncio
