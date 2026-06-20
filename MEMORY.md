@@ -2,6 +2,20 @@
 
 ## 確定した判断
 
+### append_after_current dedupe guard は LLM 前で重複 final を抑制する
+2026-06-20 セッション30で、前セッションの shadow model を runtime に昇格した。
+`TomokoConversationCore` は final STT の通常応答で LLM prompt を作る前に
+`HashRidgeAppendDedupeGuard` を呼び、直前 final user text と current final user text を比較する。
+`duplicate_score >= 0.85` かつ `continuation_score <= 0.45` かつ
+`new_intent_score <= 0.45` かつ `time_delta_ms <= 5000` の時だけ suppress する。
+
+重複 final は durable observation として返すが、LLM/TTS と in-memory prompt history には進めない。
+これにより `うんあんまりよくわかってない` -> `あんまりよくわかってない` のような
+filler 差分 duplicate は会話推論と音声生成を二重に走らせない。
+補足 continuation と話題変更 new_intent は suppress しない。
+artifact が無い場合や `TOMOKO_V2_APPEND_DEDUPE=0` の場合は fail-open で guard 無しにする。
+resident hot predict は mean 0.442ms / p50 0.403ms / p95 0.580ms。
+
 ### append_after_current dedupe は public synthetic shadow model から始める
 2026-06-20 セッション29で、22:04 前後の `logs/server-debug.log` に
 `うんあんまりよくわかってない` と `あんまりよくわかってない` が連続 final STT になり、

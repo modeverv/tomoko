@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from uuid import UUID
 
 from server.llm.chat import ChatBackend, create_default_real_chat_backend
@@ -30,6 +31,11 @@ from server.shared.models import (
     TurnMaterials,
     WorldMaterials,
     WorldPressure,
+)
+from server.tomoko.append_dedupe import (
+    AppendDedupeGuard,
+    create_default_append_dedupe_guard,
+    decision_score_breakdown,
 )
 from server.tomoko.context import ContextSnapshotBuilderV2
 from server.tomoko.gates import LlmFireGate, SpeechEmissionGate
@@ -86,6 +92,7 @@ class TomokoConversationCore:
     world_materials: WorldMaterials = field(default_factory=WorldMaterials)
     prompt_builder: PromptBuilderV2 = field(default_factory=PromptBuilderV2)
     context_builder: ContextSnapshotBuilderV2 = field(default_factory=ContextSnapshotBuilderV2)
+    append_dedupe_guard: AppendDedupeGuard | None = None
     tomoko_core: TomokoProcessCore | None = None
     turn_materials: TurnMaterials | None = None
     current_speech_order: SpeechOrder | None = None
@@ -99,6 +106,8 @@ class TomokoConversationCore:
     _partial_start_confirm_text: str = ""
     _partial_start_confirm_count: int = 0
     _partial_start_gate_last_reason: str = ""
+    _last_final_user_text: str = ""
+    _last_final_user_audio_ended_at: datetime | None = None
 
     def update_turn_materials(self, materials: TurnMaterials) -> None:
         self.turn_materials = materials
@@ -158,6 +167,8 @@ class TomokoConversationCore:
                 self._last_reconciled_final_text = durable.text
                 self.current_speech_order = None
                 self.current_speech_score = 0.0
+            if durable is not None:
+                self._remember_final_user(durable.text, observation)
             snapshot = self.context_builder.build(
                 session_id=session_id,
                 recent_utterances=self._recent_utterances[-8:],
@@ -262,6 +273,43 @@ class TomokoConversationCore:
             )
 
         if (
+            observation.is_final
+            and durable is not None
+            and scheduler_output.action
+            not in (SpeechSchedulerAction.SUPPRESS, SpeechSchedulerAction.STOP)
+        ):
+            dedupe_decision = self._inspect_append_dedupe(
+                current_text=basis_text,
+                observation=observation,
+            )
+            if dedupe_decision is not None:
+                scheduler_output.score_breakdown = {
+                    **scheduler_output.score_breakdown,
+                    **decision_score_breakdown(dedupe_decision),
+                }
+                if dedupe_decision.should_suppress:
+                    scheduler_output.action = SpeechSchedulerAction.SUPPRESS
+                    scheduler_output.reason = dedupe_decision.reason
+                    scheduler_output.score = 0.0
+                    _console_event(
+                        "append_dedupe_suppressed",
+                        previous=dedupe_decision.previous_user_text,
+                        current=dedupe_decision.current_user_text,
+                        duplicate_score=round(dedupe_decision.duplicate_score, 4),
+                        continuation_score=round(dedupe_decision.continuation_score, 4),
+                        new_intent_score=round(dedupe_decision.new_intent_score, 4),
+                    )
+                    return TomokoConversationResult(
+                        observation=observation,
+                        durable_utterance=durable,
+                        saturation=saturation,
+                        scheduler_output=scheduler_output,
+                        context_snapshot=snapshot,
+                        prompt_request=None,
+                        speech_order=None,
+                    )
+
+        if (
             not observation.is_final
             and scheduler_output.action
             not in (SpeechSchedulerAction.SUPPRESS, SpeechSchedulerAction.STOP)
@@ -289,6 +337,8 @@ class TomokoConversationCore:
                 self._recent_history.append(
                     ConversationHistoryItem(speaker="user", text=durable.text)
                 )
+            if durable is not None:
+                self._remember_final_user(durable.text, observation)
             order = SpeechOrder(
                 text="",
                 mode=SpeechOrderMode.STOP,
@@ -315,6 +365,8 @@ class TomokoConversationCore:
                 self._recent_history.append(
                     ConversationHistoryItem(speaker="user", text=durable.text)
                 )
+            if durable is not None:
+                self._remember_final_user(durable.text, observation)
             return TomokoConversationResult(
                 observation=observation,
                 durable_utterance=durable,
@@ -371,6 +423,8 @@ class TomokoConversationCore:
                 self._recent_history.append(
                     ConversationHistoryItem(speaker="user", text=durable.text)
                 )
+            if durable is not None:
+                self._remember_final_user(durable.text, observation)
             return TomokoConversationResult(
                 observation=observation,
                 durable_utterance=durable,
@@ -401,6 +455,8 @@ class TomokoConversationCore:
             self._recent_history.append(
                 ConversationHistoryItem(speaker="user", text=durable.text)
             )
+        if durable is not None:
+            self._remember_final_user(durable.text, observation)
         if text_out:
             if prior_session_history is None:
                 self._recent_history.append(
@@ -514,6 +570,44 @@ class TomokoConversationCore:
         )
         return events
 
+    def _inspect_append_dedupe(
+        self,
+        *,
+        current_text: str,
+        observation: PartialTranscriptObservation,
+    ):
+        if self.append_dedupe_guard is None or not self._last_final_user_text:
+            return None
+        if self._last_final_user_audio_ended_at is None:
+            return None
+        time_delta_ms = max(
+            0,
+            int(
+                (
+                    observation.audio_ended_at - self._last_final_user_audio_ended_at
+                ).total_seconds()
+                * 1000
+            ),
+        )
+        return self.append_dedupe_guard.inspect(
+            previous_user_text=self._last_final_user_text,
+            current_user_text=current_text,
+            time_delta_ms=time_delta_ms,
+            tomoko_speaking=self.current_speech_order is not None,
+            speech_queue_active=self.current_speech_order is not None,
+            current_is_final=observation.is_final,
+        )
+
+    def _remember_final_user(
+        self,
+        text: str,
+        observation: PartialTranscriptObservation,
+    ) -> None:
+        if not observation.is_final:
+            return
+        self._last_final_user_text = text
+        self._last_final_user_audio_ended_at = observation.audio_ended_at
+
     def _blocked_result(
         self,
         observation: PartialTranscriptObservation,
@@ -552,6 +646,7 @@ def create_default_conversation_core() -> TomokoConversationCore:
         scheduler=SpeechScheduler(),
         llm_fire_gate=LlmFireGate(),
         speech_emission_gate=SpeechEmissionGate(),
+        append_dedupe_guard=create_default_append_dedupe_guard(),
         chat_backend=create_default_real_chat_backend(),
     )
 

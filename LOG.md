@@ -1,5 +1,51 @@
 # LOG.md
 
+## 2026-06-20 セッション30
+
+### やること（開始時に書く）
+- 前セッションで作った `public-synthetic-append-dedupe-h2048-l005-model.json` を Tomoko runtime に組み込み、重複 final STT による LLM 会話推論と TTS を抑制する。
+- suppress は hot path の音声入出力ではなく、Tomoko 側の LLM fire 前に置く。
+- 既存の continuation / new_intent を潰さないよう、`duplicate_score` が高く、`continuation_score` / `new_intent_score` が低い時だけ抑制する。
+- 失敗する unit test を先に追加し、`うんあんまりよくわかってない` -> `あんまりよくわかってない` は suppress、補足・話題変更は suppress しないことを固定する。
+
+### やったこと
+- `server/shared/models.py` に runtime 用 `AppendDedupeDecision` DTO を追加した。
+- `server/tomoko/append_dedupe.py` を追加し、`make-model/artifacts/public-synthetic-append-dedupe-h2048-l005-model.json` を resident load する `HashRidgeAppendDedupeGuard` を実装した。
+- `TomokoConversationCore` で final STT の通常応答が LLM prompt build に進む直前に dedupe guard を呼ぶようにした。
+- `duplicate_score >= 0.85`、`continuation_score <= 0.45`、`new_intent_score <= 0.45`、`time_delta_ms <= 5000` の時だけ `SpeechSchedulerAction.SUPPRESS` に変える。
+- suppress 時は durable observation は返すが、`prompt_request` / `speech_order` / `model_events` は作らず、in-memory prompt history にも積まないようにした。
+- hot-path direct conversation と DB worker の default core に `create_default_append_dedupe_guard()` を渡した。artifact が無い場合や `TOMOKO_V2_APPEND_DEDUPE=0` では fail-open で guard 無しにする。
+
+### 結果
+- `うんあんまりよくわかってない` -> `あんまりよくわかってない` は LLM 前で suppress され、二度目の `chat_backend.stream()` が呼ばれない unit contract を固定した。
+- `あんまりよくわかってない` -> `もう少し具体的に言うと設定ファイルの話` と、`...` -> `ところで音量下げて` は suppress せず LLM/TTS に進む contract を固定した。
+- default guard の実 artifact smoke では duplicate 0.993 / continuation 0.1138 / new_intent 0.0420 で `should_suppress=True`。
+- resident benchmark は load 0.9219ms、mean 0.4425ms、p50 0.4032ms、p95 0.5798ms。
+
+### 詰まったこと・解決したこと
+- DB worker 経路は `prior_session_history` を渡すため、in-memory prompt history には追記しない。一方で dedupe には直前 final text が必要なので、`_last_final_user_text` / `_last_final_user_audio_ended_at` は prompt history 追記とは別に更新するようにした。
+- duplicate suppress でも durable utterance は返す。これにより UI/DB では観測が残るが、会話推論と TTS は二重に走らない。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py::test_tomoko_conversation_core_suppresses_duplicate_final_before_llm tests/unit/test_v2_speech_order_flow.py::test_tomoko_conversation_core_keeps_continuation_and_new_intent_after_dedupe -q`
+  - 2 passed
+- `uv run python - <<'PY' ... create_default_append_dedupe_guard() ...`
+  - default artifact load and `should_suppress=True`
+- `uv run ruff check server/shared/models.py server/tomoko/append_dedupe.py server/tomoko/conversation.py server/hot_path/audio_conversation.py server/tomoko/db_worker.py tests/unit/test_v2_speech_order_flow.py`
+  - passed
+- `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py -q`
+  - 16 passed
+- `uv run pytest -m unit tests/unit/test_v2_audio_tomoko_prompt.py tests/unit/test_v2_runtime_foundation.py tests/unit/test_v2_speech_order_flow.py -q`
+  - 64 passed
+- `uv run pytest -m unit -q`
+  - 136 passed, 1 deselected
+- `uv run python make-model/benchmark_append_dedupe_latency.py --model make-model/artifacts/public-synthetic-append-dedupe-h2048-l005-model.json --previous 'うんあんまりよくわかってない' --current 'あんまりよくわかってない' --time-delta-ms 900 --tomoko-speaking --speech-queue-active --repeats 10000 --warmup 1000 --json`
+  - mean 0.4425ms / p50 0.4032ms / p95 0.5798ms
+
+### 次のセッションでやること
+- live `/ws` 会話または targeted replay で `append_dedupe_suppressed` が出て、対応する LLM/TTS が増えないことを実ログで確認する。
+- 実ログで false suppress が見えたら threshold か synthetic/private eval を見直す。
+
 ## 2026-06-20 セッション29
 
 ### やること（開始時に書く）

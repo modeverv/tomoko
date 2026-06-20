@@ -24,6 +24,7 @@ from server.shared.models import (
     SpeechSchedulerOutput,
     new_id,
 )
+from server.tomoko.append_dedupe import create_default_append_dedupe_guard
 from server.tomoko.context import ContextSnapshotBuilderV2
 from server.tomoko.conversation import TomokoConversationCore
 from server.tomoko.main import TomokoProcessCore
@@ -371,6 +372,7 @@ def create_default_audio_conversation(prompt_executor: PromptExecutor) -> HotPat
             saturation_judge=_default_saturation_judge(),
             scheduler=SpeechScheduler(),
             chat_backend=chat_backend,
+            append_dedupe_guard=create_default_append_dedupe_guard(),
             tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
         ),
         speech_executor=SpeechOrderExecutor(tts_backend, protect_inflight_replace=True),

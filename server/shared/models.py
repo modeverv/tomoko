@@ -205,6 +205,23 @@ class SpeechTextIntent(StrEnum):
 
 
 @dataclass(slots=True)
+class AppendDedupeDecision(SerializableDto):
+    previous_user_text: str
+    current_user_text: str
+    time_delta_ms: int
+    duplicate_score: float
+    continuation_score: float
+    new_intent_score: float
+    label: str
+    should_suppress: bool
+    reason: str
+    source: str
+    id: UUID = field(default_factory=new_id)
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
 class AudioSpeechSegment(SerializableDto):
     samples: tuple[float, ...]
     sample_rate: int

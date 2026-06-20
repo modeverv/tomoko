@@ -16,6 +16,7 @@ from server.shared.models import (
     new_id,
 )
 from server.shared.notify import parse_id_payload
+from server.tomoko.append_dedupe import create_default_append_dedupe_guard
 from server.tomoko.conversation import TomokoConversationCore, TomokoConversationResult
 from server.tomoko.db_bridge import (
     SqlCommand,
@@ -315,6 +316,7 @@ def create_default_worker(
             scheduler=SpeechScheduler(logger=logger),
             llm_fire_gate=LlmFireGate(logger=logger),
             speech_emission_gate=SpeechEmissionGate(logger=logger),
+            append_dedupe_guard=create_default_append_dedupe_guard(),
             chat_backend=chat_backend,
         ),
         logger=logger,

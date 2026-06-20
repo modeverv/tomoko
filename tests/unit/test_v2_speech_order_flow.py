@@ -10,9 +10,11 @@ from server.hot_path.model_executor import StaticWavTtsBackend
 from server.hot_path.speech_executor import SpeechOrderExecutor
 from server.llm.chat import StaticChatBackend
 from server.shared.models import (
+    AppendDedupeDecision,
     AudioSpeechSegment,
     ConversationHistoryItem,
     PartialTranscriptObservation,
+    PromptRequest,
     SemanticSaturationResult,
     SpeechOrder,
     SpeechOrderMode,
@@ -37,6 +39,49 @@ class FixedSaturationJudge:
             source="fixed_partial" if partial else "fixed_final",
             basis_text=text,
         )
+
+
+class CountingChatBackend:
+    def __init__(self, replies: list[str]) -> None:
+        self.replies = list(replies)
+        self.calls = 0
+
+    async def stream(self, request: PromptRequest):
+        self.calls += 1
+        text = self.replies.pop(0) if self.replies else "fallback"
+        yield text
+
+
+class FakeAppendDedupeGuard:
+    def __init__(self, decisions: list[AppendDedupeDecision]) -> None:
+        self.decisions = list(decisions)
+        self.calls: list[tuple[str, str]] = []
+
+    def inspect(
+        self,
+        *,
+        previous_user_text: str,
+        current_user_text: str,
+        time_delta_ms: int,
+        tomoko_speaking: bool,
+        speech_queue_active: bool,
+        current_is_final: bool,
+    ) -> AppendDedupeDecision:
+        self.calls.append((previous_user_text, current_user_text))
+        if not self.decisions:
+            return AppendDedupeDecision(
+                previous_user_text=previous_user_text,
+                current_user_text=current_user_text,
+                time_delta_ms=time_delta_ms,
+                duplicate_score=0.0,
+                continuation_score=0.0,
+                new_intent_score=1.0,
+                label="new_intent",
+                should_suppress=False,
+                reason="fake pass",
+                source="fake",
+            )
+        return self.decisions.pop(0)
 
 
 @pytest.mark.asyncio
@@ -73,6 +118,143 @@ async def test_tomoko_conversation_core_turns_final_stt_into_speech_order() -> N
     assert "SESSION_TRANSCRIPT:\nuser: トモコ、短く返事して" in (
         result.prompt_request.prompt_text
     )
+
+
+@pytest.mark.asyncio
+async def test_tomoko_conversation_core_suppresses_duplicate_final_before_llm() -> None:
+    now = utc_now()
+    chat = CountingChatBackend(["最初だけ返す。", "二度目は呼ばれない。"])
+    guard = FakeAppendDedupeGuard(
+        [
+            AppendDedupeDecision(
+                previous_user_text="うんあんまりよくわかってない",
+                current_user_text="あんまりよくわかってない",
+                time_delta_ms=900,
+                duplicate_score=0.993,
+                continuation_score=0.11,
+                new_intent_score=0.04,
+                label="duplicate",
+                should_suppress=True,
+                reason="append dedupe duplicate score crossed suppress threshold",
+                source="fake",
+            )
+        ]
+    )
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=FixedSaturationJudge(0.95),
+        scheduler=SpeechScheduler(),
+        chat_backend=chat,
+        append_dedupe_guard=guard,
+    )
+
+    first = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="うんあんまりよくわかってない",
+            is_final=True,
+            stability=1.0,
+            audio_started_at=now,
+            audio_ended_at=now,
+        )
+    )
+    second = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="あんまりよくわかってない",
+            is_final=True,
+            stability=1.0,
+            audio_started_at=now,
+            audio_ended_at=now,
+        )
+    )
+
+    assert first.speech_order is not None
+    assert second.durable_utterance is not None
+    assert second.speech_order is None
+    assert second.prompt_request is None
+    assert second.model_events == []
+    assert chat.calls == 1
+    assert guard.calls == [
+        ("うんあんまりよくわかってない", "あんまりよくわかってない")
+    ]
+    assert second.scheduler_output.action == "suppress"
+    assert second.scheduler_output.reason == (
+        "append dedupe duplicate score crossed suppress threshold"
+    )
+    assert second.scheduler_output.score_breakdown["append_dedupe_duplicate_score"] == 0.993
+
+
+@pytest.mark.asyncio
+async def test_tomoko_conversation_core_keeps_continuation_and_new_intent_after_dedupe() -> None:
+    now = utc_now()
+    chat = CountingChatBackend(["最初。", "補足に返す。", "新しい意図に返す。"])
+    guard = FakeAppendDedupeGuard(
+        [
+            AppendDedupeDecision(
+                previous_user_text="あんまりよくわかってない",
+                current_user_text="もう少し具体的に言うと設定ファイルの話",
+                time_delta_ms=1200,
+                duplicate_score=0.02,
+                continuation_score=0.94,
+                new_intent_score=0.1,
+                label="continuation",
+                should_suppress=False,
+                reason="append dedupe pass",
+                source="fake",
+            ),
+            AppendDedupeDecision(
+                previous_user_text="もう少し具体的に言うと設定ファイルの話",
+                current_user_text="ところで音量下げて",
+                time_delta_ms=1200,
+                duplicate_score=0.05,
+                continuation_score=0.1,
+                new_intent_score=0.92,
+                label="new_intent",
+                should_suppress=False,
+                reason="append dedupe pass",
+                source="fake",
+            ),
+        ]
+    )
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=FixedSaturationJudge(0.95),
+        scheduler=SpeechScheduler(),
+        chat_backend=chat,
+        append_dedupe_guard=guard,
+    )
+
+    await core.handle_observation(
+        PartialTranscriptObservation(
+            text="あんまりよくわかってない",
+            is_final=True,
+            stability=1.0,
+            audio_started_at=now,
+            audio_ended_at=now,
+        )
+    )
+    continuation = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="もう少し具体的に言うと設定ファイルの話",
+            is_final=True,
+            stability=1.0,
+            audio_started_at=now,
+            audio_ended_at=now,
+        )
+    )
+    new_intent = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="ところで音量下げて",
+            is_final=True,
+            stability=1.0,
+            audio_started_at=now,
+            audio_ended_at=now,
+        )
+    )
+
+    assert continuation.speech_order is not None
+    assert new_intent.speech_order is not None
+    assert chat.calls == 3
+    assert len(guard.calls) == 2
 
 
 @pytest.mark.asyncio
