@@ -180,6 +180,21 @@ class SpeechSchedulerAction(StrEnum):
     STOP = "stop"
 
 
+class LlmFireDecision(StrEnum):
+    DO_NOT_FIRE = "do_not_fire"
+    FIRE = "fire"
+    CANCEL_OR_REPLACE_PENDING = "cancel_or_replace_pending"
+
+
+class SpeechEmissionDecision(StrEnum):
+    EMIT_NOW = "emit_now"
+    APPEND_AFTER_CURRENT = "append_after_current"
+    REPLACE_CURRENT = "replace_current"
+    HOLD = "hold"
+    SUPPRESS = "suppress"
+    STOP = "stop"
+
+
 class SpeechTextIntent(StrEnum):
     REPLY = "reply"
     INITIATIVE = "initiative"
@@ -282,6 +297,46 @@ class FloorObservation(SerializableDto):
 
 
 @dataclass(slots=True)
+class TurnMaterials(SerializableDto):
+    window_ms: int
+    user_speaking: bool
+    speech_probability: float
+    p_yielding: float | None
+    silence_ms: int
+    playback_active: bool
+    id: UUID = field(default_factory=new_id)
+    p_bc_react: float | None = None
+    p_bc_emo: float | None = None
+    audio_rms: float = 0.0
+    stt_partial: str = ""
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class WorldMaterials(SerializableDto):
+    external_result_importance: float = 0.0
+    memory_relevance: float = 0.0
+    calendar_urgency: float = 0.0
+    followup_age_ms: int = 0
+    followup_importance: float = 0.0
+    curiosity_relevance: float = 0.0
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class PersonalityMaterials(SerializableDto):
+    talkativeness: float = 0.5
+    curiosity: float = 0.5
+    restraint: float = 0.5
+    empathy: float = 0.5
+    interrupt_tolerance: float = 0.2
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
 class SpeechDecision(SerializableDto):
     decision: SpeechDecisionKind
     should_execute: bool
@@ -355,6 +410,123 @@ class SpeechSchedulerInput(SerializableDto):
     fatigue: float = 0.0
     stop_intent: float = 0.0
     pressure_state: SpeechPressureState = field(default_factory=SpeechPressureState)
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class DialogueTurnPressure(SerializableDto):
+    reply_readiness: float = 0.0
+    turn_opportunity: float = 0.0
+    interruption_risk: float = 0.0
+    semantic_saturation: float = 0.0
+    text_presence: float = 0.0
+    final_text_bonus: float = 0.0
+    reason: str = ""
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class NaturalSpeechPressure(SerializableDto):
+    backchannel_desire: float = 0.0
+    light_reaction_desire: float = 0.0
+    filler_desire: float = 0.0
+    clarification_desire: float = 0.0
+    naturalness: float = 0.0
+    reason: str = ""
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class MotivationPressure(SerializableDto):
+    initiative_desire: float = 0.0
+    personality_push: float = 0.0
+    restraint: float = 0.0
+    interrupt_tolerance: float = 0.0
+    reason: str = ""
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class WorldPressure(SerializableDto):
+    importance: float = 0.0
+    urgency: float = 0.0
+    relevance: float = 0.0
+    deliverability: float = 0.0
+    decay: float = 0.0
+    reason: str = ""
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class LlmFireGateInput(SerializableDto):
+    turn_materials: TurnMaterials
+    dialogue_pressure: DialogueTurnPressure
+    natural_speech_pressure: NaturalSpeechPressure = field(
+        default_factory=NaturalSpeechPressure
+    )
+    motivation_pressure: MotivationPressure = field(default_factory=MotivationPressure)
+    world_pressure: WorldPressure = field(default_factory=WorldPressure)
+    pending_inference: bool = False
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class LlmFireGateOutput(SerializableDto):
+    decision: LlmFireDecision
+    reason: str
+    score: float
+    score_breakdown: dict[str, float]
+    id: UUID = field(default_factory=new_id)
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class PreparedSpeechCandidate(SerializableDto):
+    text: str
+    priority: float
+    freshness: float
+    semantic_confidence: float
+    misunderstanding_risk: float = 0.0
+    reason: str = ""
+    id: UUID = field(default_factory=new_id)
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class SpeechEmissionGateInput(SerializableDto):
+    candidate: PreparedSpeechCandidate
+    turn_materials: TurnMaterials
+    dialogue_pressure: DialogueTurnPressure
+    natural_speech_pressure: NaturalSpeechPressure = field(
+        default_factory=NaturalSpeechPressure
+    )
+    motivation_pressure: MotivationPressure = field(default_factory=MotivationPressure)
+    world_pressure: WorldPressure = field(default_factory=WorldPressure)
+    current_speech_score: float = 0.0
+    tomoko_currently_speaking: bool = False
+    stop_intent: float = 0.0
+    recent_rejection_penalty: float = 0.0
+    fatigue: float = 0.0
+    current_speech_order: SpeechOrder | None = None
+    trace_id: UUID = field(default_factory=new_id)
+    created_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(slots=True)
+class SpeechEmissionGateOutput(SerializableDto):
+    decision: SpeechEmissionDecision
+    reason: str
+    score: float
+    score_breakdown: dict[str, float]
+    id: UUID = field(default_factory=new_id)
     trace_id: UUID = field(default_factory=new_id)
     created_at: datetime = field(default_factory=utc_now)
 

@@ -9,10 +9,17 @@ MAKE_MODEL_DIR = Path(__file__).resolve().parents[2] / "make-model"
 sys.path.insert(0, str(MAKE_MODEL_DIR))
 
 from benchmark_saturation_latency import measure_predict_latency  # noqa: E402
+from combine_teacher_labels import combine_label_rows  # noqa: E402
+from generate_synthetic_saturation_corpus import (  # noqa: E402
+    SYNTHETIC_SOURCE,
+    build_synthetic_utterances,
+    write_synthetic_dataset,
+)
 from generate_teacher_labels import select_prefix_rows  # noqa: E402
 from make_anchor_teacher_labels import (  # noqa: E402
     build_anchor_labels,
     build_contrastive_anchor_labels,
+    build_life_command_anchor_labels,
     build_referential_anchor_labels,
 )
 from make_model.corpus import CorpusUtterance, build_prefix_examples, load_corpus  # noqa: E402
@@ -178,6 +185,55 @@ def test_select_prefix_rows_keeps_limit_and_rejects_mixed_selection_modes() -> N
         select_prefix_rows(rows, limit=3, sample_size=3)
 
 
+def test_build_synthetic_utterances_are_repo_owned_and_deterministic() -> None:
+    utterances = build_synthetic_utterances(utterance_count=20, seed=20260620)
+
+    assert utterances == build_synthetic_utterances(utterance_count=20, seed=20260620)
+    assert len(utterances) == 20
+    assert all(utterance.source == SYNTHETIC_SOURCE for utterance in utterances)
+    assert all(utterance.utterance_id.startswith("synthetic-codex-") for utterance in utterances)
+    assert all("japanese-daily-dialogue" not in utterance.source for utterance in utterances)
+
+
+def test_write_synthetic_dataset_writes_corpus_prefixes_and_manifest(tmp_path: Path) -> None:
+    summary = write_synthetic_dataset(
+        out_dir=tmp_path,
+        utterance_count=12,
+        seed=20260620,
+        min_chars=1,
+        stride_chars=2,
+        max_prefixes_per_utterance=5,
+    )
+
+    assert summary.utterance_count == 12
+    assert summary.prefix_count > 12
+    assert read_jsonl(tmp_path / "corpus.jsonl")[0]["source"] == SYNTHETIC_SOURCE
+    assert read_jsonl(tmp_path / "prefixes.jsonl")[0]["source"] == SYNTHETIC_SOURCE
+    manifest = (tmp_path / "manifest.json").read_text(encoding="utf-8")
+    assert "No internet dialogue corpus is used" in manifest
+
+
+def test_combine_label_rows_deduplicates_by_label_identity(tmp_path: Path) -> None:
+    first = tmp_path / "first.jsonl"
+    second = tmp_path / "second.jsonl"
+    row = {
+        "utterance_id": "u1",
+        "prefix_index": 0,
+        "prefix_text": "今日の予定を教えて",
+        "full_text": "今日の予定を教えて",
+        "saturation": 0.9,
+        "teacher_model": "teacher",
+        "label_source": "teacher_llm",
+    }
+    write_jsonl(first, [row])
+    write_jsonl(second, [row, {**row, "label_source": "manual_anchor"}])
+
+    combined = combine_label_rows([first, second])
+
+    assert len(combined) == 2
+    assert {item["label_source"] for item in combined} == {"teacher_llm", "manual_anchor"}
+
+
 def test_measure_predict_latency_reports_hot_loop_stats() -> None:
     def predict(text: str, *, is_final: bool = False) -> float:
         assert text == "今日の予定を教えて"
@@ -256,6 +312,19 @@ def test_build_referential_anchor_labels_marks_pronoun_completion_as_high() -> N
     assert by_text["それで問題ない"].saturation == pytest.approx(0.85)
     assert by_text["その方向でいい"].saturation == pytest.approx(0.84)
     assert by_text["これは違うと思う"].saturation == pytest.approx(0.78)
+
+
+def test_build_life_command_anchor_labels_marks_tomoko_commands_as_high() -> None:
+    anchors = build_life_command_anchor_labels(count=1000)
+
+    assert len(anchors) == 1000
+    assert len({anchor.utterance_id for anchor in anchors}) == 1000
+    assert all(anchor.label_source == "manual_life_command_anchor" for anchor in anchors)
+
+    by_text = {anchor.prefix_text: anchor for anchor in anchors}
+    assert by_text["トモコ、今忙しい？"].saturation == pytest.approx(0.86)
+    assert by_text["トモコ、テレビ付けて"].saturation == pytest.approx(0.9)
+    assert by_text["トモコ、ネットスーパーのラフを作って"].saturation == pytest.approx(0.9)
 
 
 def test_hashed_features_marks_contrastive_tail_without_penalizing_prefix() -> None:

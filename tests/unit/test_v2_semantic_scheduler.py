@@ -8,15 +8,25 @@ import pytest
 from server.shared.logging import JsonlLogger
 from server.shared.models import (
     CancelPolicy,
+    DialogueTurnPressure,
     DurableUtterance,
+    LlmFireDecision,
+    LlmFireGateInput,
+    MotivationPressure,
+    NaturalSpeechPressure,
+    PreparedSpeechCandidate,
     PromptRequest,
     PromptScope,
+    SpeechEmissionDecision,
+    SpeechEmissionGateInput,
     SpeechOrder,
     SpeechOrderMode,
     SpeechPressureState,
     SpeechSchedulerInput,
     SpeechSchedulerOutput,
     SpeechSchedulerThresholds,
+    TurnMaterials,
+    WorldPressure,
 )
 from server.tomoko.db_bridge import (
     close_conversation_session_sql,
@@ -30,6 +40,7 @@ from server.tomoko.db_bridge import (
     notify_speech_order_sql,
     update_conversation_session_activity_sql,
 )
+from server.tomoko.gates import LlmFireGate, SpeechEmissionGate
 from server.tomoko.scheduler import SpeechScheduler, detect_stop_intent
 from server.tomoko.semantic import (
     DistilledSaturationBackend,
@@ -156,6 +167,127 @@ def test_speech_scheduler_user_reply_replace_current_and_breakdown() -> None:
     assert output.text_intent == "reply"
     assert output.score_breakdown["saturation"] > 0
     assert output.llm_prompt_basis
+
+
+def test_llm_fire_gate_synthesizes_dialogue_pressure_for_fire() -> None:
+    materials = TurnMaterials(
+        window_ms=200,
+        user_speaking=True,
+        speech_probability=0.74,
+        p_yielding=0.94,
+        silence_ms=120,
+        playback_active=False,
+        stt_partial="今日の予定を",
+    )
+    decision = LlmFireGate().decide(
+        LlmFireGateInput(
+            turn_materials=materials,
+            dialogue_pressure=DialogueTurnPressure(
+                reply_readiness=0.86,
+                turn_opportunity=0.94,
+                interruption_risk=0.04,
+                semantic_saturation=0.78,
+                text_presence=1.0,
+            ),
+            motivation_pressure=MotivationPressure(initiative_desire=0.2),
+        )
+    )
+
+    assert decision.decision == LlmFireDecision.FIRE
+    assert decision.score_breakdown["dialogue_reply_readiness"] > 0
+    assert "pressure synthesis" in decision.reason
+
+
+def test_llm_fire_gate_synthesizes_motivation_pressure_without_stt() -> None:
+    materials = TurnMaterials(
+        window_ms=200,
+        user_speaking=False,
+        speech_probability=0.0,
+        p_yielding=1.0,
+        silence_ms=9000,
+        playback_active=False,
+    )
+    decision = LlmFireGate().decide(
+        LlmFireGateInput(
+            turn_materials=materials,
+            dialogue_pressure=DialogueTurnPressure(turn_opportunity=1.0),
+            motivation_pressure=MotivationPressure(
+                initiative_desire=0.9,
+                personality_push=0.8,
+            ),
+        )
+    )
+
+    assert decision.decision == LlmFireDecision.FIRE
+    assert decision.score >= 0.55
+
+
+def test_speech_emission_gate_uses_materials_and_pressure_for_barge_in_risk() -> None:
+    current = SpeechOrder(
+        text="今の返事",
+        mode=SpeechOrderMode.REPLACE_CURRENT,
+        reason="current",
+        priority=50,
+    )
+    gate = SpeechEmissionGate()
+
+    hold = gate.decide(
+        SpeechEmissionGateInput(
+            candidate=PreparedSpeechCandidate(
+                text="割り込む候補",
+                priority=0.8,
+                freshness=1.0,
+                semantic_confidence=0.5,
+            ),
+            turn_materials=TurnMaterials(
+                window_ms=200,
+                user_speaking=True,
+                speech_probability=0.95,
+                p_yielding=0.2,
+                silence_ms=0,
+                playback_active=True,
+            ),
+            dialogue_pressure=DialogueTurnPressure(
+                turn_opportunity=0.1,
+                interruption_risk=0.76,
+            ),
+            motivation_pressure=MotivationPressure(initiative_desire=0.4),
+            current_speech_order=current,
+            current_speech_score=0.7,
+        )
+    )
+    emit = gate.decide(
+        SpeechEmissionGateInput(
+            candidate=PreparedSpeechCandidate(
+                text="出してよい候補",
+                priority=0.9,
+                freshness=1.0,
+                semantic_confidence=0.68,
+            ),
+            turn_materials=TurnMaterials(
+                window_ms=200,
+                user_speaking=True,
+                speech_probability=0.45,
+                p_yielding=0.92,
+                silence_ms=160,
+                playback_active=False,
+            ),
+            dialogue_pressure=DialogueTurnPressure(
+                turn_opportunity=0.92,
+                interruption_risk=0.04,
+            ),
+            natural_speech_pressure=NaturalSpeechPressure(naturalness=0.7),
+            motivation_pressure=MotivationPressure(initiative_desire=0.9),
+            world_pressure=WorldPressure(deliverability=0.5),
+            current_speech_order=current,
+            current_speech_score=0.2,
+        )
+    )
+
+    assert hold.decision == SpeechEmissionDecision.HOLD
+    assert hold.score_breakdown["interruption_risk"] < 0
+    assert emit.decision == SpeechEmissionDecision.REPLACE_CURRENT
+    assert emit.score_breakdown["motivation"] > 0
 
 
 def test_speech_scheduler_suppresses_low_saturation_partial_start() -> None:

@@ -1,5 +1,224 @@
 # LOG.md
 
+## 2026-06-20 セッション21
+
+### やること（開始時に書く）
+- `Intent` 概念を入れず、LLM 前を `materials -> pressures -> pressure synthesis gate -> LLM` に徹底する。
+- `InferenceStartGate` の intent 的な decision 名を廃止し、LLM fire だけを決める gate に改名・整理する。
+- docs / tests / conversation core を同じ語彙へ揃える。
+
+### やったこと
+- `InferenceStartDecision` を `LlmFireDecision` に置き換え、decision を `do_not_fire` / `fire` / `cancel_or_replace_pending` のみにした。
+- `InferenceStartGateInput` / `InferenceStartGateOutput` を `LlmFireGateInput` / `LlmFireGateOutput` に置き換えた。
+- `InferenceStartGate` を `LlmFireGate` に置き換え、pressure source ごとの intent 分岐を削除した。
+- `TomokoConversationCore` を `materials -> pressures -> LlmFireGate -> LLM -> PreparedSpeechCandidate -> SpeechEmissionGate` の名前に揃えた。
+- `ARCHITECTURE.md` / `PLAN.md` / `MEMORY.md` を `LlmFireGate` と pressure synthesis gate の語彙へ更新した。
+
+### 詰まったこと・解決したこと
+- `SpeechSchedulerOutput.text_intent` は DB/WS 返却互換として残るが、LLM 前の gate decision からは intent 的 enum を消した。通常会話経路では `reply` の互換値として扱う。
+- legacy `SpeechScheduler` の unit / DB schema には `text_intent` が残るが、今回の対象である LLM 前の新経路には `InferenceStart*` / intent-like decision は残っていない。
+
+### 検証
+- `uv run pytest -m unit -q`
+  - 113 passed, 1 deselected
+- `uv run ruff check server tests scripts make-model`
+  - passed
+- `make v2-conversation-smoke`
+  - passed
+- `make v2-scheduler-conversation-smoke`
+  - passed: total 1.8ms, artifact `logs/scheduler-conversation-smoke-20260620-164357.json`
+- `rg -n "InferenceStart|inference_start|START_MAIN_REPLY|START_NATURAL|START_INITIATIVE|START_EXTERNAL|START_CALENDAR|DO_NOT_INFER|CANCEL_OR_REPLACE_PENDING_INFERENCE" server tests ARCHITECTURE.md`
+  - no matches
+
+### 次のセッションでやること
+- 必要なら legacy `SpeechScheduler` / DB column の `text_intent` も別フェーズで名前を分ける。ただし LLM 前の gate からは今回外した。
+
+## 2026-06-20 セッション20
+
+### やること（開始時に書く）
+- Materials/Pressures/Gates 再整理後に、E2E smoke を通して壊れていないか確認する。
+
+### やったこと
+- fake runtime `/ws` E2E smoke と in-process scheduler conversation smoke を実行した。
+- real LLM/VOICEVOX readiness を確認し、`v2-llm-tts-smoke` を実行した。
+- DB split fake LISTEN/NOTIFY smoke を実行した。
+- 一時的に Tomoko realtime WS `:8765` と hot-path `:8010` を起動し、real `say -> /ws` smoke を実行した。
+- Tomoko realtime 側ログで `turn_materials` が `/internal/hot-path` に届いていることを確認した。
+- smoke 後に一時起動した `:8765` / `:8010` の uvicorn を停止した。
+
+### 検証
+- `make v2-conversation-smoke`
+  - passed: transcript / durable_utterance / speech_order / model / tts / audio / prompt_complete
+- `make v2-scheduler-conversation-smoke`
+  - passed: action `replace_current`, total 1.8ms
+- `uv run python -m server.runtime readiness`
+  - DB false, LLM 8081/8082 true, VOICEVOX true, Apple Speech true, OCR true
+- `make v2-llm-tts-smoke`
+  - passed: text `了解。`, 1 audio chunk, 23596 bytes
+- `make v2-db-split-smoke`
+  - passed: total 60.5ms, artifact `logs/db-split-smoke-20260620-154029.json`
+- `uv run python -m scripts.v2_say_latency_smoke --url ws://127.0.0.1:8010/ws --text 'トモコ、短く返事して。' --voice Kyoko`
+  - passed: voice-end to first audio 1801.4ms, artifact `logs/say-latency-20260620-154057.json`
+
+### 詰まったこと・解決したこと
+- port 8000 は既存 Python process が LISTEN していたため触らず、今回の live smoke は port 8010 で実行した。
+- real `say` smoke では `turn_materials` の audio/silence material は WS 到達したが、MaAI/VAP 由来の `p_yielding` は `None` だった。real MaAI result の yield key は別途確認が必要。
+
+### 次のセッションでやること
+- `make run` / tmux-runtime の通常起動でも `turn_materials` WS が接続されることを確認する。
+- real MaAI/VAP yield material の有無を確認する。
+
+## 2026-06-20 セッション19
+
+### やること（開始時に書く）
+- `Material -> Pressure -> Gate` の設計語彙を `ARCHITECTURE.md` に追記する。
+- `TurnOpportunitySnapshot` / `TurnSignalAggregator` ベースの命名を `TurnMaterials` / pressure model ベースへ整理し直す。
+- `SpeechScheduler` を通常の会話発話裁定経路から外し、`InferenceStartGate -> LLM -> SpeechEmissionGate -> hot-path` の順に近づける。
+
+### やったこと
+- `ARCHITECTURE.md` に `Materials -> Pressures -> Gates` の設計語彙を追記し、`silence_ms` / `p_yielding` / MaAI などは shared material、各 pressure model が参照する材料として整理した。
+- `TurnOpportunitySnapshot` を `TurnMaterials` に置き換え、hot-path 側も `TurnMaterialAggregator` / `InternalTurnMaterialClient` / `turn_materials` WS event に改名した。
+- `WorldMaterials` / `PersonalityMaterials`、`DialogueTurnPressure` / `NaturalSpeechPressure` / `MotivationPressure` / `WorldPressure`、`PreparedSpeechCandidate` を DTO として追加した。
+- `server.tomoko.pressures` を追加し、materials から4種類の pressure を計算する薄い model を置いた。
+- `InferenceStartGateInput` / `SpeechEmissionGateInput` を pressure/candidate ベースへ変更した。
+- `TomokoConversationCore` の通常発話裁定経路から `SpeechScheduler.decide()` を外し、`materials -> pressures -> InferenceStartGate -> LLM -> PreparedSpeechCandidate -> SpeechEmissionGate -> SpeechOrder` の順にした。
+- `SpeechSchedulerOutput` は既存テスト・返却互換の入れ物として残し、gate 結果から組み立てるようにした。
+
+### 詰まったこと・解決したこと
+- pressure を計算済み中間量として扱った後、gate 側でさらに重みを掛けると final STT / 高 saturation partial が弱くなりすぎた。gate score は weighted sum だけでなく、主要 pressure の代表値も見る形にした。
+- direct unit path では hot-path material がまだ無いため、final STT は発話区間終端の観測として `p_yielding=1.0` / 小さな `silence_ms` を補うようにした。
+
+### 検証
+- `uv run pytest -m unit -q`
+  - 113 passed, 1 deselected
+- `uv run ruff check server tests scripts make-model`
+  - passed
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること
+- 実 `make run` で `turn_materials` internal WS の送受信ログを確認する。
+- real MaAI result に `p_yielding` 相当が十分含まれるか確認し、不足する場合は VAP yield 専用 material を追加する。
+
+## 2026-06-20 セッション18
+
+### やること（開始時に書く）
+- 公開しやすい semantic saturation モデルを、ネット上の会話コーパスに依存しない synthetic-only 系統として作り直す。
+- 入力テキストは Codex / ユーザー / 自作スクリプト由来、初期教師ラベルは Gemma 4 26B、補正 anchor は Codex / 手作業由来として provenance を残す。
+- `make-model` に synthetic corpus 生成、provenance、model card を追加し、ラベル作成、train/evaluate、latency benchmark まで一連で実行する。
+
+### やったこと
+- `make-model/generate_synthetic_saturation_corpus.py` を追加し、ネット上の会話コーパスを使わない `public-synthetic` corpus / prefixes / manifest を生成できるようにした。
+- `make-model/combine_teacher_labels.py` を追加し、teacher train split と手作り anchor labels を安全に結合できるようにした。
+- `make-model/PUBLIC_SYNTHETIC_PROVENANCE.md` と `make-model/MODEL_CARD.public-synthetic.md` を追加した。
+- `generate_teacher_labels.py` に `--incremental` / `--progress-every` を追加し、長時間 teacher run の途中成果を JSONL に残せるようにした。
+- `make_anchor_teacher_labels.py --kind life` を追加し、Tomoko 生活コマンド系 anchor を 1000件作れるようにした。
+- `make-model/README.md` に public synthetic-only の一連コマンドと 2026-06-20 smoke 結果を追記した。
+- `make-model/data/public-synthetic/` に synthetic corpus 2500 utterances / 34350 prefixes を生成した。
+- Gemma teacher 200件を生成し、160 train / 40 eval に split した。
+- general / contrastive / referential / life command anchors 各1000件を train split に追加した。
+- `hash_size=8192` / `ridge_lambda=0.01` で `public-synthetic-gemma26b-200-plus-anchors-life-h8192-l001-saturation-model.json` を作成した。
+
+### 結果
+- train labels: 4160件
+  - Gemma teacher train: 160件
+  - manual anchors: 4000件
+- held-out eval: 40件
+  - binary_accuracy: 0.900
+  - mae: 0.15981232172049104
+  - rmse: 0.24036738390980764
+- hot predict latency:
+  - mean: 0.281958ms
+  - p50: 0.265708ms
+  - p95: 0.430631ms
+- 代表スコア:
+  - `今日の予定を教えて`: 0.9253
+  - `えっと`: 0.1750
+  - `ただ、やっぱり`: 0.2682
+  - `それが良いと思う`: 0.7881
+  - `それが良いと思うがしかし`: 0.2201
+  - `トモコ、ネットスーパーのラフを作って`: 0.8882
+
+### 詰まったこと・解決したこと
+- Gemma 4 26B teacher 10000件 / 2000件 / 500件は、完了時まで出力されない旧 generator では進捗が見えず対話ターン内で扱いづらかった。
+  `--incremental` を追加して、1件ずつ JSONL に flush する方式にした。
+- 初期の 2048 次元 model は `えっと` が高すぎたため、公開用候補は `hash_size=8192` / `ridge_lambda=0.01` にした。
+- 生活コマンド系が弱かったため、`life` anchor を追加して Tomoko 固有の実用発話を高 saturation に寄せた。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_make_model_pipeline.py -q`
+  - 21 passed
+- `uv run ruff check make-model/generate_synthetic_saturation_corpus.py make-model/combine_teacher_labels.py tests/unit/test_make_model_pipeline.py`
+  - passed
+- `uv run ruff check make-model/generate_teacher_labels.py`
+  - passed
+- `uv run ruff check make-model/make_anchor_teacher_labels.py tests/unit/test_make_model_pipeline.py`
+  - passed
+
+### 次のセッションでやること
+- 必要なら `--sample-size 10000 --incremental` で Gemma teacher を長時間実行し、同じ public-synthetic 系統の本番 artifact を作る。
+- 10000件版を作ったら、runtime default artifact に採用するかは JDD 系 artifact と代表ケース比較してから決める。
+
+## 2026-06-20 セッション17
+
+### やること（開始時に書く）
+- `InferenceStartGate` と `SpeechEmissionGate` を tomoko-process 内で分割し、既存 `SpeechScheduler` の責務を見通しよくする。
+- hot-path と tomoko-process の間に internal WebSocket を追加し、MaAI/VAP 由来の 200ms `TurnOpportunitySnapshot` を Tomoko 側へ渡す。
+- snapshot を二段 gate の計算材料へ接続し、unit test と smoke 可能な最小縦切りを作る。
+
+### やったこと
+- `server.shared.models` に `TurnOpportunitySnapshot`、`InferenceStartGate*`、`SpeechEmissionGate*` DTO と decision enum を追加した。
+- `server.tomoko.gates` を追加し、重い推論開始判断と生成済み発話送出判断を分離した。
+- `TomokoConversationCore` を `InferenceStartGate -> SpeechScheduler -> SpeechEmissionGate` の順に接続した。
+- `server.hot_path.turn_signal` を追加し、audio RMS と MaAI result を 200ms `TurnOpportunitySnapshot` に集約するようにした。
+- `MaaiBackchannelDetector` に raw result callback を追加し、相槌 emission と独立して `p_bc_react` / `p_bc_emo` / `p_yielding` 相当を snapshot に渡せるようにした。
+- `server.tomoko.realtime` を追加し、`/internal/hot-path` WebSocket で `turn_opportunity` JSON を受けて latest snapshot を保持するようにした。
+- hot-path `/ws` は snapshot を direct conversation core に反映しつつ、`TOMOKO_INTERNAL_WS_URL` があれば Tomoko realtime WS に送るようにした。
+- `Makefile` の `v2-tomoko` を Tomoko realtime WS server にし、tmux runtime では tomoko window を hot-path より先に起動するようにした。
+- `PLAN.md` に Phase S18 を追記し、`MEMORY.md` と `ARCHITECTURE.md` に実装済みの境界を追記した。
+
+### 詰まったこと・解決したこと
+- 最初の `InferenceStartGate` は final STT でも saturation が中程度の文を止めすぎたため、final text には小さな確定加点を入れ、既存 final 返答経路を壊さないようにした。
+- internal WS snapshot は durable DB state ではなく latest-wins の realtime signal として扱い、DB/NOTIFY には raw MaAI/VAP frame を載せない方針にした。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_semantic_scheduler.py tests/unit/test_v2_internal_ws.py tests/unit/test_v2_hot_path_backchannel.py tests/unit/test_v2_runtime_foundation.py -q`
+  - 40 passed
+- `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py tests/unit/test_v2_audio_tomoko_prompt.py -q`
+  - 36 passed
+- `uv run pytest -m unit -q`
+  - 109 passed, 1 deselected
+- `uv run ruff check server tests scripts make-model`
+  - passed
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること
+- 実 `make run` で Tomoko realtime WS と hot-path snapshot client が接続することを pane log で確認する。
+- MaAI 実 result に `p_yielding` 相当が含まれるか確認し、無い場合は VAP lane から yield signal を別途 snapshot に足す。
+
+## 2026-06-20 セッション16
+
+### やること（開始時に書く）
+- 発話判断計算モデルを、重い推論を fire する gate と、生成済み候補を hot-path へ送出する gate の二段として ARCHITECTURE.md に追記する。
+- 設計判断として MEMORY.md にも短く残す。
+
+### やったこと
+- `ARCHITECTURE.md` に「計算モデルは二段の gate として整理する」を追記した。
+- `InferenceStartGate` は partial/final STT、semantic saturation、無音、外部調査結果、calendar、motivation から、Tomoko 側で重い推論を fire して発話候補を作る gate と定義した。
+- `SpeechEmissionGate` は生成済み候補を、ユーザー発話の遮りや勘違いリスクも含めて hot-path へ speech-order として送出するかを決める gate と定義した。
+- `MEMORY.md` に同じ設計判断を確定事項として追記した。
+
+### 詰まったこと・解決したこと
+- 既存の `SpeechScheduler` は二段の責務を一部同時に背負っているため、今回の追記では既存設計を否定せず、今後の DTO / ログ / report 分離のための概念整理として記載した。
+
+### 検証
+- `git diff --check -- ARCHITECTURE.md MEMORY.md LOG.md`
+  - passed
+
+### 次のセッションでやること
+- 実装へ進む場合は、まず artifact / structured log 上で `inference_start_gate` と `speech_emission_gate` を別イベントとして出す。
+
 ## 2026-06-20 セッション15
 
 ### やること（開始時に書く）
@@ -17,6 +236,7 @@
 - MaAI package が無い場合や detector start に失敗した場合は hot-path を落とさず no-op にするようにした。
 - `MEMORY.md` に MaAI fixed backchannel の確定判断を追記した。
 - `ARCHITECTURE.md` に未来メモ「口喧嘩できる Tomoko」を追記し、残る中心課題は motivation 設計であることを書いた。
+- `ARCHITECTURE.md` に未来メモ「NOTIFY/LISTEN から WS origin へ」を追記し、リアルタイム制御線を段階的に internal WebSocket へ寄せる構想を書いた。
 
 ### 詰まったこと・解決したこと
 - 最初に `say` で asset を生成したが、ユーザー指定に合わせて VOICEVOX 生成 WAV に置き換えた。

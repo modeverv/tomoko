@@ -9,6 +9,7 @@ from make_model.schema import TeacherLabel, write_jsonl
 MANUAL_TEACHER_MODEL = "manual-anchor-v1"
 CONTRASTIVE_TEACHER_MODEL = "manual-contrastive-anchor-v1"
 REFERENTIAL_TEACHER_MODEL = "manual-referential-anchor-v1"
+LIFE_COMMAND_TEACHER_MODEL = "manual-life-command-anchor-v1"
 
 HIGH_ANCHORS = [
     ("今日の予定を教えて", 0.95),
@@ -367,6 +368,86 @@ REFERENTIAL_PREDICATES = [
     ("そのままでいい", 0.82),
 ]
 
+LIFE_COMMAND_ANCHORS = [
+    ("トモコ、今忙しい？", 0.86),
+    ("トモコ、今何してる", 0.88),
+    ("トモコ、ちょっと調査頼みたい", 0.92),
+    ("トモコ、さっきの調査をまとめて", 0.92),
+    ("トモコ、いつもの場所に置いておいて", 0.90),
+    ("トモコ、テレビ付けて", 0.90),
+    ("トモコ、YouTubeでおすすめのアニメ開いて", 0.90),
+    ("トモコ、万年筆のインクを注文候補に入れて", 0.90),
+    ("トモコ、ネットスーパーのラフを作って", 0.90),
+    ("トモコ、今ちゃんと聞いてなかったでしょ？", 0.84),
+]
+
+LIFE_COMMAND_PREFIXES = [
+    "トモコ、",
+    "ねえトモコ、",
+    "あのさトモコ、",
+    "ちょっとトモコ、",
+    "トモコさん、",
+    "ごめんトモコ、",
+    "今いい？トモコ、",
+    "お願いトモコ、",
+    "聞いてトモコ、",
+    "そうだトモコ、",
+    "あとトモコ、",
+    "それとトモコ、",
+]
+
+LIFE_COMMAND_BODIES = [
+    ("今忙しい？", 0.86),
+    ("今何してる", 0.88),
+    ("ちょっと調査頼みたい", 0.92),
+    ("さっきの調査をまとめて", 0.92),
+    ("いつもの場所に置いておいて", 0.90),
+    ("テレビ付けて", 0.90),
+    ("YouTubeでおすすめのアニメ開いて", 0.90),
+    ("万年筆のインクを注文候補に入れて", 0.90),
+    ("ネットスーパーのラフを作って", 0.90),
+    ("今ちゃんと聞いてなかったでしょ？", 0.84),
+    ("買い物リストを作って", 0.90),
+    ("この前の調査の進展を教えて", 0.92),
+    ("ちょっと技術調査して", 0.92),
+    ("後で読めるようにまとめて", 0.90),
+    ("いつものメモに置いて", 0.90),
+    ("調査結果をテキストにして", 0.90),
+    ("ライセンスの変化を確認して", 0.92),
+    ("商用利用できるか見て", 0.92),
+    ("注文候補だけ作って", 0.90),
+    ("購入ボタンは押さずに準備して", 0.88),
+    ("おすすめを一つ選んで", 0.88),
+    ("見たい動画を開いて", 0.88),
+    ("次の予定を確認して", 0.90),
+    ("今の話を覚えておいて", 0.88),
+    ("この件を後で思い出させて", 0.90),
+    ("忙しいから要点だけにして", 0.90),
+    ("後で見るメモにして", 0.90),
+    ("作業の状態を教えて", 0.90),
+    ("今やってることを教えて", 0.90),
+    ("この前の続き見て", 0.88),
+    ("家庭教師みたいにヒント出して", 0.88),
+    ("答えを言わずに手伝って", 0.88),
+    ("リビングのテレビをつけて", 0.90),
+    ("音量を少し下げて", 0.90),
+    ("照明をつけて", 0.90),
+    ("エアコンを確認して", 0.88),
+]
+
+LIFE_COMMAND_SUFFIXES = [
+    "",
+    "、お願い",
+    "、今で大丈夫",
+    "、あとで確認する",
+    "、短くでいい",
+    "、できる？",
+    "、頼める？",
+    "、やっておいて",
+    "、下書きでいい",
+    "、確認だけでいい",
+]
+
 
 def build_anchor_labels(*, count: int = 1000) -> list[TeacherLabel]:
     if count <= 0:
@@ -495,6 +576,46 @@ def build_referential_anchor_labels(*, count: int = 1000) -> list[TeacherLabel]:
     ]
 
 
+def build_life_command_anchor_labels(*, count: int = 1000) -> list[TeacherLabel]:
+    if count <= 0:
+        raise ValueError("count must be positive")
+
+    rows: list[tuple[str, float]] = list(LIFE_COMMAND_ANCHORS)
+    for prefix in LIFE_COMMAND_PREFIXES:
+        for body, saturation in LIFE_COMMAND_BODIES:
+            for suffix in LIFE_COMMAND_SUFFIXES:
+                rows.append((f"{prefix}{body}{suffix}", saturation))
+
+    unique_rows: list[tuple[str, float]] = []
+    seen: set[str] = set()
+    for text, saturation in rows:
+        normalized = text.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        unique_rows.append((normalized, saturation))
+        if len(unique_rows) >= count:
+            break
+    if len(unique_rows) < count:
+        raise ValueError(f"only built {len(unique_rows)} unique life command anchors")
+
+    return [
+        TeacherLabel(
+            utterance_id=f"manual-life-command-anchor-{index:04d}",
+            prefix_index=0,
+            prefix_text=text,
+            full_text=text,
+            saturation=saturation,
+            teacher_model=LIFE_COMMAND_TEACHER_MODEL,
+            source="manual-life-command-anchor:v1",
+            is_final=True,
+            label_source="manual_life_command_anchor",
+            raw_output=f"SATURATION={saturation:.2f}",
+        )
+        for index, (text, saturation) in enumerate(unique_rows, start=1)
+    ]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Write handcrafted saturation anchor labels.")
     parser.add_argument("--out", required=True, type=Path)
@@ -502,7 +623,7 @@ def main() -> None:
     parser.add_argument(
         "--kind",
         default="general",
-        choices=("general", "contrastive", "referential"),
+        choices=("general", "contrastive", "referential", "life"),
     )
     args = parser.parse_args()
 
@@ -510,6 +631,8 @@ def main() -> None:
         anchors = build_contrastive_anchor_labels(count=args.count)
     elif args.kind == "referential":
         anchors = build_referential_anchor_labels(count=args.count)
+    elif args.kind == "life":
+        anchors = build_life_command_anchor_labels(count=args.count)
     else:
         anchors = build_anchor_labels(count=args.count)
     write_jsonl(args.out, (anchor.to_json() for anchor in anchors))

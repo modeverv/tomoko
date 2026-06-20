@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from collections.abc import Callable
 from contextlib import suppress
 from typing import TypeVar
@@ -36,6 +37,10 @@ from server.hot_path.model_executor import (
 )
 from server.hot_path.protocol import encode_server_event, parse_browser_message
 from server.hot_path.speech_executor import SpeechOrderExecutor
+from server.hot_path.turn_materials import (
+    InternalTurnMaterialClient,
+    TurnMaterialAggregator,
+)
 from server.shared.db import default_dsn
 from server.shared.models import (
     AudioSpeechSegment,
@@ -72,9 +77,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await conversation.warm_connections()
     result_queue: asyncio.Queue[HotPathConversationResult] = asyncio.Queue()
     result_sender = asyncio.create_task(_send_audio_result_queue(websocket, result_queue))
+    turn_materials = TurnMaterialAggregator(
+        window_ms=int(os.environ.get("TOMOKO_TURN_SIGNAL_WINDOW_MS", "200"))
+    )
+    turn_material_client = InternalTurnMaterialClient()
+    turn_material_client.start()
     backchannel_detector = create_backchannel_detector_from_env(
         playback_active=lambda: _conversation_playback_active(conversation),
         emission_callback=lambda emission: result_queue.put(_backchannel_result(emission)),
+        result_callback=turn_materials.observe_maai_result,
     )
     if backchannel_detector is not None:
         try:
@@ -107,6 +118,14 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 samples = audio_bytes_to_samples(message["bytes"])
                 if backchannel_detector is not None:
                     backchannel_detector.observe_user_audio(samples)
+                turn_material_snapshot = turn_materials.observe_audio(
+                    samples,
+                    now_ms=time.monotonic() * 1000.0,
+                    playback_active=_conversation_playback_active(conversation),
+                )
+                if turn_material_snapshot is not None:
+                    _apply_turn_materials(conversation, turn_material_snapshot)
+                    turn_material_client.submit(turn_material_snapshot)
                 if partial_lane is None:
                     result = await conversation.process_audio_samples(samples)
                 else:
@@ -142,6 +161,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             await partial_lane.stop()
         if backchannel_detector is not None:
             await backchannel_detector.stop()
+        await turn_material_client.stop()
         result_sender.cancel()
         with suppress(asyncio.CancelledError):
             await result_sender
@@ -532,6 +552,16 @@ def _conversation_playback_active(
 ) -> bool:
     speech_executor = getattr(conversation, "speech_executor", None)
     return bool(speech_executor is not None and speech_executor.current_order is not None)
+
+
+def _apply_turn_materials(
+    conversation: HotPathAudioConversation | HotPathDbSplitConversation,
+    materials: object,
+) -> None:
+    core = getattr(conversation, "conversation_core", None)
+    update = getattr(core, "update_turn_materials", None)
+    if update is not None:
+        update(materials)
 
 
 def _prompt_executor() -> PromptExecutor:

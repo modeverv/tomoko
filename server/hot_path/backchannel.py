@@ -80,12 +80,14 @@ class MaaiBackchannelDetector:
         assets: BackchannelAssetStore,
         playback_active: Callable[[], bool] | None = None,
         emission_callback: Callable[[BackchannelEmission], Any] | None = None,
+        result_callback: Callable[[dict[str, Any]], Any] | None = None,
         maai_module: Any | None = None,
     ) -> None:
         self.config = config
         self.assets = assets
         self.playback_active = playback_active or (lambda: False)
         self.emission_callback = emission_callback
+        self.result_callback = result_callback
         self._maai_module = maai_module
         self._audio_ch1: Any | None = None
         self._audio_ch2: Any | None = None
@@ -189,6 +191,7 @@ class MaaiBackchannelDetector:
                 await asyncio.sleep(0.2)
                 continue
             if isinstance(result, dict):
+                self._emit_result(result)
                 self.handle_result(result)
 
     def _emit(self, emission: BackchannelEmission) -> None:
@@ -198,12 +201,20 @@ class MaaiBackchannelDetector:
         if inspect.isawaitable(result):
             asyncio.create_task(_await_callback(result))
 
+    def _emit_result(self, result: dict[str, Any]) -> None:
+        if self.result_callback is None:
+            return
+        callback_result = self.result_callback(result)
+        if inspect.isawaitable(callback_result):
+            asyncio.create_task(_await_callback(callback_result))
+
 
 def create_backchannel_detector_from_env(
     *,
     asset_dir: Path | None = None,
     playback_active: Callable[[], bool] | None = None,
     emission_callback: Callable[[BackchannelEmission], Any] | None = None,
+    result_callback: Callable[[dict[str, Any]], Any] | None = None,
     maai_module: Any | None = None,
 ) -> MaaiBackchannelDetector | None:
     if os.environ.get("TOMOKO_V2_MAAI_BACKCHANNEL", "0") != "1":
@@ -231,6 +242,7 @@ def create_backchannel_detector_from_env(
         assets=assets,
         playback_active=playback_active,
         emission_callback=emission_callback,
+        result_callback=result_callback,
         maai_module=maai_module,
     )
 

@@ -29,6 +29,9 @@ TOMOKO_V2_MAAI_BACKCHANNEL ?= 1
 TOMOKO_V2_MAAI_BACKCHANNEL_THRESHOLD ?= 0.5
 TOMOKO_V2_MAAI_BACKCHANNEL_COOLDOWN_MS ?= 1500
 TOMOKO_V2_BACKCHANNEL_ASSET_DIR ?= assets/backchannels
+TOMOKO_INTERNAL_WS_HOST ?= 127.0.0.1
+TOMOKO_INTERNAL_WS_PORT ?= 8765
+TOMOKO_INTERNAL_WS_URL ?= ws://$(TOMOKO_INTERNAL_WS_HOST):$(TOMOKO_INTERNAL_WS_PORT)/internal/hot-path
 VOICEVOX_COMMAND ?= /Users/seijiro/Sync/sync_work/by-llms/async-voicevox/run_streaming_voicevox.command
 DFLASH_31B_MODEL ?= mlx-community/gemma-4-31b-it-4bit
 DFLASH_31B_DRAFT ?= z-lab/gemma-4-31B-it-DFlash
@@ -82,7 +85,7 @@ edge-kitchen-reload:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=logs/edge-kitchen.log $(PYTHON) -m uvicorn server.hot_path.app:app --host $(HOST) --port $(EDGE_KITCHEN_PORT) --log-level $(UVICORN_LOG_LEVEL) --reload
 
 v2-tomoko:
-	$(PYTHON) -m server.runtime process tomoko
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TOMOKO_LOG_FILE) $(PYTHON) -m uvicorn server.tomoko.realtime:app --host $(TOMOKO_INTERNAL_WS_HOST) --port $(TOMOKO_INTERNAL_WS_PORT) --log-level $(UVICORN_LOG_LEVEL)
 
 v2-think thinker thinker2:
 	$(PYTHON) -m server.runtime process think
@@ -142,8 +145,8 @@ v2-runtime tmux-runtime:
 	tmux new-session -d -s $(TMUX_SESSION) -n llm-run 'cd "$(CURDIR)" && DFLASH_TMUX_SESSION="$(TMUX_SESSION)" DFLASH_TMUX_EMBED=1 DFLASH_TMUX_MOUSE="$(TMUX_MOUSE)" make llm-run; exec zsh -l'
 	tmux set-option -t $(TMUX_SESSION) mouse $(TMUX_MOUSE)
 	tmux new-window -t $(TMUX_SESSION): -n voicevox 'cd "$(CURDIR)" && make voicevox-run; exit_code=$$?; echo; echo "voicevox-run exited with status $$exit_code; keeping window open."; while :; do sleep 3600; done'
-	tmux new-window -t $(TMUX_SESSION): -n hot-path 'cd "$(CURDIR)" && make v2-runtime-ready && TOMOKO_V2_DISTILLED_SATURATION_MODEL="$(TOMOKO_V2_DISTILLED_SATURATION_MODEL)" TOMOKO_V2_MAAI_BACKCHANNEL="$(TOMOKO_V2_MAAI_BACKCHANNEL)" TOMOKO_V2_MAAI_BACKCHANNEL_THRESHOLD="$(TOMOKO_V2_MAAI_BACKCHANNEL_THRESHOLD)" TOMOKO_V2_MAAI_BACKCHANNEL_COOLDOWN_MS="$(TOMOKO_V2_MAAI_BACKCHANNEL_COOLDOWN_MS)" TOMOKO_V2_BACKCHANNEL_ASSET_DIR="$(TOMOKO_V2_BACKCHANNEL_ASSET_DIR)" exec make server-debug'
 	tmux new-window -t $(TMUX_SESSION): -n tomoko 'cd "$(CURDIR)" && exec make v2-tomoko'
+	tmux new-window -t $(TMUX_SESSION): -n hot-path 'cd "$(CURDIR)" && make v2-runtime-ready && TOMOKO_INTERNAL_WS_URL="$(TOMOKO_INTERNAL_WS_URL)" TOMOKO_V2_DISTILLED_SATURATION_MODEL="$(TOMOKO_V2_DISTILLED_SATURATION_MODEL)" TOMOKO_V2_MAAI_BACKCHANNEL="$(TOMOKO_V2_MAAI_BACKCHANNEL)" TOMOKO_V2_MAAI_BACKCHANNEL_THRESHOLD="$(TOMOKO_V2_MAAI_BACKCHANNEL_THRESHOLD)" TOMOKO_V2_MAAI_BACKCHANNEL_COOLDOWN_MS="$(TOMOKO_V2_MAAI_BACKCHANNEL_COOLDOWN_MS)" TOMOKO_V2_BACKCHANNEL_ASSET_DIR="$(TOMOKO_V2_BACKCHANNEL_ASSET_DIR)" exec make server-debug'
 	tmux new-window -t $(TMUX_SESSION): -n info 'cd "$(CURDIR)" && exec make v2-info'
 	tmux new-window -t $(TMUX_SESSION): -n user-status 'cd "$(CURDIR)" && exec make v2-user-status'
 	tmux new-window -t $(TMUX_SESSION): -n summary 'cd "$(CURDIR)" && exec make v2-summary'

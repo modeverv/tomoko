@@ -29,6 +29,7 @@ from server.tomoko.db_bridge import (
     notify_speech_order_sql,
     update_conversation_session_activity_sql,
 )
+from server.tomoko.gates import LlmFireGate, SpeechEmissionGate
 from server.tomoko.main import TomokoProcessCore
 from server.tomoko.scheduler import SpeechScheduler
 from server.tomoko.semantic import SemanticSaturationJudge
@@ -312,6 +313,8 @@ def create_default_worker(
             session_model=SessionBoundaryModel(),
             saturation_judge=SemanticSaturationJudge(logger=logger),
             scheduler=SpeechScheduler(logger=logger),
+            llm_fire_gate=LlmFireGate(logger=logger),
+            speech_emission_gate=SpeechEmissionGate(logger=logger),
             chat_backend=chat_backend,
         ),
         logger=logger,

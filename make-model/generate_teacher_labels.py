@@ -3,18 +3,22 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import random
 from pathlib import Path
 from typing import Any
 
-from make_model.schema import PrefixExample, read_jsonl, write_jsonl
+from make_model.schema import PrefixExample, TeacherLabel, read_jsonl, write_jsonl
 from make_model.teacher import (
     DEFAULT_TEACHER_MODEL,
     DEFAULT_TEACHER_URL,
     OpenAICompatibleTeacher,
     TeacherBackend,
     TeacherConfig,
+    deterministic_saturation,
     label_prefix_examples,
+    parse_saturation_output,
+    saturation_prompt,
 )
 
 
@@ -66,17 +70,81 @@ async def _run(args: argparse.Namespace) -> None:
             max_tokens=args.max_tokens,
             timeout_sec=args.timeout_sec,
         )
-    labels = await label_prefix_examples(
-        examples,
-        teacher=teacher,
-        config=TeacherConfig(
-            source_model=args.model,
-            fallback_on_error=not args.no_fallback,
-            sleep_sec=args.sleep_sec,
-        ),
+    config = TeacherConfig(
+        source_model=args.model,
+        fallback_on_error=not args.no_fallback,
+        sleep_sec=args.sleep_sec,
     )
-    write_jsonl(args.out, (label.to_json() for label in labels))
+    if args.incremental:
+        labels = await label_prefix_examples_incremental(
+            examples,
+            teacher=teacher,
+            config=config,
+            out=args.out,
+            progress_every=args.progress_every,
+        )
+    else:
+        labels = await label_prefix_examples(
+            examples,
+            teacher=teacher,
+            config=config,
+        )
+        write_jsonl(args.out, (label.to_json() for label in labels))
     print(f"wrote {len(labels)} teacher labels to {args.out}")
+
+
+async def label_prefix_examples_incremental(
+    examples: list[PrefixExample],
+    *,
+    teacher: TeacherBackend,
+    config: TeacherConfig,
+    out: Path,
+    progress_every: int,
+) -> list[TeacherLabel]:
+    labels: list[TeacherLabel] = []
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8") as file:
+        for index, example in enumerate(examples, start=1):
+            raw_output = ""
+            label_source = "teacher_llm"
+            try:
+                raw_output = await teacher.complete(saturation_prompt(example.prefix_text))
+                result = parse_saturation_output(
+                    raw_output,
+                    basis_text=example.prefix_text,
+                    source="teacher_llm",
+                )
+            except Exception:
+                if not config.fallback_on_error:
+                    raise
+                result = deterministic_saturation(
+                    example.prefix_text,
+                    source="deterministic_fallback",
+                )
+                label_source = "deterministic_fallback"
+            label = TeacherLabel(
+                utterance_id=example.utterance_id,
+                prefix_index=example.prefix_index,
+                prefix_text=example.prefix_text,
+                full_text=example.full_text,
+                saturation=result.saturation,
+                teacher_model=config.source_model,
+                source=example.source,
+                conversation_id=example.conversation_id,
+                turn_index=example.turn_index,
+                is_final=example.is_final,
+                label_source=label_source,
+                raw_output=raw_output,
+            )
+            labels.append(label)
+            file.write(json.dumps(label.to_json(), ensure_ascii=False, sort_keys=True))
+            file.write("\n")
+            file.flush()
+            if progress_every > 0 and (index == 1 or index % progress_every == 0):
+                print(f"labeled {index}/{len(examples)} prefixes")
+            if config.sleep_sec > 0:
+                await asyncio.sleep(config.sleep_sec)
+    return labels
 
 
 def main() -> None:
@@ -93,6 +161,8 @@ def main() -> None:
     parser.add_argument("--sample-seed", default=20260619, type=int)
     parser.add_argument("--no-fallback", action="store_true")
     parser.add_argument("--deterministic-only", action="store_true")
+    parser.add_argument("--incremental", action="store_true")
+    parser.add_argument("--progress-every", default=50, type=int)
     args = parser.parse_args()
     if args.limit is not None and args.sample_size is not None:
         parser.error("--limit and --sample-size cannot be used together")

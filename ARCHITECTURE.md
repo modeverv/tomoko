@@ -560,6 +560,251 @@ STT / user-status / candidate / calendar
 
 このログが、後から「なぜ今しゃべったか」「なぜ黙ったか」「なぜ上書きしたか」を説明する材料になる。
 
+## 2026-06-20 追記: 計算モデルは Materials -> Pressures -> Gates として整理する
+
+発話判断計算モデルは、見通しのために次の三語で分ける。
+
+```text
+Materials:
+  観測された事実、外部情報、人格傾向などの計算材料
+
+Pressures:
+  materials から計算された、話したさ・自然さ・出しやすさなどの中間量
+
+Gates:
+  pressures と candidate から実行 decision を出す裁定器
+```
+
+`input` という語は曖昧なので、raw 音声情報、無音時間、VAP/MaAI、
+STT partial/final、外部調査結果、性格傾向は `materials` と呼ぶ。
+`silence_ms` や `p_yielding` は特定 pressure model の所有物ではない。
+複数の pressure model が同じ material を参照して、それぞれ違う意味の圧力を計算する。
+
+```text
+Raw observations / memory / world info / personality
+  -> Materials
+  -> Pressure models
+  -> LlmFireGate
+      pressure を合成して LLM に行くかだけを決める
+  -> LLM
+  -> PreparedSpeechCandidate
+  -> SpeechEmissionGate
+      今 hot-path に speech-order として送るか
+  -> SpeechOrder
+  -> hot-path TTS/audio
+```
+
+### Materials
+
+Materials はまだ判断ではない。
+観測された事実や、別 worker が持ってきた材料を、Tomoko 内で pressure 計算に使える形に整える。
+
+```text
+TurnMaterials:
+  audio_rms
+  silence_ms
+  user_speaking
+  speech_probability
+  playback_active
+  p_yielding
+  p_bc_react
+  p_bc_emo
+  stt_partial
+  window_ms
+
+WorldMaterials:
+  external_result_importance
+  memory_relevance
+  calendar_urgency
+  followup_age_ms
+  followup_importance
+  curiosity_relevance
+
+PersonalityMaterials:
+  talkativeness
+  curiosity
+  restraint
+  empathy
+  interrupt_tolerance
+```
+
+hot-path から tomoko-process へ渡る 200ms 程度の WebSocket payload は
+`TurnMaterials` である。これは durable log ではなく latest-wins の realtime material であり、
+DB / NOTIFY に raw MaAI/VAP frame を流さない。
+
+### Pressures
+
+Pressure は materials から計算された中間量である。
+gate は raw material を雑に合成せず、原則として pressure を読む。
+
+```text
+DialogueTurnPressure:
+  semantic saturation
+  stable prefix / final STT
+  VAP / p_yielding
+  user_speaking / silence_ms
+  -> reply_readiness
+  -> turn_opportunity
+  -> interruption_risk
+
+NaturalSpeechPressure:
+  MaAI backchannel score
+  silence_ms
+  personality empathy/restraint
+  -> backchannel_desire
+  -> light_reaction_desire
+  -> filler_desire
+  -> clarification_desire
+  -> naturalness
+
+MotivationPressure:
+  Tomoko の話したい圧
+  personality talkativeness/curiosity/restraint
+  silence_ms
+  -> initiative_desire
+  -> personality_push
+  -> restraint
+  -> interrupt_tolerance
+
+WorldPressure:
+  external result / memory / calendar / followup
+  silence_ms / p_yielding / user_speaking
+  personality curiosity/restraint
+  -> importance
+  -> urgency
+  -> relevance
+  -> deliverability
+  -> decay
+```
+
+例えば `silence_ms` は `DialogueTurnPressure` では「ユーザーが譲ったか」に効き、
+`NaturalSpeechPressure` では「間を埋めても自然か」に効き、
+`WorldPressure` では「外部情報を今差し込めるか」に効く。
+同じ material を複数 pressure が使うが、pressure の意味は混ぜない。
+
+### LlmFireGate
+
+LlmFireGate は、Tomoko 側で LLM を fire して
+発話候補を作るかどうかだけを決める gate である。
+ここではまだ hot-path に音声を出さない。
+また、ここで「main reply」「initiative」「world summary」のような intent 分岐を持たない。
+その区別は pressure の内訳として観測されるだけで、gate の責務は
+pressure を合成して `fire` / `do_not_fire` / `cancel_or_replace_pending` を返すことに限定する。
+
+主な入力:
+
+```text
+TurnMaterials
+DialogueTurnPressure
+NaturalSpeechPressure
+MotivationPressure
+WorldPressure
+pending_inference
+```
+
+主な出力:
+
+```text
+do_not_fire
+fire
+cancel_or_replace_pending
+```
+
+この gate の目的は、低レイテンシーのために早く準備を始めることと、
+意味が不十分な partial や低重要度の外部情報で重い推論を乱発しないことの両立である。
+semantic saturation、無音、外部調査結果、calendar、motivation は
+それぞれ pressure として合成 score に効く。
+どの pressure が強かったかは `score_breakdown` に残すが、LLM 前に intent enum は作らない。
+
+### SpeechEmissionGate
+
+SpeechEmissionGate は、Tomoko 側に生成済みの発話候補がある時に、
+それを今 hot-path 側へ `speech-order` として送出するかを決める gate である。
+
+ここで判断するのは「推論を走らせる価値があるか」ではなく、
+「今、物理的に口から出してよいか」である。
+したがって candidate priority や motivation は重要な係数だが、最終判断では
+ユーザー発話の遮り、勘違いリスク、semantic confidence、freshness、
+WorldPressure.deliverability、stop intent と競合させる。
+
+主な入力:
+
+```text
+PreparedSpeechCandidate
+TurnMaterials
+DialogueTurnPressure
+NaturalSpeechPressure
+MotivationPressure
+WorldPressure
+current_speech_score
+tomoko_currently_speaking
+stop_intent
+recent_rejection_penalty
+fatigue
+```
+
+主な出力:
+
+```text
+emit_now
+append_after_current
+replace_current
+hold
+suppress
+stop
+```
+
+この gate は「ユーザー発話を遮ってでも、少し勘違いしながら発話するか」を扱う。
+motivation が高く、semantic confidence が中程度で、関係性イベントとして許容できる時は
+短く撤回可能な割り込みを `replace_current` または `emit_now` へ寄せる。
+一方で、ユーザーが強く話している、誤解リスクが高い、直近で拒否された、stop intent がある場合は
+`hold` / `suppress` / `stop` へ寄せる。
+
+### ログ上の分離
+
+二段 gate は、ログと artifact でも分けて残す。
+
+```json
+{
+  "llm_fire_gate": {
+    "decision": "fire",
+    "score": 0.88,
+    "score_breakdown": {
+      "dialogue_reply_readiness": 0.55,
+      "motivation_initiative": 0.08,
+      "world_deliverability": 0.17
+    },
+    "reason": "pressure synthesis crossed LLM fire threshold"
+  },
+  "speech_emission_gate": {
+    "decision": "replace_current",
+    "score": 1.12,
+    "reason": "prepared reply beats current speech and interruption risk is acceptable"
+  }
+}
+```
+
+これにより、「LLM を早く走らせる問題」と
+「生成済み発話を実際に声に出す問題」を別々に調整できる。
+2026-06-20 時点の実装では、`SpeechScheduler` は legacy unit と返却互換の型名として残すが、
+`TomokoConversationCore` の通常発話裁定経路からは外す。
+通常経路は次の順で判断する。
+
+```text
+TurnMaterials / WorldMaterials / PersonalityMaterials
+  -> DialogueTurnPressure / NaturalSpeechPressure / MotivationPressure / WorldPressure
+  -> LlmFireGate
+  -> LLM
+  -> PreparedSpeechCandidate
+  -> SpeechEmissionGate
+  -> SpeechOrder
+```
+
+`LlmFireGate` は pressure を合成して LLM に行くかだけを見て、
+`SpeechEmissionGate` は LLM 後の生成済み候補を今 hot-path に送出するかを最終的に整える。
+hot-path から届く `TurnMaterials` は pressure models の material であり、
+gate に直接押し込む raw input ではない。
+
 ## 未来メモ: 口喧嘩できる Tomoko
 
 Tomoko の中長期的な到達点のひとつは、「口喧嘩できる Tomoko」である。
@@ -636,3 +881,103 @@ semantic low + motivation low:
 hot-path は音声シグナル、MaAI、cached backchannel、低レイテンシー出力を担当する。
 motivation の所有者は tomoko-process 側に置き、
 hot-path には、その時点の閾値やモードだけを渡す。
+
+## 未来メモ: NOTIFY/LISTEN から WS origin へ
+
+現行 v2 の process 間連携では、PostgreSQL を source of truth とし、
+`LISTEN/NOTIFY` は DB row id だけを流す control plane として使っている。
+これは durable な会話記録、recovery、debug、replay のためには有効である。
+
+一方で、VAP、MaAI、semantic saturation、motivation を使って
+発話開始タイミングを詰めていく future path では、
+short-cycle の制御線を DB / `LISTEN/NOTIFY` に乗せ続けると
+insert / select / notify / reconnect / recovery poll の儀式が体感レイテンシーに乗る。
+特に VAP のような 20ms から 50ms 周期の音響シグナルは、
+DB に流すのではなく hot-path のメモリ内に閉じ込めるべきである。
+
+将来的には、リアルタイム制御の origin を `LISTEN/NOTIFY` から
+常時接続 WebSocket へ寄せる。
+
+```text
+Browser
+  <ws: audio/events>
+Hot-path process
+  <internal ws: realtime control/events>
+Tomoko process
+  <world ws: research/tasks/events>
+World information worker
+```
+
+hot-path は 2 本の WebSocket を持つ。
+
+```text
+browser <-> hot-path:
+  audio frames
+  playback events
+  browser-facing transcript / status events
+
+hot-path <-> tomoko-process:
+  turn opportunity snapshot
+  motivation snapshot
+  threshold profile
+  mode / interruptiveness
+  turn opportunity
+  early-start decision
+  backchannel emitted
+  decision trace
+```
+
+Tomoko process は、さらに world information worker と WebSocket を張る。
+調査タスクは HTTP request / response の一括完了を待つのではなく、
+途中結果を切り詰めて返せる streaming task として扱う。
+
+```text
+tomoko-process -> world worker:
+  research_task(query, budget_ms, urgency)
+
+world worker -> tomoko-process:
+  partial_findings
+  usable_summary
+  final_summary
+```
+
+この構成での責務分担は次の通り。
+
+```text
+hot-path:
+  音声反射
+  VAP / MaAI / semantic saturation
+  fixed backchannel
+  low-latency TTS/audio execution
+
+tomoko-process:
+  motivation
+  personality state
+  relationship state
+  memory/context
+  conversation policy
+  threshold profile
+
+world information worker:
+  search / research / summarization
+  long I/O
+  partial information streaming
+
+PostgreSQL:
+  durable conversation log
+  memory
+  audit / replay
+  final research result persistence
+```
+
+重要なのは、WebSocket に raw VAP の全フレームを流さないことである。
+VAP の生値は hot-path 内で平滑化し、境界を渡るのは
+`turn_materials` のような Tomoko 側 pressure model が消費できる material にする。
+同様に、Tomoko から hot-path へ渡すのも人格状態そのものではなく、
+その時点で hot-path が使う `motivation_snapshot` や `threshold_profile` に限定する。
+
+つまり、DB は保存と再現の場所、WebSocket は神経系、
+hot-path は反射、Tomoko process は人格、world worker は外界認識として分離する。
+`LISTEN/NOTIFY` はすぐ消す対象ではなく、
+WS control plane が安定するまでは durable fallback / audit 用として残す。
+安定後に、リアルタイム制御線から段階的に外していく。

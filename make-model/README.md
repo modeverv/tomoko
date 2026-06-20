@@ -567,3 +567,142 @@ SATURATION=0.9123
 
 この artifact はまだ runtime 採用ではない。採用前に、既存 Gemma semantic lane と
 shadow 比較して false start / missed early-start を見る。
+
+## public synthetic-only 系統を作る
+
+GitHub public に置きやすい artifact を作る場合は、ネット上の会話コーパスを使わず、
+Codex / ユーザー / 自作スクリプト由来の synthetic text だけを teacher input にする。
+
+provenance は `PUBLIC_SYNTHETIC_PROVENANCE.md`、model card は
+`MODEL_CARD.public-synthetic.md` に書く。
+
+### 1. synthetic corpus / prefixes を生成する
+
+```bash
+uv run python make-model/generate_synthetic_saturation_corpus.py \
+  --out-dir make-model/data/public-synthetic \
+  --utterance-count 2500 \
+  --seed 20260620 \
+  --min-chars 1 \
+  --stride-chars 1 \
+  --max-prefixes-per-utterance 80
+```
+
+出力:
+
+```text
+make-model/data/public-synthetic/corpus.jsonl
+make-model/data/public-synthetic/prefixes.jsonl
+make-model/data/public-synthetic/manifest.json
+```
+
+### 2. Gemma 4 26B で初期 teacher labels を作る
+
+```bash
+curl http://127.0.0.1:8082/v1/models
+
+uv run python make-model/generate_teacher_labels.py \
+  --prefixes make-model/data/public-synthetic/prefixes.jsonl \
+  --out make-model/data/public-synthetic/teacher-labels-gemma26b-10000.jsonl \
+  --sample-size 10000 \
+  --sample-seed 20260620 \
+  --url http://127.0.0.1:8082 \
+  --model mlx-community/gemma-4-26b-a4b-it-4bit \
+  --incremental \
+  --progress-every 100
+```
+
+短時間 smoke の場合は `--sample-size 200` などに下げる。
+`--incremental` を付けると 1 行ずつ JSONL に書くため、長時間実行を止めても途中成果が残る。
+
+### 3. train / eval に分ける
+
+```bash
+uv run python make-model/split_teacher_labels.py \
+  --labels make-model/data/public-synthetic/teacher-labels-gemma26b-10000.jsonl \
+  --train-out make-model/data/public-synthetic/teacher-labels-gemma26b-10000-train.jsonl \
+  --eval-out make-model/data/public-synthetic/teacher-labels-gemma26b-10000-eval.jsonl \
+  --train-size 8000 \
+  --seed 20260620
+```
+
+### 4. Codex / 手作業 anchor labels を作る
+
+```bash
+uv run python make-model/make_anchor_teacher_labels.py \
+  --out make-model/data/public-synthetic/teacher-labels-manual-anchors-1000.jsonl \
+  --count 1000
+
+uv run python make-model/make_anchor_teacher_labels.py \
+  --out make-model/data/public-synthetic/teacher-labels-manual-contrastive-anchors-1000.jsonl \
+  --kind contrastive \
+  --count 1000
+
+uv run python make-model/make_anchor_teacher_labels.py \
+  --out make-model/data/public-synthetic/teacher-labels-manual-referential-anchors-1000.jsonl \
+  --kind referential \
+  --count 1000
+
+uv run python make-model/make_anchor_teacher_labels.py \
+  --out make-model/data/public-synthetic/teacher-labels-manual-life-command-anchors-1000.jsonl \
+  --kind life \
+  --count 1000
+```
+
+### 5. train split と anchor labels を結合する
+
+```bash
+uv run python make-model/combine_teacher_labels.py \
+  --out make-model/data/public-synthetic/teacher-labels-gemma26b-10000-train-plus-anchors.jsonl \
+  make-model/data/public-synthetic/teacher-labels-gemma26b-10000-train.jsonl \
+  make-model/data/public-synthetic/teacher-labels-manual-anchors-1000.jsonl \
+  make-model/data/public-synthetic/teacher-labels-manual-contrastive-anchors-1000.jsonl \
+  make-model/data/public-synthetic/teacher-labels-manual-referential-anchors-1000.jsonl \
+  make-model/data/public-synthetic/teacher-labels-manual-life-command-anchors-1000.jsonl
+```
+
+### 6. train / evaluate / benchmark
+
+```bash
+uv run python make-model/train_saturation_model.py \
+  --labels make-model/data/public-synthetic/teacher-labels-gemma26b-10000-train-plus-anchors.jsonl \
+  --out make-model/artifacts/public-synthetic-gemma26b-plus-anchors-life-h8192-l001-saturation-model.json \
+  --metrics-out make-model/artifacts/public-synthetic-gemma26b-plus-anchors-life-h8192-l001-train-metrics.json \
+  --hash-size 8192 \
+  --ridge-lambda 0.01
+
+uv run python make-model/evaluate_saturation_model.py \
+  --model make-model/artifacts/public-synthetic-gemma26b-plus-anchors-life-h8192-l001-saturation-model.json \
+  --labels make-model/data/public-synthetic/teacher-labels-gemma26b-10000-eval.jsonl \
+  --threshold 0.75
+
+uv run python make-model/benchmark_saturation_latency.py \
+  --model make-model/artifacts/public-synthetic-gemma26b-plus-anchors-life-h8192-l001-saturation-model.json \
+  --repeats 10000 \
+  --warmup 1000 \
+  --final \
+  "今日の予定を教えて"
+```
+
+公開時は、artifact と一緒に `PUBLIC_SYNTHETIC_PROVENANCE.md` と
+`MODEL_CARD.public-synthetic.md` を確認する。
+
+2026-06-20 の短時間 smoke では、Gemma teacher 200件を 160 train / 40 eval に分け、
+general / contrastive / referential / life command anchors 各1000件を train に足した。
+
+```text
+model:
+  make-model/artifacts/public-synthetic-gemma26b-200-plus-anchors-life-h8192-l001-saturation-model.json
+train labels:
+  teacher_llm: 160
+  manual anchors: 4000
+held-out eval:
+  count: 40
+  binary_accuracy: 0.900
+  mae: 0.15981232172049104
+  rmse: 0.24036738390980764
+hot predict latency:
+  mean: 0.281958ms
+  p50: 0.265708ms
+  p95: 0.430631ms
+```
