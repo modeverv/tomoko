@@ -2099,3 +2099,34 @@
 
 ### 次のセッションでやること
 - `PLAN.md` の Phase V2.0 に従い、root `README.md` / `MEMORY.md` / v2 用ディレクトリ / root Makefile を作る。
+
+## 2026-06-20 セッション31
+
+### やること（開始時に書く）
+- `append_after_current` dedupe suppress を Tomoko 発話中または speech queue active 中に限定し、無音・待機中の自然な人間の言い直しを落とさない。
+- suppress 条件の unit test を先に追加し、同じ duplicate 判定でも idle 中は `should_suppress=False` になることを固定する。
+
+### やったこと
+- `HashRidgeAppendDedupeGuard` の suppress 条件に `tomoko_speaking or speech_queue_active` を追加した。
+- `tests/unit/test_append_dedupe_guard.py` を追加し、同じ duplicate score でも idle 中は pass、Tomoko 発話中または queue active 中だけ suppress する contract を固定した。
+- default artifact smoke で idle / speaking / queued の `should_suppress` 差分を確認した。
+- `MEMORY.md` と `_docs/latency.md` に、自然発話保護の判断と benchmark 結果を追記した。
+
+### 結果
+- idle: `label=duplicate`, `duplicate_score=0.993`, `should_suppress=False`
+- speaking: `label=duplicate`, `duplicate_score=0.993`, `should_suppress=True`
+- queued: `label=duplicate`, `duplicate_score=0.993`, `should_suppress=True`
+- resident benchmark は load 0.9293ms、mean 0.4134ms、p50 0.4013ms、p95 0.4792ms。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_append_dedupe_guard.py -q`
+  - 1 passed
+- `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py -q`
+  - 16 passed
+- `uv run pytest -m unit -q`
+  - 137 passed, 1 deselected
+- `uv run python make-model/benchmark_append_dedupe_latency.py --model make-model/artifacts/public-synthetic-append-dedupe-h2048-l005-model.json --previous 'うんあんまりよくわかってない' --current 'あんまりよくわかってない' --time-delta-ms 900 --tomoko-speaking --speech-queue-active --repeats 10000 --warmup 1000 --json`
+  - mean 0.4134ms / p50 0.4013ms / p95 0.4792ms
+
+### 次のセッションでやること
+- live `/ws` 会話または targeted replay で、Tomoko 発話中の duplicate は `append_dedupe_suppressed` になり、idle 中の自然な言い直しは suppress されないことを実ログで確認する。

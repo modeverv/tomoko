@@ -80,6 +80,7 @@ class HashRidgeAppendDedupeGuard:
             and result.continuation_score <= self.config.max_continuation_score
             and result.new_intent_score <= self.config.max_new_intent_score
             and 0 <= time_delta_ms <= self.config.max_time_delta_ms
+            and (tomoko_speaking or speech_queue_active)
         )
         reason = (
             "append dedupe duplicate score crossed suppress threshold"
