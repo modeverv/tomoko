@@ -647,3 +647,25 @@ LLM に行くかだけを決める gate に限定する。
 - [x] LLM 前の gate が intent enum を返さない。
 - [x] pressure breakdown で、どの pressure が強かったかだけを観測できる。
 - [x] focused unit と ruff が通る。
+
+## Phase S21: WS-origin hot conversation control plane
+
+DB `LISTEN/NOTIFY` を hot-path / Tomoko 間の会話制御 RPC として使うのをやめ、
+internal WebSocket を制御線の origin にする。DB は Tomoko process 側が必要なものを
+永続化する audit / replay store として残す。
+
+### やること
+
+- [x] hot-path -> Tomoko WS に `stt_observation` partial/final を送る。
+- [x] hot-path -> Tomoko WS に `turn_materials` latest-wins signal を送る。
+- [x] hot-path -> Tomoko WS に `playback_state` を送る。
+- [x] Tomoko -> hot-path WS に `speech_order` を返し、hot-path が TTS/audio 実行する。
+- [x] Tomoko -> hot-path WS に `cancel_order` / `ack` を返せる contract を作る。
+- [x] Tomoko process 側で必要な session / utterance / scheduler / speech-order を DB に保存する。
+- [x] DB split `LISTEN/NOTIFY` path は fallback / comparison path として残し、runtime default は WS split に寄せる。
+
+### 完了条件
+
+- [x] unit test で `turn_materials -> stt_observation -> speech_order` の bidirectional WS contract が通る。
+- [x] fake `/ws` smoke で hot-path と Tomoko realtime process を別 process にして会話が成立する。
+- [x] `_docs/latency.md` に DB split との latency 比較を残す。

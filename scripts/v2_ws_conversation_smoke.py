@@ -22,6 +22,7 @@ async def run_smoke(*, port: int, fake_runtime: bool) -> dict[str, Any]:
     events: list[dict[str, Any]] = []
     audio_chunks = 0
     audio_bytes = 0
+    started = time.perf_counter()
     async with websockets.connect(url, max_size=16 * 1024 * 1024) as websocket:
         ready = json.loads(await websocket.recv())
         events.append(ready)
@@ -53,6 +54,7 @@ async def run_smoke(*, port: int, fake_runtime: bool) -> dict[str, Any]:
 
     return {
         "fake_runtime": fake_runtime,
+        "total_ms": (time.perf_counter() - started) * 1000.0,
         "events": [event.get("type") for event in events],
         "transcript": _first_event_text(events, "transcript"),
         "reply": _first_event_text(events, "model_complete"),
@@ -69,6 +71,7 @@ def main() -> None:
     args = parser.parse_args()
 
     port = args.port or _free_port()
+    tomoko_port = _free_port()
     server: subprocess.Popen[str] | None = None
     tomoko: subprocess.Popen[str] | None = None
     try:
@@ -76,12 +79,28 @@ def main() -> None:
             env = os.environ.copy()
             if args.fake_runtime:
                 env["TOMOKO_V2_FAKE_RUNTIME"] = "1"
+            env["TOMOKO_V2_WS_SPLIT"] = "1"
+            env["TOMOKO_INTERNAL_WS_URL"] = (
+                f"ws://127.0.0.1:{tomoko_port}/internal/hot-path"
+            )
             Path("logs").mkdir(exist_ok=True)
             tomoko = subprocess.Popen(
-                [sys.executable, "-m", "server.runtime", "process", "tomoko"],
+                [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "server.tomoko.realtime:app",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(tomoko_port),
+                    "--log-level",
+                    "warning",
+                ],
                 env=env,
                 text=True,
             )
+            _wait_http_ready(f"http://127.0.0.1:{tomoko_port}/docs")
             server = subprocess.Popen(
                 [
                     sys.executable,

@@ -978,6 +978,28 @@ VAP の生値は hot-path 内で平滑化し、境界を渡るのは
 
 つまり、DB は保存と再現の場所、WebSocket は神経系、
 hot-path は反射、Tomoko process は人格、world worker は外界認識として分離する。
-`LISTEN/NOTIFY` はすぐ消す対象ではなく、
-WS control plane が安定するまでは durable fallback / audit 用として残す。
-安定後に、リアルタイム制御線から段階的に外していく。
+2026-06-20 時点では、hot-path / Tomoko process 間の会話制御線は
+internal WebSocket を origin に寄せる。
+
+```text
+hot-path -> tomoko-process:
+  stt_observation(partial/final)
+  turn_materials
+  playback_state
+
+tomoko-process -> hot-path:
+  speech_order
+  cancel_order
+  ack / backpressure
+
+tomoko-process -> PostgreSQL:
+  durable utterance
+  scheduler decision
+  prompt request
+  speech-order audit
+  model/output summary
+```
+
+`LISTEN/NOTIFY` は hot control RPC から外し、WS control plane の fallback /
+比較用として残す。DB は保存と再現の場所、WebSocket は神経系、
+hot-path は反射、Tomoko process は人格、world worker は外界認識として分離する。

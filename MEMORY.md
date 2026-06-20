@@ -686,3 +686,86 @@ Tomoko が話している、または speech queue が active な時だけ LLM/T
 これにより無音・待機中に人間が自然に言い直した non-null final 発話は、
 モデルが duplicate と見ても会話推論へ進める。guard の目的は「発話中/キュー中の append 重複抑制」であり、
 自然発話の訂正や言い直しを広く削ることではない。
+
+## 2026-06-20 セッション32 気づき
+
+### VAP/MaAI materials WS は runtime 起動時だけ live になる
+`make run` / `tmux-runtime` は tomoko realtime `:8765` を hot-path より先に起動し、
+hot-path window に `TOMOKO_INTERNAL_WS_URL=ws://127.0.0.1:8765/internal/hot-path` を渡す。
+hot-path `/ws` は audio chunk ごとに `TurnMaterialAggregator` で 200ms `TurnMaterials` を作り、
+in-process direct core に反映しつつ internal WS client へ submit する。
+
+2026-06-20 23:25 JST 時点では tmux runtime と `:8000` / `:8765` の listener が無かったため、
+live 通信は動いていなかった。2026-06-20 15:40 の live smoke では `_docs/latency.md` に
+`turn_materials` internal WS 受信が記録されているが、実 MaAI/VAP yield 値は無く
+`p_yielding=None` だった。つまり経路は存在するが、今の live 状態確認では runtime 起動が前提になる。
+
+### partial STT DB bridge は local DB で p95 約 1ms
+local PostgreSQL に対して `INSERT v2_stt_observations(partial) -> v2_notify_id('v2_stt_observation') ->
+LISTEN receive -> SELECT row` を 300 samples / 20 warmup で測った。
+full insert+notify+select は avg 0.858ms / p50 0.810ms / p95 1.049ms / p99 1.642ms。
+内訳平均は insert 0.367ms、notify execute 0.225ms、notify execute done から受信まで 0.052ms、
+受信後 select 0.214ms。DB split fake smoke の transcript->order は既存 artifact 群で
+0.055ms〜0.190ms だが、これは client event 上の粗い差分であり、DB microbench の方が
+insert/select/notify の実コストを見る値として扱う。
+
+ただしこれは DB component の partial row microbench であり、2026-06-20 23:30 時点の
+`HotPathDbSplitConversation` の実 `/ws` DB split 経路は `final_observation` を選んで
+`v2_stt_observation` NOTIFY している。schema と tomoko DB worker は partial row を処理できるが、
+live hot-path DB split が partial を DB に流しているとは扱わない。
+
+## 2026-06-20 セッション33 確定した判断
+
+### hot conversation control は WS origin に寄せる
+hot-path と Tomoko process の会話制御線は、DB `LISTEN/NOTIFY` RPC ではなく
+internal WebSocket を origin にする。hot-path は `TOMOKO_V2_WS_SPLIT=1` で
+`RemoteTomokoWsCore` を使い、`stt_observation`、latest `turn_materials`、
+`playback_state` を Tomoko realtime `/internal/hot-path` に送る。
+Tomoko realtime は同じ WS 境界で `speech_order`、`cancel_order`、各種 ack を返し、
+hot-path は `SpeechOrderExecutor` で TTS/audio だけを実行する。
+
+DB は hot control plane ではなく、Tomoko process 側の best-effort audit / replay store として残す。
+Tomoko realtime は observation / saturation / scheduler decision / prompt request / speech-order /
+utterance を保存できるが、保存失敗は会話 WS を落とさず `persist_failed` に閉じ込める。
+`TOMOKO_V2_DB_SPLIT=1` の旧 DB split path は fallback / 比較用として残す。
+
+fake-runtime process smoke では、hot-path と Tomoko realtime を別 uvicorn process で起動し、
+`hot-path STT -> internal WS -> Tomoko -> speech_order over WS -> hot-path TTS` が total 46.0ms で通った。
+同じ fake control-plane の DB split artifact は total 60.5ms。これは実 STT/LLM/TTS ではなく
+制御線 smoke の比較として扱う。
+
+## 2026-06-20 セッション34 確定した判断
+
+### WS-origin control plane は `make run` 実 runtime でも成立する
+`make run` で dflash `:8081/:8082`、VOICEVOX `:50122`、Tomoko realtime `:8765`、
+hot-path `:8000` を起動し、`make v2-say-latency-smoke` と `make v2-five-turn-smoke` を通した。
+hot-path は `TOMOKO_V2_WS_SPLIT=1` で起動し、Tomoko realtime log には `/internal/hot-path`
+接続、`turn_materials`、partial/final `stt_observation`、`speech_order_created` が出た。
+direct probe では `playback_state_ack` も返った。
+
+単発 smoke は artifact `logs/say-latency-20260620-234757.json`、voice-end to first audio 3572.2ms、
+transcript `智子短く返事して`、reply `了解。`。5 turn smoke は
+`logs/five-turn-smoke-20260620-234842.json`、avg first audio 1667.2ms / p95 2130.4ms。
+hot-path / Tomoko panes に `ERROR` / `Traceback` / `persist_failed` は出なかった。
+
+Tomoko process 側 DB 保存も動作しており、直近 smoke 後の 10 分 window では
+`v2_stt_observations=22`、`v2_semantic_saturation_observations=22`、
+`v2_speech_scheduler_decisions=22`、`v2_speech_orders=12`、`v2_prompt_requests=12`、
+`v2_utterances=20` が保存されていた。
+
+注意点として、5 turn smoke の 5 turn 目は partial で speech-order が出た直後に smoke が
+`prompt_complete` で切断したため artifact 上の `final_transcript` は null になる。
+これは今回の WS-origin 変更によるクラッシュではなく、partial early-start と smoke 終了条件の組み合わせとして扱う。
+
+## 2026-06-20 セッション35 確定した判断
+
+### runtime server は LAN 前提で `0.0.0.0` に bind する
+LAN 内の複数マシンで hot-path / Tomoko realtime / dflash / VOICEVOX を分けて動かせるよう、
+`make run` 系の server listen address は既定で `0.0.0.0` にする。
+
+ただし `0.0.0.0` は listen address であり connect URL ではない。
+Tomoko internal WS、dflash、VOICEVOX への接続先は `*_CONNECT_HOST` または既存 URL 変数で分け、
+同一マシン構成の既定接続先は `127.0.0.1` のままにする。
+別マシンへ分離する場合は `TOMOKO_INTERNAL_WS_HOST` / `TOMOKO_V2_LLM_URL` /
+`TOMOKO_V2_LLM_READY_URLS` / `TOMOKO_V2_VOICEVOX_URL` /
+`TOMOKO_V2_VOICEVOX_READY_URL` を LAN IP へ上書きする。

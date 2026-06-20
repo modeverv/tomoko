@@ -42,6 +42,7 @@ from server.hot_path.turn_materials import (
     InternalTurnMaterialClient,
     TurnMaterialAggregator,
 )
+from server.hot_path.ws_control import create_remote_ws_conversation_core
 from server.shared.db import default_dsn
 from server.shared.models import (
     AudioSpeechSegment,
@@ -614,6 +615,26 @@ def _audio_conversation() -> HotPathAudioConversation | HotPathDbSplitConversati
                 else AppleSpeechStreamingBackend(),
                 speech_executor=SpeechOrderExecutor(tts_backend, protect_inflight_replace=True),
             )
+        elif _ws_split_enabled():
+            tts_backend = _prompt_executor()._tts_backend
+            if _fake_runtime_enabled():
+                tts_backend = StaticWavTtsBackend([b"RIFFxxxxWAVEdata"])
+            conversation = HotPathAudioConversation(
+                vad=VADProcessor(),
+                stt_backend=StaticStreamingSttBackend(
+                    [
+                        StreamingSttEvent(
+                            os.environ.get("TOMOKO_V2_FAKE_TRANSCRIPT", "トモコ、返事して"),
+                            True,
+                            1.0,
+                        )
+                    ]
+                )
+                if _fake_runtime_enabled()
+                else AppleSpeechStreamingBackend(),
+                conversation_core=create_remote_ws_conversation_core(),
+                speech_executor=SpeechOrderExecutor(tts_backend, protect_inflight_replace=True),
+            )
         elif _fake_runtime_enabled():
             chat_backend = StaticChatBackend(
                 [os.environ.get("TOMOKO_V2_FAKE_REPLY", "うん、聞こえてるよ。")]
@@ -652,6 +673,10 @@ def _fake_runtime_enabled() -> bool:
 
 def _db_split_enabled() -> bool:
     return os.environ.get("TOMOKO_V2_DB_SPLIT") == "1"
+
+
+def _ws_split_enabled() -> bool:
+    return os.environ.get("TOMOKO_V2_WS_SPLIT", "0") == "1"
 
 
 def _fake_prompt_executor() -> PromptExecutor:

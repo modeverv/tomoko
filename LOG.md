@@ -2130,3 +2130,126 @@
 
 ### 次のセッションでやること
 - live `/ws` 会話または targeted replay で、Tomoko 発話中の duplicate は `append_dedupe_suppressed` になり、idle 中の自然な言い直しは suppress されないことを実ログで確認する。
+
+## 2026-06-20 セッション32
+
+### やること（開始時に書く）
+- hot-path から Tomoko 側への VAP/MaAI materials internal WebSocket が現在の runtime で実際に動いているかを、コード・最新ログ・可能なら runtime 状態から確認する。
+- partial STT が DB/NOTIFY 経由で hot-path から Tomoko 側へ渡る path の insert/select/LISTEN/NOTIFY latency を、既存 artifact と必要な実測から整理する。
+
+### やったこと
+- `server/hot_path/app.py` / `server/hot_path/turn_materials.py` / `server/tomoko/realtime.py` / `Makefile` を確認し、`TurnMaterials` が 200ms window で hot-path から `/internal/hot-path` に送られる配線を確認した。
+- `server/hot_path/db_conversation.py` を確認し、schema/worker は partial row を扱える一方、現行 `HotPathDbSplitConversation` の実 `/ws` DB split は `final_observation` を選んで notify していることを確認した。
+- `tmux list-sessions`、`lsof`、`ps` で現 runtime を確認し、2026-06-20 23:25 JST 時点では `tomoko-v2-runtime` も `:8000` / `:8765` listener も無いことを確認した。
+- `_docs/latency.md` と `logs/say-latency-20260620-154057.json` を確認し、2026-06-20 15:40 の real `/ws` smoke では internal WS 経由の `turn_materials` 受信が記録されているが、`p_yielding` は None だったことを確認した。
+- local PostgreSQL で `INSERT v2_stt_observations(partial) -> v2_notify_id -> LISTEN receive -> SELECT row` の microbench を 300 samples / 20 warmup で実測し、測定 row は削除した。
+
+### 結果
+- 現在の live 状態としては VAP/MaAI materials WS は動作中ではない。runtime が起動していないため。
+- 配線と unit contract は有効で、`uv run pytest -m unit tests/unit/test_v2_internal_ws.py -q` は 3 passed。
+- partial row DB bridge microbench は full insert+notify+select avg 0.858ms / p50 0.810ms / p95 1.049ms / p99 1.642ms。ただし現行 live `/ws` DB split は partial ではなく final observation を notify している。
+
+### 次のセッションでやること
+- `make run` 起動状態で `turn_materials` の live log を再取得し、実 MaAI/VAP が入る場合の `p_yielding` 非 None を確認する。
+
+## 2026-06-20 セッション33
+
+### やること（開始時に書く）
+- hot-path と Tomoko process の会話制御線を DB `LISTEN/NOTIFY` から bidirectional internal WebSocket へ寄せる。
+- hot-path -> Tomoko WS に `stt_observation partial/final`、`turn_materials`、`playback_state` を流し、Tomoko -> hot-path WS に `speech_order` / `cancel_order` / `ack` を返す。
+- DB は hot control plane ではなく、Tomoko process 側の必要な永続化・監査ログとして残す。
+
+### やったこと
+- `server.tomoko.realtime` の `/internal/hot-path` を bidirectional control endpoint にし、`turn_materials` / `stt_observation` / `playback_state` を受けるようにした。
+- `stt_observation` は `TomokoConversationCore.handle_observation()` に渡し、`speech_order` または stop intent の `cancel_order` を WS で返すようにした。
+- `server.hot_path.ws_control.RemoteTomokoWsCore` を追加し、hot-path 側の `HotPathAudioConversation` に remote Tomoko core として差し込めるようにした。
+- `TOMOKO_V2_WS_SPLIT=1` を追加し、`make run` の hot-path window では WS split を default 有効にした。`TOMOKO_V2_DB_SPLIT=1` の旧 DB split path は fallback として残した。
+- Tomoko realtime 側で observation / saturation / scheduler decision / prompt request / speech-order / utterance を best-effort で DB 保存するようにした。保存失敗は `persist_failed` log に閉じ込める。
+- `scripts.v2_ws_conversation_smoke` を Tomoko realtime uvicorn と hot-path uvicorn の別 process smoke に更新した。
+
+### 結果
+- fake-runtime process smoke で `hot-path STT -> internal WS -> Tomoko realtime -> speech_order over WS -> hot-path TTS` が成立した。
+- smoke 結果は total 46.0ms、transcript `トモコ、返事して`、reply `うん、聞こえてるよ。`、fake WAV 1 chunk / 16 bytes。
+- DB split fake smoke の比較値 total 60.5ms を `_docs/latency.md` に並べた。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_internal_ws.py -q`
+  - 4 passed
+- `uv run ruff check server/tomoko/realtime.py server/hot_path/ws_control.py server/hot_path/app.py scripts/v2_ws_conversation_smoke.py tests/unit/test_v2_internal_ws.py`
+  - passed
+- `uv run python -m scripts.v2_ws_conversation_smoke --fake-runtime --start-processes`
+  - passed, total 46.0ms
+- `uv run pytest -m unit tests/unit/test_v2_internal_ws.py tests/unit/test_v2_runtime_foundation.py tests/unit/test_v2_audio_tomoko_prompt.py -q`
+  - 52 passed
+- `uv run pytest -m unit -q`
+  - 138 passed, 1 deselected
+
+### 次のセッションでやること
+- real `make run` runtime で WS split の `say -> /ws` smoke を実測し、DB保存の成功/失敗と `turn_materials` / `playback_state` event の実ログを確認する。
+
+## 2026-06-20 セッション34
+
+### やること（開始時に書く）
+- `make run` 相当で実 runtime を立ち上げ、今回追加した WS-origin control plane が fake process smoke だけでなく real server 起動状態でも壊れていないか確認する。
+- `say -> /ws` smoke を実行し、hot-path -> Tomoko internal WS の `stt_observation` / `turn_materials` / `playback_state` と Tomoko -> hot-path の `speech_order` / ack が通るか、ログと smoke artifact で確認する。
+
+### やったこと
+- `make run` を起動し、tmux session `tomoko-v2-runtime` に dflash / VOICEVOX / Tomoko realtime / hot-path / background process を立ち上げた。
+- `:8765` Tomoko realtime、`:50122` VOICEVOX、`:8081/:8082` dflash、`:8000` hot-path が listen していることを確認した。
+- `make v2-say-latency-smoke` で実 `say -> /ws` 経路を通した。
+- `make v2-five-turn-smoke` で 5 turn の連続実 smoke を通した。
+- Tomoko realtime pane と hot-path pane を確認し、`/internal/hot-path` 接続、`turn_materials`、partial/final `stt_observation`、`speech_order` が出ていることを確認した。
+- `playback_state` は runtime log には出していないため、起動中の Tomoko internal WS に直接 probe して `playback_state_ack` を確認した。
+- Postgres に直近の STT / saturation / scheduler / speech-order / prompt request / utterance が保存されていることを確認した。
+
+### 結果
+- 単発 real smoke は成功。artifact は `logs/say-latency-20260620-234757.json`、voice-end to first audio は 3572.2ms、transcript は `智子短く返事して`、reply は `了解。`、audio は 23,596 bytes。
+- 5 turn real smoke は成功。artifact は `logs/five-turn-smoke-20260620-234842.json`、avg first audio は 1667.2ms、p95 は 2130.4ms。
+- hot-path / Tomoko pane に `ERROR` / `Traceback` / `persist_failed` は無かった。
+- DB は直近 10 分で `v2_stt_observations=22`、`v2_semantic_saturation_observations=22`、`v2_speech_scheduler_decisions=22`、`v2_speech_orders=12`、`v2_prompt_requests=12`、`v2_utterances=20` を確認した。
+- 5 turn 目は partial speech-order 後に smoke が `prompt_complete` で切断したため artifact の `final_transcript` は null。WS-origin 変更によるクラッシュではなく、partial early-start と smoke 終了条件の組み合わせとして扱う。
+
+### 検証
+- `make run`
+  - tmux session 作成成功
+- `curl http://127.0.0.1:8000/`
+  - hot-path ready
+- `make v2-say-latency-smoke`
+  - passed
+- `make v2-five-turn-smoke`
+  - passed
+- direct internal WS probe
+  - `playback_state_ack` returned
+
+### 次のセッションでやること
+- `playback_state` を runtime log にも出すか検討する。今回の検証では direct probe で ack contract は確認できたが、hot-path 実送信の視認性は `turn_materials` / `stt_observation` より弱い。
+
+## 2026-06-20 セッション35
+
+### やること（開始時に書く）
+- LAN 内の複数マシンで runtime process を分けて動かせるよう、`make run` が起動する各 server の listen host を `0.0.0.0` にする。
+- bind host と runtime 内部の connect URL を分け、`0.0.0.0` を接続先 URL として扱わないようにする。
+
+### やったこと
+- hot-path uvicorn の既定 `HOST` を `0.0.0.0` にした。
+- Tomoko realtime uvicorn は `TOMOKO_INTERNAL_WS_BIND_HOST=0.0.0.0` で listen し、hot-path からの接続先は `TOMOKO_INTERNAL_WS_CONNECT_HOST` / `TOMOKO_INTERNAL_WS_HOST` 経由で既定 `127.0.0.1` のまま分離した。
+- dflash launcher に `DFLASH_HOST=0.0.0.0` と `dflash serve --host` を追加した。
+- VOICEVOX sibling command には `HOST=0.0.0.0` / `PORT=50122` を明示して渡すようにした。
+- Makefile の runtime launcher contract を unit test に追加した。
+
+### 詰まったこと・解決したこと
+- `0.0.0.0` は listen address であり接続先 URL として使うべきではないため、Tomoko internal WS は bind host と connect host を分けて解決した。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_runtime_foundation.py::test_makefile_exposes_v2_runtime_targets_in_order -q`
+  - 1 passed
+- `make -n server-debug v2-tomoko llm-run voicevox-run v2-runtime-ready`
+  - hot-path / Tomoko realtime / dflash / VOICEVOX の起動コマンドで `0.0.0.0` bind が展開されることを確認した。
+- `bash -n scripts/run_llm.sh scripts/run_voicevox.sh`
+  - passed
+- `make check`
+  - ruff passed
+  - unit 138 passed, 1 deselected
+
+### 次のセッションでやること
+- 実 `make run` で runtime を起動し、LAN 内の別マシンから `:8000` / `:8765` / `:8081` / `:8082` / `:50122` へ到達できるか確認する。

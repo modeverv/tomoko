@@ -17,6 +17,7 @@ DFLASH_31B_PORT="${DFLASH_31B_PORT:-8081}"
 DFLASH_26B_MODEL="${DFLASH_26B_MODEL:-v1/loras/lora/fused_model}"
 DFLASH_26B_DRAFT="${DFLASH_26B_DRAFT:-z-lab/gemma-4-26B-A4B-it-DFlash}"
 DFLASH_26B_PORT="${DFLASH_26B_PORT:-8082}"
+DFLASH_HOST="${DFLASH_HOST:-0.0.0.0}"
 
 command -v tmux >/dev/null || {
   echo "tmux is required"
@@ -49,8 +50,8 @@ start_window() {
   echo "started: ${session}:${window}"
 }
 
-command_31b='cd "'"$(pwd)"'" && echo "[start] dflash-gemma-31b at $(date)" && dflash serve --chat-template-args '\''{"enable_thinking": false}'\'' --model "'"${DFLASH_31B_MODEL}"'" --draft "'"${DFLASH_31B_DRAFT}"'" --port "'"${DFLASH_31B_PORT}"'" 2>&1 | tee -a logs/dflash-31b.log'
-command_26b='cd "'"$(pwd)"'" && echo "[start] dflash-gemma-26b at $(date)" && dflash serve --chat-template-args '\''{"enable_thinking": false}'\'' --model "'"${DFLASH_26B_MODEL}"'" --draft "'"${DFLASH_26B_DRAFT}"'" --port "'"${DFLASH_26B_PORT}"'" 2>&1 | tee -a logs/dflash-26b.log'
+command_31b='cd "'"$(pwd)"'" && echo "[start] dflash-gemma-31b at $(date)" && dflash serve --chat-template-args '\''{"enable_thinking": false}'\'' --model "'"${DFLASH_31B_MODEL}"'" --draft "'"${DFLASH_31B_DRAFT}"'" --host "'"${DFLASH_HOST}"'" --port "'"${DFLASH_31B_PORT}"'" 2>&1 | tee -a logs/dflash-31b.log'
+command_26b='cd "'"$(pwd)"'" && echo "[start] dflash-gemma-26b at $(date)" && dflash serve --chat-template-args '\''{"enable_thinking": false}'\'' --model "'"${DFLASH_26B_MODEL}"'" --draft "'"${DFLASH_26B_DRAFT}"'" --host "'"${DFLASH_HOST}"'" --port "'"${DFLASH_26B_PORT}"'" 2>&1 | tee -a logs/dflash-26b.log'
 
 if tmux has-session -t "${TMUX_SESSION_NAME}" 2>/dev/null; then
   tmux set-option -t "${TMUX_SESSION_NAME}" mouse "${TMUX_MOUSE}" >/dev/null

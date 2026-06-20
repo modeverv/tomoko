@@ -154,7 +154,17 @@ def test_readiness_diff_marks_snapshot_and_transitions() -> None:
 
 def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     makefile = Path("Makefile").read_text(encoding="utf-8")
+    run_llm = Path("scripts/run_llm.sh").read_text(encoding="utf-8")
     assert "v2-runtime tmux-runtime:" in makefile
+    assert "HOST ?= 0.0.0.0" in makefile
+    assert "TOMOKO_INTERNAL_WS_BIND_HOST ?= 0.0.0.0" in makefile
+    assert "--host $(TOMOKO_INTERNAL_WS_BIND_HOST)" in makefile
+    assert "DFLASH_HOST ?= 0.0.0.0" in makefile
+    assert 'DFLASH_HOST="$(DFLASH_HOST)"' in makefile
+    assert "VOICEVOX_HOST ?= 0.0.0.0" in makefile
+    assert 'HOST="$(VOICEVOX_HOST)"' in makefile
+    assert "--host " in run_llm
+    assert "${DFLASH_HOST}" in run_llm
     assert "llm-run:" in makefile
     assert "voicevox-run:" in makefile
     assert "v2-runtime-ready:" in makefile

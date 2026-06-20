@@ -6,8 +6,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server.hot_path.turn_materials import TurnMaterialAggregator
-from server.shared.models import TurnMaterials
+from server.llm.chat import StaticChatBackend
+from server.shared.models import PartialTranscriptObservation, TurnMaterials, utc_now
+from server.tomoko.conversation import TomokoConversationCore
 from server.tomoko.realtime import app as tomoko_realtime_app
+from server.tomoko.scheduler import SpeechScheduler
+from server.tomoko.semantic import SemanticSaturationJudge
+from server.tomoko.session import SessionBoundaryModel
 from server.tomoko.turn_state import TurnMaterialState
 
 pytestmark = pytest.mark.unit
@@ -53,6 +58,48 @@ def test_tomoko_internal_ws_stores_latest_turn_materials() -> None:
     assert state.latest is not None
     assert state.latest.p_yielding == pytest.approx(0.9)
     assert state.latest.stt_partial == "今日の予定を"
+
+
+def test_tomoko_internal_ws_turns_stt_observation_into_speech_order() -> None:
+    state = TurnMaterialState()
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=SemanticSaturationJudge(),
+        scheduler=SpeechScheduler(),
+        chat_backend=StaticChatBackend(["了解。"]),
+    )
+    tomoko_realtime_app.state.turn_material_state = state
+    tomoko_realtime_app.state.conversation_core = core
+    materials = TurnMaterials(
+        window_ms=200,
+        user_speaking=False,
+        speech_probability=0.0,
+        p_yielding=0.95,
+        silence_ms=600,
+        playback_active=False,
+    )
+    now = utc_now()
+    observation = PartialTranscriptObservation(
+        text="トモコ、短く返事して",
+        is_final=True,
+        stability=1.0,
+        audio_started_at=now,
+        audio_ended_at=now,
+    )
+
+    with TestClient(tomoko_realtime_app).websocket_connect("/internal/hot-path") as ws:
+        assert ws.receive_json()["type"] == "ready"
+        ws.send_json({"type": "turn_materials", **materials.to_dict()})
+        assert ws.receive_json()["type"] == "turn_materials_ack"
+        ws.send_json({"type": "stt_observation", **observation.to_dict()})
+        ack = ws.receive_json()
+        order_event = ws.receive_json()
+
+    assert ack["type"] == "stt_observation_ack"
+    assert ack["observation_id"] == str(observation.id)
+    assert order_event["type"] == "speech_order"
+    assert order_event["text"] == "了解。"
+    assert order_event["mode"] == "replace_current"
 
 
 def test_turn_material_state_is_async_safe() -> None:
