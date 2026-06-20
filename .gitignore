@@ -9,6 +9,7 @@ __pycache__/
 .fyws
 logs/
 artifacts/
+!make-model/artifacts/
 models/
 work/
 config/gcal_urls.txt
@@ -45,8 +46,11 @@ loras/short/adapters
 loras/short/fused_model
 loras/short/fused_model*
 
-make-model/data/
-make-model/artifacts/
+make-model/data/*
+!make-model/data/public-synthetic/
+!make-model/data/public-synthetic/**
+make-model/artifacts/*
+!make-model/artifacts/public-synthetic-*.json
 
 v1/informations/archived
 v1/informations/failed
