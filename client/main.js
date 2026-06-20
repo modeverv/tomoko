@@ -10,6 +10,8 @@ let ws = null;
 let audioContext = null;
 let playbackTime = 0;
 let timelineSequence = 0;
+let acceptingAudio = true;
+const activeAudioSources = new Set();
 
 async function populateAudioOutputs() {
   if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -47,6 +49,7 @@ async function connect() {
   ws.addEventListener("message", (event) => {
     if (event.data instanceof ArrayBuffer) {
       console.log("[tomoko:client] audio_chunk", { bytes: event.data.byteLength });
+      if (!acceptingAudio) return;
       playAudioChunk(event.data);
       return;
     }
@@ -69,20 +72,19 @@ async function connect() {
         `${payload.audio_chunks ?? 0} chunks / ${payload.audio_bytes ?? 0} bytes`,
       );
     }
-    if (payload.type === "scheduler_decision") {
-      appendTimelineItem(
-        "plan",
-        `${payload.action || "unknown"} / ${payload.text_intent || "unknown"}`,
-        `score=${Number(payload.score || 0).toFixed(3)}`,
-      );
-    }
     if (payload.type === "speech_order") {
+      if (payload.mode === "stop") {
+        stopLocalPlayback();
+      } else {
+        acceptingAudio = true;
+      }
       appendTimelineItem(
         "order",
         payload.text || payload.mode || "(blank)",
         `${payload.mode || "unknown"} / priority=${payload.priority ?? 0}`,
       );
     }
+    if (payload.type === "backchannel") acceptingAudio = true;
     debugEl.textContent = payload.type;
   });
   ws.addEventListener("close", () => {
@@ -98,6 +100,8 @@ async function playAudioChunk(arrayBuffer) {
   const source = audioContext.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(audioContext.destination);
+  activeAudioSources.add(source);
+  source.onended = () => activeAudioSources.delete(source);
   const startAt = Math.max(audioContext.currentTime, playbackTime);
   source.start(startAt);
   playbackTime = startAt + audioBuffer.duration;
@@ -107,8 +111,24 @@ async function playAudioChunk(arrayBuffer) {
   });
 }
 
+function stopLocalPlayback() {
+  acceptingAudio = false;
+  activeAudioSources.forEach((source) => {
+    try {
+      source.stop();
+    } catch (error) {
+      console.log("[tomoko:client] audio_stop_ignored", error);
+    }
+  });
+  activeAudioSources.clear();
+  if (audioContext) playbackTime = audioContext.currentTime;
+  appendTimelineItem("system", "audio stopped");
+  console.log("[tomoko:client] audio_stop");
+}
+
 connectButton.addEventListener("click", connect);
 stopButton.addEventListener("click", () => {
+  stopLocalPlayback();
   if (ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "audio_control", command: "stop" }));
   }

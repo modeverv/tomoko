@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from server.shared.models import PromptRequest, PromptScope
+from server.tomoko.prompt import split_prompt_trailing_context
 
 
 class ChatBackend:
@@ -94,7 +95,9 @@ def _session_transcript_messages(prompt_text: str) -> list[dict[str, str]] | Non
         return None
     system_body = _section_between(prompt_text, "SYSTEM:", "INSTRUCTION:")
     instruction_body = _section_between(prompt_text, "INSTRUCTION:", "SESSION_TRANSCRIPT:")
-    transcript_body = prompt_text.split("SESSION_TRANSCRIPT:", 1)[1].strip()
+    transcript_body, runtime_context_body, volatile_body = split_prompt_trailing_context(
+        prompt_text
+    )
     messages: list[dict[str, str]] = [
         {
             "role": "system",
@@ -112,7 +115,19 @@ def _session_transcript_messages(prompt_text: str) -> list[dict[str, str]] | Non
             )
     if len(messages) <= 1 or messages[-1]["role"] != "user":
         return None
+    trailing_context = _format_trailing_context(runtime_context_body, volatile_body)
+    if trailing_context:
+        messages[-1]["content"] = f"{messages[-1]['content']}\n\n{trailing_context}"
     return messages
+
+
+def _format_trailing_context(runtime_context: str, volatile_recall: str) -> str:
+    parts: list[str] = []
+    if runtime_context:
+        parts.extend(["RUNTIME_CONTEXT:", runtime_context])
+    if volatile_recall:
+        parts.extend(["VOLATILE_RECALL:", volatile_recall])
+    return "\n".join(parts)
 
 
 def _section_between(text: str, start_marker: str, end_marker: str) -> str:

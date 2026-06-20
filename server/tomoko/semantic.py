@@ -38,7 +38,7 @@ DEFAULT_DISTILLED_SATURATION_MODEL_PATH = (
     REPO_ROOT
     / "make-model"
     / "artifacts"
-    / "jdd-gemma26b-10000-plus-anchors-contrastive-tail-referential-saturation-model.json"
+    / "public-synthetic-gemma26b-200-plus-anchors-life-h8192-l001-saturation-model.json"
 )
 SHORT_FINAL_ACKS = {
     "はい",
@@ -173,6 +173,14 @@ def create_default_distilled_saturation_backend() -> DistilledSaturationBackend:
         )
         == "1",
     )
+
+
+def create_default_saturation_judge() -> SemanticSaturationJudge:
+    try:
+        distilled_backend = create_default_distilled_saturation_backend()
+    except FileNotFoundError:
+        distilled_backend = None
+    return SemanticSaturationJudge(distilled_backend=distilled_backend)
 
 
 @dataclass(slots=True)

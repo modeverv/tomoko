@@ -39,11 +39,7 @@ class SpeechOrderExecutor:
             priority=order.priority,
         )
         if order.mode == SpeechOrderMode.STOP:
-            self.replace_generation()
-            self.current_order = None
-            self.current_score = 0.0
-            self.append_queue.clear()
-            _console_event("speech_order_stopped", order_id=str(order.id))
+            self.stop_playback(reason=f"speech_order:{order.id}")
             return SpeechOrderExecutionResult(order=order, stopped=True)
 
         if order.mode == SpeechOrderMode.APPEND_AFTER_CURRENT and self.current_order is not None:
@@ -80,6 +76,13 @@ class SpeechOrderExecutor:
     def replace_generation(self) -> int:
         self.current_generation += 1
         return self.current_generation
+
+    def stop_playback(self, *, reason: str = "stop") -> None:
+        self.replace_generation()
+        self.current_order = None
+        self.current_score = 0.0
+        self.append_queue.clear()
+        _console_event("speech_order_stopped", reason=reason)
 
     def is_current_generation(self, generation: int) -> bool:
         return generation == self.current_generation

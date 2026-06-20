@@ -36,6 +36,39 @@ def readiness_snapshot() -> dict[str, object]:
     }
 
 
+def readiness_transition_events(
+    previous: dict[str, object] | None,
+    current: dict[str, object],
+) -> list[dict[str, object]]:
+    current_flat = _flatten_readiness(current)
+    if previous is None:
+        return [
+            {
+                "event": "readiness_snapshot",
+                "component": path.split(".", 1)[0],
+                "ready": ready,
+                "path": path,
+            }
+            for path, ready in current_flat.items()
+        ]
+    previous_flat = _flatten_readiness(previous)
+    events: list[dict[str, object]] = []
+    for path, ready in current_flat.items():
+        previous_ready = previous_flat.get(path)
+        if previous_ready is None or previous_ready == ready:
+            continue
+        events.append(
+            {
+                "event": "readiness_transition",
+                "component": path.split(".", 1)[0],
+                "previous_ready": previous_ready,
+                "ready": ready,
+                "path": path,
+            }
+        )
+    return events
+
+
 async def run_process(process_name: str) -> None:
     if process_name in {"tomoko-db", "tomoko-split"}:
         fake_reply = os.environ.get("TOMOKO_V2_FAKE_REPLY")
@@ -48,13 +81,22 @@ async def run_process(process_name: str) -> None:
     logger = JsonlLogger(Path("logs/v2-runtime.jsonl"))
     readiness = readiness_snapshot()
     logger.log("process_start", process=process_name, readiness=readiness)
+    for event in readiness_transition_events(None, readiness):
+        logger.log(str(event["event"]), process=process_name, **_event_fields(event))
+        _console_event(process_name, str(event["event"]), **_event_fields(event))
     _console_event(
         process_name,
         "process_start",
         readiness=json.dumps(readiness, ensure_ascii=False),
     )
     try:
+        previous_readiness = readiness
         while True:
+            readiness = readiness_snapshot()
+            for event in readiness_transition_events(previous_readiness, readiness):
+                logger.log(str(event["event"]), process=process_name, **_event_fields(event))
+                _console_event(process_name, str(event["event"]), **_event_fields(event))
+            previous_readiness = readiness
             logger.log("heartbeat", process=process_name)
             _console_event(process_name, "heartbeat")
             await asyncio.sleep(5)
@@ -122,6 +164,21 @@ def _http_ready(url: str) -> bool:
     except httpx.HTTPError:
         return False
     return response.status_code < 500
+
+
+def _flatten_readiness(payload: dict[str, object], prefix: str = "") -> dict[str, bool]:
+    flattened: dict[str, bool] = {}
+    for key, value in payload.items():
+        path = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, bool):
+            flattened[path] = value
+        elif isinstance(value, dict):
+            flattened.update(_flatten_readiness(dict(value), path))
+    return flattened
+
+
+def _event_fields(event: dict[str, object]) -> dict[str, object]:
+    return {key: value for key, value in event.items() if key != "event"}
 
 
 def main() -> None:

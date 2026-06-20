@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 from server.shared.models import (
@@ -28,19 +29,21 @@ class PromptBuilderV2:
         concise: bool = False,
     ) -> PromptRequest:
         calendar = {} if is_clock_question(current_utterance) else snapshot.calendar_items
-        instruction = (
-            "次のtomoko発話だけ返す。短く一文で返す。"
-            if concise
-            else "次のtomoko発話だけ返す。"
-        )
+        instruction = "次のtomoko発話だけ返す。"
+        runtime_context = self._format_runtime_context(snapshot, calendar)
+        candidates = self._format_candidates(snapshot)
         sections = [
             "SYSTEM:",
-            self._format_system(snapshot, calendar),
+            self._format_system(),
             "INSTRUCTION:",
             instruction,
             "SESSION_TRANSCRIPT:",
             self._format_session_transcript(snapshot, current_utterance),
         ]
+        if runtime_context:
+            sections.extend(["RUNTIME_CONTEXT:", runtime_context])
+        if candidates:
+            sections.extend(["VOLATILE_RECALL:", candidates])
         return PromptRequest(
             prompt_text="\n".join(sections),
             scope=PromptScope.MAIN,
@@ -53,20 +56,22 @@ class PromptBuilderV2:
             trace_id=snapshot.trace_id,
         )
 
-    def _format_system(self, snapshot: ContextSnapshot, calendar: dict[str, str]) -> str:
+    def _format_system(self) -> str:
+        return self.system_header
+
+    def _format_runtime_context(
+        self,
+        snapshot: ContextSnapshot,
+        calendar: dict[str, str],
+    ) -> str:
         lines: list[str] = []
-        lines.append(self.system_header)
         lines.extend(
-            f"summary={summary.keyword}: {summary.conclusion}"
+            f"summary[{summary.keyword}]={summary.conclusion}"
             for summary in snapshot.summaries
         )
         lines.extend(f"calendar[{when}]={what}" for when, what in sorted(calendar.items()))
         if snapshot.user_status is not None:
             lines.append(f"user_status={snapshot.user_status.activity_label}")
-        candidates = self._format_candidates(snapshot)
-        if candidates:
-            lines.append("VOLATILE_RECALL:")
-            lines.append(candidates)
         return "\n".join(lines)
 
     def _format_session_transcript(
@@ -94,3 +99,64 @@ class PromptBuilderV2:
 def _format_transcript_item(item: ConversationHistoryItem) -> str:
     speaker = "tomoko" if item.speaker == "tomoko" else "user"
     return f"{speaker}: {item.text}"
+
+
+def prompt_cache_shape(prompt_text: str) -> dict[str, object]:
+    system_body = _section_between(prompt_text, "SYSTEM:", "INSTRUCTION:")
+    instruction_body = _section_between(prompt_text, "INSTRUCTION:", "SESSION_TRANSCRIPT:")
+    tail = (
+        prompt_text.split("SESSION_TRANSCRIPT:", 1)[1]
+        if "SESSION_TRANSCRIPT:" in prompt_text
+        else ""
+    )
+    transcript_body, runtime_context, volatile_recall = _split_trailing_context(tail.strip())
+    return {
+        "system_chars": len(system_body),
+        "system_hash": _short_hash(system_body),
+        "instruction_chars": len(instruction_body),
+        "instruction_hash": _short_hash(instruction_body),
+        "transcript_turns": sum(
+            1
+            for line in transcript_body.splitlines()
+            if line.startswith(("user: ", "tomoko: "))
+        ),
+        "transcript_chars": len(transcript_body),
+        "runtime_context_chars": len(runtime_context),
+        "runtime_context_hash": _short_hash(runtime_context),
+        "volatile_recall_chars": len(volatile_recall),
+        "volatile_recall_hash": _short_hash(volatile_recall),
+    }
+
+
+def split_prompt_trailing_context(prompt_text: str) -> tuple[str, str, str]:
+    tail = prompt_text.split("SESSION_TRANSCRIPT:", 1)[1].strip()
+    return _split_trailing_context(tail)
+
+
+def _split_trailing_context(text: str) -> tuple[str, str, str]:
+    transcript_and_runtime, volatile = _split_marker(text, "VOLATILE_RECALL:")
+    transcript, runtime = _split_marker(transcript_and_runtime, "RUNTIME_CONTEXT:")
+    return transcript.strip(), runtime.strip(), volatile.strip()
+
+
+def _split_marker(text: str, marker: str) -> tuple[str, str]:
+    marker_with_newline = f"\n{marker}"
+    if marker_with_newline not in text:
+        return text, ""
+    before, after = text.split(marker_with_newline, 1)
+    return before, after.strip()
+
+
+def _section_between(text: str, start_marker: str, end_marker: str) -> str:
+    if start_marker not in text:
+        return ""
+    tail = text.split(start_marker, 1)[1]
+    if end_marker in tail:
+        return tail.split(end_marker, 1)[0].strip()
+    return tail.strip()
+
+
+def _short_hash(text: str) -> str:
+    if not text:
+        return ""
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]

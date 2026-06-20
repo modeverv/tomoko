@@ -7,6 +7,7 @@ import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from uuid import UUID
 
 from server.audio.stt import AppleSpeechStreamingBackend, StreamingSttEvent, observation_events
 from server.audio.vad import VADProcessor
@@ -21,6 +22,7 @@ from server.shared.models import (
     PromptRequest,
     SpeechOrder,
     SpeechSchedulerOutput,
+    new_id,
 )
 from server.tomoko.context import ContextSnapshotBuilderV2
 from server.tomoko.conversation import TomokoConversationCore
@@ -29,7 +31,7 @@ from server.tomoko.prompt import PromptBuilderV2
 from server.tomoko.scheduler import SpeechScheduler
 from server.tomoko.semantic import (
     SemanticSaturationJudge,
-    create_default_distilled_saturation_backend,
+    create_default_saturation_judge,
 )
 from server.tomoko.session import SessionBoundaryModel
 
@@ -54,6 +56,43 @@ class HotPathConversationResult:
     speech_order: SpeechOrder | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class SegmentSttGateDecision:
+    should_transcribe: bool
+    reason: str
+    duration_ms: float
+    rms: float
+
+
+@dataclass(frozen=True, slots=True)
+class SegmentSttGate:
+    min_duration_ms: int = 300
+    min_rms: float = 0.006
+
+    def inspect(self, segment: AudioSpeechSegment) -> SegmentSttGateDecision:
+        duration_ms = len(segment.samples) / segment.sample_rate * 1000.0
+        rms = segment_rms(segment.samples)
+        too_short = duration_ms < self.min_duration_ms
+        too_quiet = rms < self.min_rms
+        if too_short and too_quiet:
+            reason = "short_and_low_energy"
+        elif too_quiet:
+            reason = "low_energy"
+        else:
+            return SegmentSttGateDecision(
+                should_transcribe=True,
+                reason="accepted",
+                duration_ms=duration_ms,
+                rms=rms,
+            )
+        return SegmentSttGateDecision(
+            should_transcribe=False,
+            reason=reason,
+            duration_ms=duration_ms,
+            rms=rms,
+        )
+
+
 @dataclass(slots=True)
 class HotPathAudioConversation:
     vad: VADProcessor
@@ -64,10 +103,12 @@ class HotPathAudioConversation:
     conversation_core: TomokoConversationCore | None = None
     speech_executor: SpeechOrderExecutor | None = None
     speech_rms_threshold: float = 0.02
+    stt_gate: SegmentSttGate = field(default_factory=SegmentSttGate)
     context_builder: ContextSnapshotBuilderV2 = field(default_factory=ContextSnapshotBuilderV2)
     _audio_clock_ms: float = field(default_factory=lambda: time.time() * 1000.0)
     _recent_utterances: list[str] = field(default_factory=list)
     _recent_history: list[ConversationHistoryItem] = field(default_factory=list)
+    _active_segment_trace_id: UUID | None = None
 
     async def process_audio_bytes(self, payload: bytes) -> HotPathConversationResult | None:
         return await self.process_audio_samples(audio_bytes_to_samples(payload))
@@ -88,6 +129,11 @@ class HotPathAudioConversation:
             samples,
             threshold=self.speech_rms_threshold,
         )
+        if (
+            speech_probability >= self.vad.speech_threshold
+            and self._active_segment_trace_id is None
+        ):
+            self._active_segment_trace_id = new_id()
         segment = self.vad.process_chunk(
             samples,
             speech_probability=speech_probability,
@@ -101,6 +147,9 @@ class HotPathAudioConversation:
                 partial_result = await self.process_streaming_partial(samples, now_ms)
         if segment is None:
             return partial_result
+        if self._active_segment_trace_id is not None:
+            segment.trace_id = self._active_segment_trace_id
+            self._active_segment_trace_id = None
         self._reset_stt_stream()
         _console_event(
             "vad_segment",
@@ -109,6 +158,16 @@ class HotPathAudioConversation:
             started_at=segment.started_at.isoformat(),
             ended_at=segment.ended_at.isoformat(),
         )
+        gate_decision = self.stt_gate.inspect(segment)
+        if not gate_decision.should_transcribe:
+            _console_event(
+                "vad_segment_dropped",
+                reason=gate_decision.reason,
+                duration_ms=round(gate_decision.duration_ms, 1),
+                rms=round(gate_decision.rms, 6),
+                trace_id=str(segment.trace_id),
+            )
+            return partial_result
         if final_callback is not None:
             final_callback(segment)
             return partial_result
@@ -139,6 +198,7 @@ class HotPathAudioConversation:
             audio_ended_at=_datetime_from_ms(
                 now_ms + len(samples) / self.vad.sample_rate * 1000.0
             ),
+            trace_id=self._active_segment_trace_id or new_id(),
         )
         _console_event("stt_partial", text=observation.text)
         if self.conversation_core is None or self.speech_executor is None:
@@ -331,6 +391,12 @@ def speech_probability_from_rms(samples: tuple[float, ...], *, threshold: float)
     return min(1.0, rms / threshold)
 
 
+def segment_rms(samples: tuple[float, ...]) -> float:
+    if not samples:
+        return 0.0
+    return math.sqrt(sum(sample * sample for sample in samples) / len(samples))
+
+
 def text_from_execution_result(result: PromptExecutionResult) -> str:
     return next(
         (event.text for event in result.model_events if event.event_kind == "complete"),
@@ -339,9 +405,7 @@ def text_from_execution_result(result: PromptExecutionResult) -> str:
 
 
 def _default_saturation_judge() -> SemanticSaturationJudge:
-    return SemanticSaturationJudge(
-        distilled_backend=create_default_distilled_saturation_backend()
-    )
+    return create_default_saturation_judge()
 
 
 def _datetime_from_ms(ms: float) -> datetime:

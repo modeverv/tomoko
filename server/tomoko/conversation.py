@@ -44,7 +44,7 @@ from server.tomoko.prompt import PromptBuilderV2
 from server.tomoko.scheduler import SpeechScheduler, detect_stop_intent
 from server.tomoko.semantic import (
     SemanticSaturationJudge,
-    create_default_distilled_saturation_backend,
+    create_default_saturation_judge,
 )
 from server.tomoko.session import SessionBoundaryModel
 
@@ -132,6 +132,7 @@ class TomokoConversationCore:
             session_id = None
 
         if self._should_reconcile_observation(observation, basis_text):
+            reconcile_reason = self._reconcile_reason(observation, basis_text)
             saturation = SemanticSaturationResult(
                 saturation=1.0 if observation.is_final else 0.0,
                 source="reconciled_final" if observation.is_final else "reconciled_partial",
@@ -146,11 +147,7 @@ class TomokoConversationCore:
                     trace_id=observation.trace_id,
                 )
             )
-            scheduler_output.reason = (
-                "final reconciled with active partial reply"
-                if observation.is_final
-                else "partial reconciled with active partial reply"
-            )
+            scheduler_output.reason = reconcile_reason
             if durable is not None and prior_session_history is None:
                 self._recent_utterances.append(durable.text)
                 self._recent_history.append(
@@ -431,15 +428,33 @@ class TomokoConversationCore:
         observation: PartialTranscriptObservation,
         basis_text: str,
     ) -> bool:
+        return bool(self._reconcile_reason(observation, basis_text))
+
+    def _reconcile_reason(
+        self,
+        observation: PartialTranscriptObservation,
+        basis_text: str,
+    ) -> str:
         if self._active_partial_order is None or not self._active_partial_basis_text:
-            return (
+            if (
                 not observation.is_final
                 and bool(self._last_reconciled_final_text)
                 and _similar_enough(basis_text, self._last_reconciled_final_text)
-            )
+            ):
+                return "partial reconciled with active partial reply"
+            return ""
+        same_trace = observation.trace_id == self._active_partial_order.trace_id
         if observation.is_final:
-            return _similar_enough(self._active_partial_basis_text, basis_text)
-        return _similar_enough(self._active_partial_basis_text, basis_text)
+            if _similar_enough(self._active_partial_basis_text, basis_text):
+                return "final reconciled with active partial reply"
+            if same_trace:
+                return "final discarded after active partial reply in same trace"
+            return ""
+        if _similar_enough(self._active_partial_basis_text, basis_text):
+            return "partial reconciled with active partial reply"
+        if same_trace:
+            return "partial discarded after active partial reply in same trace"
+        return ""
 
     def _partial_start_gate_allows(
         self,
@@ -450,7 +465,7 @@ class TomokoConversationCore:
     ) -> bool:
         if (
             saturation < PARTIAL_CONFIRM_SATURATION_THRESHOLD
-            or score < self.scheduler.thresholds.partial_start_score_threshold
+            and score < self.scheduler.thresholds.partial_start_score_threshold
         ):
             self._partial_start_confirm_text = ""
             self._partial_start_confirm_count = 0
@@ -533,9 +548,7 @@ class TomokoConversationCore:
 def create_default_conversation_core() -> TomokoConversationCore:
     return TomokoConversationCore(
         session_model=SessionBoundaryModel(),
-        saturation_judge=SemanticSaturationJudge(
-            distilled_backend=create_default_distilled_saturation_backend()
-        ),
+        saturation_judge=create_default_saturation_judge(),
         scheduler=SpeechScheduler(),
         llm_fire_gate=LlmFireGate(),
         speech_emission_gate=SpeechEmissionGate(),

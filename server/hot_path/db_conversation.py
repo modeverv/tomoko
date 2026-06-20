@@ -15,6 +15,7 @@ from server.audio.stt import AppleSpeechStreamingBackend, StreamingSttEvent, obs
 from server.audio.vad import VADProcessor
 from server.hot_path.audio_conversation import (
     HotPathConversationResult,
+    SegmentSttGate,
     StreamingSttBackend,
 )
 from server.hot_path.model_executor import PromptExecutionResult, TtsBackend
@@ -52,6 +53,7 @@ class HotPathDbSplitConversation:
     stt_backend: StreamingSttBackend
     speech_executor: SpeechOrderExecutor
     speech_rms_threshold: float = 0.02
+    stt_gate: SegmentSttGate = field(default_factory=SegmentSttGate)
     order_timeout_sec: float = 30.0
     recovery_poll_interval_sec: float = 0.05
     _audio_clock_ms: float = field(default_factory=lambda: time.time() * 1000.0)
@@ -94,6 +96,16 @@ class HotPathDbSplitConversation:
             started_at=segment.started_at.isoformat(),
             ended_at=segment.ended_at.isoformat(),
         )
+        gate_decision = self.stt_gate.inspect(segment)
+        if not gate_decision.should_transcribe:
+            _console_event(
+                "vad_segment_dropped",
+                reason=gate_decision.reason,
+                duration_ms=round(gate_decision.duration_ms, 1),
+                rms=round(gate_decision.rms, 6),
+                trace_id=str(segment.trace_id),
+            )
+            return None
         return await self.process_segment(segment)
 
     async def process_segment(self, segment: AudioSpeechSegment) -> HotPathConversationResult:

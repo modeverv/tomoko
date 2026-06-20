@@ -43,9 +43,11 @@ from server.tomoko.db_bridge import (
 from server.tomoko.gates import LlmFireGate, SpeechEmissionGate
 from server.tomoko.scheduler import SpeechScheduler, detect_stop_intent
 from server.tomoko.semantic import (
+    DEFAULT_DISTILLED_SATURATION_MODEL_PATH,
     DistilledSaturationBackend,
     OpenAICompatibleSaturationBackend,
     SemanticSaturationJudge,
+    create_default_saturation_judge,
     deterministic_saturation,
     parse_saturation_output,
     saturation_prompt,
@@ -135,6 +137,33 @@ def test_distilled_saturation_scores_partials_as_final_and_clamps_short_acks() -
     assert partial.saturation == pytest.approx(0.92)
     assert short_final.source == "distilled_short_ack_rule"
     assert short_final.saturation == pytest.approx(0.35)
+
+
+def test_default_distilled_saturation_model_points_to_existing_public_artifact() -> None:
+    assert DEFAULT_DISTILLED_SATURATION_MODEL_PATH.name == (
+        "public-synthetic-gemma26b-200-plus-anchors-life-h8192-l001-saturation-model.json"
+    )
+    assert DEFAULT_DISTILLED_SATURATION_MODEL_PATH.exists()
+
+    makefile = Path("Makefile").read_text(encoding="utf-8")
+    assert (
+        "TOMOKO_V2_DISTILLED_SATURATION_MODEL ?= "
+        "make-model/artifacts/"
+        "public-synthetic-gemma26b-200-plus-anchors-life-h8192-l001-saturation-model.json"
+    ) in makefile
+
+
+def test_default_saturation_judge_falls_back_when_artifact_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "TOMOKO_V2_DISTILLED_SATURATION_MODEL",
+        "make-model/artifacts/missing-saturation-model.json",
+    )
+
+    judge = create_default_saturation_judge()
+
+    assert judge.distilled_backend is None
 
 
 @pytest.mark.asyncio

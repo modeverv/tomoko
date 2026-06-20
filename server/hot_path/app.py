@@ -33,6 +33,7 @@ from server.hot_path.model_executor import (
     PromptExecutor,
     StaticChatBackend,
     StaticWavTtsBackend,
+    _messages_for_request,
     create_default_real_prompt_executor,
 )
 from server.hot_path.protocol import encode_server_event, parse_browser_message
@@ -51,7 +52,7 @@ from server.shared.models import (
 )
 from server.tomoko.conversation import TomokoConversationCore
 from server.tomoko.main import TomokoProcessCore
-from server.tomoko.prompt import PromptBuilderV2
+from server.tomoko.prompt import PromptBuilderV2, prompt_cache_shape
 from server.tomoko.scheduler import SpeechScheduler
 from server.tomoko.semantic import SemanticSaturationJudge
 from server.tomoko.session import SessionBoundaryModel
@@ -148,7 +149,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if not isinstance(event, bytes):
                     _console_event("client_event", event_type=event.event_type)
                 if not isinstance(event, bytes) and event.event_type == "audio_control":
-                    await websocket.send_text(encode_server_event("audio_control_ack"))
+                    _stop_conversation_playback(conversation)
+                    await websocket.send_text(
+                        encode_server_event("audio_control_ack", command="stop")
+                    )
                     continue
                 if not isinstance(event, bytes) and event.event_type in PROMPT_EVENT_TYPES:
                     await _run_prompt(websocket, _prompt_request_from_event(event.payload))
@@ -165,6 +169,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         result_sender.cancel()
         with suppress(asyncio.CancelledError):
             await result_sender
+
+
+def _stop_conversation_playback(conversation: object) -> None:
+    speech_executor = getattr(conversation, "speech_executor", None)
+    if speech_executor is None:
+        _console_event("audio_control_stop", stopped=False, reason="no_speech_executor")
+        return
+    speech_executor.stop_playback(reason="ui_stop")
+    _console_event("audio_control_stop", stopped=True)
 
 
 class AudioPartialLane:
@@ -418,6 +431,8 @@ async def _send_prompt_execution_result(
             request_id=str(request.id),
             prompt_text=request.prompt_text,
             prompt_chars=len(request.prompt_text),
+            cache_shape=prompt_cache_shape(request.prompt_text),
+            sent_messages=_messages_for_request(request),
         )
     )
     for event in result.model_events:

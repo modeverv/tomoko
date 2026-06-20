@@ -68,10 +68,6 @@ select {
   color: #a7efbd;
 }
 
-.timeline-item-plan .timeline-kind {
-  color: #f3d47b;
-}
-
 .timeline-item-order .timeline-kind {
   color: #f0a5d9;
 }

@@ -8,6 +8,7 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
+from server import runtime
 from server.hot_path.app import app
 from server.hot_path.model_executor import PromptExecutor, StaticChatBackend, StaticWavTtsBackend
 from server.shared.logging import JsonlLogger
@@ -99,6 +100,56 @@ def test_jsonl_logger_writes_structured_event(tmp_path: Path) -> None:
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["event"] == "state_transition"
     assert payload["state"] == "listening"
+
+
+def test_readiness_diff_marks_snapshot_and_transitions() -> None:
+    previous = {
+        "database": False,
+        "llm": {"http://127.0.0.1:8082/v1/models": False},
+        "voicevox": {"http://127.0.0.1:50122/version": True},
+    }
+    current = {
+        "database": True,
+        "llm": {"http://127.0.0.1:8082/v1/models": True},
+        "voicevox": {"http://127.0.0.1:50122/version": True},
+    }
+
+    assert runtime.readiness_transition_events(None, previous) == [
+        {
+            "event": "readiness_snapshot",
+            "component": "database",
+            "ready": False,
+            "path": "database",
+        },
+        {
+            "event": "readiness_snapshot",
+            "component": "llm",
+            "ready": False,
+            "path": "llm.http://127.0.0.1:8082/v1/models",
+        },
+        {
+            "event": "readiness_snapshot",
+            "component": "voicevox",
+            "ready": True,
+            "path": "voicevox.http://127.0.0.1:50122/version",
+        },
+    ]
+    assert runtime.readiness_transition_events(previous, current) == [
+        {
+            "event": "readiness_transition",
+            "component": "database",
+            "previous_ready": False,
+            "ready": True,
+            "path": "database",
+        },
+        {
+            "event": "readiness_transition",
+            "component": "llm",
+            "previous_ready": False,
+            "ready": True,
+            "path": "llm.http://127.0.0.1:8082/v1/models",
+        },
+    ]
 
 
 def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
@@ -218,6 +269,10 @@ def test_hot_path_websocket_uses_prompt_executor_for_text_prompt() -> None:
     assert prompt["type"] == "llm_prompt"
     assert prompt["prompt_text"] == "トモコ、返事して"
     assert prompt["prompt_chars"] == len("トモコ、返事して")
+    assert prompt["sent_messages"] == [
+        {"role": "system", "content": "EMOTION:<label> の1行と、短い日本語1文だけを返す。"},
+        {"role": "user", "content": "トモコ、返事して"},
+    ]
     assert delta["type"] == "model_delta"
     assert delta["text_delta"] == "うん"
     assert complete["type"] == "model_complete"
@@ -241,8 +296,30 @@ def test_client_renders_stt_and_tts_timeline() -> None:
     assert 'payload.type === "transcript" && payload.is_final' in script
     assert 'if (text) appendTimelineItem("stt", text);' in script
     assert 'payload.type === "tts_result"' in script
+    assert 'appendTimelineItem("plan"' not in script
+    assert ".timeline-item-plan" not in styles
     assert "console.log" in script
     assert ".timeline-item" in styles
+
+
+def test_client_stop_button_stops_local_playback_and_stale_chunks() -> None:
+    script = Path("client/main.js").read_text(encoding="utf-8")
+    app_source = Path("server/hot_path/app.py").read_text(encoding="utf-8")
+
+    assert "const activeAudioSources = new Set();" in script
+    assert "let acceptingAudio = true;" in script
+    assert "function stopLocalPlayback()" in script
+    assert "activeAudioSources.forEach" in script
+    assert "source.stop();" in script
+    assert "acceptingAudio = false;" in script
+    assert 'appendTimelineItem("system", "audio stopped");' in script
+    assert "if (!acceptingAudio) return;" in script
+    assert 'payload.type === "speech_order"' in script
+    assert 'payload.mode === "stop"' in script
+    assert "acceptingAudio = true;" in script
+    assert 'ws.send(JSON.stringify({ type: "audio_control", command: "stop" }));' in script
+    assert "_stop_conversation_playback(conversation)" in app_source
+    assert 'encode_server_event("audio_control_ack", command="stop")' in app_source
 
 
 def test_ddl_has_core_tables_and_id_only_notify_function() -> None:

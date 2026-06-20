@@ -95,6 +95,7 @@ class MaaiBackchannelDetector:
         self._poll_task: asyncio.Task[None] | None = None
         self._running = False
         self._last_emitted_at: datetime | None = None
+        self._poll_error_counts: dict[str, int] = {}
 
     async def start(self) -> None:
         if self._running:
@@ -187,7 +188,16 @@ class MaaiBackchannelDetector:
             except queue.Empty:
                 continue
             except Exception as exc:
-                _console_event("maai_backchannel_poll_error", error=type(exc).__name__)
+                error_name = type(exc).__name__
+                self._poll_error_counts[error_name] = (
+                    self._poll_error_counts.get(error_name, 0) + 1
+                )
+                if _should_log_poll_error(self._poll_error_counts[error_name]):
+                    _console_event(
+                        "maai_backchannel_poll_error",
+                        error=error_name,
+                        count=self._poll_error_counts[error_name],
+                    )
                 await asyncio.sleep(0.2)
                 continue
             if isinstance(result, dict):
@@ -255,11 +265,27 @@ async def _await_callback(awaitable: Awaitable[Any]) -> None:
 
 
 def _read_maai_result_once(maai_instance: Any) -> Any:
-    if hasattr(maai_instance, "get_result"):
-        result = maai_instance.get_result(timeout=0.1)
+    if hasattr(maai_instance, "result_dict_queue"):
+        result = _queue_get_once(maai_instance.result_dict_queue)
+    elif hasattr(maai_instance, "output_queue"):
+        result = _queue_get_once(maai_instance.output_queue)
     else:
-        result = maai_instance.output_queue.get(timeout=0.1)
+        result = maai_instance.get_result()
     return result[0] if isinstance(result, tuple) and result else result
+
+
+def _queue_get_once(result_queue: Any) -> Any:
+    try:
+        return result_queue.get(timeout=0.1)
+    except TypeError as exc:
+        empty = getattr(result_queue, "empty", None)
+        if callable(empty) and empty():
+            raise queue.Empty from exc
+        return result_queue.get()
+
+
+def _should_log_poll_error(count: int) -> bool:
+    return count == 1 or count in {10, 100} or count % 1000 == 0
 
 
 def _import_maai() -> Any:

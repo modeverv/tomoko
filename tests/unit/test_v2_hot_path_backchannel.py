@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from queue import Queue
 
 import pytest
 
@@ -9,6 +10,7 @@ from server.hot_path.backchannel import (
     BackchannelAssetStore,
     MaaiBackchannelConfig,
     MaaiBackchannelDetector,
+    _read_maai_result_once,
     create_backchannel_detector_from_env,
 )
 
@@ -114,3 +116,37 @@ def test_create_backchannel_detector_from_env_uses_enabled_assets(
 
     assert detector is not None
     assert detector.config.threshold == pytest.approx(0.7)
+
+
+def test_maai_result_poll_reads_current_result_queue_without_timeout_kwarg() -> None:
+    class FakeMaai:
+        def __init__(self) -> None:
+            self.result_dict_queue: Queue[dict[str, float]] = Queue()
+
+        def get_result(self, timeout: float | None = None) -> dict[str, float]:
+            raise AssertionError("result_dict_queue should be used before get_result")
+
+    maai = FakeMaai()
+    maai.result_dict_queue.put({"p_bc_react": 0.8})
+
+    assert _read_maai_result_once(maai) == {"p_bc_react": 0.8}
+
+
+def test_maai_result_poll_falls_back_when_queue_rejects_timeout_kwarg() -> None:
+    class TimeoutlessQueue:
+        def __init__(self) -> None:
+            self.result = {"p_bc_emo": 0.9}
+
+        def get(self, **kwargs: object) -> dict[str, float]:
+            if kwargs:
+                raise TypeError("timeout is not supported")
+            return self.result
+
+    class FakeMaai:
+        def __init__(self) -> None:
+            self.result_dict_queue = TimeoutlessQueue()
+
+        def get_result(self) -> dict[str, float]:
+            raise AssertionError("queue should still be used")
+
+    assert _read_maai_result_once(FakeMaai()) == {"p_bc_emo": 0.9}

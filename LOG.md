@@ -1,5 +1,250 @@
 # LOG.md
 
+## 2026-06-20 セッション28
+
+### やること（開始時に書く）
+- smoke artifact に LLM へ実際に送る OpenAI messages 形の prompt を載せる。
+- partial 用でも `SYSTEM` / `INSTRUCTION` の形を変えず、cache prefix を割らないようにする。
+- partial 誤認識が transcript history に確定行として入りすぎるとは何か、現行コードと smoke artifact で説明する。
+- 同じ prompt 2 回と prompt+append 1 回を dflash へ直接投げ、prefix cache が保持されるか切り分ける。
+
+### やったこと
+- `llm_prompt` WebSocket event に `sent_messages` を追加し、dflash へ実際に送る OpenAI chat messages を smoke artifact に残すようにした。
+- `PromptBuilderV2.build_main_reply(..., concise=True)` でも `INSTRUCTION` を変えないようにし、partial / final で `instruction_hash` が割れないようにした。
+- 失敗する unit test を先に追加し、partial instruction が final と同じであること、`llm_prompt.sent_messages` が出ることを固定した。
+- direct dflash probe と、変更後の `make v2-five-turn-smoke` を実行して cache behavior を比較した。
+
+### 結果
+- direct dflash probe は `logs/dflash-cache-direct-probe-20260620-215358.json` に保存した。ユニーク prompt の初回は first content 764.9ms / miss、同一 prompt 2 回目は 211.7ms / `prefix cache hit 72/76`、prompt+append は 518.6ms / `prefix cache hit 72/98` だった。dflash cache 自体は保持されている。
+- 変更後 smoke `logs/five-turn-smoke-20260620-215418.json` は avg first audio 1396.5ms、p95 1776.9ms。
+- 変更後 smoke の全 turn で `instruction_hash=770c5bb7cb` に揃い、`sent_messages` も artifact に入った。
+- dflash 26B は変更後 smoke の 5 request 全てで `prefix cache hit` line を出した。misses は `21` のまま増えず、`prefill_tokens_saved` は 332 から 568 まで増えた。
+- それでも turn3->4 / turn4->5 の prefix は partial/final reconcile による履歴差し替えで途中から崩れる。これは cache miss ではなく、保存する transcript history の安定性の問題として残った。
+
+### partial 誤認識が transcript history に確定行として入る、の意味
+- 現行 core は LLM が発話したら、その発話 text を `_recent_history` に `tomoko:` として追加する。partial STT 由来の LLM 発話でも同じ扱いになる。
+- 後から final STT が来て partial と違っても、active partial reply 後の final は suppress/discard されるため二重発話は避ける。一方で、すでに出した partial reply 自体は履歴に残る。
+- smoke 例では partial `今日の予定を5時` に対して `tomoko: 5時に何かあるの？` が履歴に残り、後から final `今日の予定を一言で教えて` が来る。次 prompt ではこの partial 由来の `tomoko:` 行が通常の確定発話と同じ重みで入る。
+- その結果、次 turn の prompt は単純 append ではなく「partial の user 行が消えて、partial reply と final user が入る」形に変わり、cache prefix と会話整合性の両方を揺らす。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_audio_tomoko_prompt.py::test_prompt_builder_keeps_partial_instruction_same_as_final tests/unit/test_v2_runtime_foundation.py::test_hot_path_websocket_uses_prompt_executor_for_text_prompt -q`
+  - 失敗を確認後、実装して pass
+- `uv run pytest -m unit tests/unit/test_v2_audio_tomoko_prompt.py tests/unit/test_v2_runtime_foundation.py tests/unit/test_v2_speech_order_flow.py -q`
+  - 62 passed
+- `uv run pytest -m unit -q`
+  - 130 passed, 1 deselected
+- `uv run ruff check server/tomoko/prompt.py server/hot_path/app.py tests/unit/test_v2_audio_tomoko_prompt.py tests/unit/test_v2_runtime_foundation.py`
+  - passed
+- `make v2-five-turn-smoke`
+  - completed, artifact `logs/five-turn-smoke-20260620-215418.json`
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること
+- partial reply を `_recent_history` に入れる時、final reconcile 済みの trace では「暫定応答」扱いにできるか検討する。
+- 具体的には prompt history では partial user 行を final user 行で置換しつつ、partial reply を assistant 確定行として残すか、metadata 付きで抑制するかを unit test から決める。
+
+## 2026-06-20 セッション27
+
+### やること（開始時に書く）
+- prefix cache stabilization 後の smoke を実行し、dflash cache hit / miss / eviction と `llm_prompt.cache_shape` を同じ時間帯で確認する。
+- 可能なら `make v2-five-turn-smoke` を使い、累積会話履歴で prefix cache が改善しているかを artifact / dflash log / server log から集計する。
+- 結果を `_docs/latency.md` / `LOG.md` に追記し、必要な確定判断があれば `MEMORY.md` に追記する。
+
+### やったこと
+- `uv run python -m server.runtime readiness` で runtime 状態を確認した。DB は false、LLM `8081` / `8082` と VOICEVOX `50122`、Apple Speech、OCR は ready だった。
+- `make v2-five-turn-smoke` を実行し、`logs/five-turn-smoke-20260620-213806.json` を取得した。
+- smoke artifact の `llm_prompt.cache_shape` と、同じ時間帯の `logs/dflash-26b.log` prefix cache counter を突き合わせた。
+- `_docs/latency.md` に first-audio 実測と cache hit / miss / eviction の内訳を追記した。
+
+### 結果
+- 5 turn smoke は avg first audio 1393.7ms、p95 2179.2ms、max 2179.2ms だった。
+- dflash 26B counter は pre-smoke `hits=1+1` / `misses=17` / `evictions=27` / `prefill_tokens_saved=68` から final `hits=2+2` / `misses=20` / `evictions=36` / `prefill_tokens_saved=148` へ動いた。
+- 5 request 中、`prefix cache hit` line が出たのは最初の 2 request だけだった。実効 hit は約 40% で、3 request は miss として `misses` / `evictions` を増やした。
+- `llm_prompt.cache_shape` では `system_hash=eda2ab0021` が全 turn で安定していた。一方、turn 1-2 は通常 instruction hash `770c5bb7cb`、turn 3-5 は partial concise instruction hash `a8ca522a76` になっており、partial prompt lane が cache 系列を分けている。
+- この smoke では `runtime_context_chars=0` / `volatile_recall_chars=0` だったため、runtime context を後段へ逃がした効果そのものは、実 context が入るシナリオで再測が必要。
+
+### 詰まったこと・解決したこと
+- server debug log には `prompt_send cache_shape` が残らず、今回の shape 確認は WebSocket smoke artifact 側の `llm_prompt` event を正とした。
+- dflash は `entries=8/8` のまま各 request で eviction が増えており、prompt 側の安定化だけでは cache rate が上がり切らない可能性が見えた。
+
+### 検証
+- `make v2-five-turn-smoke`
+  - completed, artifact `logs/five-turn-smoke-20260620-213806.json`
+- dflash log 集計
+  - smoke window 5 lookup, hit line 2, miss increment 3, eviction increment 9 from pre-smoke snapshot
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること
+- partial concise prompt が通常 prompt と cache 系列を分けすぎているため、instruction を変えずに response mode を trailing user context へ移せるか unit test から検討する。
+- `RUNTIME_CONTEXT` が実際に入るシナリオで `runtime_context_hash` と dflash hit/miss を再測する。
+
+## 2026-06-20 セッション26
+
+### やること（開始時に書く）
+- prefix cache hit を上げられるように、最新 dflash log と現行 `PromptBuilderV2` / OpenAI messages 変換を確認する。
+- 人格・履歴・直近文脈は削らず、どの prompt context が毎回揺れているかを unit test / log で見える形にする。
+- stable prefix に寄せられる部分があれば、失敗する unit test を先に追加してから実装する。
+
+### やったこと
+- 最新 `logs/dflash-26b.log` tail を確認し、直近 1200 行で prefix cache lookup 100 回に対して hit line 12 回、最後の lookup が `hits=1+1` / `misses=17` / `evictions=27` / `prefill_tokens_saved=68` であることを確認した。
+- `PromptBuilderV2` で `summary[...]` / `calendar[...]` / `user_status=...` が system message に入り、turn ごとの context 変化で stable prefix を揺らす可能性があることを確認した。
+- unit test を先に追加し、runtime context が stable system prefix に入らないこと、OpenAI messages 変換で最後の user message へ追記されること、`prompt_cache_shape` で section 差分が見えることを固定した。
+- `summary` / `calendar` / `user_status` を `RUNTIME_CONTEXT` として `SESSION_TRANSCRIPT` 後ろへ移し、`VOLATILE_RECALL` と同じく最後の user message 末尾へ付けるようにした。
+- `prompt_cache_shape()` を追加し、system / instruction / transcript / runtime context / volatile recall の chars / hash / turn 数を `llm_prompt` event と `[tomoko:llm] prompt_send` に出すようにした。
+- `_docs/latency.md` と `MEMORY.md` に今回のログ根拠、未測定理由、確定判断を追記した。
+
+### 詰まったこと・解決したこと
+- 既存 test は summary 付き prompt が `SESSION_TRANSCRIPT` で終わることを期待していた。runtime context を後段へ移す新方針に合わせ、clock 質問では calendar は省くが summary は `RUNTIME_CONTEXT` に残る期待へ更新した。
+- 今回は dflash live runtime を再起動していないため、prefix hit 率や first-audio の改善幅は未測定として残した。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_audio_tomoko_prompt.py -q`
+  - 33 passed
+- `uv run pytest -m unit tests/unit/test_v2_audio_tomoko_prompt.py tests/unit/test_v2_runtime_foundation.py tests/unit/test_v2_speech_order_flow.py -q`
+  - 62 passed
+- `uv run pytest -m unit -q`
+  - 130 passed, 1 deselected
+- `uv run ruff check server/tomoko/prompt.py server/llm/chat.py server/hot_path/model_executor.py server/hot_path/app.py tests/unit/test_v2_audio_tomoko_prompt.py`
+  - passed
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること
+- tmux runtime で `make v2-five-turn-smoke` または live conversation を回し、`llm_prompt.cache_shape` と dflash `prefix cache hit` / `prefill_tokens_saved` / `evictions` を同じ時間帯で比較する。
+- 必要なら context のうちさらに安定 prefix に寄せられるものと、最後の user message に置くべきものを smoke artifact ベースで切り分ける。
+
+## 2026-06-20 セッション25
+
+### やること（開始時に書く）
+- 最新 `logs/server-debug.log` / `logs/v2-runtime.jsonl` で見えている会話 runtime の無駄・重複・読みにくさを改善する。
+- 優先順は、VAD 後 STT 前の短尺/低エネルギー segment gate、MaAI backchannel `TypeError` 再発経路の特定と修正、partial 由来 `append_after_current` の抑制、readiness structured log 改善、prefix cache の揺れ可視化と安定化候補の確認。
+- 各項目は実ログと現行コードを確認し、失敗する unit test を先に追加してから実装する。
+
+### やったこと
+- 最新ログを集計し、`vad_segment=574` に対して Apple Speech final 空文字が 492 件、MaAI poll error が 311 件、`append_after_current` が 216 件あることを確認した。
+- `SegmentSttGate` を追加し、VAD 完成 segment の境界で duration / RMS を見て、低エネルギー segment を Apple Speech 前に `vad_segment_dropped` として落とすようにした。
+- partial observation に VAD segment 内で共有する trace_id を付け、active partial reply 後の同一 trace partial/final は prompt / speech-order を作らず discard/suppress するようにした。
+- MaAI poll は `result_dict_queue` / `output_queue` を優先し、`timeout` kwarg 非対応 queue でも fallback するようにした。poll error は同一 error type ごとに間引き、fail-open のままログを埋めないようにした。
+- runtime readiness は起動時 snapshot と後続 transition を分けて JSONL / console に出すようにした。
+- dflash prefix cache 改善のため、揺れやすい `VOLATILE_RECALL` を stable system prefix から外し、OpenAI messages では最後の user message 末尾に足すようにした。
+- `_docs/latency.md` と `MEMORY.md` に今回のログ根拠、未測定理由、確定判断を追記した。
+
+### 詰まったこと・解決したこと
+- STT gate の unit で最初に使った低エネルギー sample は VAD 自体が speech とみなさず、gate まで届かなかった。VAD は反応し、STT gate では低エネルギーとして落ちる閾値に調整した。
+- 既存 unit は短い人工 segment を使うため、短尺だけで落とすとテスト用の高エネルギー発話まで落ちる。短尺は低エネルギーと組み合わせた時だけ落とし、長い低エネルギーも落とす判断にした。
+- 今回は live tmux runtime smoke を起動していないため、first-audio の改善幅は未測定として残した。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_audio_tomoko_prompt.py tests/unit/test_v2_hot_path_backchannel.py tests/unit/test_v2_speech_order_flow.py tests/unit/test_v2_runtime_foundation.py -q`
+  - 66 passed
+- `uv run pytest -m unit -q`
+  - 127 passed, 1 deselected
+- `uv run ruff check server/hot_path/audio_conversation.py server/hot_path/db_conversation.py server/hot_path/backchannel.py server/tomoko/conversation.py server/runtime.py server/tomoko/prompt.py server/llm/chat.py server/hot_path/model_executor.py tests/unit/test_v2_audio_tomoko_prompt.py tests/unit/test_v2_hot_path_backchannel.py tests/unit/test_v2_speech_order_flow.py tests/unit/test_v2_runtime_foundation.py`
+  - passed
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること
+- `make run` / tmux runtime を起動した状態で会話または `make v2-say-latency-smoke` を実行し、`vad_segment_dropped` 件数、MaAI poll error の再発有無、同一 trace partial/final の discard、readiness transition、dflash prefix cache hit / eviction の変化を実ログで確認する。
+
+## 2026-06-20 セッション24
+
+### やること（開始時に書く）
+- UI の Stop ボタンが実際に音声再生を止めているか、client/server のイベント経路とログから確認する。
+- Stop が ACK のみで playback を止めていない場合、失敗する unit contract を追加してから修正する。
+
+### やったこと
+- client は Stop ボタンで `audio_control` を送っていたが、予約済み `AudioBufferSourceNode` を保持しておらず、local playback を止められないことを確認した。
+- hot-path は `audio_control` 受信時に `audio_control_ack` を返すだけで、`SpeechOrderExecutor` の generation を進めていなかったことを確認した。
+- client に active audio source 管理、`stopLocalPlayback()`、stop 後の stale binary audio chunk 破棄を追加した。
+- server 由来の `speech_order mode=stop` でも client が同じ停止処理を実行するようにした。
+- hot-path の `audio_control/stop` で `SpeechOrderExecutor.stop_playback()` を呼び、進行中 generation と append queue を止めるようにした。
+
+### 詰まったこと・解決したこと
+- server から既に送信済みの audio chunk は server 側から停止できないため、client 側で source を持って止める必要があった。
+- stop 後に同じ発話の audio chunk が遅れて届くケースに備え、次の `speech_order` / `backchannel` までは binary audio を再生しないようにした。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_runtime_foundation.py tests/unit/test_v2_speech_order_flow.py -q`
+  - 26 passed
+- `uv run ruff check server/hot_path/app.py server/hot_path/speech_executor.py tests/unit/test_v2_runtime_foundation.py tests/unit/test_v2_speech_order_flow.py`
+  - passed
+- `node --check client/main.js`
+  - passed
+- `uv run pytest -m unit -q`
+  - 119 passed, 1 deselected
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること
+- 実ブラウザで長めの TTS 再生中に Stop を押し、即時停止と stale chunk 破棄を耳で確認する。
+
+## 2026-06-20 セッション23
+
+### やること（開始時に書く）
+- hot-path の MaAI backchannel poll error を最新ログから特定して修正する。
+- 意味飽和度 partial early-start が現状 final 待ちになっていないか、実 artifact / code から確認する。
+- client UI の `PLAN` 表示を消す。
+
+### やったこと
+- 最新 `logs/server-debug.log` で、MaAI backchannel poll が `TypeError` で連続失敗していることを確認した。
+- installed `maai.Maai.get_result()` が timeout 引数を受け取らないため、hot-path の poll を `result_dict_queue.get(timeout=0.1)` 優先に変更した。
+- partial early-start gate が saturation と総合 score の両方を必須にしていたため、片方が十分なら確認段階へ進めるようにした。
+- client timeline から scheduler decision の `PLAN` 表示を削除した。
+
+### 詰まったこと・解決したこと
+- ログ上の partial は総合 score が 0.86〜0.96 でも saturation だけで suppress されており、final まで待つ体感と一致していた。
+  低情報 partial は saturation と score の両方が低い時だけ suppress し、誤発火対策として 2 回確認は残した。
+- `uv run python -m scripts.v2_say_latency_smoke --url ws://127.0.0.1:8000/ws ...` は hot-path server が起動しておらず `ConnectionRefusedError` になった。
+  今回の live first-audio は未測定として `_docs/latency.md` に残す。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_hot_path_backchannel.py tests/unit/test_v2_speech_order_flow.py tests/unit/test_v2_runtime_foundation.py -q`
+  - 30 passed
+- `uv run ruff check server/hot_path/backchannel.py server/tomoko/conversation.py tests/unit/test_v2_hot_path_backchannel.py tests/unit/test_v2_speech_order_flow.py tests/unit/test_v2_runtime_foundation.py`
+  - passed
+- `uv run pytest -m unit -q`
+  - 117 passed, 1 deselected
+- `node --check client/main.js`
+  - passed
+
+### 次のセッションでやること
+- tmux runtime を起動した状態で `/ws` say latency smoke を再実行し、MaAI poll error が再発しないことと partial early-start の first-audio を実測する。
+
+## 2026-06-20 セッション22
+
+### やること（開始時に書く）
+- モデル名間違いで hot-path が落ちる最新ログを確認する。
+- 実際に落ちている境界を特定し、設定/launcher/runtime のモデル名契約を修正する。
+
+### やったこと
+- 最新 `logs/server-debug.log` で、`/ws` 接続時に missing JDD distilled saturation artifact を load して `FileNotFoundError` で落ちていることを確認した。
+- `TOMOKO_V2_DISTILLED_SATURATION_MODEL` と Python default を、現在実在する public synthetic artifact に揃えた。
+- default saturation judge 作成時に artifact が存在しない場合、hot-path を落とさず deterministic fallback で起動するようにした。
+- default artifact と Makefile の一致、missing artifact fallback を unit test で固定した。
+
+### 詰まったこと・解決したこと
+- 古い判断では JDD 10000件 artifact を runtime default にしていたが、この checkout では ignored artifact として存在せず、public synthetic artifact だけが実在していた。
+- 修正前の tmux pane には古い traceback が残っていたが、uvicorn reload 後の実 `/ws` smoke は `speech_order` / LLM / VOICEVOX まで通った。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_semantic_scheduler.py tests/unit/test_v2_runtime_foundation.py -q`
+  - 34 passed
+- `uv run ruff check server/tomoko/semantic.py server/tomoko/conversation.py server/hot_path/audio_conversation.py tests/unit/test_v2_semantic_scheduler.py tests/unit/test_v2_runtime_foundation.py`
+  - passed
+- `uv run pytest -m unit -q`
+  - 115 passed, 1 deselected
+- `make v2-conversation-smoke`
+  - passed
+- `uv run python -m scripts.v2_say_latency_smoke --url ws://127.0.0.1:8000/ws --text 'トモコ、短く返事して。' --voice Kyoko`
+  - passed: voice-end to first audio 3661.7ms, artifact `logs/say-latency-20260620-204850.json`
+
+### 次のセッションでやること
+- 必要なら public synthetic 10000件版 artifact を長時間生成し、runtime default を差し替えるか代表ケース比較で判断する。
+
 ## 2026-06-20 セッション21
 
 ### やること（開始時に書く）

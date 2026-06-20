@@ -16,6 +16,7 @@ from server.shared.models import (
     SemanticSaturationResult,
     SpeechOrder,
     SpeechOrderMode,
+    TurnMaterials,
     utc_now,
 )
 from server.tomoko.conversation import TomokoConversationCore
@@ -115,6 +116,54 @@ async def test_tomoko_conversation_core_can_emit_early_order_from_partial_stt() 
 
 
 @pytest.mark.asyncio
+async def test_tomoko_conversation_core_uses_high_score_partial_below_saturation() -> None:
+    now = utc_now()
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=FixedSaturationJudge(0.70),
+        scheduler=SpeechScheduler(),
+        chat_backend=StaticChatBackend(["前のめりに返すね。"]),
+    )
+    core.update_turn_materials(
+        TurnMaterials(
+            window_ms=200,
+            user_speaking=True,
+            speech_probability=0.1,
+            silence_ms=0,
+            playback_active=False,
+            p_yielding=0.9,
+            stt_partial="今日の予定を教えて",
+        )
+    )
+
+    first = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="今日の予定を教えて",
+            is_final=False,
+            stability=0.85,
+            audio_started_at=now,
+            audio_ended_at=now,
+        )
+    )
+    second = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="今日の予定を教えてください",
+            is_final=False,
+            stability=0.85,
+            audio_started_at=now,
+            audio_ended_at=now,
+            trace_id=first.observation.trace_id,
+        )
+    )
+
+    assert first.saturation.saturation < 0.75
+    assert first.scheduler_output.score >= 0.75
+    assert first.scheduler_output.reason == "partial start gate is waiting for confirmation"
+    assert second.speech_order is not None
+    assert second.speech_order.text == "前のめりに返すね。"
+
+
+@pytest.mark.asyncio
 async def test_tomoko_conversation_core_holds_partial_when_text_conflicts() -> None:
     now = utc_now()
     core = TomokoConversationCore(
@@ -211,6 +260,112 @@ async def test_tomoko_conversation_core_reconciles_final_after_partial_order() -
     assert stale_partial.prompt_request is None
     assert stale_partial.scheduler_output.reason == (
         "partial reconciled with active partial reply"
+    )
+
+
+@pytest.mark.asyncio
+async def test_tomoko_conversation_core_discards_conflicting_partial_after_partial_order() -> None:
+    now = utc_now()
+    trace_id = uuid4()
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=FixedSaturationJudge(0.95),
+        scheduler=SpeechScheduler(),
+        chat_backend=StaticChatBackend(
+            ["先に答えるね。", "矛盾した追撃は出さないでね。"]
+        ),
+    )
+
+    first = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="その今の予定を教えて",
+            is_final=False,
+            stability=0.85,
+            audio_started_at=now,
+            audio_ended_at=now,
+            trace_id=trace_id,
+        )
+    )
+    active = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="その今の予定を教えてください",
+            is_final=False,
+            stability=0.85,
+            audio_started_at=now,
+            audio_ended_at=now,
+            trace_id=trace_id,
+        )
+    )
+    conflicting = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="全然違う誤認識が伸びてきた",
+            is_final=False,
+            stability=0.85,
+            audio_started_at=now,
+            audio_ended_at=now,
+            trace_id=trace_id,
+        )
+    )
+
+    assert first.speech_order is None
+    assert active.speech_order is not None
+    assert conflicting.speech_order is None
+    assert conflicting.prompt_request is None
+    assert conflicting.scheduler_output.reason == (
+        "partial discarded after active partial reply in same trace"
+    )
+
+
+@pytest.mark.asyncio
+async def test_tomoko_conversation_core_suppresses_conflicting_final_after_partial_order() -> None:
+    now = utc_now()
+    trace_id = uuid4()
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=FixedSaturationJudge(0.95),
+        scheduler=SpeechScheduler(),
+        chat_backend=StaticChatBackend(
+            ["先に答えるね。", "finalで二重に返さないでね。"]
+        ),
+    )
+
+    await core.handle_observation(
+        PartialTranscriptObservation(
+            text="その今の予定を教えて",
+            is_final=False,
+            stability=0.85,
+            audio_started_at=now,
+            audio_ended_at=now,
+            trace_id=trace_id,
+        )
+    )
+    active = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="その今の予定を教えてください",
+            is_final=False,
+            stability=0.85,
+            audio_started_at=now,
+            audio_ended_at=now,
+            trace_id=trace_id,
+        )
+    )
+    final = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="これは最終認識で別内容になった",
+            is_final=True,
+            stability=1.0,
+            audio_started_at=now,
+            audio_ended_at=now,
+            trace_id=trace_id,
+        )
+    )
+
+    assert active.speech_order is not None
+    assert final.durable_utterance is not None
+    assert final.speech_order is None
+    assert final.prompt_request is None
+    assert final.scheduler_output.reason == (
+        "final discarded after active partial reply in same trace"
     )
 
 
@@ -319,6 +474,34 @@ async def test_speech_order_executor_replace_append_stop_and_generation_guard() 
     assert stopped.audio_chunks == []
     assert executor.append_queue == []
     assert executor.current_order is None
+    assert executor.current_score == 0.0
+
+
+@pytest.mark.asyncio
+async def test_speech_order_executor_stop_playback_clears_queue_and_generation() -> None:
+    executor = SpeechOrderExecutor(StaticWavTtsBackend([b"RIFFxxxxWAVEdata"]))
+    current = SpeechOrder(
+        text="話している途中",
+        mode=SpeechOrderMode.REPLACE_CURRENT,
+        reason="unit",
+        priority=50,
+    )
+    queued = SpeechOrder(
+        text="次に話す",
+        mode=SpeechOrderMode.APPEND_AFTER_CURRENT,
+        reason="unit",
+        priority=40,
+    )
+    executor.begin_external_playback(current, score=0.6)
+    executor.append_queue.append(queued)
+    generation = executor.current_generation
+
+    executor.stop_playback(reason="ui_stop")
+
+    assert executor.current_generation == generation + 1
+    assert executor.current_order is None
+    assert executor.current_score == 0.0
+    assert executor.append_queue == []
 
 
 @pytest.mark.asyncio

@@ -16,7 +16,11 @@ from server.audio.stt import (
     observation_events,
 )
 from server.audio.vad import VADProcessor
-from server.hot_path.audio_conversation import HotPathAudioConversation, audio_bytes_to_samples
+from server.hot_path.audio_conversation import (
+    HotPathAudioConversation,
+    SegmentSttGate,
+    audio_bytes_to_samples,
+)
 from server.hot_path.model_executor import (
     MultipartMixedParser,
     PromptExecutor,
@@ -40,6 +44,8 @@ from server.llm.chat import _messages_for_request as tomoko_messages_for_request
 from server.shared.models import (
     AudioSpeechSegment,
     CancelPolicy,
+    CandidateLifecycle,
+    CandidateRecord,
     ConversationHistoryItem,
     FloorSignal,
     FloorState,
@@ -48,13 +54,14 @@ from server.shared.models import (
     SemanticSaturationResult,
     SessionSummary,
     SpeechDecisionKind,
+    UserStatusObservation,
     utc_now,
 )
 from server.tomoko.context import ContextSnapshotBuilderV2
 from server.tomoko.conversation import TomokoConversationCore
 from server.tomoko.floor import SpeechDecisionModel
 from server.tomoko.main import TomokoProcessCore, normalize_stt_block_text
-from server.tomoko.prompt import PromptBuilderV2
+from server.tomoko.prompt import PromptBuilderV2, prompt_cache_shape
 from server.tomoko.scheduler import SpeechScheduler
 from server.tomoko.session import SessionBoundaryModel
 
@@ -83,6 +90,51 @@ def test_vad_preroll_is_joined_at_speech_start() -> None:
     assert len(segment.samples) == 200
     assert segment.samples[:100] == (0.2,) * 100
     assert segment.samples[100:] == (0.9,) * 100
+
+
+def test_segment_stt_gate_drops_short_low_energy_segment() -> None:
+    now = utc_now()
+    gate = SegmentSttGate(min_duration_ms=600, min_rms=0.01)
+    segment = AudioSpeechSegment(
+        samples=(0.002,) * 300,
+        sample_rate=1000,
+        started_at=now,
+        ended_at=now + timedelta(milliseconds=300),
+    )
+
+    decision = gate.inspect(segment)
+
+    assert not decision.should_transcribe
+    assert decision.reason == "short_and_low_energy"
+
+
+@pytest.mark.asyncio
+async def test_hot_path_drops_segment_before_stt_when_gate_rejects(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    stt_backend = _RecordingSttBackend(text="呼ばれない")
+    conversation = HotPathAudioConversation(
+        vad=VADProcessor(sample_rate=1000, pre_roll_ms=0, silence_ms=100),
+        stt_backend=stt_backend,
+        tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
+        prompt_builder=PromptBuilderV2(),
+        prompt_executor=PromptExecutor(
+            StaticChatBackend(["この返答は出てはいけない"]),
+            StaticWavTtsBackend([b"RIFFxxxxWAVEdata"]),
+        ),
+        speech_rms_threshold=0.002,
+        stt_gate=SegmentSttGate(min_duration_ms=600, min_rms=0.01),
+    )
+
+    assert await conversation.process_audio_samples((0.002,) * 100) is None
+    assert await conversation.process_audio_samples((0.0,) * 100) is None
+    result = await conversation.process_audio_samples((0.0,) * 100)
+
+    assert result is None
+    assert stt_backend.segments == []
+    captured = capsys.readouterr()
+    assert "vad_segment_dropped" in captured.out
+    assert "reason='short_and_low_energy'" in captured.out
 
 
 def test_vad_reset_drops_in_progress_speech_and_preroll() -> None:
@@ -554,7 +606,10 @@ def test_prompt_builder_orders_stable_current_volatile_and_skips_calendar_for_cl
     assert "SYSTEM:\nTomoko v2: natural local voice conversation." in prompt.prompt_text
     assert "SESSION_TRANSCRIPT:\nuser: raw text\nuser: いま何時?" in prompt.prompt_text
     assert "INSTRUCTION:\n次のtomoko発話だけ返す。" in prompt.prompt_text
-    assert prompt.prompt_text.endswith("SESSION_TRANSCRIPT:\nuser: raw text\nuser: いま何時?")
+    assert prompt.prompt_text.endswith(
+        "SESSION_TRANSCRIPT:\nuser: raw text\nuser: いま何時?\n"
+        "RUNTIME_CONTEXT:\nsummary[clock]=test"
+    )
     assert "calendar[" not in prompt.prompt_text
 
 
@@ -611,7 +666,7 @@ def test_prompt_builder_next_turn_keeps_previous_prompt_as_prefix() -> None:
     assert second.prompt_text[len(first.prompt_text):].startswith("\ntomoko: 了解。")
 
 
-def test_prompt_builder_can_request_concise_partial_reply() -> None:
+def test_prompt_builder_keeps_partial_instruction_same_as_final() -> None:
     snapshot = ContextSnapshotBuilderV2().build(
         session_id=None,
         recent_utterances=[],
@@ -620,13 +675,113 @@ def test_prompt_builder_can_request_concise_partial_reply() -> None:
         user_status=None,
         candidates=[],
     )
-    prompt = PromptBuilderV2().build_main_reply(
+    final_prompt = PromptBuilderV2().build_main_reply(
+        snapshot,
+        "その今日の予定を教えて",
+        concise=False,
+    )
+    partial_prompt = PromptBuilderV2().build_main_reply(
         snapshot,
         "その今日の予定を教えて",
         concise=True,
     )
 
-    assert "INSTRUCTION:\n次のtomoko発話だけ返す。短く一文で返す。" in prompt.prompt_text
+    assert "INSTRUCTION:\n次のtomoko発話だけ返す。" in partial_prompt.prompt_text
+    assert "短く一文で返す" not in partial_prompt.prompt_text
+    assert prompt_cache_shape(partial_prompt.prompt_text)["instruction_hash"] == (
+        prompt_cache_shape(final_prompt.prompt_text)["instruction_hash"]
+    )
+
+
+def test_prompt_builder_keeps_volatile_recall_after_transcript_for_cache_prefix() -> None:
+    session_id = __import__("uuid").uuid4()
+    candidate = CandidateRecord(
+        seed_id=__import__("uuid").uuid4(),
+        source="world",
+        source_key="now",
+        text="いま外は雨が降っている",
+        priority=0.8,
+        urgency=0.2,
+        intrusion=0.1,
+        maturity=1.0,
+        lifecycle=CandidateLifecycle.ACTIVE,
+        context_tags=("weather",),
+    )
+    snapshot = ContextSnapshotBuilderV2().build(
+        session_id=session_id,
+        recent_utterances=[],
+        recent_history=[
+            ConversationHistoryItem(speaker="user", text="こんにちは"),
+            ConversationHistoryItem(speaker="tomoko", text="聞こえてるよ"),
+        ],
+        summaries=[],
+        calendar_loader=lambda: {},
+        user_status=None,
+        candidates=[candidate],
+    )
+
+    prompt = PromptBuilderV2().build_main_reply(snapshot, "天気どう?")
+
+    assert "SYSTEM:\nTomoko v2: natural local voice conversation.\nVOLATILE_RECALL" not in (
+        prompt.prompt_text
+    )
+    assert (
+        "SESSION_TRANSCRIPT:\n"
+        "user: こんにちは\n"
+        "tomoko: 聞こえてるよ\n"
+        "user: 天気どう?\n"
+        "VOLATILE_RECALL:\n"
+        "candidate[world:now]=いま外は雨が降っている"
+    ) in prompt.prompt_text
+
+
+def test_prompt_builder_keeps_runtime_context_out_of_stable_system_prefix() -> None:
+    session_id = __import__("uuid").uuid4()
+    summary = SessionSummary(
+        session_id=session_id,
+        keyword="health",
+        conclusion="今日は少し疲れている",
+        embedding=(0.1,),
+    )
+    status = UserStatusObservation(
+        present=True,
+        activity_label="coding_or_terminal",
+        summary="エディタを見ている",
+        source="unit",
+    )
+    snapshot = ContextSnapshotBuilderV2().build(
+        session_id=session_id,
+        recent_utterances=[],
+        recent_history=[
+            ConversationHistoryItem(speaker="user", text="こんにちは"),
+            ConversationHistoryItem(speaker="tomoko", text="聞こえてるよ"),
+        ],
+        summaries=[summary],
+        calendar_loader=lambda: {"20260620T220000": "休憩"},
+        user_status=status,
+        candidates=[],
+    )
+
+    prompt = PromptBuilderV2().build_main_reply(snapshot, "今どう見えてる?")
+
+    assert prompt.prompt_text.startswith(
+        "SYSTEM:\n"
+        "Tomoko v2: natural local voice conversation.\n"
+        "INSTRUCTION:\n"
+    )
+    assert "SYSTEM:\nTomoko v2: natural local voice conversation.\nsummary=" not in (
+        prompt.prompt_text
+    )
+    assert (
+        "SESSION_TRANSCRIPT:\n"
+        "user: こんにちは\n"
+        "tomoko: 聞こえてるよ\n"
+        "user: 今どう見えてる?\n"
+        "RUNTIME_CONTEXT:\n"
+        "summary[health]=今日は少し疲れている\n"
+        "calendar[20260620T220000]=休憩\n"
+        "user_status=coding_or_terminal"
+    ) in prompt.prompt_text
 
 
 def test_session_transcript_prompt_is_sent_as_chat_roles() -> None:
@@ -661,6 +816,129 @@ def test_session_transcript_prompt_is_sent_as_chat_roles() -> None:
             {"role": "assistant", "content": "了解。"},
             {"role": "user", "content": "続きも一言で"},
         ]
+
+
+def test_volatile_recall_is_appended_to_last_user_message_for_cache_prefix() -> None:
+    request = PromptRequest(
+        prompt_text=(
+            "SYSTEM:\nTomoko v2: natural local voice conversation.\n"
+            "INSTRUCTION:\n次のtomoko発話だけ返す。\n"
+            "SESSION_TRANSCRIPT:\n"
+            "user: 最初に短く返事して\n"
+            "tomoko: 了解。\n"
+            "user: 続きも一言で\n"
+            "VOLATILE_RECALL:\n"
+            "candidate[world:now]=いま外は雨"
+        ),
+        scope=PromptScope.MAIN,
+        decision_id=None,
+        utterance_id=None,
+        candidate_id=None,
+        priority=50,
+        cancel_policy=CancelPolicy.CANCEL_ON_USER_SPEAKING,
+    )
+
+    for messages_for_request in (tomoko_messages_for_request, hot_path_messages_for_request):
+        messages = messages_for_request(request)
+        assert messages[:-1] == [
+            {
+                "role": "system",
+                "content": (
+                    "Tomoko v2: natural local voice conversation.\n"
+                    "次のtomoko発話だけ返す。"
+                ),
+            },
+            {"role": "user", "content": "最初に短く返事して"},
+            {"role": "assistant", "content": "了解。"},
+        ]
+        assert messages[-1] == {
+            "role": "user",
+            "content": (
+                "続きも一言で\n\n"
+                "VOLATILE_RECALL:\n"
+                "candidate[world:now]=いま外は雨"
+            ),
+        }
+
+
+def test_runtime_context_is_appended_to_last_user_message_for_cache_prefix() -> None:
+    request = PromptRequest(
+        prompt_text=(
+            "SYSTEM:\nTomoko v2: natural local voice conversation.\n"
+            "INSTRUCTION:\n次のtomoko発話だけ返す。\n"
+            "SESSION_TRANSCRIPT:\n"
+            "user: 最初に短く返事して\n"
+            "tomoko: 了解。\n"
+            "user: 続きも一言で\n"
+            "RUNTIME_CONTEXT:\n"
+            "summary[health]=今日は少し疲れている\n"
+            "calendar[20260620T220000]=休憩\n"
+            "VOLATILE_RECALL:\n"
+            "candidate[world:now]=いま外は雨"
+        ),
+        scope=PromptScope.MAIN,
+        decision_id=None,
+        utterance_id=None,
+        candidate_id=None,
+        priority=50,
+        cancel_policy=CancelPolicy.CANCEL_ON_USER_SPEAKING,
+    )
+
+    for messages_for_request in (tomoko_messages_for_request, hot_path_messages_for_request):
+        messages = messages_for_request(request)
+        assert messages[:-1] == [
+            {
+                "role": "system",
+                "content": (
+                    "Tomoko v2: natural local voice conversation.\n"
+                    "次のtomoko発話だけ返す。"
+                ),
+            },
+            {"role": "user", "content": "最初に短く返事して"},
+            {"role": "assistant", "content": "了解。"},
+        ]
+        assert messages[-1] == {
+            "role": "user",
+            "content": (
+                "続きも一言で\n\n"
+                "RUNTIME_CONTEXT:\n"
+                "summary[health]=今日は少し疲れている\n"
+                "calendar[20260620T220000]=休憩\n"
+                "VOLATILE_RECALL:\n"
+                "candidate[world:now]=いま外は雨"
+            ),
+        }
+
+
+def test_prompt_cache_shape_exposes_stable_and_volatile_sections() -> None:
+    request = PromptRequest(
+        prompt_text=(
+            "SYSTEM:\nTomoko v2: natural local voice conversation.\n"
+            "INSTRUCTION:\n次のtomoko発話だけ返す。\n"
+            "SESSION_TRANSCRIPT:\n"
+            "user: 最初に短く返事して\n"
+            "tomoko: 了解。\n"
+            "user: 続きも一言で\n"
+            "RUNTIME_CONTEXT:\n"
+            "summary[health]=今日は少し疲れている\n"
+            "VOLATILE_RECALL:\n"
+            "candidate[world:now]=いま外は雨"
+        ),
+        scope=PromptScope.MAIN,
+        decision_id=None,
+        utterance_id=None,
+        candidate_id=None,
+        priority=50,
+        cancel_policy=CancelPolicy.CANCEL_ON_USER_SPEAKING,
+    )
+
+    shape = prompt_cache_shape(request.prompt_text)
+
+    assert shape["system_chars"] == len("Tomoko v2: natural local voice conversation.")
+    assert shape["instruction_chars"] == len("次のtomoko発話だけ返す。")
+    assert shape["transcript_turns"] == 3
+    assert shape["runtime_context_chars"] == len("summary[health]=今日は少し疲れている")
+    assert shape["volatile_recall_chars"] == len("candidate[world:now]=いま外は雨")
 
 
 @pytest.mark.asyncio

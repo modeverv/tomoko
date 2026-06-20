@@ -2,6 +2,31 @@
 
 ## 確定した判断
 
+### UI Stop は client 再生停止と hot-path generation stop の両方を行う
+2026-06-20 セッション24で、Stop ボタンは `audio_control` を `/ws` に送っていたが、
+hot-path は ACK を返すだけで、browser に予約済みの `AudioBufferSourceNode` や進行中 TTS generation を
+止めていないことを確認した。
+既に browser に送った audio chunk は server から止められないため、client は active source を保持し、
+Stop で `source.stop()`、`playbackTime` reset、古い binary audio chunk の破棄を行う。
+同時に hot-path は `SpeechOrderExecutor.stop_playback()` で generation を進め、遅れて生成された chunk を
+discard できる状態にする。
+
+### MaAI result poll は result_dict_queue を timeout 付きで読む
+2026-06-20 セッション23で、最新 `logs/server-debug.log` に
+`[tomoko:backchannel] maai_backchannel_poll_error error='TypeError'` が連続していることを確認した。
+installed `maai.Maai.get_result()` は timeout 引数を受け取らず、内部では `result_dict_queue.get()` を呼ぶ。
+hot-path では block しない poll が必要なので、MaAI instance が `result_dict_queue` を持つ場合は
+`result_dict_queue.get(timeout=0.1)` を直接使う。これにより backchannel lane は fail-open のまま、
+`get_result(timeout=...)` の TypeError でログを埋めない。
+
+### partial start gate は saturation か総合 score のどちらかで確認段階へ進める
+2026-06-20 セッション23で、実ログ上は partial の総合 score が 0.86〜0.96 まで出ていても、
+saturation が 0.75 未満だと `partial start gate is waiting for more semantic saturation` で suppress され、
+final transcript まで待っているケースを確認した。
+前のめりな開始は「saturation が高い」または「materials/pressure を合成した score が高い」のどちらかで
+確認段階へ進める。低情報 partial として止めるのは、saturation と score の両方が低い時だけにする。
+ただし誤発火を避けるため、確認段階では従来通り類似 partial が 2 回続くことを要求する。
+
 ### LLM 前は pressure synthesis gate に限定する
 2026-06-20 セッション21で、S19 の `InferenceStartGate` を `LlmFireGate` に置き換えた。
 LLM 前では `main_reply` / `initiative` / `world_summary` のような intent 的な enum を作らない。
@@ -12,6 +37,15 @@ materials から各 pressure を作り、`LlmFireGate` が pressure score を合
 `materials -> pressures -> LlmFireGate -> LLM -> PreparedSpeechCandidate -> SpeechEmissionGate -> SpeechOrder`
 とする。どの pressure が強かったかは `score_breakdown` に残すが、
 LLM 前の gate decision には pressure source の種類を混ぜない。
+
+### runtime distilled saturation default は実在 public synthetic artifact にする
+2026-06-20 セッション22で、hot-path `/ws` 接続時に
+`jdd-gemma26b-10000-plus-anchors-contrastive-tail-referential-saturation-model.json`
+を load しようとして `FileNotFoundError` で落ちることを最新 `logs/server-debug.log` から確認した。
+現在この checkout に実在する runtime 採用可能 artifact は
+`make-model/artifacts/public-synthetic-gemma26b-200-plus-anchors-life-h8192-l001-saturation-model.json`
+なので、Makefile と Python default はこの public synthetic artifact を指す。
+artifact が存在しない場合でも hot-path `/ws` は落とさず、deterministic saturation fallback で起動する。
 
 ### Materials -> Pressures -> Gates を発話判断語彙にする
 2026-06-20 セッション19で、S18 の `TurnOpportunitySnapshot` /
@@ -524,3 +558,91 @@ Gemma 4 26B teacher label は 1 件 0.7〜1秒台かかることがあり、1000
 manual anchors 4000件を train に足した。
 最終候補 `public-synthetic-gemma26b-200-plus-anchors-life-h8192-l001-saturation-model.json` は
 held-out 40件で binary accuracy 0.90、hot predict mean 0.282ms。
+
+## 2026-06-20 セッション25 確定した判断
+
+### VAD 後 STT 前に低エネルギー segment gate を置く
+最新 `logs/server-debug.log` では `vad_segment=574` に対して Apple Speech final 空文字が
+492 件あり、Apple Speech と scheduler を無駄に回していた。
+VAD hot loop は従来通り primitive のままにし、`AudioSpeechSegment` が完成した境界でだけ
+duration / RMS を見る `SegmentSttGate` を置く。低エネルギー segment は `vad_segment_dropped`
+として structured console log に残し、Apple Speech へ渡さない。
+
+### active partial reply 後の同一 trace partial/final は追加発話しない
+partial 由来の speech-order が既に出た同一 trace では、後続 partial が似ていなくても
+`append_after_current` に進ませない。final も durable user utterance としては保存するが、
+同一 trace の active partial reply 後なら prompt / speech-order を作らず discard/suppress する。
+これは pseudo partial 誤認識が後から伸びて矛盾した追撃発話になるのを防ぐため。
+
+### MaAI poll error は fail-open かつログを間引く
+MaAI result poll は `result_dict_queue` / `output_queue` を優先して timeout 付きで読む。
+queue 実装が `timeout` kwarg を受けない場合は timeout なし `get()` に fallback する。
+それでも poll error が出る場合、backchannel lane は止めず、同じ error type は 1/10/100/1000 回目程度に
+間引いて `maai_backchannel_poll_error` を出す。
+
+### readiness は snapshot と transition を分けて記録する
+起動直後の DB / LLM / VOICEVOX false は `readiness_snapshot` として記録し、
+後で ready になった差分は `readiness_transition` として `component` / `path` / `previous_ready` /
+`ready` を JSONL と console に残す。これにより `make run` / tmux runtime の契約を変えずに、
+後続 ready 化を読み取れる。
+
+### volatile recall は stable system prefix に入れない
+dflash 直近ログでは prefix cache lookup 26 回に対して hit line 6 回、最後の lookup で
+`evictions=27` まで増えていた。人格・履歴・直近文脈は削らず、揺れやすい `VOLATILE_RECALL` は
+`SYSTEM` から外して `SESSION_TRANSCRIPT` 後に置き、OpenAI messages 変換では最後の user message
+末尾へ足す。stable system prefix と過去 role messages を汚しにくくする。
+
+## 2026-06-20 セッション26 確定した判断
+
+### runtime context も stable system prefix に入れない
+dflash log では直近 1200 行で prefix cache lookup 100 回に対して hit line 12 回、
+最後の lookup は `hits=1+1` / `misses=17` / `evictions=27` / `prefill_tokens_saved=68` だった。
+`PromptBuilderV2` では `summary[...]` / `calendar[...]` / `user_status=...` が system message に入り、
+turn ごとの context 変化で先頭 token が揺れる可能性があった。
+
+人格ヘッダと発話 instruction は stable system prefix に残し、summary / calendar / user_status は
+`RUNTIME_CONTEXT` として `SESSION_TRANSCRIPT` 後に置く。candidate は引き続き `VOLATILE_RECALL` として
+後ろに置く。OpenAI messages 変換では `RUNTIME_CONTEXT` と `VOLATILE_RECALL` を最後の user message に
+追記し、過去の role message 列と system prefix を汚さない。
+
+### prompt cache shape はログで見えるようにする
+`prompt_cache_shape()` は system / instruction / transcript / runtime context / volatile recall の
+chars と hash、transcript turn 数を返す。hot-path の `llm_prompt` event と `[tomoko:llm] prompt_send`
+にはこの shape を出す。今後 dflash の `prefix cache hit` / `prefill_tokens_saved` / `evictions` と
+prompt section の揺れを同じ run で比較できる。
+
+## 2026-06-20 セッション27 確定した判断
+
+### cache smoke は dflash counter と prompt cache shape を同時に読む
+2026-06-20 21:38 の `make v2-five-turn-smoke` では avg first audio 1393.7ms / p95 2179.2ms だったが、
+dflash 26B の prefix cache は 5 request 中 2 hit 相当、3 miss 相当だった。
+`llm_prompt.cache_shape` では `system_hash` は全 turn で安定していたため、stable system prefix の
+分離は効いている。一方で turn 3 以降は partial concise instruction hash に切り替わり、
+dflash 側も `entries=8/8` のまま eviction が増え続けた。
+
+このため、cache 改善の次手は人格・履歴・直近文脈を削ることではなく、通常応答と partial 応答で
+system/instruction prefix を分けすぎないこと、また dflash cache 容量・保持状況を同じ smoke window で
+確認することを優先する。`RUNTIME_CONTEXT` / `VOLATILE_RECALL` は今回 0 chars だったので、
+実 context 入り scenario で別途再測する。
+
+## 2026-06-20 セッション28 確定した判断
+
+### partial でも INSTRUCTION は変えない
+partial STT 由来の prompt だけ `INSTRUCTION` に「短く一文で返す」を足すと、system/instruction prefix が
+早い位置で分岐し、dflash prefix cache の系列を割る。partial でも final でも
+`INSTRUCTION:\n次のtomoko発話だけ返す。` に統一する。
+
+2026-06-20 21:54 の変更後 `make v2-five-turn-smoke` では全 turn の `instruction_hash` が
+`770c5bb7cb` に揃い、dflash 26B は 5 request 全てで `prefix cache hit` を出した。
+miss counter は増えず、`prefill_tokens_saved` は 332 から 568 に増えた。
+
+### smoke artifact には raw prompt と sent messages を両方残す
+`llm_prompt.prompt_text` は Tomoko 内部の raw prompt であり、dflash へは OpenAI chat messages に
+分解して送る。cache 調査では raw prompt だけだと判断を誤るため、`llm_prompt.sent_messages` に
+実際に送る role/content 配列を残す。
+
+### dflash cache 自体は同一 prompt と append prompt を保持できる
+2026-06-20 21:53 の direct dflash probe では、ユニーク prompt 初回は miss、同一 prompt 2 回目は
+`prefix cache hit 72/76`、prompt+append は `prefix cache hit 72/98` だった。従って、今回の
+会話 smoke で cache rate が下がる主因は dflash が保持できないことではなく、partial/final 経路で
+prompt/messages の prefix が揺れることにある。
