@@ -1,0 +1,19 @@
+{
+  "accuracy": 1.0,
+  "confusion.continuation.continuation": 80.0,
+  "confusion.continuation.duplicate": 0.0,
+  "confusion.continuation.new_intent": 0.0,
+  "confusion.duplicate.continuation": 0.0,
+  "confusion.duplicate.duplicate": 96.0,
+  "confusion.duplicate.new_intent": 0.0,
+  "confusion.new_intent.continuation": 0.0,
+  "confusion.new_intent.duplicate": 0.0,
+  "confusion.new_intent.new_intent": 144.0,
+  "count": 320.0,
+  "label_accuracy.continuation": 1.0,
+  "label_accuracy.duplicate": 1.0,
+  "label_accuracy.new_intent": 1.0,
+  "label_count.continuation": 80.0,
+  "label_count.duplicate": 96.0,
+  "label_count.new_intent": 144.0
+}

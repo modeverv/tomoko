@@ -8,8 +8,10 @@ import pytest
 MAKE_MODEL_DIR = Path(__file__).resolve().parents[2] / "make-model"
 sys.path.insert(0, str(MAKE_MODEL_DIR))
 
+from benchmark_append_dedupe_latency import measure_append_dedupe_latency  # noqa: E402
 from benchmark_saturation_latency import measure_predict_latency  # noqa: E402
 from combine_teacher_labels import combine_label_rows  # noqa: E402
+from generate_append_dedupe_synthetic_labels import build_append_dedupe_labels  # noqa: E402
 from generate_synthetic_saturation_corpus import (  # noqa: E402
     SYNTHETIC_SOURCE,
     build_synthetic_utterances,
@@ -21,6 +23,15 @@ from make_anchor_teacher_labels import (  # noqa: E402
     build_contrastive_anchor_labels,
     build_life_command_anchor_labels,
     build_referential_anchor_labels,
+)
+from make_model.append_dedupe import (  # noqa: E402
+    APPEND_DEDUPE_LABELS,
+    AppendDedupeConfig,
+    AppendDedupeInput,
+    HashRidgeAppendDedupeModel,
+    evaluate_append_dedupe_model,
+    fit_append_dedupe_model,
+    normalize_for_append_dedupe,
 )
 from make_model.corpus import CorpusUtterance, build_prefix_examples, load_corpus  # noqa: E402
 from make_model.japanese_daily_dialogue import (  # noqa: E402
@@ -254,6 +265,153 @@ def test_measure_predict_latency_reports_hot_loop_stats() -> None:
     assert result["mean_ms"] >= 0.0
     assert result["p50_ms"] >= 0.0
     assert result["p95_ms"] >= result["p50_ms"]
+
+
+def test_build_append_dedupe_labels_are_public_synthetic_and_cover_core_cases() -> None:
+    labels = build_append_dedupe_labels(repeats=8)
+
+    assert len(labels) >= 40
+    assert {label.label for label in labels} == set(APPEND_DEDUPE_LABELS)
+    assert all(label.source == "public_synthetic_append_dedupe_anchor" for label in labels)
+
+    by_pair = {(label.previous_user_text, label.current_user_text): label for label in labels}
+    assert (
+        by_pair[
+            ("うんあんまりよくわかってない", "あんまりよくわかってない")
+        ].label
+        == "duplicate"
+    )
+    assert (
+        by_pair[
+            ("あんまりよくわかってない", "もう少し具体的に言うと設定ファイルの話")
+        ].label
+        == "continuation"
+    )
+    assert by_pair[("今日の予定を教えて", "ところで音量下げて")].label == "new_intent"
+
+
+def test_append_dedupe_model_scores_duplicate_continuation_and_new_intent() -> None:
+    labels = build_append_dedupe_labels(repeats=12)
+    model = fit_append_dedupe_model(
+        labels,
+        AppendDedupeConfig(hash_size=512, ngram_min=1, ngram_max=4, ridge_lambda=0.05),
+        metadata={"unit": True},
+    )
+
+    duplicate = model.predict(
+        AppendDedupeInput(
+            previous_user_text="うんあんまりよくわかってない",
+            current_user_text="あんまりよくわかってない",
+            time_delta_ms=900,
+            tomoko_speaking=True,
+            speech_queue_active=True,
+            current_is_final=True,
+        )
+    )
+    assert duplicate.label == "duplicate"
+    assert duplicate.duplicate_score >= 0.82
+    assert duplicate.new_intent_score <= 0.25
+
+    continuation = model.predict(
+        AppendDedupeInput(
+            previous_user_text="あんまりよくわかってない",
+            current_user_text="もう少し具体的に言うと設定ファイルの話",
+            time_delta_ms=1800,
+            tomoko_speaking=True,
+            speech_queue_active=True,
+            current_is_final=True,
+        )
+    )
+    assert continuation.label == "continuation"
+    assert continuation.continuation_score >= 0.55
+    assert continuation.duplicate_score <= 0.45
+
+    new_intent = model.predict(
+        AppendDedupeInput(
+            previous_user_text="今日の予定を教えて",
+            current_user_text="ところで音量下げて",
+            time_delta_ms=2400,
+            tomoko_speaking=True,
+            speech_queue_active=True,
+            current_is_final=True,
+        )
+    )
+    assert new_intent.label == "new_intent"
+    assert new_intent.new_intent_score >= 0.72
+    assert new_intent.duplicate_score <= 0.35
+
+
+def test_append_dedupe_normalizes_filler_but_not_correction_or_topic_change() -> None:
+    assert normalize_for_append_dedupe("えっと、まあ、なんか今日の予定") == "今日の予定"
+
+    labels = build_append_dedupe_labels(repeats=12)
+    model = fit_append_dedupe_model(
+        labels,
+        AppendDedupeConfig(hash_size=512, ngram_min=1, ngram_max=4, ridge_lambda=0.05),
+    )
+
+    filler_only = model.predict(
+        AppendDedupeInput(
+            previous_user_text="あの今日は寒い",
+            current_user_text="えっと今日は寒い",
+            time_delta_ms=700,
+            tomoko_speaking=True,
+            speech_queue_active=True,
+            current_is_final=True,
+        )
+    )
+    assert filler_only.label == "duplicate"
+    assert filler_only.duplicate_score >= 0.78
+
+    correction = model.predict(
+        AppendDedupeInput(
+            previous_user_text="今日は予定を教えて",
+            current_user_text="いや予定じゃなくて音量を下げて",
+            time_delta_ms=1100,
+            tomoko_speaking=True,
+            speech_queue_active=True,
+            current_is_final=True,
+        )
+    )
+    assert correction.label != "duplicate"
+    assert correction.new_intent_score >= correction.duplicate_score
+
+
+def test_append_dedupe_model_round_trip_evaluate_and_latency(tmp_path: Path) -> None:
+    labels = build_append_dedupe_labels(repeats=6)
+    model = fit_append_dedupe_model(
+        labels,
+        AppendDedupeConfig(hash_size=256, ngram_min=1, ngram_max=3, ridge_lambda=0.1),
+        metadata={"unit": True},
+    )
+    artifact_path = tmp_path / "append-dedupe-model.json"
+    model.save(artifact_path)
+
+    reloaded = HashRidgeAppendDedupeModel.load(artifact_path)
+    sample = AppendDedupeInput(
+        previous_user_text="うんあんまりよくわかってない",
+        current_user_text="あんまりよくわかってない",
+        time_delta_ms=900,
+        tomoko_speaking=True,
+        speech_queue_active=True,
+        current_is_final=True,
+    )
+    assert reloaded.predict(sample).label == "duplicate"
+
+    metrics = evaluate_append_dedupe_model(reloaded, labels)
+    assert metrics["count"] == float(len(labels))
+    assert metrics["accuracy"] >= 0.9
+    assert metrics["label_accuracy.duplicate"] >= 0.9
+
+    latency = measure_append_dedupe_latency(
+        reloaded.predict,
+        sample=sample,
+        repeats=5,
+        warmup=2,
+    )
+    assert latency["last_label"] == "duplicate"
+    assert latency["mean_ms"] >= 0.0
+    assert latency["p95_ms"] >= latency["p50_ms"]
 
 
 def test_split_rows_creates_seeded_disjoint_train_eval_sets() -> None:

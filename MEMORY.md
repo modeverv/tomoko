@@ -2,6 +2,21 @@
 
 ## 確定した判断
 
+### append_after_current dedupe は public synthetic shadow model から始める
+2026-06-20 セッション29で、22:04 前後の `logs/server-debug.log` に
+`うんあんまりよくわかってない` と `あんまりよくわかってない` が連続 final STT になり、
+それぞれ `append_after_current` speech-order を作っていることを確認した。
+runtime suppress はまだ入れず、まず `make-model/` に Hash/Ridge 系の
+`HashRidgeAppendDedupeModel` を追加し、shadow guard 用に
+`duplicate_score` / `continuation_score` / `new_intent_score` / `label` / debug features を返す。
+
+public artifact は実ログや JDD を混ぜず、手作り synthetic anchor だけから作る。
+artifact は `make-model/artifacts/public-synthetic-append-dedupe-h2048-l005-model.json`、
+labels は `make-model/data/public-synthetic/append-dedupe-labels.jsonl`。
+実ログからの seed 抽出は `make-model/data/private-log-seeds/` にだけ出し、public artifact へ混ぜない。
+320件 anchor eval は accuracy 1.0、resident hot predict は load 0.905ms、
+mean 0.409ms / p50 0.402ms / p95 0.439ms。
+
 ### UI Stop は client 再生停止と hot-path generation stop の両方を行う
 2026-06-20 セッション24で、Stop ボタンは `audio_control` を `/ws` に送っていたが、
 hot-path は ACK を返すだけで、browser に予約済みの `AudioBufferSourceNode` や進行中 TTS generation を

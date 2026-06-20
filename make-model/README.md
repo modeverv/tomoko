@@ -20,6 +20,97 @@ conversation corpus
 生成モデルではなく、1発話 prefix から saturation を返す専用回帰モデルとして扱う。
 JSON だけで保存できるので、推論・比較・差し替えが軽い。
 
+## append_after_current dedupe shadow model
+
+`append_after_current` の重複発話を runtime に組み込む前に、shadow 評価できる
+軽量 scorer を作る。
+
+入力:
+
+```json
+{
+  "previous_user_text": "うんあんまりよくわかってない",
+  "current_user_text": "あんまりよくわかってない",
+  "time_delta_ms": 900,
+  "tomoko_speaking": true,
+  "speech_queue_active": true,
+  "current_is_final": true
+}
+```
+
+出力:
+
+```json
+{
+  "duplicate_score": 0.993,
+  "continuation_score": 0.114,
+  "new_intent_score": 0.042,
+  "label": "duplicate"
+}
+```
+
+public synthetic labels を生成する:
+
+```bash
+uv run python make-model/generate_append_dedupe_synthetic_labels.py \
+  --out make-model/data/public-synthetic/append-dedupe-labels.jsonl \
+  --repeats 16
+```
+
+学習する:
+
+```bash
+uv run python make-model/train_append_dedupe_model.py \
+  --labels make-model/data/public-synthetic/append-dedupe-labels.jsonl \
+  --out make-model/artifacts/public-synthetic-append-dedupe-h2048-l005-model.json \
+  --metrics-out make-model/artifacts/public-synthetic-append-dedupe-h2048-l005-train-metrics.json \
+  --hash-size 2048 \
+  --ridge-lambda 0.05
+```
+
+評価する:
+
+```bash
+uv run python make-model/evaluate_append_dedupe_model.py \
+  --model make-model/artifacts/public-synthetic-append-dedupe-h2048-l005-model.json \
+  --labels make-model/data/public-synthetic/append-dedupe-labels.jsonl
+```
+
+単発予測:
+
+```bash
+uv run python make-model/predict_append_dedupe.py \
+  --model make-model/artifacts/public-synthetic-append-dedupe-h2048-l005-model.json \
+  --previous 'うんあんまりよくわかってない' \
+  --current 'あんまりよくわかってない' \
+  --time-delta-ms 900 \
+  --tomoko-speaking \
+  --speech-queue-active
+```
+
+hot predict latency:
+
+```bash
+uv run python make-model/benchmark_append_dedupe_latency.py \
+  --model make-model/artifacts/public-synthetic-append-dedupe-h2048-l005-model.json \
+  --previous 'うんあんまりよくわかってない' \
+  --current 'あんまりよくわかってない' \
+  --time-delta-ms 900 \
+  --tomoko-speaking \
+  --speech-queue-active \
+  --repeats 10000 \
+  --warmup 1000
+```
+
+実ログから seed 候補を抽出する補助 script もあるが、出力先は ignored な
+`make-model/data/private-log-seeds/` であり、public synthetic artifact には混ぜない。
+
+```bash
+uv run python make-model/extract_append_dedupe_seed_examples.py \
+  --log logs/server-debug.log \
+  --out make-model/data/private-log-seeds/append-dedupe-seeds.jsonl
+```
+
 ## 入力コーパス形式
 
 テキストファイル:

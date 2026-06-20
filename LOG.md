@@ -1,5 +1,54 @@
 # LOG.md
 
+## 2026-06-20 セッション29
+
+### やること（開始時に書く）
+- `append_after_current` の重複発話を runtime 組み込みではなく、まず public synthetic な軽量 dedupe model artifact / 学習・評価 script / shadow 入出力設計として作る。
+- 既存 `make-model/` の semantic saturation pipeline と `server/tomoko/semantic.py`、最新 `logs/server-debug.log` の 22:04 前後の重複例を確認する。
+- unit または model-level test を先に追加し、`duplicate` / `continuation` / `new_intent` と filler 差分、否定・訂正・話題変更の扱いを固定する。
+- 推論 API と benchmark を追加し、hot path resident model で 1ms 前後を目標に load time / warm predict mean / p50 / p95 を測る。
+- `_docs/latency.md` と `MEMORY.md` に、shadow 評価までの判断と実測結果を追記する。
+
+### やったこと
+- `logs/server-debug.log` の 22:04 前後で、`うんあんまりよくわかってない` と `あんまりよくわかってない` が別 final STT になり、それぞれ `append_after_current` speech-order を作っていることを確認した。
+- `make-model/make_model/append_dedupe.py` に `HashRidgeAppendDedupeModel`、`AppendDedupeInput`、`AppendDedupeResult`、filler 正規化、debug features、評価 helper を追加した。
+- public synthetic anchor だけを生成する `generate_append_dedupe_synthetic_labels.py` を追加し、実ログ由来 seed は ignored な `make-model/data/private-log-seeds/` にだけ抽出する補助 script として分離した。
+- train / evaluate / predict / benchmark CLI を追加し、artifact `make-model/artifacts/public-synthetic-append-dedupe-h2048-l005-model.json` と train metrics を生成した。
+- `make-model/README.md` に shadow 入出力設計と CLI 例を追記した。
+- `_docs/latency.md` と `MEMORY.md` に実測と確定判断を追記した。
+
+### 結果
+- public synthetic labels は 320 件。label 内訳は duplicate 96、continuation 80、new_intent 144。
+- synthetic anchor eval は accuracy 1.0。confusion matrix は全 label で対角のみ。
+- 指定例の単発予測:
+  - `うんあんまりよくわかってない` -> `あんまりよくわかってない`: label `duplicate`, duplicate 0.993。
+  - `あんまりよくわかってない` -> `もう少し具体的に言うと設定ファイルの話`: label `continuation`, continuation 0.9489。
+  - `今日の予定を教えて` -> `ところで音量下げて`: label `new_intent`, new_intent 0.9209。
+- resident hot predict benchmark は load 0.9051ms、mean 0.4094ms、p50 0.4019ms、p95 0.4394ms、max 6.5360ms。
+
+### 詰まったこと・解決したこと
+- `duplicate` と `continuation` は文字列類似だけだと混ざるため、`previous_vague` と `continuation_cue` を明示 feature にした。
+- 否定・訂正は filler と違い duplicate 扱いに寄せすぎないよう、`correction_cue` で duplicate score を上限 0.42 に抑える safety adjustment を入れた。
+- 実ログ seed 抽出は便利だが公開不可データ混入の事故があるため、public synthetic の label/artifact とは別 path に閉じた。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_make_model_pipeline.py -q`
+  - 25 passed
+- `uv run python make-model/evaluate_append_dedupe_model.py --model make-model/artifacts/public-synthetic-append-dedupe-h2048-l005-model.json --labels make-model/data/public-synthetic/append-dedupe-labels.jsonl`
+  - accuracy 1.0
+- `uv run python make-model/benchmark_append_dedupe_latency.py --model make-model/artifacts/public-synthetic-append-dedupe-h2048-l005-model.json --previous 'うんあんまりよくわかってない' --current 'あんまりよくわかってない' --time-delta-ms 900 --tomoko-speaking --speech-queue-active --repeats 10000 --warmup 1000 --json`
+  - mean 0.4094ms / p50 0.4019ms / p95 0.4394ms
+- `uv run ruff check make-model/make_model/append_dedupe.py make-model/generate_append_dedupe_synthetic_labels.py make-model/train_append_dedupe_model.py make-model/evaluate_append_dedupe_model.py make-model/benchmark_append_dedupe_latency.py make-model/predict_append_dedupe.py make-model/extract_append_dedupe_seed_examples.py tests/unit/test_make_model_pipeline.py`
+  - passed
+- `uv run pytest -m unit -q`
+  - 134 passed, 1 deselected
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること
+- runtime suppress ではなく、まず `append_after_current` guard の shadow log に今回の model output を出す。
+- shadow の false duplicate / false new_intent を見てから、speech-order suppress への昇格条件を unit test で固定する。
+
 ## 2026-06-20 セッション28
 
 ### やること（開始時に書く）
