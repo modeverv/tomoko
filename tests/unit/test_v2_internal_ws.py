@@ -34,6 +34,21 @@ def test_turn_material_aggregator_builds_200ms_materials() -> None:
     assert materials.speech_probability > 0
 
 
+def test_turn_material_aggregator_logs_maai_yield_materials(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    aggregator = TurnMaterialAggregator(window_ms=200)
+
+    aggregator.observe_maai_result(
+        {"p_bc_react": 0.62, "p_bc_emo": 0.21, "p_turn_yielding": 0.88}
+    )
+
+    captured = capsys.readouterr()
+    assert "maai_result" in captured.out
+    assert "p_yielding='0.88'" in captured.out
+    assert "raw_keys=\"['p_bc_emo', 'p_bc_react', 'p_turn_yielding']\"" in captured.out
+
+
 def test_tomoko_internal_ws_stores_latest_turn_materials() -> None:
     state = TurnMaterialState()
     tomoko_realtime_app.state.turn_material_state = state
@@ -77,6 +92,8 @@ def test_tomoko_internal_ws_turns_stt_observation_into_speech_order() -> None:
         p_yielding=0.95,
         silence_ms=600,
         playback_active=False,
+        p_bc_react=0.6,
+        p_bc_emo=0.2,
     )
     now = utc_now()
     observation = PartialTranscriptObservation(
@@ -97,6 +114,12 @@ def test_tomoko_internal_ws_turns_stt_observation_into_speech_order() -> None:
 
     assert ack["type"] == "stt_observation_ack"
     assert ack["observation_id"] == str(observation.id)
+    assert ack["score"] > 0
+    assert ack["reason"] == "prepared speech crossed emit threshold"
+    assert ack["score_breakdown"]
+    assert ack["score_breakdown"]["pressure_natural_backchannel_desire"] > 0
+    assert ack["score_breakdown"]["pressure_natural_light_reaction_desire"] > 0
+    assert ack["p_yielding"] == pytest.approx(0.95)
     assert order_event["type"] == "speech_order"
     assert order_event["text"] == "了解。"
     assert order_event["mode"] == "replace_current"

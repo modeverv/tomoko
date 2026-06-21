@@ -89,9 +89,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         emission_callback=lambda emission: result_queue.put(_backchannel_result(emission)),
         result_callback=turn_materials.observe_maai_result,
     )
+    _console_event(
+        "backchannel_detector",
+        enabled=backchannel_detector is not None,
+        maai_env=os.environ.get("TOMOKO_V2_MAAI_BACKCHANNEL", "0"),
+    )
     if backchannel_detector is not None:
         try:
             await backchannel_detector.start()
+            _console_event("backchannel_started")
         except Exception as exc:
             _console_event(
                 "backchannel_disabled",
@@ -126,6 +132,14 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     playback_active=_conversation_playback_active(conversation),
                 )
                 if turn_material_snapshot is not None:
+                    _console_event(
+                        "turn_materials_snapshot",
+                        materials_id=str(turn_material_snapshot.id),
+                        p_yielding=turn_material_snapshot.p_yielding,
+                        speech_probability=round(turn_material_snapshot.speech_probability, 4),
+                        silence_ms=turn_material_snapshot.silence_ms,
+                        playback_active=turn_material_snapshot.playback_active,
+                    )
                     _apply_turn_materials(conversation, turn_material_snapshot)
                     turn_material_client.submit(turn_material_snapshot)
                 if partial_lane is None:
@@ -578,6 +592,19 @@ def _apply_turn_materials(
     update = getattr(core, "update_turn_materials", None)
     if update is not None:
         update(materials)
+        _console_event(
+            "turn_materials_applied",
+            core=type(core).__name__,
+            p_yielding=getattr(materials, "p_yielding", None),
+            speech_probability=round(float(getattr(materials, "speech_probability", 0.0)), 4),
+            silence_ms=getattr(materials, "silence_ms", None),
+        )
+    else:
+        _console_event(
+            "turn_materials_apply_skipped",
+            core=type(core).__name__ if core is not None else None,
+            reason="missing_update",
+        )
 
 
 def _prompt_executor() -> PromptExecutor:

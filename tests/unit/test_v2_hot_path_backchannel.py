@@ -92,6 +92,40 @@ def test_maai_backchannel_detector_skips_while_playback_active(tmp_path: Path) -
     assert emission is None
 
 
+def test_maai_backchannel_detector_buffers_audio_until_frame_size(
+    tmp_path: Path,
+) -> None:
+    class FakeAudioChannel:
+        def __init__(self) -> None:
+            self.chunks: list[tuple[float, ...]] = []
+
+        def put_chunk(self, chunk: object) -> None:
+            self.chunks.append(tuple(float(value) for value in chunk))
+
+    _write_assets(tmp_path)
+    detector = MaaiBackchannelDetector(
+        config=MaaiBackchannelConfig(),
+        assets=BackchannelAssetStore(tmp_path),
+    )
+    user_channel = FakeAudioChannel()
+    silence_channel = FakeAudioChannel()
+    detector._audio_ch1 = user_channel
+    detector._audio_ch2 = silence_channel
+
+    detector.observe_user_audio(tuple(float(i) for i in range(128)))
+    detector.observe_user_audio(tuple(float(i) for i in range(128, 256)))
+
+    assert len(user_channel.chunks) == 1
+    assert len(silence_channel.chunks) == 1
+    assert user_channel.chunks[0] == tuple(float(i) for i in range(160))
+    assert silence_channel.chunks[0] == tuple(0.0 for _ in range(160))
+
+    detector.observe_user_audio(tuple(float(i) for i in range(256, 320)))
+
+    assert len(user_channel.chunks) == 2
+    assert user_channel.chunks[1] == tuple(float(i) for i in range(160, 320))
+
+
 def test_create_backchannel_detector_from_env_is_noop_by_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

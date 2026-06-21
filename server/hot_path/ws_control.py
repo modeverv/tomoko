@@ -32,6 +32,13 @@ class RemoteTomokoWsCore:
 
     def update_turn_materials(self, materials: TurnMaterials) -> None:
         self._latest_materials = materials
+        _console_event(
+            "turn_materials_cached",
+            materials_id=materials.id,
+            p_yielding=materials.p_yielding,
+            speech_probability=round(materials.speech_probability, 4),
+            silence_ms=materials.silence_ms,
+        )
 
     async def handle_observation(
         self,
@@ -46,13 +53,21 @@ class RemoteTomokoWsCore:
         async with self._lock:
             ws = await self._ensure_ws()
             if self._latest_materials is not None:
+                _console_event(
+                    "turn_materials_send",
+                    materials_id=self._latest_materials.id,
+                    p_yielding=self._latest_materials.p_yielding,
+                    speech_probability=round(self._latest_materials.speech_probability, 4),
+                    silence_ms=self._latest_materials.silence_ms,
+                )
                 await ws.send(
                     json.dumps(
                         {"type": "turn_materials", **self._latest_materials.to_dict()},
                         ensure_ascii=False,
                     )
                 )
-                await self._receive_expected(ws, "turn_materials_ack")
+                materials_ack = await self._receive_expected(ws, "turn_materials_ack")
+                _console_event("turn_materials_ack", **materials_ack)
                 await ws.send(
                     json.dumps(
                         {
@@ -137,8 +152,10 @@ class RemoteTomokoWsCore:
 
     async def _ensure_ws(self) -> Any:
         if self._ws is None:
+            _console_event("ws_connecting", url=self.url)
             self._ws = await websockets.connect(self.url)
-            await self._receive_expected(self._ws, "ready")
+            ready = await self._receive_expected(self._ws, "ready")
+            _console_event("ws_connected", **ready)
         return self._ws
 
     async def _receive_expected(self, ws: Any, event_type: str) -> dict[str, Any]:
@@ -159,3 +176,13 @@ def _action_for_order(order: SpeechOrder) -> SpeechSchedulerAction:
     if order.mode.value == "append_after_current":
         return SpeechSchedulerAction.APPEND_AFTER_CURRENT
     return SpeechSchedulerAction.REPLACE_CURRENT
+
+
+def _console_event(event: str, **fields: object) -> None:
+    parts = [f"[tomoko:ws-control] {event}"]
+    for key, value in fields.items():
+        text = str(value)
+        if len(text) > 120:
+            text = text[:117] + "..."
+        parts.append(f"{key}={text!r}")
+    print(" ".join(parts), flush=True)

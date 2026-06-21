@@ -68,6 +68,19 @@ async def hot_path_realtime(websocket: WebSocket) -> None:
                 observation_payload = dict(payload)
                 observation_payload.pop("type", None)
                 observation = PartialTranscriptObservation.from_dict(observation_payload)
+                latest_materials = await state.get_latest()
+                if latest_materials is not None:
+                    conversation_core.update_turn_materials(latest_materials)
+                    if observation.p_yielding is None and latest_materials.p_yielding is not None:
+                        observation.p_yielding = latest_materials.p_yielding
+                    _console_event(
+                        "stt_observation_materials",
+                        observation_id=str(observation.id),
+                        material_id=str(latest_materials.id),
+                        p_yielding=latest_materials.p_yielding,
+                        speech_probability=latest_materials.speech_probability,
+                        silence_ms=latest_materials.silence_ms,
+                    )
                 result = await conversation_core.handle_observation(observation)
                 await _persist_result_if_enabled(result)
                 _console_event(
@@ -81,6 +94,10 @@ async def hot_path_realtime(websocket: WebSocket) -> None:
                         "type": "stt_observation_ack",
                         "observation_id": str(observation.id),
                         "action": result.scheduler_output.action.value,
+                        "reason": result.scheduler_output.reason,
+                        "score": result.scheduler_output.score,
+                        "score_breakdown": result.scheduler_output.score_breakdown,
+                        "p_yielding": observation.p_yielding,
                     }
                 )
                 if result.speech_order is not None:

@@ -2253,3 +2253,75 @@
 
 ### 次のセッションでやること
 - 実 `make run` で runtime を起動し、LAN 内の別マシンから `:8000` / `:8765` / `:8081` / `:8082` / `:50122` へ到達できるか確認する。
+
+## 2026-06-21 セッション1
+
+### やること（開始時に書く）
+- VAP/MaAI 由来の turn_materials が hot-path で観測され、internal WS 経由で Tomoko realtime に届くまでの各境界にデバッグログを追加する。
+- 実 p_yielding が None のままになる原因を切り分けられるよう、submit/send/ack/receive と source をログに残す。
+
+### やったこと
+- hot-path で backchannel detector の有効/無効、turn_materials snapshot、conversation core への apply を console log に出すようにした。
+- `TurnMaterialAggregator` が MaAI result の raw keys、`p_yielding`、`p_bc_react`、`p_bc_emo` をログに出し、internal WS client が start/connect/submit/send/ack/drop をログに出すようにした。
+- `RemoteTomokoWsCore` が cached materials / send / ack / connect をログに出すようにした。
+- Tomoko realtime の `stt_observation_ack` に scheduler `reason` / `score` / `score_breakdown` / `p_yielding` を返すようにした。
+- Tomoko realtime が latest turn materials に実 `p_yielding` を持っている場合、STT observation 側にも補完して DB 保存に残せるようにした。
+
+### 詰まったこと・解決したこと
+- `logs/server-debug.log` は hot-path 側が中心で、Tomoko realtime pane の `turn_materials` console log が必ず入るわけではなかった。hot-path 側にも送信境界ログを追加して片側ログだけでも追えるようにした。
+- ACK が action しか返しておらず、hot-path 側の scheduler score が `0.0` / `1.0` に潰れていた。ACK に実 score を返して観測できるようにした。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_internal_ws.py -q`
+  - 5 passed
+- `uv run pytest -m unit tests/unit/test_v2_internal_ws.py tests/unit/test_v2_hot_path_backchannel.py tests/unit/test_v2_audio_tomoko_prompt.py -q`
+  - 45 passed
+- `uv run ruff check server/hot_path/turn_materials.py server/hot_path/ws_control.py server/hot_path/app.py server/tomoko/realtime.py tests/unit/test_v2_internal_ws.py`
+  - passed
+- `uv run pytest -m unit -q`
+  - 139 passed, 1 deselected
+- `uv run python -m scripts.v2_ws_conversation_smoke --fake-runtime --start-processes`
+  - passed, total 50.8ms
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること
+- 実 `make run` で `maai_result` / `turn_materials_snapshot` / `turn_materials_send` / `turn_materials_ack` が出るか確認し、MaAI result に `p_yielding` または `p_turn_yielding` が含まれているかを見る。
+
+## 2026-06-21 セッション2
+
+### やること（開始時に書く）
+- AudioWorklet の 128 sample chunk が MaAI の 160 sample frame に満たず捨てられる問題を修正し、複数 chunk をバッファして MaAI に投入する。
+- `make run` 起動状態で `/ws` smoke を実行し、MaAI/VAP 由来の `p_yielding` が `turn_materials` と scheduler `score_breakdown` に反映されるか確認する。
+
+### やったこと
+- `MaaiBackchannelDetector.observe_user_audio()` に pending audio buffer を追加し、128 sample chunk が複数回届いても 160 sample frame として MaAI `put_chunk()` へ渡るようにした。
+- unit test で 128 + 128 samples から 160 sample frame が 1 個作られ、残りが次回入力と結合されることを固定した。
+- internal WS test に MaAI `p_bc_react` / `p_bc_emo` が scheduler ACK の `score_breakdown` に入る assertion を追加した。
+- `make run` 起動状態で `make v2-say-latency-smoke` を実行し、修正後に `maai_result` が連続して出ることを確認した。
+
+### 詰まったこと・解決したこと
+- MaAI は動くようになったが、現行 detector の `mode="bc_2type"` は `p_yielding` を返さず、raw keys は `p_bc_react` / `p_bc_emo` / `t` / `x1` / `x2` だった。
+- そのため `pressure_dialogue_turn_opportunity` の 1.0 は `p_yielding` 由来ではなく silence fallback 由来。一方で `p_bc_react` / `p_bc_emo` は `pressure_natural_backchannel_desire` / `pressure_natural_light_reaction_desire` として score に反映されていることを smoke artifact と DB で確認した。
+- 本当に `p_yielding` を score に入れるには、`bc_2type` と別に MaAI `vap` mode の `p_now` / `p_future` を取る設計が必要。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_hot_path_backchannel.py::test_maai_backchannel_detector_buffers_audio_until_frame_size -q`
+  - 1 passed
+- `uv run pytest -m unit tests/unit/test_v2_hot_path_backchannel.py tests/unit/test_v2_internal_ws.py -q`
+  - 13 passed
+- `uv run pytest -m unit tests/unit/test_v2_internal_ws.py::test_tomoko_internal_ws_turns_stt_observation_into_speech_order tests/unit/test_v2_hot_path_backchannel.py::test_maai_backchannel_detector_buffers_audio_until_frame_size -q`
+  - 2 passed
+- `uv run ruff check server/hot_path/backchannel.py tests/unit/test_v2_hot_path_backchannel.py tests/unit/test_v2_internal_ws.py`
+  - passed
+- `uv run pytest -m unit -q`
+  - 140 passed, 1 deselected
+- `make v2-runtime-ready`
+  - LLM / VOICEVOX ready
+- `make v2-say-latency-smoke`
+  - passed, artifact `logs/say-latency-20260621-104751.json`, voice-end to first audio 2032.0ms
+- `docker exec tomoko-postgres psql -U tomoko -d tomoko ... v2_speech_scheduler_decisions ...`
+  - 10:47:55 / 10:47:57 JST の decision に nonzero `pressure_natural_backchannel_desire` / `pressure_natural_light_reaction_desire` を確認
+
+### 次のセッションでやること
+- `p_yielding` そのものが必要なら、MaAI `vap` mode の result を `TurnMaterials.p_yielding` に流す別 lane を設計し、`bc_2type` の相槌 lane と同居させるかを判断する。

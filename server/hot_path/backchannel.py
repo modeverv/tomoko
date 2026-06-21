@@ -96,6 +96,7 @@ class MaaiBackchannelDetector:
         self._running = False
         self._last_emitted_at: datetime | None = None
         self._poll_error_counts: dict[str, int] = {}
+        self._pending_user_audio = np.empty(0, dtype=np.float32)
 
     async def start(self) -> None:
         if self._running:
@@ -114,6 +115,7 @@ class MaaiBackchannelDetector:
         )
         self._maai.start()
         self._running = True
+        self._pending_user_audio = np.empty(0, dtype=np.float32)
         self._poll_task = asyncio.create_task(self._poll_results())
 
     async def stop(self) -> None:
@@ -128,15 +130,20 @@ class MaaiBackchannelDetector:
             if stop is not None:
                 stop(wait=False)
         self._maai = None
+        self._pending_user_audio = np.empty(0, dtype=np.float32)
 
     def observe_user_audio(self, samples: tuple[float, ...]) -> None:
         if self._audio_ch1 is None or self._audio_ch2 is None or not samples:
             return
         user = np.asarray(samples, dtype=np.float32)
-        silence = np.zeros(user.size, dtype=np.float32)
-        for start in range(0, user.size - MAAI_FRAME_SIZE + 1, MAAI_FRAME_SIZE):
-            self._audio_ch1.put_chunk(user[start : start + MAAI_FRAME_SIZE])
-            self._audio_ch2.put_chunk(silence[start : start + MAAI_FRAME_SIZE])
+        if self._pending_user_audio.size:
+            user = np.concatenate((self._pending_user_audio, user))
+        complete_size = (user.size // MAAI_FRAME_SIZE) * MAAI_FRAME_SIZE
+        for start in range(0, complete_size, MAAI_FRAME_SIZE):
+            frame = user[start : start + MAAI_FRAME_SIZE].copy()
+            self._audio_ch1.put_chunk(frame)
+            self._audio_ch2.put_chunk(np.zeros(MAAI_FRAME_SIZE, dtype=np.float32))
+        self._pending_user_audio = user[complete_size:].copy()
 
     def handle_result(
         self,

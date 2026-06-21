@@ -44,11 +44,21 @@ class TurnMaterialAggregator:
         if now_ms - self._last_emit_ms < self.window_ms:
             return None
         self._last_emit_ms = now_ms
-        return self.snapshot(
+        materials = self.snapshot(
             now_ms=now_ms,
             playback_active=playback_active,
             stt_partial=stt_partial,
         )
+        _console_event(
+            "snapshot",
+            p_yielding=materials.p_yielding,
+            p_bc_react=materials.p_bc_react,
+            p_bc_emo=materials.p_bc_emo,
+            speech_probability=round(materials.speech_probability, 4),
+            silence_ms=materials.silence_ms,
+            playback_active=materials.playback_active,
+        )
+        return materials
 
     def observe_maai_result(self, result: dict[str, Any]) -> None:
         self._p_bc_react = _optional_float(result.get("p_bc_react"))
@@ -57,6 +67,13 @@ class TurnMaterialAggregator:
             result.get("p_yielding")
             if "p_yielding" in result
             else result.get("p_turn_yielding")
+        )
+        _console_event(
+            "maai_result",
+            raw_keys=sorted(str(key) for key in result),
+            p_yielding=self._p_yielding,
+            p_bc_react=self._p_bc_react,
+            p_bc_emo=self._p_bc_emo,
         )
 
     def snapshot(
@@ -90,7 +107,10 @@ class InternalTurnMaterialClient:
 
     def start(self) -> None:
         if not self.url or self._task is not None:
+            if not self.url:
+                _console_event("ws_client_disabled", reason="missing_url")
             return
+        _console_event("ws_client_start", url=self.url)
         self._task = asyncio.create_task(self._run())
 
     async def stop(self) -> None:
@@ -105,9 +125,17 @@ class InternalTurnMaterialClient:
 
     def submit(self, materials: TurnMaterials) -> None:
         if not self.url:
+            _console_event("submit_skipped", reason="missing_url")
             return
         try:
             self._queue.put_nowait(materials)
+            _console_event(
+                "submit",
+                queue_size=self._queue.qsize(),
+                p_yielding=materials.p_yielding,
+                speech_probability=round(materials.speech_probability, 4),
+                silence_ms=materials.silence_ms,
+            )
         except asyncio.QueueFull:
             try:
                 self._queue.get_nowait()
@@ -115,19 +143,34 @@ class InternalTurnMaterialClient:
             except asyncio.QueueEmpty:
                 pass
             self._queue.put_nowait(materials)
+            _console_event(
+                "submit_dropped_oldest",
+                queue_size=self._queue.qsize(),
+                p_yielding=materials.p_yielding,
+            )
 
     async def _run(self) -> None:
         while True:
             try:
+                _console_event("ws_connecting", url=self.url)
                 async with websockets.connect(self.url) as websocket:
-                    await websocket.recv()
+                    ready = await websocket.recv()
+                    _console_event("ws_connected", ready=ready)
                     while True:
                         materials = await self._queue.get()
                         try:
                             payload = {"type": "turn_materials", **materials.to_dict()}
+                            _console_event(
+                                "ws_send",
+                                materials_id=materials.id,
+                                p_yielding=materials.p_yielding,
+                                speech_probability=round(materials.speech_probability, 4),
+                                silence_ms=materials.silence_ms,
+                            )
                             await websocket.send(json.dumps(payload, ensure_ascii=False))
                             with _ignore_ack_errors():
-                                await asyncio.wait_for(websocket.recv(), timeout=0.05)
+                                ack = await asyncio.wait_for(websocket.recv(), timeout=0.05)
+                                _console_event("ws_ack", ack=ack)
                         finally:
                             self._queue.task_done()
             except asyncio.CancelledError:
