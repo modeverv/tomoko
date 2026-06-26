@@ -2325,3 +2325,74 @@
 
 ### 次のセッションでやること
 - `p_yielding` そのものが必要なら、MaAI `vap` mode の result を `TurnMaterials.p_yielding` に流す別 lane を設計し、`bc_2type` の相槌 lane と同居させるかを判断する。
+
+## 2026-06-22 セッション1
+
+### やること（開始時に書く）
+- v2 の `MaaiBackchannelDetector` に `mode="vap"` の MaAI instance を追加起動し、既存 `bc_2type` 相槌 lane と同じ audio chunk を fan-out する。
+- VAP result の `p_future[1]` を `p_yielding` として `TurnMaterialAggregator` に渡し、`turn_materials` / scheduler `score_breakdown` まで反映されることを unit と smoke で確認する。
+
+### やったこと
+- `MaaiBackchannelDetector` が既存の `mode="bc_2type"` に加えて `mode="vap"` の MaAI instance を追加起動するようにした。
+- AudioWorklet 由来の 128 sample chunk を 160 sample MaAI frame にまとめた後、同じ user/silence frame を `bc_2type` と `vap` の両方へ fan-out するようにした。
+- VAP result の `p_future[1]` を `p_yielding` として `TurnMaterialAggregator` に流す `handle_vap_result()` を追加した。
+- `bc_2type` と `vap` の result が別々に届いても、`TurnMaterialAggregator` が未指定 field を `None` で上書きせず、`p_bc_react` / `p_bc_emo` / `p_yielding` を合成して snapshot できるようにした。
+
+### 詰まったこと・解決したこと
+- 実 `make run` の初回 smoke では internal WS が `InvalidMessage` で落ちた。原因はローカルの `my-ime-server-1` Docker container が `127.0.0.1:8765` を listen しており、Tomoko realtime の `*:8765` よりそちらへ connect していたこと。
+- `TOMOKO_INTERNAL_WS_PORT=8766 make run` で Tomoko realtime を 8766 に逃がすと `/internal/hot-path` direct probe が `ready` を返し、`make v2-say-latency-smoke` も通った。
+- 8765 競合時でも `maai_vap_started` と `maai_vap_result` は出ていたため、MaAI VAP lane 自体は起動していた。WS-origin 接続だけが別プロセスへ誤接続していた。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_hot_path_backchannel.py::test_maai_backchannel_detector_fans_audio_out_to_vap_frame_channel tests/unit/test_v2_hot_path_backchannel.py::test_maai_backchannel_detector_starts_vap_model_alongside_backchannel tests/unit/test_v2_hot_path_backchannel.py::test_maai_vap_result_emits_p_yielding_material -q`
+  - 3 passed
+- `uv run pytest -m unit tests/unit/test_v2_internal_ws.py::test_turn_material_aggregator_merges_split_maai_streams tests/unit/test_v2_hot_path_backchannel.py::test_maai_backchannel_detector_starts_vap_model_alongside_backchannel tests/unit/test_v2_hot_path_backchannel.py::test_maai_vap_result_emits_p_yielding_material -q`
+  - 3 passed
+- `uv run ruff check server/hot_path/backchannel.py server/hot_path/turn_materials.py tests/unit/test_v2_hot_path_backchannel.py tests/unit/test_v2_internal_ws.py`
+  - passed
+- `uv run pytest -m unit -q`
+  - 144 passed, 1 deselected
+- `uv run python -m scripts.v2_ws_conversation_smoke --fake-runtime --start-processes`
+  - passed, total 69.4ms
+- `TOMOKO_INTERNAL_WS_PORT=8766 make run` 起動後に `/internal/hot-path` direct probe
+  - `{"type":"ready","process":"tomoko-realtime"}` を確認
+- `make v2-say-latency-smoke`
+  - passed, artifact `logs/say-latency-20260622-041122.json`, voice-end to first audio 3646.8ms
+- `logs/server-debug.log`
+  - `maai_vap_started`、連続する `maai_vap_result p_yielding=...`、`turn_materials_snapshot ... p_yielding=...` を確認
+- PostgreSQL
+  - `v2_stt_observations` に partial `p_yielding=0.2587`、final `p_yielding=0.2306` を確認
+  - 同じ observation に紐づく `v2_speech_scheduler_decisions` で `pressure_natural_backchannel_desire` / `pressure_natural_light_reaction_desire` と score を確認
+
+### 次のセッションでやること
+- 8765 のローカル競合を恒久的に扱うか判断する。`make run` の既定 port を変えるのではなく、環境衝突検出やエラーメッセージ改善で十分かもしれない。
+- VAP `p_yielding` が `pressure_dialogue_turn_opportunity` に効く場面を、silence fallback と切り分けられる scenario で追加確認する。
+
+## 2026-06-27 セッション1
+
+### やること（開始時に書く）
+- `.git` が巨大化している原因を履歴と参照から調べ、大きな model / checkpoint 由来のオブジェクトを履歴から除去して `.git` を縮小する。
+- 作業前後の `.git` サイズと `git count-objects -vH` を記録し、どれくらい小さくなったかを報告する。
+
+### やったこと
+- 作業前の `.git` は `du -sh .git` で 25G、`git count-objects -vH` で pack 24.84 GiB だった。
+- `git rev-list --objects --all` で到達可能 blob を確認したところ、最大 blob は `v1/loras/short/fused_model/tokenizer.json` の約 32MB で、到達可能 blob 合計は数百 MB 規模だった。
+- `.git/objects/pack` には 10G と 15G の古い pack が残っており、現在の refs から到達しないオブジェクトが `.git` を肥大化させていた。
+- `git reflog expire --expire=now --expire-unreachable=now --all && git gc --prune=now` を実行し、到達不能オブジェクトを prune した。
+- 作業後の `.git` は `du -sh .git` で 9.3M、`git count-objects -vH` で pack 9.11 MiB になった。
+- 現在のディレクトリ全体がまだ 24G ある主因は Git 履歴ではなく、ignored な `v1/loras/.../*.safetensors`、`.venv/`、`models/`、`logs/` の実ファイルだった。
+
+### 詰まったこと・解決したこと
+- 最初は「大きな model blob が refs から到達している」想定だったが、実際には到達可能履歴は小さく、古い pack が prune されていない状態だった。
+- `v1/loras/lora/fused_model/` や `v1/loras/lora/adapters/` の巨大ファイルは `.gitignore` で除外されており、Git 管理対象ではないことを確認した。
+
+### 検証
+- `git fsck --no-reflogs --unreachable --no-progress`
+  - unreachable object なし
+- `git count-objects -vH`
+  - `size-pack: 9.11 MiB`
+- `git status --short --branch`
+  - 既存の未コミット変更に加え、このセッションの `LOG.md` / `MEMORY.md` 追記だけが作業ログとして残る見込み
+
+### 次のセッションでやること
+- 作業ツリー自体をさらに小さくしたい場合は、ignored な `v1/loras/` の safetensors、`.venv/`、`models/`、`logs/` を削除・再生成対象にするか判断する。

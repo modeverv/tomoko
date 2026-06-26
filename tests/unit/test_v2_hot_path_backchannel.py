@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from queue import Queue
@@ -25,6 +26,44 @@ def _write_assets(path: Path) -> None:
     path.mkdir(exist_ok=True)
     for name in ("un", "hee", "hou"):
         (path / f"{name}.wav").write_bytes(_wav_bytes(name))
+
+
+class FakeAudioChannel:
+    def __init__(self) -> None:
+        self.chunks: list[tuple[float, ...]] = []
+
+    def put_chunk(self, chunk: object) -> None:
+        self.chunks.append(tuple(float(value) for value in chunk))
+
+
+class FakeMaaiModule:
+    def __init__(self) -> None:
+        self.maais: list[FakeMaai] = []
+
+        class MaaiInput:
+            Chunk = FakeAudioChannel
+
+        self.MaaiInput = MaaiInput
+
+    def Maai(self, **kwargs: object) -> FakeMaai:
+        maai = FakeMaai(**kwargs)
+        self.maais.append(maai)
+        return maai
+
+
+class FakeMaai:
+    def __init__(self, **kwargs: object) -> None:
+        self.kwargs = kwargs
+        self.result_dict_queue: Queue[dict[str, float]] = Queue()
+        self.started = False
+        self.stopped = False
+
+    def start(self) -> None:
+        self.started = True
+
+    def stop(self, wait: bool = True) -> None:
+        del wait
+        self.stopped = True
 
 
 def test_backchannel_assets_are_limited_to_three_fixed_utterances(tmp_path: Path) -> None:
@@ -95,13 +134,6 @@ def test_maai_backchannel_detector_skips_while_playback_active(tmp_path: Path) -
 def test_maai_backchannel_detector_buffers_audio_until_frame_size(
     tmp_path: Path,
 ) -> None:
-    class FakeAudioChannel:
-        def __init__(self) -> None:
-            self.chunks: list[tuple[float, ...]] = []
-
-        def put_chunk(self, chunk: object) -> None:
-            self.chunks.append(tuple(float(value) for value in chunk))
-
     _write_assets(tmp_path)
     detector = MaaiBackchannelDetector(
         config=MaaiBackchannelConfig(),
@@ -124,6 +156,70 @@ def test_maai_backchannel_detector_buffers_audio_until_frame_size(
 
     assert len(user_channel.chunks) == 2
     assert user_channel.chunks[1] == tuple(float(i) for i in range(160, 320))
+
+
+def test_maai_backchannel_detector_fans_audio_out_to_vap_frame_channel(
+    tmp_path: Path,
+) -> None:
+    _write_assets(tmp_path)
+    detector = MaaiBackchannelDetector(
+        config=MaaiBackchannelConfig(),
+        assets=BackchannelAssetStore(tmp_path),
+    )
+    user_channel = FakeAudioChannel()
+    silence_channel = FakeAudioChannel()
+    user_vap_channel = FakeAudioChannel()
+    silence_vap_channel = FakeAudioChannel()
+    detector._audio_ch1 = user_channel
+    detector._audio_ch2 = silence_channel
+    detector._audio_ch1_vap = user_vap_channel
+    detector._audio_ch2_vap = silence_vap_channel
+
+    detector.observe_user_audio(tuple(float(i) for i in range(160)))
+
+    assert user_channel.chunks[0] == tuple(float(i) for i in range(160))
+    assert silence_channel.chunks[0] == tuple(0.0 for _ in range(160))
+    assert user_vap_channel.chunks[0] == tuple(float(i) for i in range(160))
+    assert silence_vap_channel.chunks[0] == tuple(0.0 for _ in range(160))
+
+
+def test_maai_backchannel_detector_starts_vap_model_alongside_backchannel(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        _write_assets(tmp_path)
+        fake_module = FakeMaaiModule()
+        detector = MaaiBackchannelDetector(
+            config=MaaiBackchannelConfig(),
+            assets=BackchannelAssetStore(tmp_path),
+            maai_module=fake_module,
+        )
+
+        await detector.start()
+        await detector.stop()
+
+        assert [maai.kwargs["mode"] for maai in fake_module.maais] == [
+            "bc_2type",
+            "vap",
+        ]
+        assert all(maai.started for maai in fake_module.maais)
+        assert all(maai.stopped for maai in fake_module.maais)
+
+    asyncio.run(run())
+
+
+def test_maai_vap_result_emits_p_yielding_material(tmp_path: Path) -> None:
+    _write_assets(tmp_path)
+    results: list[dict[str, object]] = []
+    detector = MaaiBackchannelDetector(
+        config=MaaiBackchannelConfig(),
+        assets=BackchannelAssetStore(tmp_path),
+        result_callback=results.append,
+    )
+
+    detector.handle_vap_result({"p_future": [0.05, 0.93]})
+
+    assert results == [{"p_yielding": pytest.approx(0.93)}]
 
 
 def test_create_backchannel_detector_from_env_is_noop_by_default(

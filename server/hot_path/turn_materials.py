@@ -61,13 +61,14 @@ class TurnMaterialAggregator:
         return materials
 
     def observe_maai_result(self, result: dict[str, Any]) -> None:
-        self._p_bc_react = _optional_float(result.get("p_bc_react"))
-        self._p_bc_emo = _optional_float(result.get("p_bc_emo"))
-        self._p_yielding = _optional_float(
-            result.get("p_yielding")
-            if "p_yielding" in result
-            else result.get("p_turn_yielding")
-        )
+        if "p_bc_react" in result:
+            self._p_bc_react = _optional_float(result.get("p_bc_react"))
+        if "p_bc_emo" in result:
+            self._p_bc_emo = _optional_float(result.get("p_bc_emo"))
+        if "p_yielding" in result:
+            self._p_yielding = _optional_float(result.get("p_yielding"))
+        elif "p_turn_yielding" in result:
+            self._p_yielding = _optional_float(result.get("p_turn_yielding"))
         _console_event(
             "maai_result",
             raw_keys=sorted(str(key) for key in result),

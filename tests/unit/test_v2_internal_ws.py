@@ -49,6 +49,18 @@ def test_turn_material_aggregator_logs_maai_yield_materials(
     assert "raw_keys=\"['p_bc_emo', 'p_bc_react', 'p_turn_yielding']\"" in captured.out
 
 
+def test_turn_material_aggregator_merges_split_maai_streams() -> None:
+    aggregator = TurnMaterialAggregator(window_ms=200)
+
+    aggregator.observe_maai_result({"p_bc_react": 0.62, "p_bc_emo": 0.21})
+    aggregator.observe_maai_result({"p_yielding": 0.88})
+    materials = aggregator.snapshot(now_ms=0.0)
+
+    assert materials.p_bc_react == pytest.approx(0.62)
+    assert materials.p_bc_emo == pytest.approx(0.21)
+    assert materials.p_yielding == pytest.approx(0.88)
+
+
 def test_tomoko_internal_ws_stores_latest_turn_materials() -> None:
     state = TurnMaterialState()
     tomoko_realtime_app.state.turn_material_state = state

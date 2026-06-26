@@ -91,11 +91,16 @@ class MaaiBackchannelDetector:
         self._maai_module = maai_module
         self._audio_ch1: Any | None = None
         self._audio_ch2: Any | None = None
+        self._audio_ch1_vap: Any | None = None
+        self._audio_ch2_vap: Any | None = None
         self._maai: Any | None = None
+        self._maai_vap: Any | None = None
         self._poll_task: asyncio.Task[None] | None = None
+        self._poll_vap_task: asyncio.Task[None] | None = None
         self._running = False
         self._last_emitted_at: datetime | None = None
         self._poll_error_counts: dict[str, int] = {}
+        self._vap_poll_error_counts: dict[str, int] = {}
         self._pending_user_audio = np.empty(0, dtype=np.float32)
 
     async def start(self) -> None:
@@ -117,6 +122,7 @@ class MaaiBackchannelDetector:
         self._running = True
         self._pending_user_audio = np.empty(0, dtype=np.float32)
         self._poll_task = asyncio.create_task(self._poll_results())
+        self._start_vap_model(maai_module)
 
     async def stop(self) -> None:
         self._running = False
@@ -125,11 +131,23 @@ class MaaiBackchannelDetector:
             with suppress(asyncio.CancelledError):
                 await self._poll_task
             self._poll_task = None
+        if self._poll_vap_task is not None:
+            self._poll_vap_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._poll_vap_task
+            self._poll_vap_task = None
         if self._maai is not None:
             stop = getattr(self._maai, "stop", None)
             if stop is not None:
                 stop(wait=False)
         self._maai = None
+        if self._maai_vap is not None:
+            stop = getattr(self._maai_vap, "stop", None)
+            if stop is not None:
+                stop(wait=False)
+        self._maai_vap = None
+        self._audio_ch1_vap = None
+        self._audio_ch2_vap = None
         self._pending_user_audio = np.empty(0, dtype=np.float32)
 
     def observe_user_audio(self, samples: tuple[float, ...]) -> None:
@@ -141,9 +159,35 @@ class MaaiBackchannelDetector:
         complete_size = (user.size // MAAI_FRAME_SIZE) * MAAI_FRAME_SIZE
         for start in range(0, complete_size, MAAI_FRAME_SIZE):
             frame = user[start : start + MAAI_FRAME_SIZE].copy()
+            silence = np.zeros(MAAI_FRAME_SIZE, dtype=np.float32)
             self._audio_ch1.put_chunk(frame)
-            self._audio_ch2.put_chunk(np.zeros(MAAI_FRAME_SIZE, dtype=np.float32))
+            self._audio_ch2.put_chunk(silence)
+            if self._audio_ch1_vap is not None and self._audio_ch2_vap is not None:
+                self._audio_ch1_vap.put_chunk(frame)
+                self._audio_ch2_vap.put_chunk(silence)
         self._pending_user_audio = user[complete_size:].copy()
+
+    def _start_vap_model(self, maai_module: Any) -> None:
+        try:
+            self._audio_ch1_vap = maai_module.MaaiInput.Chunk()
+            self._audio_ch2_vap = maai_module.MaaiInput.Chunk()
+            self._maai_vap = maai_module.Maai(
+                mode="vap",
+                lang=self.config.lang,
+                frame_rate=self.config.frame_rate,
+                context_len_sec=self.config.context_len_sec,
+                audio_ch1=self._audio_ch1_vap,
+                audio_ch2=self._audio_ch2_vap,
+                device=self.config.device,
+            )
+            self._maai_vap.start()
+            self._poll_vap_task = asyncio.create_task(self._poll_vap_results())
+            _console_event("maai_vap_started")
+        except Exception as exc:
+            self._audio_ch1_vap = None
+            self._audio_ch2_vap = None
+            self._maai_vap = None
+            _console_event("maai_vap_disabled", error=type(exc).__name__)
 
     def handle_result(
         self,
@@ -210,6 +254,39 @@ class MaaiBackchannelDetector:
             if isinstance(result, dict):
                 self._emit_result(result)
                 self.handle_result(result)
+
+    async def _poll_vap_results(self) -> None:
+        assert self._maai_vap is not None
+        while self._running:
+            try:
+                result = await asyncio.to_thread(_read_maai_result_once, self._maai_vap)
+            except asyncio.CancelledError:
+                raise
+            except queue.Empty:
+                continue
+            except Exception as exc:
+                error_name = type(exc).__name__
+                self._vap_poll_error_counts[error_name] = (
+                    self._vap_poll_error_counts.get(error_name, 0) + 1
+                )
+                if _should_log_poll_error(self._vap_poll_error_counts[error_name]):
+                    _console_event(
+                        "maai_vap_poll_error",
+                        error=error_name,
+                        count=self._vap_poll_error_counts[error_name],
+                    )
+                await asyncio.sleep(0.2)
+                continue
+            if isinstance(result, dict):
+                self.handle_vap_result(result)
+
+    def handle_vap_result(self, result: dict[str, Any]) -> None:
+        p_future = result.get("p_future")
+        if not isinstance(p_future, list | tuple) or len(p_future) < 2:
+            return
+        p_yielding = _float_or_zero(p_future[1])
+        _console_event("maai_vap_result", p_yielding=p_yielding)
+        self._emit_result({"p_yielding": p_yielding})
 
     def _emit(self, emission: BackchannelEmission) -> None:
         if self.emission_callback is None:

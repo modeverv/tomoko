@@ -790,3 +790,39 @@ DB の `v2_speech_scheduler_decisions` では 10:47:55/10:47:57 JST の decision
 `pressure_natural_light_reaction_desire=0.162144.../0.230968...` が保存された。
 本当に `p_yielding` を score に入れるには、`bc_2type` とは別に `vap` mode の result
 (`p_now` / `p_future`) を取得する設計にする。
+
+## 2026-06-22 セッション1 確定した判断
+
+### MaAI は `bc_2type` と `vap` の dual lane で起動する
+v2 hot-path の MaAI は、相槌素材用の `mode="bc_2type"` と turn-yielding 用の
+`mode="vap"` を同時に起動する。AudioWorklet の 128 sample chunk は hot-path で
+160 sample MaAI frame にバッファし、同じ user/silence frame を両 lane に fan-out する。
+
+`bc_2type` は `p_bc_react` / `p_bc_emo` を返し、`vap` は `p_future[1]` を
+`p_yielding` として `TurnMaterials` に渡す。両 result は別タイミングで届くため、
+`TurnMaterialAggregator.observe_maai_result()` は result に含まれる field だけを更新し、
+未指定 field を `None` で上書きしない。
+
+実 `make run` smoke artifact は `logs/say-latency-20260622-041122.json`。
+`logs/server-debug.log` で `maai_vap_started`、連続する `maai_vap_result p_yielding=...`、
+`turn_materials_snapshot ... p_yielding=...` を確認した。DB では 04:11 JST の
+`v2_stt_observations` に partial `p_yielding=0.2587`、final `p_yielding=0.2306` が保存され、
+同じ observation に紐づく scheduler decision で score / score_breakdown が作られた。
+
+注意点として、この環境では `my-ime-server-1` Docker container が `127.0.0.1:8765` を listen
+していたため、Tomoko realtime を既定 8765 で起動すると hot-path の internal WS connect が
+別プロセスへ誤接続して `InvalidMessage` になった。検証では `TOMOKO_INTERNAL_WS_PORT=8766 make run`
+で回避した。これは設計判断というよりローカル環境衝突として扱う。
+
+## 2026-06-27 セッション1 気づき
+
+### `.git` 肥大化は到達不能 pack と現作業ツリーの ignored model を分けて見る
+2026-06-27 時点で `.git` は 25G だったが、`git rev-list --objects --all` で見える到達可能 blob は
+最大約 32MB、合計も数百 MB 規模だった。肥大化の主因は現在 refs から到達しない古い pack であり、
+`git reflog expire --expire=now --expire-unreachable=now --all && git gc --prune=now` により
+`.git` は 9.3M、pack は 9.11 MiB まで縮小した。
+
+一方で checkout 全体がまだ 24G ある主因は `.git` ではなく、ignored な
+`v1/loras/lora/fused_model/*.safetensors`、`v1/loras/lora/adapters/*.safetensors`、
+`.venv/`、`models/`、`logs/` の実ファイルである。`v1/loras` で Git 管理されているのは
+README / script 類だけで、safetensors は `.gitignore` 対象だった。
