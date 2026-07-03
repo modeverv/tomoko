@@ -1,0 +1,32 @@
+{
+  "name": "two-turn-reply",
+  "description": "Two user utterances in one session -> two speech orders, per-step windows verified.",
+  "runtime": "any",
+  "fake_transcript": "トモコ、短く返事して",
+  "steps": [
+    {
+      "say": "トモコ、短く返事して",
+      "wait_for": "prompt_complete",
+      "expect": {
+        "min_events": {"speech_order": 1, "binary_audio": 1}
+      }
+    },
+    {
+      "say": "ありがとう、今の返事ちゃんと聞こえてるよ",
+      "pre_pause_ms": 300,
+      "wait_for": "prompt_complete",
+      "expect": {
+        "min_events": {"speech_order": 1, "binary_audio": 1}
+      }
+    }
+  ],
+  "expect": {
+    "min_events": {
+      "transcript": 2,
+      "speech_order": 2,
+      "binary_audio": 2,
+      "prompt_complete": 2
+    },
+    "forbid_events": ["prompt_error"]
+  }
+}

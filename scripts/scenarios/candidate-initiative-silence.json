@@ -1,0 +1,60 @@
+{
+  "name": "candidate-initiative-silence",
+  "description": "Silence initiative tick turns an active world candidate into a Tomoko-owned spontaneous speech order (Step 7).",
+  "runtime": "any",
+  "fake_reply": "そういえば、外は雨みたい。",
+  "fake_candidates": [
+    {
+      "source": "world",
+      "source_key": "rain-now",
+      "text": "いま外は雨が降っている",
+      "priority": 0.8,
+      "urgency": 0.6,
+      "intrusion": 0.1,
+      "maturity": 1.0,
+      "candidate_score": 0.9,
+      "context_tags": ["weather"]
+    }
+  ],
+  "steps": [
+    {
+      "event": {"type": "initiative_tick"},
+      "wait_for": "prompt_complete",
+      "expect": {
+        "min_events": {
+          "initiative_tick_ack": 1,
+          "scheduler_decision": 1,
+          "speech_order": 1
+        },
+        "max_events": {"transcript": 0},
+        "speech_order_modes": ["replace_current"],
+        "speech_order_text_contains": "雨",
+        "speech_order_reason_contains": "candidate pressure initiative tick",
+        "score_breakdown_any": {
+          "pressure_world_candidate_pressure": {"min": 0.9},
+          "pressure_world_importance": {"min": 0.9},
+          "pressure_world_deliverability": {"min": 0.9}
+        }
+      }
+    }
+  ],
+  "expect": {
+    "min_events": {
+      "initiative_tick_ack": 1,
+      "scheduler_decision": 1,
+      "speech_order": 1,
+      "binary_audio": 1,
+      "prompt_complete": 1
+    },
+    "max_events": {"transcript": 0},
+    "speech_order_modes": ["replace_current"],
+    "speech_order_text_contains": "雨",
+    "speech_order_reason_contains": "candidate pressure initiative tick",
+    "score_breakdown_any": {
+      "pressure_world_candidate_pressure": {"min": 0.9},
+      "pressure_world_importance": {"min": 0.9},
+      "pressure_world_deliverability": {"min": 0.9}
+    },
+    "forbid_events": ["prompt_error"]
+  }
+}

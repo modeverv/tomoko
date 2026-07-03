@@ -57,6 +57,9 @@ class LlmFireGate:
             "restraint": -motivation.restraint * 0.12,
         }
         weighted_score = sum(score_breakdown.values())
+        score_breakdown["motivation_threshold_shift"] = _threshold_shift(
+            motivation.threshold_shift
+        )
         score = max(
             weighted_score,
             dialogue.reply_readiness,
@@ -82,13 +85,23 @@ class LlmFireGate:
         *,
         score: float,
     ) -> tuple[LlmFireDecision, str]:
-        if gate_input.pending_inference and score >= self.thresholds.cancel_threshold:
+        shift = _threshold_shift(gate_input.motivation_pressure.threshold_shift)
+        fire_threshold = max(0.35, self.thresholds.fire_threshold - shift)
+        cancel_threshold = max(0.5, self.thresholds.cancel_threshold - shift * 0.5)
+        if gate_input.pending_inference and score >= cancel_threshold:
             return (
                 LlmFireDecision.CANCEL_OR_REPLACE_PENDING,
-                "pressure synthesis should replace pending LLM work",
+                "motivation threshold shift should replace pending LLM work"
+                if score < self.thresholds.cancel_threshold
+                else "pressure synthesis should replace pending LLM work",
             )
-        if score >= self.thresholds.fire_threshold:
-            return LlmFireDecision.FIRE, "pressure synthesis crossed LLM fire threshold"
+        if score >= fire_threshold:
+            return (
+                LlmFireDecision.FIRE,
+                "motivation threshold shift crossed LLM fire threshold"
+                if score < self.thresholds.fire_threshold
+                else "pressure synthesis crossed LLM fire threshold",
+            )
         return LlmFireDecision.DO_NOT_FIRE, "pressure synthesis is below LLM fire threshold"
 
     def _log(self, output: LlmFireGateOutput) -> None:
@@ -140,6 +153,9 @@ class SpeechEmissionGate:
             "restraint": -motivation.restraint * 0.12,
         }
         score = sum(score_breakdown.values())
+        score_breakdown["motivation_threshold_shift"] = _threshold_shift(
+            motivation.threshold_shift
+        )
         decision, reason = self._select_decision(gate_input, score, interruption_risk)
         output = SpeechEmissionGateOutput(
             decision=decision,
@@ -159,24 +175,38 @@ class SpeechEmissionGate:
     ) -> tuple[SpeechEmissionDecision, str]:
         if gate_input.stop_intent >= self.thresholds.stop_threshold:
             return SpeechEmissionDecision.STOP, "stop intent crossed emission threshold"
+        shift = _threshold_shift(gate_input.motivation_pressure.threshold_shift)
+        emit_threshold = max(0.35, self.thresholds.emit_threshold - shift)
+        append_threshold = max(0.35, self.thresholds.append_threshold - shift)
+        replace_margin = max(0.05, self.thresholds.replace_margin - shift * 0.5)
         if (
             interruption_risk >= self.thresholds.hold_interruption_threshold
-            and score < self.thresholds.emit_threshold
+            and score < emit_threshold
         ):
             return SpeechEmissionDecision.HOLD, "user speech interruption risk is too high"
         if gate_input.current_speech_order is not None:
-            if score > gate_input.current_speech_score + self.thresholds.replace_margin:
+            if score > gate_input.current_speech_score + replace_margin:
                 return (
                     SpeechEmissionDecision.REPLACE_CURRENT,
-                    "prepared speech beat current speech by replace margin",
+                    "motivation threshold shift beat current speech by replace margin"
+                    if score <= gate_input.current_speech_score + self.thresholds.replace_margin
+                    else "prepared speech beat current speech by replace margin",
                 )
-            if score >= self.thresholds.append_threshold:
-                return SpeechEmissionDecision.APPEND_AFTER_CURRENT, (
-                    "prepared speech is high enough to append"
+            if score >= append_threshold:
+                return (
+                    SpeechEmissionDecision.APPEND_AFTER_CURRENT,
+                    "motivation threshold shift is high enough to append"
+                    if score < self.thresholds.append_threshold
+                    else "prepared speech is high enough to append",
                 )
             return SpeechEmissionDecision.HOLD, "current speech remains stronger"
-        if score >= self.thresholds.emit_threshold:
-            return SpeechEmissionDecision.EMIT_NOW, "prepared speech crossed emit threshold"
+        if score >= emit_threshold:
+            return (
+                SpeechEmissionDecision.EMIT_NOW,
+                "motivation threshold shift crossed emit threshold"
+                if score < self.thresholds.emit_threshold
+                else "prepared speech crossed emit threshold",
+            )
         return SpeechEmissionDecision.SUPPRESS, "emission score is below threshold"
 
     def _log(self, output: SpeechEmissionGateOutput) -> None:
@@ -190,3 +220,7 @@ class SpeechEmissionGate:
             reason=output.reason,
             output_id=str(output.id),
         )
+
+
+def _threshold_shift(value: float) -> float:
+    return max(0.0, min(0.22, float(value)))

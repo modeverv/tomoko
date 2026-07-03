@@ -1,22 +1,32 @@
 from __future__ import annotations
 
 import json
+import socket
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
 
-from server import runtime
+from scripts import v2_autopilot, v2_llm_judge
+from server import runtime, runtime_ports
 from server.hot_path.app import app
 from server.hot_path.model_executor import PromptExecutor, StaticChatBackend, StaticWavTtsBackend
 from server.shared.logging import JsonlLogger
+from server.shared.models import PartialTranscriptObservation
 from server.shared.notify import build_notify_message, notify_sql, parse_id_payload
 from server.shared.process import Heartbeat, HeartbeatWriter
 from server.shared.schemas import SCREEN_ACTIVITY_FIXED_LINE_SCHEMA, parse_fixed_line_output
+from server.tomoko.db_worker import assign_conversation_session
 from server.user_status import ocr_runtime
-from server.user_status.ocr_runtime import ocr_runtime_available, vision_ocr_text
+from server.user_status.main import OSMetadata
+from server.user_status.ocr_runtime import (
+    observation_from_ocr_artifact,
+    ocr_runtime_available,
+    vision_ocr_text,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -82,6 +92,30 @@ class _FakePool:
         return _ConnectionContext(self.conn)
 
 
+class _SessionCursor:
+    def __init__(self, row: dict[str, object] | None) -> None:
+        self.row = row
+
+    async def fetchone(self) -> dict[str, object] | None:
+        return self.row
+
+
+class _SessionReuseConnection:
+    def __init__(self, row: dict[str, object]) -> None:
+        self.row = row
+        self.calls: list[tuple[str, tuple[object, ...] | None]] = []
+
+    async def execute(
+        self,
+        query: str,
+        params: tuple[object, ...] | None = None,
+    ) -> _SessionCursor | None:
+        self.calls.append((query, params))
+        if "FROM v2_conversation_sessions" in query:
+            return _SessionCursor(self.row)
+        return None
+
+
 @pytest.mark.asyncio
 async def test_heartbeat_writer_upserts_process_state() -> None:
     pool = _FakePool()
@@ -92,6 +126,38 @@ async def test_heartbeat_writer_upserts_process_state() -> None:
     query, params = pool.conn.calls[0]
     assert "ON CONFLICT" in query
     assert params[0] == "fake"
+
+
+@pytest.mark.asyncio
+async def test_assign_conversation_session_reuses_open_session_and_updates_activity() -> None:
+    now = datetime(2026, 7, 4, 3, 18, 0, tzinfo=UTC)
+    session_id = UUID("00000000-0000-0000-0000-000000000777")
+    conn = _SessionReuseConnection(
+        {
+            "id": session_id,
+            "last_activity_at": now - timedelta(milliseconds=400),
+        }
+    )
+    observation = PartialTranscriptObservation(
+        text="続きです",
+        is_final=True,
+        stability=1.0,
+        audio_started_at=now - timedelta(milliseconds=300),
+        audio_ended_at=now,
+    )
+
+    assigned = await assign_conversation_session(
+        conn,  # type: ignore[arg-type]
+        observation,
+        idle_gap_to_new_session_ms=1000,
+    )
+
+    assert assigned == session_id
+    assert len(conn.calls) == 2
+    update_query, update_params = conn.calls[1]
+    assert "UPDATE v2_conversation_sessions" in update_query
+    assert "last_activity_at" in update_query
+    assert update_params == (now, session_id)
 
 
 def test_jsonl_logger_writes_structured_event(tmp_path: Path) -> None:
@@ -173,6 +239,24 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     assert "semantic-e2b" not in makefile
     assert "TOMOKO_V2_MAAI_BACKCHANNEL ?= 1" in makefile
     assert "TOMOKO_V2_BACKCHANNEL_ASSET_DIR ?= assets/backchannels" in makefile
+    assert "TOMOKO_V2_DB_CANDIDATES ?= 1" in makefile
+    assert 'TOMOKO_V2_DB_CANDIDATES="$(TOMOKO_V2_DB_CANDIDATES)"' in makefile
+    assert "guard-internal-ws-port" in makefile
+    assert "TEST_DATABASE_URL ?= postgresql://tomoko:tomoko@localhost:5432/tomoko" in (
+        makefile
+    )
+    assert "TEST_DATABASE_URL=\"$(TEST_DATABASE_URL)\" $(PYTEST) -m integration" in (
+        makefile
+    )
+    assert "materialize_candidates_from_db" in Path("server/runtime.py").read_text(
+        encoding="utf-8"
+    )
+    assert "materialize_summaries_from_db" in Path("server/runtime.py").read_text(
+        encoding="utf-8"
+    )
+    assert "materialize_info_fixtures_from_env" in Path("server/runtime.py").read_text(
+        encoding="utf-8"
+    )
     assert "v2-ocr-smoke" in makefile
     assert "v2-conversation-smoke:" in makefile
     assert "v2-scheduler-conversation-smoke:" in makefile
@@ -182,12 +266,133 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     assert "v2-five-turn-smoke:" in makefile
     assert "v2-semantic-early-smoke:" in makefile
     assert "v2-scheduler-report:" in makefile
+    assert "autopilot:" in makefile
+    assert "scripts.v2_autopilot" in makefile
+    assert "v2-llm-judge:" in makefile
+    assert "scripts.v2_llm_judge" in makefile
     assert "TOMOKO_V2_VOICEVOX_SPEED ?= 1.5" in makefile
     assert makefile.index("-n llm-run") < makefile.index("-n hot-path")
     assert makefile.index("-n voicevox") < makefile.index("-n hot-path")
     assert 'TOMOKO_V2_MAAI_BACKCHANNEL="$(TOMOKO_V2_MAAI_BACKCHANNEL)"' in makefile
     assert "tmux send-keys -t $(TMUX_SESSION):hot-path C-c" in makefile
     assert "v2-report-latest:" in makefile
+
+
+def test_internal_ws_port_guard_allows_free_port() -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as reserved:
+        reserved.bind(("127.0.0.1", 0))
+        port = int(reserved.getsockname()[1])
+
+    result = runtime_ports.check_tcp_port_available("127.0.0.1", port)
+
+    assert result.available is True
+    assert result.port == port
+
+
+def test_internal_ws_port_guard_reports_conflict_with_actionable_message() -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        port = int(listener.getsockname()[1])
+
+        result = runtime_ports.check_tcp_port_available("127.0.0.1", port)
+
+    assert result.available is False
+    message = result.message()
+    assert str(port) in message
+    assert "TOMOKO_INTERNAL_WS_PORT" in message
+
+
+def test_autopilot_command_plan_skips_real_checks_when_runtime_is_down() -> None:
+    plan = v2_autopilot.build_command_plan(
+        runtime_ready=False,
+        latency_count=3,
+        latency_repeats=1,
+    )
+
+    command_names = [" ".join(command.argv) for command in plan.commands]
+    assert command_names == [
+        "make check",
+        "make test-integration",
+        "make v2-scenario-suite",
+    ]
+    assert plan.skipped == [
+        "real-overlap-replace",
+        "real-overlap-stop",
+        "calendar-append",
+        "v2-latency-suite",
+    ]
+
+
+def test_autopilot_command_plan_includes_real_checks_when_runtime_is_ready() -> None:
+    plan = v2_autopilot.build_command_plan(
+        runtime_ready=True,
+        latency_count=3,
+        latency_repeats=1,
+    )
+
+    command_names = [" ".join(command.argv) for command in plan.commands]
+    assert command_names[-4:] == [
+        "make v2-scenario-replay SCENARIO=real-overlap-replace SCENARIO_RUNTIME=real",
+        "make v2-scenario-replay SCENARIO=real-overlap-stop SCENARIO_RUNTIME=real",
+        "make v2-scenario-replay SCENARIO=calendar-append SCENARIO_RUNTIME=real",
+        "make v2-latency-suite LATENCY_SUITE_COUNT=3 LATENCY_SUITE_REPEATS=1",
+    ]
+    assert plan.skipped == []
+
+
+def test_llm_judge_extracts_transcript_from_scenario_artifact(tmp_path: Path) -> None:
+    artifact = tmp_path / "scenario.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "scenario_name": "unit",
+                "timeline": [
+                    {
+                        "type": "transcript",
+                        "payload": {"text": "トモコ、予定を教えて", "is_final": True},
+                    },
+                    {
+                        "type": "transcript",
+                        "payload": {"text": "途中", "is_final": False},
+                    },
+                    {
+                        "type": "speech_order",
+                        "payload": {
+                            "text": "このあと会議だよ。",
+                            "mode": "replace_current",
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    transcript = v2_llm_judge.extract_transcript(artifact)
+
+    assert transcript == ["user: トモコ、予定を教えて", "tomoko: このあと会議だよ。"]
+
+
+def test_llm_judge_skip_record_is_jsonl_ready() -> None:
+    record = v2_llm_judge.build_skip_record(
+        artifact=Path("logs/scenario.json"),
+        reason="judge_runtime_unavailable",
+        transcript=["user: こんにちは"],
+    )
+
+    payload = json.loads(json.dumps(record, ensure_ascii=False))
+    assert payload["status"] == "skipped"
+    assert payload["reason"] == "judge_runtime_unavailable"
+    assert payload["artifact"] == "logs/scenario.json"
+
+
+def test_llm_judge_parses_fenced_json_response() -> None:
+    parsed = v2_llm_judge.parse_judge_content(
+        '```json\n{"naturalness": 1, "duplicate_speech": 0}\n```'
+    )
+
+    assert parsed == {"naturalness": 1, "duplicate_speech": 0}
 
 
 def test_db_split_runtime_reuses_process_lifetime_connections() -> None:
@@ -252,6 +457,31 @@ def test_vision_ocr_text_uses_sidecar_json(
     monkeypatch.setattr(ocr_runtime.subprocess, "run", fake_run)
 
     assert vision_ocr_text(image) == "Vision text"
+
+
+def test_ocr_artifact_builds_user_status_observation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image = tmp_path / "screen.png"
+    image.write_bytes(b"png")
+
+    def fake_ocr_text(path: Path) -> str:
+        assert path == image
+        return "pytest failed in Codex terminal"
+
+    monkeypatch.setattr(ocr_runtime, "ocr_text", fake_ocr_text)
+
+    observation = observation_from_ocr_artifact(
+        image,
+        metadata=OSMetadata(app_name="Codex", window_title="pytest"),
+        present=True,
+    )
+
+    assert observation.present is True
+    assert observation.activity_label == "coding_or_terminal"
+    assert observation.artifact_path == str(image)
+    assert observation.visible_text == "pytest failed in Codex terminal"
 
 
 def test_hot_path_websocket_uses_prompt_executor_for_text_prompt() -> None:

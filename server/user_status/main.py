@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
-from server.shared.models import UserStatusObservation, utc_now
+from server.shared.models import UserStatusObservation, WorldMaterials, utc_now
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +52,21 @@ def build_user_status_observation(
         url=metadata.url,
         artifact_path=artifact_path,
         source="ocr_os_metadata",
+    )
+
+
+def world_materials_from_user_status(
+    observation: UserStatusObservation,
+    *,
+    base: WorldMaterials | None = None,
+) -> WorldMaterials:
+    materials = base or WorldMaterials()
+    return replace(
+        materials,
+        user_present=observation.present,
+        user_status_confidence=observation.confidence,
+        user_activity_relevance=observation.confidence if observation.present else 0.0,
+        trace_id=observation.trace_id,
     )
 
 

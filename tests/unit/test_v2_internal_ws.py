@@ -1,15 +1,35 @@
 from __future__ import annotations
 
 import asyncio
+from uuid import uuid4
 
 import pytest
+import websockets
 from fastapi.testclient import TestClient
 
+from server.hot_path import ws_control
 from server.hot_path.turn_materials import TurnMaterialAggregator
+from server.hot_path.ws_control import RemoteTomokoWsCore, stop_order_from_cancel_event
 from server.llm.chat import StaticChatBackend
-from server.shared.models import PartialTranscriptObservation, TurnMaterials, utc_now
+from server.shared.models import (
+    CandidateLifecycle,
+    CandidateRecord,
+    PartialTranscriptObservation,
+    SpeechOrder,
+    SpeechOrderMode,
+    TurnMaterials,
+    UserStatusObservation,
+    utc_now,
+)
+from server.tomoko import realtime as tomoko_realtime
 from server.tomoko.conversation import TomokoConversationCore
-from server.tomoko.realtime import app as tomoko_realtime_app
+from server.tomoko.realtime import (
+    _fake_personality_materials,
+    _fake_user_status_observation,
+)
+from server.tomoko.realtime import (
+    app as tomoko_realtime_app,
+)
 from server.tomoko.scheduler import SpeechScheduler
 from server.tomoko.semantic import SemanticSaturationJudge
 from server.tomoko.session import SessionBoundaryModel
@@ -87,6 +107,112 @@ def test_tomoko_internal_ws_stores_latest_turn_materials() -> None:
     assert state.latest.stt_partial == "今日の予定を"
 
 
+def test_tomoko_realtime_fake_personality_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "TOMOKO_V2_FAKE_PERSONALITY",
+        (
+            '{"talkativeness": 0.9, "curiosity": 0.8, "restraint": 0.1, '
+            '"empathy": 0.7, "interrupt_tolerance": 0.6}'
+        ),
+    )
+
+    personality = _fake_personality_materials()
+
+    assert personality is not None
+    assert personality.talkativeness == pytest.approx(0.9)
+    assert personality.curiosity == pytest.approx(0.8)
+    assert personality.restraint == pytest.approx(0.1)
+    assert personality.empathy == pytest.approx(0.7)
+    assert personality.interrupt_tolerance == pytest.approx(0.6)
+
+
+def test_tomoko_realtime_fake_user_status_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "TOMOKO_V2_FAKE_USER_STATUS",
+        (
+            '{"present": false, "activity_label": "away", '
+            '"summary": "away: no user detected", "confidence": 0.95}'
+        ),
+    )
+
+    observation = _fake_user_status_observation()
+
+    assert observation is not None
+    assert observation.present is False
+    assert observation.activity_label == "away"
+    assert observation.confidence == pytest.approx(0.95)
+
+
+def test_tomoko_internal_ws_updates_user_status_materials() -> None:
+    state = TurnMaterialState()
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=SemanticSaturationJudge(),
+        scheduler=SpeechScheduler(),
+        chat_backend=StaticChatBackend(["了解。"]),
+    )
+    status = UserStatusObservation(
+        present=False,
+        activity_label="away",
+        summary="away: no user detected",
+        source="unit",
+        confidence=0.95,
+    )
+    tomoko_realtime_app.state.turn_material_state = state
+    tomoko_realtime_app.state.conversation_core = core
+
+    with TestClient(tomoko_realtime_app).websocket_connect("/internal/hot-path") as ws:
+        assert ws.receive_json()["type"] == "ready"
+        ws.send_json({"type": "user_status", **status.to_dict()})
+        ack = ws.receive_json()
+
+    assert ack["type"] == "user_status_ack"
+    assert ack["user_status_id"] == str(status.id)
+    assert core.user_status is not None
+    assert core.user_status.present is False
+    assert core.world_materials.user_present is False
+    assert core.world_materials.user_status_confidence == pytest.approx(0.95)
+
+
+@pytest.mark.asyncio
+async def test_tomoko_realtime_refreshes_db_candidates_into_core(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = CandidateRecord(
+        seed_id=uuid4(),
+        source="world",
+        source_key="rain-now",
+        text="いま外は雨が降っている",
+        priority=0.8,
+        urgency=0.6,
+        intrusion=0.1,
+        maturity=1.0,
+        lifecycle=CandidateLifecycle.ACTIVE,
+        context_tags=("weather", "world"),
+        candidate_score=0.9,
+    )
+
+    class FakeCache:
+        async def active_candidates(self) -> list[CandidateRecord]:
+            return [candidate]
+
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=SemanticSaturationJudge(),
+        scheduler=SpeechScheduler(),
+        chat_backend=StaticChatBackend(["了解。"]),
+    )
+    monkeypatch.setattr(tomoko_realtime, "_db_candidate_cache", lambda: FakeCache())
+
+    await tomoko_realtime._refresh_db_candidates_if_enabled(core)
+
+    assert core.candidate_records == [candidate]
+
+
 def test_tomoko_internal_ws_turns_stt_observation_into_speech_order() -> None:
     state = TurnMaterialState()
     core = TomokoConversationCore(
@@ -135,6 +261,149 @@ def test_tomoko_internal_ws_turns_stt_observation_into_speech_order() -> None:
     assert order_event["type"] == "speech_order"
     assert order_event["text"] == "了解。"
     assert order_event["mode"] == "replace_current"
+
+
+def test_playback_state_inactive_clears_core_current_speech_order() -> None:
+    state = TurnMaterialState()
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=SemanticSaturationJudge(),
+        scheduler=SpeechScheduler(),
+        chat_backend=StaticChatBackend(["了解。"]),
+    )
+    core.current_speech_order = SpeechOrder(
+        text="話し中の返答",
+        mode=SpeechOrderMode.REPLACE_CURRENT,
+        reason="test current speech",
+        priority=60,
+    )
+    core.current_speech_score = 0.9
+    tomoko_realtime_app.state.turn_material_state = state
+    tomoko_realtime_app.state.conversation_core = core
+
+    with TestClient(tomoko_realtime_app).websocket_connect("/internal/hot-path") as ws:
+        assert ws.receive_json()["type"] == "ready"
+        ws.send_json({"type": "playback_state", "playback_active": False})
+        ack = ws.receive_json()
+
+    assert ack["type"] == "playback_state_ack"
+    assert core.current_speech_order is None
+    assert core.current_speech_score == 0.0
+
+
+def test_tomoko_internal_ws_can_reset_conversation_state() -> None:
+    state = TurnMaterialState()
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=SemanticSaturationJudge(),
+        scheduler=SpeechScheduler(),
+        chat_backend=StaticChatBackend(["了解。"]),
+    )
+    core.current_speech_order = SpeechOrder(
+        text="話し中の返答",
+        mode=SpeechOrderMode.REPLACE_CURRENT,
+        reason="test current speech",
+        priority=60,
+    )
+    tomoko_realtime_app.state.turn_material_state = state
+    tomoko_realtime_app.state.conversation_core = core
+
+    with TestClient(tomoko_realtime_app).websocket_connect("/internal/hot-path") as ws:
+        assert ws.receive_json()["type"] == "ready"
+        ws.send_json({"type": "reset_conversation"})
+        ack = ws.receive_json()
+
+    assert ack["type"] == "reset_conversation_ack"
+    assert tomoko_realtime_app.state.conversation_core is not core
+    assert tomoko_realtime_app.state.turn_material_state is not state
+
+
+def test_tomoko_internal_ws_accepts_scenario_calendar_fixture() -> None:
+    state = TurnMaterialState()
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=SemanticSaturationJudge(),
+        scheduler=SpeechScheduler(),
+        chat_backend=StaticChatBackend(["了解。"]),
+    )
+    tomoko_realtime_app.state.turn_material_state = state
+    tomoko_realtime_app.state.conversation_core = core
+
+    with TestClient(tomoko_realtime_app).websocket_connect("/internal/hot-path") as ws:
+        assert ws.receive_json()["type"] == "ready"
+        ws.send_json(
+            {
+                "type": "scenario_fixture",
+                "fake_calendar": [{"offset_min": 5, "title": "定例会議"}],
+            }
+        )
+        ack = ws.receive_json()
+
+    assert ack["type"] == "scenario_fixture_ack"
+    assert ack["calendar_items"] == 1
+    assert core.calendar_items_provider is not None
+    assert list(core.calendar_items_provider().values()) == ["定例会議"]
+
+
+async def test_remote_tomoko_ws_core_reconnects_stale_connection_on_reset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeWebSocket:
+        def __init__(self, *, fail_send: bool = False) -> None:
+            self.fail_send = fail_send
+            self.sent: list[str] = []
+            self.responses = [
+                '{"type":"ready","process":"tomoko-realtime"}',
+                '{"type":"reset_conversation_ack"}',
+            ]
+
+        async def send(self, message: str) -> None:
+            if self.fail_send:
+                raise websockets.exceptions.ConnectionClosedError(None, None, None)
+            self.sent.append(message)
+
+        async def recv(self) -> str:
+            return self.responses.pop(0)
+
+        async def close(self) -> None:
+            return None
+
+    stale = FakeWebSocket(fail_send=True)
+    fresh = FakeWebSocket()
+    connections = [stale, fresh]
+
+    async def fake_connect(_url: str) -> FakeWebSocket:
+        return connections.pop(0)
+
+    monkeypatch.setattr(ws_control.websockets, "connect", fake_connect)
+    core = RemoteTomokoWsCore(url="ws://tomoko.test/internal/hot-path")
+
+    await core.reset_conversation()
+
+    assert stale.sent == []
+    assert len(fresh.sent) == 1
+    assert '"type": "reset_conversation"' in fresh.sent[0]
+    assert core._ws is fresh
+
+
+def test_cancel_order_event_becomes_executable_stop_order() -> None:
+    trace_id = uuid4()
+    order_id = uuid4()
+
+    order = stop_order_from_cancel_event(
+        {
+            "type": "cancel_order",
+            "order_id": str(order_id),
+            "reason": "stop intent crossed emission threshold",
+        },
+        trace_id=trace_id,
+    )
+
+    assert order.mode == SpeechOrderMode.STOP
+    assert order.id == order_id
+    assert order.trace_id == trace_id
+    assert order.reason == "stop intent crossed emission threshold"
+    assert order.text == ""
 
 
 def test_turn_material_state_is_async_safe() -> None:

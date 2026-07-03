@@ -1,0 +1,57 @@
+{
+  "name": "vap-yielding-opportunity",
+  "description": "Low-silence partial turn opportunity should come from VAP p_yielding, not silence fallback (G5).",
+  "runtime": "any",
+  "fake_reply": "先に聞いているよ。",
+  "fake_stt_events": [
+    {"text": "今日の予定", "is_final": false, "stability": 0.85, "p_yielding": 0.92},
+    {"text": "今日の予定を教えて", "is_final": true, "stability": 1.0}
+  ],
+  "steps": [
+    {
+      "say": "今日の予定を教えて",
+      "speech_ms": 500,
+      "chunk_sleep_ms": 16,
+      "wait_for": "prompt_complete",
+      "wait_timeout_sec": 20.0,
+      "expect": {
+        "min_events": {"transcript": 2, "scheduler_decision": 2},
+        "score_breakdown_any": [
+          {
+            "pressure_dialogue_yielding_opportunity": {"min": 0.9},
+            "pressure_dialogue_silence_opportunity": {"max": 0.2},
+            "pressure_dialogue_turn_opportunity_from_yielding": {"equals": 1.0},
+            "pressure_dialogue_turn_opportunity_from_silence": {"equals": 0.0}
+          },
+          {
+            "pressure_dialogue_yielding_opportunity": {"max": 0.01},
+            "pressure_dialogue_silence_opportunity": {"min": 0.9},
+            "pressure_dialogue_turn_opportunity_from_yielding": {"equals": 0.0},
+            "pressure_dialogue_turn_opportunity_from_silence": {"equals": 1.0}
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "min_events": {
+      "transcript": 2,
+      "scheduler_decision": 2
+    },
+    "score_breakdown_any": [
+      {
+        "pressure_dialogue_yielding_opportunity": {"min": 0.9},
+        "pressure_dialogue_silence_opportunity": {"max": 0.2},
+        "pressure_dialogue_turn_opportunity_from_yielding": {"equals": 1.0},
+        "pressure_dialogue_turn_opportunity_from_silence": {"equals": 0.0}
+      },
+      {
+        "pressure_dialogue_yielding_opportunity": {"max": 0.01},
+        "pressure_dialogue_silence_opportunity": {"min": 0.9},
+        "pressure_dialogue_turn_opportunity_from_yielding": {"equals": 0.0},
+        "pressure_dialogue_turn_opportunity_from_silence": {"equals": 1.0}
+      }
+    ],
+    "forbid_events": ["prompt_error"]
+  }
+}

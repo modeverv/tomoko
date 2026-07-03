@@ -1,0 +1,47 @@
+{
+  "name": "candidate-pressure-context",
+  "description": "Think-process candidate fixture is exposed as prompt context and world candidate pressure (Step 7).",
+  "runtime": "any",
+  "fake_reply": "雨のことも踏まえるね。",
+  "fake_transcript": "トモコ、今どう思う",
+  "fake_candidates": [
+    {
+      "source": "world",
+      "source_key": "rain-now",
+      "text": "いま外は雨が降っている",
+      "priority": 0.8,
+      "urgency": 0.6,
+      "intrusion": 0.1,
+      "maturity": 1.0,
+      "candidate_score": 0.9,
+      "context_tags": ["weather"]
+    }
+  ],
+  "steps": [
+    {
+      "say": "トモコ、今どう思う",
+      "wait_for": "prompt_complete",
+      "expect": {
+        "min_events": {"scheduler_decision": 1, "speech_order": 1},
+        "score_breakdown_any": {
+          "pressure_world_candidate_pressure": {"min": 0.9},
+          "pressure_world_importance": {"min": 0.9}
+        }
+      }
+    }
+  ],
+  "expect": {
+    "min_events": {
+      "transcript": 1,
+      "scheduler_decision": 1,
+      "speech_order": 1,
+      "binary_audio": 1,
+      "prompt_complete": 1
+    },
+    "score_breakdown_any": {
+      "pressure_world_candidate_pressure": {"min": 0.9},
+      "pressure_world_importance": {"min": 0.9}
+    },
+    "forbid_events": ["prompt_error"]
+  }
+}

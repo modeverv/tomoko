@@ -1,0 +1,28 @@
+{
+  "name": "calendar-append",
+  "description": "Reply to the user, then append a near-future calendar notice after the reply (PLAN S10).",
+  "runtime": "any",
+  "fake_reply": "今の作業、いい感じだと思うよ。",
+  "fake_transcript": "トモコ、今の作業どう思う",
+  "fake_calendar": [{"offset_min": 5, "title": "定例会議"}],
+  "steps": [
+    {
+      "say": "トモコ、今の作業どう思う",
+      "wait_for": "prompt_complete",
+      "expect": {
+        "min_events": {"speech_order": 2, "binary_audio": 2},
+        "speech_order_modes": ["replace_current", "append_after_current"]
+      }
+    }
+  ],
+  "expect": {
+    "min_events": {
+      "transcript": 1,
+      "speech_order": 2,
+      "binary_audio": 2,
+      "prompt_complete": 1
+    },
+    "speech_order_modes": ["replace_current", "append_after_current"],
+    "forbid_events": ["prompt_error"]
+  }
+}

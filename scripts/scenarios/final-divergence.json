@@ -1,0 +1,30 @@
+{
+  "name": "final-divergence",
+  "description": "Partial-based early reply is replaced when the final STT diverges from the partial basis (PLAN S11).",
+  "runtime": "any",
+  "fake_reply": "はい、答えるね。",
+  "fake_stt_events": [
+    {"text": "今日の予定を教えて", "is_final": false, "p_yielding": 0.92},
+    {"text": "今日の予定を教えてください", "is_final": false, "p_yielding": 0.92},
+    {"text": "明日の会議の資料はどこにあるか教えて", "is_final": true}
+  ],
+  "steps": [
+    {
+      "say": "今日の予定を教えて、というのは冗談で、明日の会議の資料はどこにあるか教えて",
+      "speech_ms": 600,
+      "chunk_sleep_ms": 32,
+      "wait_for": "prompt_complete",
+      "wait_timeout_sec": 45.0
+    }
+  ],
+  "expect": {
+    "min_events": {
+      "transcript": 3,
+      "speech_order": 2,
+      "binary_audio": 2
+    },
+    "speech_order_modes": ["replace_current", "replace_current"],
+    "forbid_events": ["prompt_error"],
+    "final_transcript_contains": "会議"
+  }
+}

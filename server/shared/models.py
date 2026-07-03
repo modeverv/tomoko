@@ -335,9 +335,13 @@ class WorldMaterials(SerializableDto):
     external_result_importance: float = 0.0
     memory_relevance: float = 0.0
     calendar_urgency: float = 0.0
+    candidate_pressure: float = 0.0
     followup_age_ms: int = 0
     followup_importance: float = 0.0
     curiosity_relevance: float = 0.0
+    user_present: bool = True
+    user_status_confidence: float = 0.0
+    user_activity_relevance: float = 0.0
     trace_id: UUID = field(default_factory=new_id)
     created_at: datetime = field(default_factory=utc_now)
 
@@ -435,6 +439,8 @@ class SpeechSchedulerInput(SerializableDto):
 class DialogueTurnPressure(SerializableDto):
     reply_readiness: float = 0.0
     turn_opportunity: float = 0.0
+    yielding_opportunity: float = 0.0
+    silence_opportunity: float = 0.0
     interruption_risk: float = 0.0
     semantic_saturation: float = 0.0
     text_presence: float = 0.0
@@ -460,6 +466,9 @@ class NaturalSpeechPressure(SerializableDto):
 class MotivationPressure(SerializableDto):
     initiative_desire: float = 0.0
     personality_push: float = 0.0
+    conversation_heat: float = 0.0
+    topic_continuity: float = 0.0
+    threshold_shift: float = 0.0
     restraint: float = 0.0
     interrupt_tolerance: float = 0.0
     reason: str = ""
@@ -474,6 +483,9 @@ class WorldPressure(SerializableDto):
     relevance: float = 0.0
     deliverability: float = 0.0
     decay: float = 0.0
+    candidate_pressure: float = 0.0
+    user_presence: float = 1.0
+    user_absence: float = 0.0
     reason: str = ""
     trace_id: UUID = field(default_factory=new_id)
     created_at: datetime = field(default_factory=utc_now)

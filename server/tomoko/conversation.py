@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
 from server.llm.chat import ChatBackend, create_default_real_chat_backend
 from server.shared.models import (
+    CancelPolicy,
+    CandidateLifecycle,
+    CandidateRecord,
     ContextSnapshot,
     ConversationHistoryItem,
     DialogueTurnPressure,
@@ -19,6 +23,7 @@ from server.shared.models import (
     PersonalityMaterials,
     PreparedSpeechCandidate,
     PromptRequest,
+    PromptScope,
     SemanticSaturationResult,
     SpeechEmissionDecision,
     SpeechEmissionGateInput,
@@ -29,13 +34,21 @@ from server.shared.models import (
     SpeechSchedulerOutput,
     SpeechTextIntent,
     TurnMaterials,
+    UserStatusObservation,
     WorldMaterials,
     WorldPressure,
+    utc_now,
 )
 from server.tomoko.append_dedupe import (
     AppendDedupeGuard,
     create_default_append_dedupe_guard,
     decision_score_breakdown,
+)
+from server.tomoko.calendar import (
+    CALENDAR_APPEND_THRESHOLD,
+    calendar_notice_text,
+    calendar_urgency_from_items,
+    next_calendar_item,
 )
 from server.tomoko.context import ContextSnapshotBuilderV2
 from server.tomoko.gates import LlmFireGate, SpeechEmissionGate
@@ -53,9 +66,110 @@ from server.tomoko.semantic import (
     create_default_saturation_judge,
 )
 from server.tomoko.session import SessionBoundaryModel
+from server.user_status.main import world_materials_from_user_status
 
 PARTIAL_CONFIRM_SATURATION_THRESHOLD = 0.75
 PARTIAL_CONFIRM_REQUIRED_COUNT = 2
+REQUEST_COMPLETE_PARTIAL_SUFFIXES = (
+    "教えて",
+    "教えてください",
+    "して",
+    "してください",
+    "お願い",
+    "お願いします",
+    "ほしい",
+    "くれる",
+    "くれる？",
+    "くれる?",
+    "？",
+    "?",
+)
+SPEECH_SENTENCE_ENDINGS = frozenset("。！？!?")
+PARTIAL_ACK_REASON = "partial acknowledgement before complete request"
+PARTIAL_ACK_TEXT = "うん、聞いてるよ。"
+PARTIAL_ACK_SCORE_THRESHOLD = 0.45
+PARTIAL_ACK_TOPIC_SCORE_THRESHOLD = 0.30
+PARTIAL_ACK_TOPIC_EAGER_SCORE_THRESHOLD = 0.60
+MOTIVATION_INTERJECTION_REASON = "motivation interjection before complete request"
+MOTIVATION_INTERJECTION_TEXT = "いや、それってさ。"
+MOTIVATION_INTERJECTION_SHIFT_THRESHOLD = 0.12
+MOTIVATION_INTERJECTION_MAX_SATURATION = 0.65
+PARTIAL_ACK_TOPIC_CUES = (
+    "予定",
+    "天気",
+    "何時",
+    "時間",
+    "会議",
+    "優先順位",
+    "状態",
+    "タスク",
+    "リマインド",
+    "締め切り",
+    "空き時間",
+    "メール",
+    "昼ごはん",
+    "昼ご飯",
+    "ごはん",
+    "ご飯",
+    "おすすめ",
+    "お勧め",
+    "話",
+    "説明",
+    "もう一度",
+    "もういちど",
+    "やるべき",
+    "挙げて",
+    "あげて",
+)
+DIRECT_CLOCK_REASON = "direct clock reply from local system time"
+DIRECT_CLOCK_CUES = (
+    "今何時",
+    "いま何時",
+    "今なんじ",
+    "いまなんじ",
+    "今いつ",
+    "今の時間",
+    "現在時刻",
+)
+CANDIDATE_INITIATIVE_REASON = "candidate pressure initiative tick"
+INITIATIVE_TICK_BASIS_TEXT = "initiative_tick"
+INITIATIVE_MIN_SILENCE_MS = 1200
+INITIATIVE_MAX_SPEECH_PROBABILITY = 0.2
+ATTENTION_MODE_CONVERSATION = "conversation"
+ATTENTION_MODE_AMBIENT = "ambient"
+ATTENTION_IDLE_SILENCE_MS = 8000
+ATTENTION_AMBIENT_MIN_SATURATION = 0.72
+ATTENTION_WAKE_CUES = ("トモコ", "ともこ", "tomoko", "智子")
+ATTENTION_REQUEST_CUES = (
+    "教えて",
+    "どう",
+    "何",
+    "なに",
+    "いつ",
+    "どこ",
+    "誰",
+    "だれ",
+    "どれ",
+    "どっち",
+    "予定",
+    "会議",
+    "天気",
+    "時間",
+    "おすすめ",
+    "お勧め",
+    "昼ごはん",
+    "昼ご飯",
+    "もう一度",
+    "もういちど",
+    "説明",
+    "やるべき",
+    "挙げて",
+    "あげて",
+    "三つ",
+    "3つ",
+    "?",
+    "？",
+)
 
 
 @dataclass(slots=True)
@@ -68,6 +182,7 @@ class TomokoConversationResult:
     prompt_request: PromptRequest | None
     speech_order: SpeechOrder | None
     model_events: list[ModelOutputEvent] = field(default_factory=list)
+    followup_orders: list[SpeechOrder] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -95,6 +210,7 @@ class TomokoConversationCore:
     append_dedupe_guard: AppendDedupeGuard | None = None
     tomoko_core: TomokoProcessCore | None = None
     turn_materials: TurnMaterials | None = None
+    user_status: UserStatusObservation | None = None
     current_speech_order: SpeechOrder | None = None
     current_speech_score: float = 0.0
     _recent_utterances: list[str] = field(default_factory=list)
@@ -106,11 +222,260 @@ class TomokoConversationCore:
     _partial_start_confirm_text: str = ""
     _partial_start_confirm_count: int = 0
     _partial_start_gate_last_reason: str = ""
+    _active_partial_ack_basis_text: str = ""
     _last_final_user_text: str = ""
     _last_final_user_audio_ended_at: datetime | None = None
+    calendar_items_provider: Callable[[], dict[str, str]] | None = None
+    candidate_provider: Callable[[], list[CandidateRecord]] | None = None
+    candidate_records: list[CandidateRecord] = field(default_factory=list)
+    attention_mode: str = ATTENTION_MODE_CONVERSATION
+    _notified_calendar_keys: set[str] = field(default_factory=set)
 
     def update_turn_materials(self, materials: TurnMaterials) -> None:
         self.turn_materials = materials
+
+    def update_user_status(self, observation: UserStatusObservation) -> None:
+        self.user_status = observation
+        self.world_materials = world_materials_from_user_status(
+            observation,
+            base=self.world_materials,
+        )
+
+    def update_playback_state(self, playback_active: bool) -> None:
+        if playback_active or self.current_speech_order is None:
+            return
+        self.current_speech_order = None
+        self.current_speech_score = 0.0
+
+    def update_candidate_records(self, records: list[CandidateRecord]) -> None:
+        self.candidate_records = list(records)
+
+    def update_calendar_items_provider(
+        self,
+        provider: Callable[[], dict[str, str]] | None,
+    ) -> None:
+        self.calendar_items_provider = provider
+
+    def _update_attention_before_decision(
+        self,
+        text: str,
+        turn_materials: TurnMaterials,
+    ) -> None:
+        if _is_attention_wake_text(text) or _is_attention_request_text(text):
+            self.attention_mode = ATTENTION_MODE_CONVERSATION
+            return
+        if (
+            self.attention_mode == ATTENTION_MODE_CONVERSATION
+            and turn_materials.silence_ms >= ATTENTION_IDLE_SILENCE_MS
+        ):
+            self.attention_mode = ATTENTION_MODE_AMBIENT
+
+    def _attention_should_suppress(self, text: str, *, saturation: float) -> bool:
+        return (
+            self.attention_mode == ATTENTION_MODE_AMBIENT
+            and not _is_attention_wake_text(text)
+            and saturation < ATTENTION_AMBIENT_MIN_SATURATION
+        )
+
+    def _attention_score_breakdown(self) -> dict[str, float]:
+        return {
+            "attention_mode_conversation": (
+                1.0 if self.attention_mode == ATTENTION_MODE_CONVERSATION else 0.0
+            ),
+            "attention_mode_ambient": (
+                1.0 if self.attention_mode == ATTENTION_MODE_AMBIENT else 0.0
+            ),
+            "attention_ambient_min_saturation": ATTENTION_AMBIENT_MIN_SATURATION,
+        }
+
+    async def handle_initiative_tick(self) -> TomokoConversationResult:
+        now = utc_now()
+        observation = PartialTranscriptObservation(
+            text="",
+            is_final=False,
+            stability=1.0,
+            audio_started_at=now,
+            audio_ended_at=now,
+        )
+        turn_materials = _turn_materials_for_initiative_tick(
+            self.turn_materials,
+            trace_id=observation.trace_id,
+        )
+        candidate_records = self._candidate_items()
+        self._refresh_candidate_pressure(candidate_records)
+        best_candidate = _best_candidate(candidate_records)
+        prompt_history = self._recent_history[-8:]
+        dialogue_pressure = self.dialogue_pressure_model.calculate(
+            turn_materials=turn_materials,
+            semantic_saturation=0.0,
+        )
+        natural_pressure = self.natural_speech_pressure_model.calculate(
+            turn_materials=turn_materials,
+            personality_materials=self.personality_materials,
+        )
+        motivation_pressure = self.motivation_pressure_model.calculate(
+            turn_materials=turn_materials,
+            personality_materials=self.personality_materials,
+            recent_history=prompt_history,
+            current_text=best_candidate.text if best_candidate is not None else "",
+        )
+        self._refresh_calendar_urgency()
+        world_pressure = self.world_pressure_model.calculate(
+            turn_materials=turn_materials,
+            world_materials=self.world_materials,
+            personality_materials=self.personality_materials,
+        )
+        saturation = SemanticSaturationResult(
+            saturation=0.0,
+            source="initiative_tick",
+            basis_text=best_candidate.text if best_candidate is not None else "",
+            trace_id=observation.trace_id,
+        )
+        snapshot = self.context_builder.build(
+            session_id=None,
+            recent_utterances=self._recent_utterances[-8:],
+            summaries=[],
+            calendar_loader=self._calendar_items,
+            user_status=self.user_status,
+            candidates=candidate_records,
+            recent_history=prompt_history,
+        )
+        base_breakdown = _pressure_breakdown(
+            dialogue_pressure,
+            natural_pressure,
+            motivation_pressure,
+            world_pressure,
+        )
+        suppress_reason = _initiative_suppress_reason(
+            best_candidate=best_candidate,
+            turn_materials=turn_materials,
+            world_materials=self.world_materials,
+            current_speech_order=self.current_speech_order,
+        )
+        if suppress_reason:
+            return self._initiative_suppressed_result(
+                observation=observation,
+                saturation=saturation,
+                snapshot=snapshot,
+                basis_text=INITIATIVE_TICK_BASIS_TEXT,
+                reason=suppress_reason,
+                score_breakdown=base_breakdown,
+            )
+
+        llm_fire = self.llm_fire_gate.decide(
+            LlmFireGateInput(
+                turn_materials=turn_materials,
+                dialogue_pressure=dialogue_pressure,
+                natural_speech_pressure=natural_pressure,
+                motivation_pressure=motivation_pressure,
+                world_pressure=world_pressure,
+                trace_id=observation.trace_id,
+            )
+        )
+        scheduler_output = _scheduler_output_from_gate(
+            action=_action_for_llm_fire_decision(llm_fire.decision),
+            text_intent=SpeechTextIntent.INITIATIVE,
+            basis_text=INITIATIVE_TICK_BASIS_TEXT,
+            reason=llm_fire.reason,
+            score=llm_fire.score,
+            score_breakdown={
+                **llm_fire.score_breakdown,
+                **base_breakdown,
+            },
+            trace_id=observation.trace_id,
+        )
+        if scheduler_output.action == SpeechSchedulerAction.SUPPRESS:
+            return TomokoConversationResult(
+                observation=observation,
+                durable_utterance=None,
+                saturation=saturation,
+                scheduler_output=scheduler_output,
+                context_snapshot=snapshot,
+                prompt_request=None,
+                speech_order=None,
+            )
+
+        assert best_candidate is not None
+        request = self.prompt_builder.build_initiative(snapshot, best_candidate)
+        model_events = await self._generate_model_events(request)
+        text_out = next(
+            (event.text for event in model_events if event.event_kind == "complete"),
+            "",
+        ).strip()
+        prepared = PreparedSpeechCandidate(
+            text=text_out,
+            priority=max(0.0, min(1.0, scheduler_output.score)),
+            freshness=1.0,
+            semantic_confidence=world_pressure.candidate_pressure,
+            reason=CANDIDATE_INITIATIVE_REASON,
+            trace_id=observation.trace_id,
+        )
+        emission = self.speech_emission_gate.decide(
+            SpeechEmissionGateInput(
+                candidate=prepared,
+                turn_materials=turn_materials,
+                dialogue_pressure=dialogue_pressure,
+                natural_speech_pressure=natural_pressure,
+                motivation_pressure=motivation_pressure,
+                world_pressure=world_pressure,
+                current_speech_order=self.current_speech_order,
+                current_speech_score=self.current_speech_score,
+                tomoko_currently_speaking=self.current_speech_order is not None,
+                trace_id=observation.trace_id,
+            )
+        )
+        scheduler_output.action = _action_for_emission_decision(emission.decision)
+        scheduler_output.reason = (
+            CANDIDATE_INITIATIVE_REASON
+            if scheduler_output.action != SpeechSchedulerAction.SUPPRESS
+            else emission.reason
+        )
+        scheduler_output.score = emission.score
+        scheduler_output.score_breakdown = {
+            **scheduler_output.score_breakdown,
+            **{f"emission_{key}": value for key, value in emission.score_breakdown.items()},
+        }
+        if scheduler_output.action == SpeechSchedulerAction.SUPPRESS:
+            return TomokoConversationResult(
+                observation=observation,
+                durable_utterance=None,
+                saturation=saturation,
+                scheduler_output=scheduler_output,
+                context_snapshot=snapshot,
+                prompt_request=request,
+                speech_order=None,
+                model_events=model_events,
+            )
+        order = SpeechOrder(
+            text=text_out,
+            mode=_order_mode_for_action(scheduler_output.action),
+            reason=scheduler_output.reason,
+            priority=_priority_for_output(scheduler_output),
+            scheduler_decision_id=scheduler_output.id,
+            trace_id=observation.trace_id,
+        )
+        self.current_speech_order = order
+        self.current_speech_score = scheduler_output.score
+        if text_out:
+            self._recent_history.append(ConversationHistoryItem(speaker="tomoko", text=text_out))
+        _console_event(
+            "initiative_order_created",
+            order_id=str(order.id),
+            candidate_id=str(best_candidate.id),
+            candidate_source=best_candidate.source,
+            candidate_key=best_candidate.source_key,
+            chars=len(order.text),
+        )
+        return TomokoConversationResult(
+            observation=observation,
+            durable_utterance=None,
+            saturation=saturation,
+            scheduler_output=scheduler_output,
+            context_snapshot=snapshot,
+            prompt_request=request,
+            speech_order=order,
+            model_events=model_events,
+        )
 
     async def handle_observation(
         self,
@@ -139,6 +504,13 @@ class TomokoConversationCore:
             self._partial_history.append(text)
             basis_text = text
             session_id = None
+
+        divergent_final = (
+            observation.is_final
+            and self._active_partial_order is not None
+            and bool(self._active_partial_basis_text)
+            and not _similar_enough(self._active_partial_basis_text, basis_text)
+        )
 
         if self._should_reconcile_observation(observation, basis_text):
             reconcile_reason = self._reconcile_reason(observation, basis_text)
@@ -173,9 +545,9 @@ class TomokoConversationCore:
                 session_id=session_id,
                 recent_utterances=self._recent_utterances[-8:],
                 summaries=[],
-                calendar_loader=lambda: {},
-                user_status=None,
-                candidates=[],
+                calendar_loader=self._calendar_items,
+                user_status=self.user_status,
+                candidates=self._candidate_items(),
                 recent_history=self._recent_history[-8:],
             )
             return TomokoConversationResult(
@@ -186,6 +558,15 @@ class TomokoConversationCore:
                 context_snapshot=snapshot,
                 prompt_request=None,
                 speech_order=None,
+            )
+
+        if divergent_final and durable is not None:
+            self._active_partial_order = None
+            self._active_partial_basis_text = ""
+            self._last_reconciled_final_text = durable.text
+            _console_event(
+                "divergent_final_supersedes_partial",
+                final_text=durable.text,
             )
 
         saturation = await self.saturation_judge.judge(
@@ -210,15 +591,27 @@ class TomokoConversationCore:
             turn_materials=turn_materials,
             personality_materials=self.personality_materials,
         )
+        prompt_history = (
+            prior_session_history
+            if prior_session_history is not None
+            else self._recent_history[-8:]
+        )
         motivation_pressure = self.motivation_pressure_model.calculate(
             turn_materials=turn_materials,
             personality_materials=self.personality_materials,
+            recent_history=prompt_history,
+            current_text=basis_text,
         )
+        self._refresh_calendar_urgency()
+        candidate_records = self._candidate_items()
+        self._refresh_candidate_pressure(candidate_records)
         world_pressure = self.world_pressure_model.calculate(
             turn_materials=turn_materials,
             world_materials=self.world_materials,
             personality_materials=self.personality_materials,
         )
+        self._update_attention_before_decision(basis_text, turn_materials)
+        attention_breakdown = self._attention_score_breakdown()
         llm_fire = self.llm_fire_gate.decide(
             LlmFireGateInput(
                 turn_materials=turn_materials,
@@ -243,33 +636,83 @@ class TomokoConversationCore:
                     motivation_pressure,
                     world_pressure,
                 ),
+                **attention_breakdown,
             },
             trace_id=observation.trace_id,
-        )
-        prompt_history = (
-            prior_session_history
-            if prior_session_history is not None
-            else self._recent_history[-8:]
         )
         snapshot = self.context_builder.build(
             session_id=session_id,
             recent_utterances=self._recent_utterances[-8:],
             summaries=[],
-            calendar_loader=lambda: {},
-            user_status=None,
-            candidates=[],
+            calendar_loader=self._calendar_items,
+            user_status=self.user_status,
+            candidates=candidate_records,
             recent_history=prompt_history,
         )
 
         if detect_stop_intent(basis_text) >= 0.8:
+            self.attention_mode = ATTENTION_MODE_AMBIENT
             scheduler_output = _scheduler_output_from_gate(
                 action=SpeechSchedulerAction.STOP,
                 text_intent=SpeechTextIntent.STOP,
                 basis_text=basis_text,
                 reason="stop intent crossed emission threshold",
                 score=1.0,
-                score_breakdown={"stop_intent": 1.0},
+                score_breakdown={"stop_intent": 1.0, **self._attention_score_breakdown()},
                 trace_id=observation.trace_id,
+            )
+        elif self._attention_should_suppress(
+            basis_text,
+            saturation=saturation.saturation,
+        ):
+            scheduler_output = _scheduler_output_from_gate(
+                action=SpeechSchedulerAction.SUPPRESS,
+                text_intent=SpeechTextIntent.REPLY,
+                basis_text=basis_text,
+                reason="ambient attention suppresses low-saturation speech",
+                score=0.0,
+                score_breakdown={
+                    **_pressure_breakdown(
+                        dialogue_pressure,
+                        natural_pressure,
+                        motivation_pressure,
+                        world_pressure,
+                    ),
+                    **self._attention_score_breakdown(),
+                },
+                trace_id=observation.trace_id,
+            )
+
+        if (
+            not observation.is_final
+            and scheduler_output.action
+            not in (SpeechSchedulerAction.SUPPRESS, SpeechSchedulerAction.STOP)
+            and self._motivation_interjection_allows(
+                basis_text,
+                saturation=saturation.saturation,
+                turn_materials=turn_materials,
+                motivation_pressure=motivation_pressure,
+            )
+        ):
+            return self._motivation_interjection_result(
+                observation=observation,
+                saturation=saturation,
+                scheduler_output=scheduler_output,
+                snapshot=snapshot,
+                basis_text=basis_text,
+            )
+
+        if (
+            not observation.is_final
+            and scheduler_output.action == SpeechSchedulerAction.SUPPRESS
+            and self._partial_ack_allows(basis_text, score=scheduler_output.score)
+        ):
+            return self._partial_ack_result(
+                observation=observation,
+                saturation=saturation,
+                scheduler_output=scheduler_output,
+                snapshot=snapshot,
+                basis_text=basis_text,
             )
 
         if (
@@ -319,6 +762,19 @@ class TomokoConversationCore:
                 score=scheduler_output.score,
             )
         ):
+            if self._partial_ack_after_start_gate_allows(
+                basis_text,
+                turn_materials=turn_materials,
+                score=scheduler_output.score,
+                score_breakdown=scheduler_output.score_breakdown,
+            ):
+                return self._partial_ack_result(
+                    observation=observation,
+                    saturation=saturation,
+                    scheduler_output=scheduler_output,
+                    snapshot=snapshot,
+                    basis_text=basis_text,
+                )
             scheduler_output.action = SpeechSchedulerAction.SUPPRESS
             scheduler_output.reason = self._partial_start_gate_last_reason
             return TomokoConversationResult(
@@ -377,6 +833,19 @@ class TomokoConversationCore:
                 speech_order=None,
             )
 
+        direct_text = _direct_clock_reply_text(basis_text) if observation.is_final else None
+        if direct_text:
+            return self._direct_speech_result(
+                observation=observation,
+                durable=durable,
+                saturation=saturation,
+                scheduler_output=scheduler_output,
+                snapshot=snapshot,
+                text_out=direct_text,
+                reason=DIRECT_CLOCK_REASON,
+                prior_session_history=prior_session_history,
+            )
+
         request = self.prompt_builder.build_main_reply(
             snapshot,
             basis_text,
@@ -404,7 +873,7 @@ class TomokoConversationCore:
                 motivation_pressure=motivation_pressure,
                 world_pressure=world_pressure,
                 current_speech_order=self.current_speech_order,
-                current_speech_score=self.current_speech_score,
+                current_speech_score=0.0 if divergent_final else self.current_speech_score,
                 tomoko_currently_speaking=self.current_speech_order is not None,
                 stop_intent=detect_stop_intent(basis_text),
                 trace_id=observation.trace_id,
@@ -413,6 +882,12 @@ class TomokoConversationCore:
         scheduler_output.action = _action_for_emission_decision(emission.decision)
         scheduler_output.reason = emission.reason
         scheduler_output.score = emission.score
+        if divergent_final and scheduler_output.action in (
+            SpeechSchedulerAction.REPLACE_CURRENT,
+            SpeechSchedulerAction.APPEND_AFTER_CURRENT,
+        ):
+            scheduler_output.action = SpeechSchedulerAction.REPLACE_CURRENT
+            scheduler_output.reason = "final diverged from active partial reply; replacing"
         scheduler_output.score_breakdown = {
             **scheduler_output.score_breakdown,
             **{f"emission_{key}": value for key, value in emission.score_breakdown.items()},
@@ -468,6 +943,11 @@ class TomokoConversationCore:
             mode=order.mode.value,
             chars=len(order.text),
         )
+        followup_orders: list[SpeechOrder] = []
+        if observation.is_final:
+            calendar_followup = self._maybe_calendar_followup(observation.trace_id)
+            if calendar_followup is not None:
+                followup_orders.append(calendar_followup)
         return TomokoConversationResult(
             observation=observation,
             durable_utterance=durable,
@@ -477,7 +957,70 @@ class TomokoConversationCore:
             prompt_request=request,
             speech_order=order,
             model_events=model_events,
+            followup_orders=followup_orders,
         )
+
+    def _calendar_items(self) -> dict[str, str]:
+        if self.calendar_items_provider is None:
+            return {}
+        return dict(self.calendar_items_provider())
+
+    def _candidate_items(self) -> list[CandidateRecord]:
+        records = list(self.candidate_records)
+        if self.candidate_provider is not None:
+            records.extend(self.candidate_provider())
+        return [
+            candidate
+            for candidate in records
+            if candidate.lifecycle == CandidateLifecycle.ACTIVE
+        ]
+
+    def _refresh_candidate_pressure(self, candidates: list[CandidateRecord]) -> None:
+        self.world_materials.candidate_pressure = max(
+            (candidate.candidate_score for candidate in candidates),
+            default=0.0,
+        )
+
+    def _refresh_calendar_urgency(self) -> None:
+        if self.calendar_items_provider is None:
+            return
+        computed = calendar_urgency_from_items(self._calendar_items(), now=utc_now())
+        if computed > self.world_materials.calendar_urgency:
+            self.world_materials.calendar_urgency = computed
+
+    def _maybe_calendar_followup(self, trace_id: UUID) -> SpeechOrder | None:
+        if not self.world_materials.user_present:
+            return None
+        items = self._calendar_items()
+        if not items:
+            return None
+        now = utc_now()
+        urgency = max(
+            calendar_urgency_from_items(items, now=now),
+            self.world_materials.calendar_urgency,
+        )
+        if urgency < CALENDAR_APPEND_THRESHOLD:
+            return None
+        nearest = next_calendar_item(items, now=now)
+        if nearest is None or nearest[0] in self._notified_calendar_keys:
+            return None
+        key, title = nearest
+        self._notified_calendar_keys.add(key)
+        order = SpeechOrder(
+            text=calendar_notice_text(key, title),
+            mode=SpeechOrderMode.APPEND_AFTER_CURRENT,
+            reason=f"calendar pressure appended notice after reply (urgency={urgency:.2f})",
+            priority=max(0, min(100, int(50 + urgency * 40))),
+            trace_id=trace_id,
+        )
+        _console_event(
+            "calendar_followup_order",
+            order_id=str(order.id),
+            starts_at=key,
+            title=title,
+            urgency=round(urgency, 3),
+        )
+        return order
 
     def _should_reconcile_observation(
         self,
@@ -503,8 +1046,6 @@ class TomokoConversationCore:
         if observation.is_final:
             if _similar_enough(self._active_partial_basis_text, basis_text):
                 return "final reconciled with active partial reply"
-            if same_trace:
-                return "final discarded after active partial reply in same trace"
             return ""
         if _similar_enough(self._active_partial_basis_text, basis_text):
             return "partial reconciled with active partial reply"
@@ -529,6 +1070,11 @@ class TomokoConversationCore:
                 "partial start gate is below confirmation thresholds"
             )
             return False
+        if _looks_request_complete_partial(basis_text):
+            self._partial_start_confirm_text = basis_text
+            self._partial_start_confirm_count = PARTIAL_CONFIRM_REQUIRED_COUNT
+            self._partial_start_gate_last_reason = ""
+            return True
         if not self._partial_start_confirm_text:
             self._partial_start_confirm_text = basis_text
             self._partial_start_confirm_count = 1
@@ -550,15 +1096,29 @@ class TomokoConversationCore:
         events: list[ModelOutputEvent] = []
         parts: list[str] = []
         async for delta in self.chat_backend.stream(request):
-            parts.append(delta)
+            if not delta:
+                continue
+            current_text = "".join(parts)
+            candidate_text = f"{current_text}{delta}"
+            cutoff = _first_sentence_cutoff(candidate_text)
+            if cutoff is None:
+                emit_delta = delta
+            else:
+                first_sentence = candidate_text[:cutoff].strip()
+                emit_delta = first_sentence[len(current_text) :]
+            if not emit_delta:
+                break
+            parts.append(emit_delta)
             events.append(
                 ModelOutputEvent(
                     request_id=request.id,
                     event_kind="delta",
-                    text_delta=delta,
+                    text_delta=emit_delta,
                     trace_id=request.trace_id,
                 )
             )
+            if cutoff is not None:
+                break
         full_text = "".join(parts)
         events.append(
             ModelOutputEvent(
@@ -607,6 +1167,267 @@ class TomokoConversationCore:
             return
         self._last_final_user_text = text
         self._last_final_user_audio_ended_at = observation.audio_ended_at
+        self._active_partial_ack_basis_text = ""
+
+    def _partial_ack_allows(self, basis_text: str, *, score: float) -> bool:
+        compact = basis_text.strip()
+        has_topic_cue = _has_partial_ack_topic_cue(compact)
+        threshold = (
+            PARTIAL_ACK_TOPIC_SCORE_THRESHOLD
+            if has_topic_cue
+            else PARTIAL_ACK_SCORE_THRESHOLD
+        )
+        if score < threshold:
+            return False
+        min_len = 2 if has_topic_cue else 4
+        if len(compact) < min_len:
+            return False
+        if _looks_request_complete_partial(compact):
+            return False
+        if detect_stop_intent(compact) >= 0.8:
+            return False
+        if (
+            self.current_speech_order is not None
+            and self.current_speech_order.reason == PARTIAL_ACK_REASON
+            and _similar_enough(self._active_partial_ack_basis_text, compact)
+        ):
+            return False
+        return True
+
+    def _partial_ack_after_start_gate_allows(
+        self,
+        basis_text: str,
+        *,
+        turn_materials: TurnMaterials,
+        score: float,
+        score_breakdown: dict[str, float],
+    ) -> bool:
+        if not self._partial_ack_allows(basis_text, score=score):
+            return False
+        if (
+            _has_partial_ack_topic_cue(basis_text)
+            and score >= PARTIAL_ACK_TOPIC_EAGER_SCORE_THRESHOLD
+        ):
+            return True
+        if turn_materials.silence_ms >= 800:
+            return True
+        if turn_materials.speech_probability <= 0.25:
+            return True
+        return score_breakdown.get("pressure_natural_filler_desire", 0.0) >= 0.5
+
+    def _partial_ack_result(
+        self,
+        *,
+        observation: PartialTranscriptObservation,
+        saturation: SemanticSaturationResult,
+        scheduler_output: SpeechSchedulerOutput,
+        snapshot: ContextSnapshot,
+        basis_text: str,
+    ) -> TomokoConversationResult:
+        scheduler_output.action = SpeechSchedulerAction.REPLACE_CURRENT
+        scheduler_output.reason = PARTIAL_ACK_REASON
+        scheduler_output.score_breakdown = {
+            **scheduler_output.score_breakdown,
+            "partial_ack": 1.0,
+        }
+        order = SpeechOrder(
+            text=PARTIAL_ACK_TEXT,
+            mode=SpeechOrderMode.REPLACE_CURRENT,
+            reason=PARTIAL_ACK_REASON,
+            priority=35,
+            scheduler_decision_id=scheduler_output.id,
+            trace_id=observation.trace_id,
+        )
+        request = PromptRequest(
+            prompt_text=order.text,
+            scope=PromptScope.SHORT,
+            decision_id=order.scheduler_decision_id,
+            utterance_id=None,
+            candidate_id=None,
+            priority=order.priority,
+            cancel_policy=CancelPolicy.KEEP_UNTIL_COMPLETE,
+            id=order.id,
+            trace_id=order.trace_id,
+        )
+        self.current_speech_order = order
+        self.current_speech_score = 0.1
+        self._active_partial_ack_basis_text = basis_text
+        _console_event(
+            "partial_ack_order_created",
+            order_id=str(order.id),
+            chars=len(order.text),
+            basis_text=basis_text,
+        )
+        return TomokoConversationResult(
+            observation=observation,
+            durable_utterance=None,
+            saturation=saturation,
+            scheduler_output=scheduler_output,
+            context_snapshot=snapshot,
+            prompt_request=request,
+            speech_order=order,
+            model_events=[
+                ModelOutputEvent(
+                    request_id=order.id,
+                    event_kind="complete",
+                    text=order.text,
+                    trace_id=order.trace_id,
+                )
+            ],
+        )
+
+    def _motivation_interjection_allows(
+        self,
+        basis_text: str,
+        *,
+        saturation: float,
+        turn_materials: TurnMaterials,
+        motivation_pressure: MotivationPressure,
+    ) -> bool:
+        compact = basis_text.strip()
+        if len(compact) < 4:
+            return False
+        if _looks_request_complete_partial(compact):
+            return False
+        if detect_stop_intent(compact) >= 0.8:
+            return False
+        if saturation > MOTIVATION_INTERJECTION_MAX_SATURATION:
+            return False
+        if motivation_pressure.threshold_shift < MOTIVATION_INTERJECTION_SHIFT_THRESHOLD:
+            return False
+        return (turn_materials.p_yielding or 0.0) >= 0.7
+
+    def _motivation_interjection_result(
+        self,
+        *,
+        observation: PartialTranscriptObservation,
+        saturation: SemanticSaturationResult,
+        scheduler_output: SpeechSchedulerOutput,
+        snapshot: ContextSnapshot,
+        basis_text: str,
+    ) -> TomokoConversationResult:
+        scheduler_output.action = SpeechSchedulerAction.REPLACE_CURRENT
+        scheduler_output.reason = MOTIVATION_INTERJECTION_REASON
+        scheduler_output.score_breakdown = {
+            **scheduler_output.score_breakdown,
+            "motivation_interjection": 1.0,
+        }
+        order = SpeechOrder(
+            text=MOTIVATION_INTERJECTION_TEXT,
+            mode=SpeechOrderMode.REPLACE_CURRENT,
+            reason=MOTIVATION_INTERJECTION_REASON,
+            priority=45,
+            scheduler_decision_id=scheduler_output.id,
+            trace_id=observation.trace_id,
+        )
+        request = PromptRequest(
+            prompt_text=order.text,
+            scope=PromptScope.SHORT,
+            decision_id=order.scheduler_decision_id,
+            utterance_id=None,
+            candidate_id=None,
+            priority=order.priority,
+            cancel_policy=CancelPolicy.KEEP_UNTIL_COMPLETE,
+            id=order.id,
+            trace_id=order.trace_id,
+        )
+        self.current_speech_order = order
+        self.current_speech_score = 0.2
+        _console_event(
+            "motivation_interjection_order_created",
+            order_id=str(order.id),
+            chars=len(order.text),
+            basis_text=basis_text,
+        )
+        return TomokoConversationResult(
+            observation=observation,
+            durable_utterance=None,
+            saturation=saturation,
+            scheduler_output=scheduler_output,
+            context_snapshot=snapshot,
+            prompt_request=request,
+            speech_order=order,
+            model_events=[
+                ModelOutputEvent(
+                    request_id=order.id,
+                    event_kind="complete",
+                    text=order.text,
+                    trace_id=order.trace_id,
+                )
+            ],
+        )
+
+    def _direct_speech_result(
+        self,
+        *,
+        observation: PartialTranscriptObservation,
+        durable: DurableUtterance | None,
+        saturation: SemanticSaturationResult,
+        scheduler_output: SpeechSchedulerOutput,
+        snapshot: ContextSnapshot,
+        text_out: str,
+        reason: str,
+        prior_session_history: list[ConversationHistoryItem] | None,
+    ) -> TomokoConversationResult:
+        scheduler_output.reason = reason
+        scheduler_output.score_breakdown = {
+            **scheduler_output.score_breakdown,
+            "direct_clock": 1.0,
+        }
+        order = SpeechOrder(
+            text=text_out,
+            mode=_order_mode_for_action(scheduler_output.action),
+            reason=reason,
+            priority=_priority_for_output(scheduler_output),
+            scheduler_decision_id=scheduler_output.id,
+            trace_id=observation.trace_id,
+        )
+        request = PromptRequest(
+            prompt_text=order.text,
+            scope=PromptScope.SHORT,
+            decision_id=order.scheduler_decision_id,
+            utterance_id=durable.id if durable is not None else None,
+            candidate_id=None,
+            priority=order.priority,
+            cancel_policy=CancelPolicy.KEEP_UNTIL_COMPLETE,
+            id=order.id,
+            trace_id=order.trace_id,
+        )
+        self.current_speech_order = order
+        self.current_speech_score = scheduler_output.score
+        if durable is not None and prior_session_history is None:
+            self._recent_utterances.append(durable.text)
+            self._recent_history.append(
+                ConversationHistoryItem(speaker="user", text=durable.text)
+            )
+            self._recent_history.append(
+                ConversationHistoryItem(speaker="tomoko", text=text_out)
+            )
+        if durable is not None:
+            self._remember_final_user(durable.text, observation)
+        _console_event(
+            "direct_speech_order_created",
+            order_id=str(order.id),
+            reason=reason,
+            chars=len(order.text),
+        )
+        return TomokoConversationResult(
+            observation=observation,
+            durable_utterance=durable,
+            saturation=saturation,
+            scheduler_output=scheduler_output,
+            context_snapshot=snapshot,
+            prompt_request=request,
+            speech_order=order,
+            model_events=[
+                ModelOutputEvent(
+                    request_id=order.id,
+                    event_kind="complete",
+                    text=order.text,
+                    trace_id=order.trace_id,
+                )
+            ],
+        )
 
     def _blocked_result(
         self,
@@ -638,6 +1459,35 @@ class TomokoConversationCore:
             speech_order=None,
         )
 
+    def _initiative_suppressed_result(
+        self,
+        *,
+        observation: PartialTranscriptObservation,
+        saturation: SemanticSaturationResult,
+        snapshot: ContextSnapshot,
+        basis_text: str,
+        reason: str,
+        score_breakdown: dict[str, float],
+    ) -> TomokoConversationResult:
+        scheduler_output = _scheduler_output_from_gate(
+            action=SpeechSchedulerAction.SUPPRESS,
+            text_intent=SpeechTextIntent.INITIATIVE,
+            basis_text=basis_text,
+            reason=reason,
+            score=0.0,
+            score_breakdown=score_breakdown,
+            trace_id=observation.trace_id,
+        )
+        return TomokoConversationResult(
+            observation=observation,
+            durable_utterance=None,
+            saturation=saturation,
+            scheduler_output=scheduler_output,
+            context_snapshot=snapshot,
+            prompt_request=None,
+            speech_order=None,
+        )
+
 
 def create_default_conversation_core() -> TomokoConversationCore:
     return TomokoConversationCore(
@@ -657,13 +1507,16 @@ def _turn_materials_for_observation(
     observation: PartialTranscriptObservation,
     basis_text: str,
 ) -> TurnMaterials:
+    observation_silence_ms = observation.recommended_silence_ms or (
+        400 if observation.is_final else 0
+    )
     if current is None:
         return TurnMaterials(
             window_ms=200,
             user_speaking=not observation.is_final,
             speech_probability=0.5 if not observation.is_final else 0.0,
-            p_yielding=observation.p_yielding if observation.p_yielding is not None else 1.0,
-            silence_ms=400 if observation.is_final else 0,
+            p_yielding=observation.p_yielding,
+            silence_ms=observation_silence_ms,
             playback_active=False,
             stt_partial=basis_text if not observation.is_final else "",
             trace_id=observation.trace_id,
@@ -676,8 +1529,8 @@ def _turn_materials_for_observation(
         if current.p_yielding is not None
         else observation.p_yielding
         if observation.p_yielding is not None
-        else 1.0,
-        silence_ms=max(current.silence_ms, 400 if observation.is_final else 0),
+        else None,
+        silence_ms=max(current.silence_ms, observation_silence_ms),
         playback_active=current.playback_active,
         p_bc_react=current.p_bc_react,
         p_bc_emo=current.p_bc_emo,
@@ -685,6 +1538,73 @@ def _turn_materials_for_observation(
         stt_partial=basis_text if not observation.is_final else current.stt_partial,
         trace_id=observation.trace_id,
     )
+
+
+def _turn_materials_for_initiative_tick(
+    current: TurnMaterials | None,
+    *,
+    trace_id: UUID,
+) -> TurnMaterials:
+    if current is None:
+        return TurnMaterials(
+            window_ms=200,
+            user_speaking=False,
+            speech_probability=0.0,
+            p_yielding=None,
+            silence_ms=3000,
+            playback_active=False,
+            trace_id=trace_id,
+        )
+    return TurnMaterials(
+        window_ms=current.window_ms,
+        user_speaking=current.user_speaking,
+        speech_probability=current.speech_probability,
+        p_yielding=current.p_yielding,
+        silence_ms=current.silence_ms,
+        playback_active=current.playback_active,
+        p_bc_react=current.p_bc_react,
+        p_bc_emo=current.p_bc_emo,
+        audio_rms=current.audio_rms,
+        stt_partial=current.stt_partial,
+        trace_id=trace_id,
+    )
+
+
+def _best_candidate(candidates: list[CandidateRecord]) -> CandidateRecord | None:
+    return max(
+        candidates,
+        key=lambda candidate: (
+            candidate.candidate_score,
+            candidate.urgency,
+            candidate.priority,
+        ),
+        default=None,
+    )
+
+
+def _initiative_suppress_reason(
+    *,
+    best_candidate: CandidateRecord | None,
+    turn_materials: TurnMaterials,
+    world_materials: WorldMaterials,
+    current_speech_order: SpeechOrder | None,
+) -> str:
+    if best_candidate is None:
+        return "no active candidates for initiative tick"
+    if not world_materials.user_present:
+        return "user absence suppresses initiative tick"
+    if current_speech_order is not None or turn_materials.playback_active:
+        return "current speech suppresses initiative tick"
+    if turn_materials.user_speaking:
+        return "user speech suppresses initiative tick"
+    if turn_materials.speech_probability > INITIATIVE_MAX_SPEECH_PROBABILITY:
+        return "user audio energy suppresses initiative tick"
+    if (
+        turn_materials.silence_ms < INITIATIVE_MIN_SILENCE_MS
+        and (turn_materials.p_yielding or 0.0) < 0.7
+    ):
+        return "silence is too short for initiative tick"
+    return ""
 
 
 def _scheduler_output_from_gate(
@@ -723,15 +1643,35 @@ def _pressure_breakdown(
     return {
         "pressure_dialogue_reply_readiness": dialogue.reply_readiness,
         "pressure_dialogue_turn_opportunity": dialogue.turn_opportunity,
+        "pressure_dialogue_yielding_opportunity": dialogue.yielding_opportunity,
+        "pressure_dialogue_silence_opportunity": dialogue.silence_opportunity,
+        "pressure_dialogue_turn_opportunity_from_yielding": (
+            1.0
+            if dialogue.yielding_opportunity >= dialogue.silence_opportunity
+            and dialogue.yielding_opportunity > 0.0
+            else 0.0
+        ),
+        "pressure_dialogue_turn_opportunity_from_silence": (
+            1.0
+            if dialogue.silence_opportunity > dialogue.yielding_opportunity
+            and dialogue.silence_opportunity > 0.0
+            else 0.0
+        ),
         "pressure_dialogue_interruption_risk": dialogue.interruption_risk,
         "pressure_natural_backchannel_desire": natural.backchannel_desire,
         "pressure_natural_light_reaction_desire": natural.light_reaction_desire,
         "pressure_natural_filler_desire": natural.filler_desire,
         "pressure_motivation_initiative_desire": motivation.initiative_desire,
         "pressure_motivation_personality_push": motivation.personality_push,
+        "pressure_motivation_conversation_heat": motivation.conversation_heat,
+        "pressure_motivation_topic_continuity": motivation.topic_continuity,
+        "pressure_motivation_threshold_shift": motivation.threshold_shift,
         "pressure_world_importance": world.importance,
         "pressure_world_urgency": world.urgency,
         "pressure_world_deliverability": world.deliverability,
+        "pressure_world_candidate_pressure": world.candidate_pressure,
+        "pressure_world_user_presence": world.user_presence,
+        "pressure_world_user_absence": world.user_absence,
     }
 
 
@@ -743,6 +1683,42 @@ def _stable_partial(partials: list[str]) -> str:
         while prefix and not partial.startswith(prefix):
             prefix = prefix[:-1]
     return prefix
+
+
+def _looks_request_complete_partial(text: str) -> bool:
+    compact = text.strip()
+    if len(compact) < 6:
+        return False
+    return any(compact.endswith(suffix) for suffix in REQUEST_COMPLETE_PARTIAL_SUFFIXES)
+
+
+def _has_partial_ack_topic_cue(text: str) -> bool:
+    return any(cue in text for cue in PARTIAL_ACK_TOPIC_CUES)
+
+
+def _direct_clock_reply_text(text: str) -> str | None:
+    compact = text.translate(str.maketrans("", "", " 　、。，．?？!！"))
+    if not any(cue in compact for cue in DIRECT_CLOCK_CUES):
+        return None
+    now = datetime.now().astimezone()
+    return f"今は{now.hour}時{now.minute:02d}分だよ。"
+
+
+def _is_attention_wake_text(text: str) -> bool:
+    compact = text.lower().translate(str.maketrans("", "", " 　、。，．?？!！"))
+    return any(cue.lower() in compact for cue in ATTENTION_WAKE_CUES)
+
+
+def _is_attention_request_text(text: str) -> bool:
+    compact = text.strip()
+    return any(cue in compact for cue in ATTENTION_REQUEST_CUES)
+
+
+def _first_sentence_cutoff(text: str) -> int | None:
+    for index, char in enumerate(text):
+        if char in SPEECH_SENTENCE_ENDINGS:
+            return index + 1
+    return None
 
 
 def _similar_enough(left: str, right: str) -> bool:

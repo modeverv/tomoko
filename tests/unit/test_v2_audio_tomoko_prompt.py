@@ -10,6 +10,7 @@ import pytest
 
 from server.audio import stt as stt_module
 from server.audio.stt import (
+    DEFAULT_CONTEXTUAL_STRINGS,
     AppleSpeechStreamingBackend,
     StaticStreamingSttBackend,
     StreamingSttEvent,
@@ -18,11 +19,13 @@ from server.audio.stt import (
 from server.audio.vad import VADProcessor
 from server.hot_path.audio_conversation import (
     HotPathAudioConversation,
+    HotPathConversationResult,
     SegmentSttGate,
     audio_bytes_to_samples,
 )
 from server.hot_path.model_executor import (
     MultipartMixedParser,
+    PromptExecutionResult,
     PromptExecutor,
     StaticChatBackend,
     StaticWavTtsBackend,
@@ -49,11 +52,15 @@ from server.shared.models import (
     ConversationHistoryItem,
     FloorSignal,
     FloorState,
+    ModelOutputEvent,
+    PartialTranscriptObservation,
     PromptRequest,
     PromptScope,
     SemanticSaturationResult,
     SessionSummary,
     SpeechDecisionKind,
+    SpeechOrder,
+    SpeechOrderMode,
     UserStatusObservation,
     utc_now,
 )
@@ -66,6 +73,12 @@ from server.tomoko.scheduler import SpeechScheduler
 from server.tomoko.session import SessionBoundaryModel
 
 pytestmark = pytest.mark.unit
+
+
+def test_apple_speech_default_contextual_strings_include_latency_request_terms() -> None:
+    assert "会議" in DEFAULT_CONTEXTUAL_STRINGS
+    assert "予定" in DEFAULT_CONTEXTUAL_STRINGS
+    assert "今週" in DEFAULT_CONTEXTUAL_STRINGS
 
 
 class FixedSaturationJudge:
@@ -145,6 +158,27 @@ def test_vad_reset_drops_in_progress_speech_and_preroll() -> None:
 
     assert processor.process_chunk((0.0,) * 100, speech_probability=0.0, now_ms=400) is None
     assert processor.process_chunk((0.0,) * 100, speech_probability=0.0, now_ms=600) is None
+
+
+@pytest.mark.asyncio
+async def test_hot_path_audio_conversation_reset_drops_vad_and_streaming_stt_state() -> None:
+    stt_backend = _PartialThenFinalSttBackend()
+    conversation = HotPathAudioConversation(
+        vad=VADProcessor(sample_rate=1000, pre_roll_ms=0, silence_ms=100),
+        stt_backend=stt_backend,
+        speech_rms_threshold=0.02,
+    )
+
+    partial = await conversation.process_audio_samples((0.2,) * 100)
+    conversation.reset_runtime_state()
+    silence_1 = await conversation.process_audio_samples((0.0,) * 100)
+    silence_2 = await conversation.process_audio_samples((0.0,) * 100)
+
+    assert partial is not None
+    assert partial.observations[0].text == "トモコ、予定を一言で教え"
+    assert stt_backend.reset_count == 1
+    assert silence_1 is None
+    assert silence_2 is None
 
 
 def test_audio_bytes_are_decoded_as_float32_chunks() -> None:
@@ -265,7 +299,9 @@ class _PartialThenFinalSttBackend(_RecordingSttBackend):
         del sample_rate, started_at_ms
         if not self.partials:
             return None
-        return StreamingSttEvent(self.partials.pop(0), False, 0.85)
+        text = self.partials.pop(0)
+        p_yielding = 0.92 if text.endswith("教えて") else None
+        return StreamingSttEvent(text, False, 0.85, p_yielding=p_yielding)
 
     def reset_stream(self) -> None:
         self.reset_count += 1
@@ -326,9 +362,11 @@ async def test_hot_path_can_emit_partial_speech_order_before_vad_final() -> None
     assert partial.observations[0].text == "トモコ、予定を一言で教え"
     assert partial.durable_utterance is None
     assert partial.scheduler_output is not None
-    assert partial.speech_order is None
-    assert partial.prompt_request is None
-    assert partial.execution_result.audio_chunks == []
+    assert partial.speech_order is not None
+    assert partial.speech_order.reason == "partial acknowledgement before complete request"
+    assert partial.speech_order.text == "うん、聞いてるよ。"
+    assert partial.prompt_request is not None
+    assert partial.execution_result.audio_chunks[0].chunk == b"RIFFxxxxWAVEdata"
 
     partial = await conversation.process_audio_samples((0.2,) * 100)
 
@@ -338,13 +376,50 @@ async def test_hot_path_can_emit_partial_speech_order_before_vad_final() -> None
     assert partial.speech_order is not None
     assert partial.prompt_request is not None
     assert partial.execution_result.audio_chunks[0].chunk == b"RIFFxxxxWAVEdata"
+    assert partial.stage_timings_ms["stt_partial_ms"] >= 0.0
+    assert partial.stage_timings_ms["tomoko_ms"] >= 0.0
+    assert partial.stage_timings_ms["tts_ms"] >= 0.0
+    assert partial.stage_timings_ms["total_ms"] >= 0.0
 
     assert await conversation.process_audio_samples((0.0,) * 100) is None
     final = await conversation.process_audio_samples((0.0,) * 100)
 
     assert final is not None
     assert final.observations[0].is_final is True
+    assert final.stage_timings_ms["stt_ms"] >= 0.0
+    assert final.stage_timings_ms["tomoko_ms"] >= 0.0
+    assert final.stage_timings_ms["tts_ms"] >= 0.0
+    assert final.stage_timings_ms["total_ms"] >= 0.0
     assert stt_backend.reset_count == 1
+
+
+@pytest.mark.asyncio
+async def test_hot_path_can_defer_partial_tts_to_sender() -> None:
+    stt_backend = _PartialThenFinalSttBackend()
+    conversation = HotPathAudioConversation(
+        vad=VADProcessor(sample_rate=1000, pre_roll_ms=0, silence_ms=100),
+        stt_backend=stt_backend,
+        conversation_core=TomokoConversationCore(
+            session_model=SessionBoundaryModel(),
+            saturation_judge=FixedSaturationJudge(0.95),
+            scheduler=SpeechScheduler(),
+            chat_backend=StaticChatBackend(["先に答えるね。"]),
+            tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
+            prompt_builder=PromptBuilderV2(),
+        ),
+        speech_executor=SpeechOrderExecutor(StaticWavTtsBackend([b"RIFFxxxxWAVEdata"])),
+        speech_rms_threshold=0.02,
+        defer_tts_to_sender=True,
+    )
+
+    assert await conversation.process_audio_samples((0.2,) * 100) is not None
+    partial = await conversation.process_audio_samples((0.2,) * 100)
+
+    assert partial is not None
+    assert partial.speech_order is not None
+    assert partial.execution_result.audio_chunks == []
+    assert partial.deferred_tts_orders == [partial.speech_order]
+    assert partial.stage_timings_ms["tts_ms"] == 0.0
 
 
 @pytest.mark.asyncio
@@ -458,6 +533,104 @@ def test_browser_protocol_has_single_ws_style_events() -> None:
     assert is_audio_control(parsed)
     assert parse_browser_message(b"\x00\x01") == b"\x00\x01"
     assert encode_server_event("transcript", text="hi") == '{"type": "transcript", "text": "hi"}'
+
+
+@pytest.mark.asyncio
+async def test_audio_result_sends_latency_stage_before_transcript() -> None:
+    from server.hot_path.app import _send_audio_conversation_result
+
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.sent: list[dict[str, object]] = []
+
+        async def send_text(self, message: str) -> None:
+            self.sent.append(json.loads(message))
+
+    websocket = FakeWebSocket()
+    now = utc_now()
+    observation = PartialTranscriptObservation(
+        text="途中",
+        is_final=False,
+        stability=0.85,
+        audio_started_at=now,
+        audio_ended_at=now,
+    )
+    result = HotPathConversationResult(
+        observations=[observation],
+        durable_utterance=None,
+        context_snapshot=None,
+        prompt_request=None,
+        execution_result=PromptExecutionResult(),
+        stage_timings_ms={"stt_partial_ms": 1.2345, "total_ms": 2.3456},
+    )
+
+    await _send_audio_conversation_result(websocket, result)  # type: ignore[arg-type]
+
+    assert websocket.sent[0]["type"] == "latency_stage"
+    assert websocket.sent[0]["origin"] == "partial"
+    assert websocket.sent[0]["trace_id"] == str(observation.trace_id)
+    assert websocket.sent[0]["stage_timings_ms"] == {
+        "stt_partial_ms": 1.234,
+        "total_ms": 2.346,
+    }
+    assert websocket.sent[1]["type"] == "transcript"
+
+
+@pytest.mark.asyncio
+async def test_audio_result_streams_deferred_tts_chunks_before_tts_result() -> None:
+    from server.hot_path.app import _send_audio_conversation_result
+    from server.hot_path.speech_executor import prompt_request_for_order
+
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.sent: list[dict[str, object]] = []
+
+        async def send_text(self, message: str) -> None:
+            self.sent.append(json.loads(message))
+
+        async def send_bytes(self, payload: bytes) -> None:
+            self.sent.append({"type": "binary_audio", "bytes": len(payload)})
+
+    order = SpeechOrder(
+        text="先に流す",
+        mode=SpeechOrderMode.REPLACE_CURRENT,
+        reason="unit",
+        priority=50,
+    )
+    result = HotPathConversationResult(
+        observations=[],
+        durable_utterance=None,
+        context_snapshot=None,
+        prompt_request=prompt_request_for_order(order),
+        execution_result=PromptExecutionResult(
+            model_events=[
+                ModelOutputEvent(
+                    request_id=order.id,
+                    event_kind="complete",
+                    text=order.text,
+                    trace_id=order.trace_id,
+                )
+            ]
+        ),
+        speech_order=order,
+        deferred_tts_orders=[order],
+    )
+    websocket = FakeWebSocket()
+    executor = SpeechOrderExecutor(
+        StaticWavTtsBackend([b"RIFF1111WAVEdata", b"RIFF2222WAVEdata"])
+    )
+
+    await _send_audio_conversation_result(websocket, result, executor)  # type: ignore[arg-type]
+
+    event_types = [event["type"] for event in websocket.sent]
+    assert event_types.index("speech_order") < event_types.index("binary_audio")
+    assert event_types.index("binary_audio") < event_types.index("tts_result")
+    assert event_types.index("audio_complete") < event_types.index("prompt_complete")
+    assert websocket.sent[event_types.index("tts_result")]["audio_chunks"] == 2
+    assert [event["bytes"] for event in websocket.sent if event["type"] == "binary_audio"] == [
+        len(b"RIFF1111WAVEdata"),
+        len(b"RIFF2222WAVEdata"),
+    ]
 
 
 def test_openai_sse_and_voicevox_multipart_parsers() -> None:

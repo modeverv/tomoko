@@ -2396,3 +2396,861 @@
 
 ### 次のセッションでやること
 - 作業ツリー自体をさらに小さくしたい場合は、ignored な `v1/loras/` の safetensors、`.venv/`、`models/`、`logs/` を削除・再生成対象にするか判断する。
+
+## 2026-07-03 セッション1
+
+### やること（開始時に書く）
+- f.md Step 0: シナリオ・リプレイハーネス(seed コーパス / シナリオ JSON / v2_scenario_replay / make target)を作る。
+
+### やったこと
+- `scripts/seeds/utterances.txt` に約150本の日本語 seed 発話(応答要求/雑談/言い淀み/stop/意味反転/calendar/短文/長文依頼)を追加した。
+- `scripts/v2_scenario_replay.py` を追加した。シナリオ JSON(steps + expect)を読み、fake モードは hot-path + tomoko realtime を WS split fake runtime で起動、real モードは say -> afconvert -> 16kHz WAV を既存 `/ws` に realtime pace で流す。cut_at_ratio / pre_pause_ms / overlap_during_playback / wait_for に対応し、timeline artifact を `logs/scenario-*.json` に残して expect(min/max events, event order subsequence, forbid, latency bound, final transcript contains, speech_order modes, step 単位 window)を assert する。
+- `make v2-scenario-replay SCENARIO=...` / `make v2-scenario-suite` を追加した。
+- シナリオ `basic-reply` / `two-turn-reply` を追加した。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_scenario_replay.py -q`
+  - 6 passed（実装前に fail を確認してから実装）
+- `make v2-scenario-suite`
+  - basic-reply / two-turn-reply とも全 assertion PASS, exit 0
+- artifact `logs/scenario-basic-reply-20260703-234953.json`
+  - scheduler_decision に score_breakdown、step に voice_end_to_first_audio_ms を確認
+- `make check`
+  - ruff passed, unit 150 passed, 1 deselected
+
+### 次のセッションでやること
+- f.md Step 1: final STT divergence の上書き(PLAN S11 残)を実装する。
+
+## 2026-07-03 セッション2
+
+### やること（開始時に書く）
+- f.md Step 1: final STT divergence の上書き(PLAN S11 残)を実装する。
+
+### やったこと
+- `TomokoConversationCore` の `_reconcile_reason` から「final discarded after active partial reply in same trace」分岐を外し、partial 発話根拠と乖離した final は通常経路へ落とすようにした。
+- 乖離 final は emission gate に `current_speech_score=0.0` で入り(誤根拠の発話に防衛スコアを与えない)、emission が emit/append/replace 系ならば `replace_current` を強制し reason を `final diverged from active partial reply; replacing` にした。
+- 乖離 final 処理時に `_active_partial_order` / `_active_partial_basis_text` をクリアし、`_last_reconciled_final_text` に final を積むことで、後続 stale partial は final と照合して reconcile suppress されるようにした。
+- 既存 test `suppresses_conflicting_final_after_partial_order` を新挙動の `replaces_conflicting_final_after_partial_order` に書き換えた(旧挙動の固定は PLAN S11 と矛盾するため)。
+- fake runtime で partial イベント列を注入できる `TOMOKO_V2_FAKE_STT_EVENTS`(JSON list)を hot-path fake 配線に追加し、3箇所の StaticStreamingSttBackend 構築を `_fake_stt_backend()` に集約した。
+- scenario replay に `fake_stt_events` / `wait_for_count` / `chunk_sleep_ms` を追加し、`final-divergence` シナリオ(partial×2 -> 乖離 final)を追加した。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py -q`
+  - 16 passed（書き換えテストは実装前に fail を確認）
+- `make v2-scenario-replay SCENARIO=final-divergence SCENARIO_RUNTIME=fake` 相当
+  - partial 起点 `partial_speech_order` -> `divergent_final_supersedes_partial` -> replace_current を artifact で確認、全 assertion PASS
+  - artifact `logs/scenario-final-divergence-20260703-235853.json`
+- `make check`
+  - ruff passed, unit 150 passed
+- `make v2-scenario-suite`
+  - basic-reply / final-divergence / two-turn-reply すべて PASS
+- PLAN.md S11 の未チェック 2 項目をチェック済みに更新
+
+### 次のセッションでやること
+- f.md Step 2: overlap / replace の仕上げ(PLAN S9 残、fade/無音 marker + overlap シナリオ)。
+
+## 2026-07-04 セッション1
+
+### やること（開始時に書く）
+- f.md Step 2: overlap / replace の仕上げ(PLAN S9 残)。
+
+### やったこと
+- `ScriptedStreamingSttBackend` を追加し、fake STT が「発話グループ単位」で partial/final を返せるようにした。`TOMOKO_V2_FAKE_STT_EVENTS` はフラット(単一発話)とネスト(複数発話)の両形式に対応。
+- WS split の実バグ2件を修正した。
+  1. stop intent 時に tomoko realtime は `cancel_order` を返すが、hot-path `RemoteTomokoWsCore` が action を STOP にするだけで SpeechOrder を作らず、speech executor の stop も browser への stop event も実行されなかった。`stop_order_from_cancel_event()` で実行可能な STOP order に変換するようにした。
+  2. tomoko core の `current_speech_order` が playback 終了後も残り続け、次のユーザー発話への返答が append_after_current に化けていた。`playback_state`(playback_active=false) 受信時に core の current speech をクリアする `update_playback_state()` を追加した。
+- client/main.js: `speech_order mode=replace_current` 受信時に 80ms linear fade + 150ms 無音 gap で現行 playback を打ち切り、新音声に切り替えるようにした(全 source を共有 GainNode 経由に変更)。
+- シナリオ `overlap-stop` / `overlap-replace` を追加。overlap-replace は turn_materials snapshot が出るよう `chunk_sleep_ms: 16` の実時間ペーシングで流す。
+
+### 詰まったこと・解決したこと
+- fake 高速送信では 200ms window の turn_materials snapshot が一度も出ず、playback_state が tomoko 側へ届かないため current_speech_order が残ったままになった。scenario replay に chunk_sleep_ms を追加して解決。
+- `ruff check --fix .` を repo root で実行してしまい、参照専用 `v1/` の import 並びが 188 ファイル書き換わった。`git stash push -- v1/`(stash: "accidental ruff --fix on reference-only v1/")で作業ツリーを復元した。lint は Makefile の scope(`server scripts background-process tests`)で行うこと。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_scripted_stt_backend.py tests/unit/test_v2_internal_ws.py -q`
+  - 12 passed（新テストは実装前に fail を確認）
+- `make v2-scenario-suite`
+  - basic-reply / final-divergence / overlap-replace / overlap-stop / two-turn-reply 全 PASS
+- `make check`
+  - ruff passed, unit 155 passed
+- PLAN S9 の fade 項目をチェック。live smoke は real runtime セッション(f.md Step 4)で実施予定。
+
+### 次のセッションでやること
+- f.md Step 3: calendar append シナリオ(PLAN S10 残)。
+
+## 2026-07-04 セッション2
+
+### やること（開始時に書く）
+- f.md Step 3: calendar append シナリオ(PLAN S10 残)。
+
+### やったこと
+- `server/tomoko/calendar.py` を追加した。calendar items は ARCHITECTURE の `{"YYYY-MM-DD HH:MM": title}` map、30分 window 内の直近予定に対して線形に urgency を上げる。通知文は v0 として deterministic template(`ところで、HH:MMから<title>の予定があるよ。`)。
+- `TomokoConversationCore` に `calendar_items_provider` を追加し、context snapshot の calendar_loader と WorldMaterials.calendar_urgency の更新に接続した。final 返答の speech-order 生成後、urgency >= 0.6 かつ未通知の予定があれば `append_after_current` の followup order を作る(`TomokoConversationResult.followup_orders`)。通知済み key は dedupe。
+- realtime WS: `stt_observation_ack` に `order_count` を追加し、main speech_order の後に followup を追加送出、DB へも speech_order / tomoko utterance として永続化。
+- hot-path: `RemoteTomokoWsCore` が `order_count` 分だけ order を受信(旧サーバー互換の drain も残す)、`HotPathConversationResult.followup_orders` を追加、audio conversation が followup を speech executor で実行し、app が followup の speech_order event を browser に送る。
+- scenario replay に `fake_calendar` field(env `TOMOKO_V2_FAKE_CALENDAR`)を追加し、`calendar-append` シナリオを追加した。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_calendar_append.py -q`
+  - 6 passed（実装前に collection error で fail を確認）
+- `make v2-scenario-replay SCENARIO=calendar-append SCENARIO_RUNTIME=fake` 相当
+  - replace_current -> append_after_current、binary_audio 2、reason に calendar 由来。全 assertion PASS
+- `make check`
+  - ruff passed, unit 161 passed
+- `make v2-scenario-suite`
+  - 6 シナリオ全 PASS
+- PLAN S10 の fake calendar smoke をチェック済みに更新。live 確認は real runtime セッションで実施。
+
+### 次のセッションでやること
+- f.md Step 4: latency 回帰スイート(PLAN S16 残)。real runtime を起動し、overlap/calendar の live 確認もまとめて行う。
+- 留意: calendar 通知文の HH:MM は utc_now 由来なので、実運用では JST 表示の扱いを info-aquire 結線時に決める。
+
+## 2026-07-04 セッション3
+
+### やること（開始時に書く）
+- f.md Step 4: latency 回帰スイート(PLAN S16 残)を続ける。
+- 既存の `scripts/v2_latency_suite.py` / unit test 草案を確認し、fake で回せる regression gate と real runtime 用の report 出力を固める。
+
+### やったこと
+- `scripts/v2_latency_suite.py` を G1 用の regression gate として固めた。JSON/Markdown report に p50/p95、partial/final/reconcile/false-early 率、no-audio 件数、client-observed timing breakdown を出す。
+- suite の target に `runs_no_audio == 0` を追加した。runtime reload 中の no-audio artifact が pass 扱いになる穴を unit test で塞いだ。
+- `TomokoConversationCore` の partial start gate に request-complete suffix fast-start を追加した。`教えて` / `してください` などで終わる完了らしい partial は初回から speech-order を許可し、未完了 partial は従来どおり confirmation 待ちにする。
+- real runtime で `real-overlap-stop` / `real-overlap-replace` scenario replay を実行し、どちらも PASS。PLAN S9 の live smoke 残を解消した。
+- fake scenario suite も再実行し、basic-reply / calendar-append / final-divergence / overlap-replace / overlap-stop / two-turn-reply が PASS。
+
+### 詰まったこと・解決したこと
+- hot-path の `--reload` が編集を拾ったタイミングで no-audio artifact が出た。suite target に no-audio 失敗条件を入れ、stable runtime で取り直した。
+- client 側で観測する `transcript` / `speech_order` は内部 STT 完了時刻そのものではなく、`process_segment` 完了後に見える場合がある。suite report には体感境界として残し、内部 stage の切り分けは別 artifact が必要。
+- request-complete partial fast-start 後も、短い default seed の real STT partial は `今日の予定を` のように未完了で止まりやすく、3-seed suite の partial-origin は 0/3 のままだった。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_latency_suite.py -q`
+  - 9 passed
+- `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py tests/unit/test_v2_latency_suite.py -q`
+  - 25 passed
+- `uv run ruff check server/tomoko/conversation.py tests/unit/test_v2_speech_order_flow.py scripts/v2_latency_suite.py tests/unit/test_v2_latency_suite.py`
+  - passed
+- `make v2-runtime-ready`
+  - passed
+- `make v2-scenario-replay SCENARIO=real-overlap-stop SCENARIO_RUNTIME=real`
+  - PASS, artifact `logs/scenario-real-overlap-stop-20260704-004455.json`
+- `make v2-scenario-replay SCENARIO=real-overlap-replace SCENARIO_RUNTIME=real`
+  - PASS, artifact `logs/scenario-real-overlap-replace-20260704-004559.json`
+- `make v2-scenario-suite`
+  - 6 scenarios PASS, latest artifacts around `logs/scenario-*-20260704-0051*.json`
+- `make v2-latency-suite LATENCY_SUITE_COUNT=3 LATENCY_SUITE_REPEATS=1`
+  - expected fail(exit 2): `logs/latency-suite-20260704-005033.{json,md}`
+  - no-audio 0, partial-origin 0/3, final-origin p50 7298.7ms, p95 14026.4ms
+
+### 次のセッションでやること
+- G1 継続。次の改善レバーは、Apple Speech pseudo partial の生成タイミング/content を早めるか、VOICEVOX への first phrase 合成をさらに前倒しする。
+- `make check` を最終確認として通し、通ったら今回の変更範囲を整理する。既存 worktree には前セッション由来の未追跡/変更が多いので、コミットする場合は scope を慎重に分ける。
+
+### 追加検証
+- `make check`
+  - ruff passed, unit 170 passed / 1 deselected
+- `git diff --check`
+  - passed
+
+### 追加でやったこと
+- hot-path の `HotPathConversationResult` に `stage_timings_ms` を追加し、`latency_stage` event として `/ws` に送るようにした。
+- `scripts/v2_latency_suite.py` が `latency_stage` を拾い、JSON に full timeline / stage timings、Markdown summary に stage p50/p95 と internal stage breakdown を出すようにした。
+- suppress された partial の `latency_stage` を誤って採用しないよう、first speech-order に対応する origin の stage を選ぶ分類に修正した。
+
+### 追加検証2
+- `uv run pytest -m unit tests/unit/test_v2_audio_tomoko_prompt.py tests/unit/test_v2_latency_suite.py tests/unit/test_v2_speech_order_flow.py -q`
+  - 60 passed
+- `uv run ruff check server/hot_path/audio_conversation.py server/hot_path/app.py scripts/v2_latency_suite.py tests/unit/test_v2_audio_tomoko_prompt.py tests/unit/test_v2_latency_suite.py`
+  - passed
+- `make v2-latency-suite LATENCY_SUITE_COUNT=1 LATENCY_SUITE_REPEATS=1`
+  - expected fail(exit 2): `logs/latency-suite-20260704-010457.{json,md}`
+  - final-origin 7938.6ms、stage 内訳は STT 337.3ms / Tomoko 3480.7ms / TTS 3676.3ms / total 7494.4ms
+
+### 次のセッションでやること（追加）
+- G1 継続。stage breakdown から、次の本命は TTS chunk を `SpeechOrderExecutor` 内で溜めずに WebSocket へ逐次流す配線、または first phrase delivery。
+- latency suite は同一 runtime/session に同じ seed を繰り返すと履歴で返答が長文化するため、fresh runtime/session 測定か session 汚染の明示を追加する。
+
+### 最終検証
+- `make check`
+  - ruff passed, unit 172 passed / 1 deselected
+- `git diff --check`
+  - passed
+
+### 追加でやったこと2
+- internal WS に `reset_conversation` event を追加し、Tomoko realtime の `conversation_core` / `turn_material_state` を作り直せるようにした。
+- public `/ws` には既存 socket 上の `latency_control/reset_conversation` を追加し、hot-path から remote Tomoko reset を呼べるようにした。
+- `scripts/v2_latency_suite.py` は各 run 前に既定で reset control を送り、JSON に `reset_conversation` と timeline ack を残すようにした。
+- tmux runtime の Tomoko realtime window を再作成し、新コードで `reset_conversation_ack` が返ることを実 runtime で確認した。
+
+### 追加検証3
+- `uv run pytest -m unit tests/unit/test_v2_internal_ws.py::test_tomoko_internal_ws_can_reset_conversation_state tests/unit/test_v2_latency_suite.py tests/unit/test_v2_audio_tomoko_prompt.py::test_audio_result_sends_latency_stage_before_transcript -q`
+  - 12 passed
+- `uv run ruff check server/tomoko/realtime.py server/hot_path/ws_control.py server/hot_path/app.py scripts/v2_latency_suite.py tests/unit/test_v2_internal_ws.py tests/unit/test_v2_latency_suite.py`
+  - passed
+- direct internal WS reset probe
+  - ready -> `reset_conversation_ack`
+- `make v2-latency-suite LATENCY_SUITE_COUNT=1 LATENCY_SUITE_REPEATS=1`
+  - expected fail(exit 2): `logs/latency-suite-20260704-011004.{json,md}`
+  - reset ack あり、final-origin 6310.7ms、stage 内訳は STT 553.3ms / Tomoko 3078.5ms / TTS 2232.8ms / total 5864.7ms
+
+### 次のセッションでやること（追加2）
+- G1 継続。reset で履歴汚染は抑えたので、次は first phrase / streamed TTS を実装して first audio を TTS 完了待ちから切り離す。
+
+### 最終検証2
+- `make check`
+  - ruff passed, unit 173 passed / 1 deselected
+- `git diff --check`
+  - passed
+
+## 2026-07-04 セッション4
+
+### やること（開始時に書く）
+- f.md Step 4 / G1 継続。reset つき latency suite で残った Tomoko/LLM + TTS 待ちのうち、
+  まず TTS 完了待ちを外して first audio を前倒しする。
+- 実装は既存 `/ws` の上で行い、REST endpoint は増やさない。
+
+### やったこと
+- `HotPathConversationResult.deferred_tts_orders` と `HotPathAudioConversation.defer_tts_to_sender` を追加し、
+  `/ws` audio conversation では speech-order event を先に送り、sender 側で TTS chunk を逐次 binary audio として送るようにした。
+- `SpeechOrderExecutor.execute_stream()` を追加し、既存の replace/append/stop/generation guard を保ったまま chunk callback で早期送信できるようにした。
+- speech-order text を文単位で分割して VOICEVOX に渡し、先頭短文だけ先に合成・送信できるようにした。
+- Tomoko LLM stream を最初の完全文で打ち切り、voice output の speech-order は first sentence だけにするようにした。
+- Tomoko realtime の restart 後に hot-path が stale internal WS を握り続ける問題を踏んだため、
+  `RemoteTomokoWsCore` に reset / observation の closed socket reconnect を追加した。
+- `f.md` と `_docs/latency.md` に G1 front-loading pass の artifact と未達成状況を追記した。
+
+### 詰まったこと・解決したこと
+- deferred-only では first audio は 6310.7ms -> 5076.1ms に改善したが、
+  VOICEVOX が長文を 1 chunk で返し order→first audio が 2133.8ms 残った。
+  文単位 split で 3425.6ms、order→first audio 861.8ms まで短縮した。
+- first-sentence LLM cutoff 後、Tomoko tmux window が消えて orphan uvicorn が 8765 を listen する状態になり、
+  hot-path の cached internal WS が `ConnectionClosedError` で `/ws` を落とした。
+  orphan を止めて Tomoko window を再作成し、`RemoteTomokoWsCore` 側にも reconnect unit test を追加して解決した。
+- 最新 3-seed suite では final-origin p50 3122.4ms / p95 5143.9ms で S16 未達。
+  stage total p50 は 1470.3ms まで下がったが、partial-origin は 0/3 のまま。
+
+### 検証
+- `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py::test_speech_order_executor_streams_chunks_before_returning tests/unit/test_v2_audio_tomoko_prompt.py::test_hot_path_can_defer_partial_tts_to_sender tests/unit/test_v2_audio_tomoko_prompt.py::test_audio_result_streams_deferred_tts_chunks_before_tts_result`
+  - 3 passed
+- `uv run pytest -m unit tests/unit/test_v2_audio_tomoko_prompt.py tests/unit/test_v2_speech_order_flow.py tests/unit/test_v2_runtime_foundation.py::test_hot_path_websocket_uses_prompt_executor_for_text_prompt tests/unit/test_v2_internal_ws.py tests/unit/test_v2_calendar_append.py`
+  - 69 passed
+- `make check`
+  - ruff passed, unit 179 passed / 1 deselected
+- direct internal WS reset probe
+  - ready -> `reset_conversation_ack`
+- `make v2-latency-suite LATENCY_SUITE_COUNT=1 LATENCY_SUITE_REPEATS=1`
+  - expected fail(exit 2): `logs/latency-suite-20260704-011937.{json,md}`
+  - deferred-only: final-origin 5076.1ms、Tomoko/LLM 2182.8ms、order→first audio 2133.8ms
+- `make v2-latency-suite LATENCY_SUITE_COUNT=1 LATENCY_SUITE_REPEATS=1`
+  - expected fail(exit 2): `logs/latency-suite-20260704-012122.{json,md}`
+  - sentence TTS split: final-origin 3425.6ms、order→first audio 861.8ms、binary audio 3 chunks
+- `make v2-latency-suite LATENCY_SUITE_COUNT=1 LATENCY_SUITE_REPEATS=1`
+  - expected fail(exit 2): `logs/latency-suite-20260704-012939.{json,md}`
+  - first-sentence LLM cutoff + reconnect: final-origin 2627.4ms、STT 334.3ms、Tomoko/LLM 742.4ms、order→first audio 1114.1ms
+- `make v2-latency-suite LATENCY_SUITE_COUNT=3 LATENCY_SUITE_REPEATS=1`
+  - expected fail(exit 2): `logs/latency-suite-20260704-013026.{json,md}`
+  - no-audio 0、partial-origin 0/3、final-origin p50 3122.4ms / p95 5143.9ms、stage total p50 1470.3ms / p95 2679.2ms
+
+### 次のセッションでやること
+- G1 継続。final-origin の Tomoko/LLM/TTS はかなり縮んだので、次は安全な partial-origin audio を作る。
+  具体候補は「完全な要求ではない partial には短い acknowledgement speech-order だけを出し、final で本回答に replace する」または
+  Apple Speech partial cadence/content の調整。
+- ただし partial `今日の予定` のような未完了名詞句で full answer を出すのは危険なので、
+  full reply ではなく短い撤回可能な first audio として設計する。
+
+### 追加でやること3
+- ユーザー指示により、「よくうまく動く」ことを最優先にする。
+- G1 の次レバーとして、未完了 partial には full answer ではなく短い acknowledgement speech-order を出し、
+  final STT で本回答へ replace できるかを test-first で確認する。
+
+### 追加でやったこと3
+- 未完了 partial topic (`今日の予定` / `今日の天気...`) には full answer ではなく
+  短い acknowledgement speech-order `うん、聞いてるよ。` を出すようにした。
+  `これは誰` のような曖昧 partial は従来どおり confirmation 待ちにする。
+- partial start gate が「確認待ち」で suppress する経路にも、安全な pause / low speech probability /
+  filler 圧がある場合だけ acknowledgement へ落とす分岐を追加した。
+- 長い一文の speech-order text は文末だけでなく、16 文字以上の読点でも TTS 分割するようにした。
+- `今何時` / `今いつ` 系の final は LLM を通さず local system time の direct speech-order にした。
+  これにより古い日付を LLM が返す問題を避ける。
+- `latency_control/reset_conversation` が Tomoko state だけでなく hot-path の VAD / streaming STT /
+  active trace / hot-path 短期履歴も reset するようにした。
+  first-audio で測定を切った後の Apple Speech 遅延イベントが次 run に混ざる問題を解消した。
+
+### 追加検証4
+- `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py tests/unit/test_v2_audio_tomoko_prompt.py tests/unit/test_v2_internal_ws.py tests/unit/test_v2_latency_suite.py`
+  - 81 passed
+- `make check`
+  - ruff passed, unit 185 passed / 1 deselected
+- `make v2-scenario-suite`
+  - fake scenarios passed; real-overlap scenarios are skipped by runtime filter
+- `make v2-latency-suite LATENCY_SUITE_COUNT=3 LATENCY_SUITE_REPEATS=1`
+  - pass: `logs/latency-suite-20260704-015746.{json,md}`
+  - partial-origin 2/3、all p50 447.9ms / p95 1236.2ms、final-origin 1323.7ms、partial-origin p50 384.6ms
+- `make v2-latency-suite LATENCY_SUITE_COUNT=3 LATENCY_SUITE_REPEATS=1`
+  - pass: `logs/latency-suite-20260704-015947.{json,md}`
+  - partial-origin 2/3、final-origin 1316.3ms、partial-origin p50 372.9ms
+- `make v2-latency-suite LATENCY_SUITE_COUNT=3 LATENCY_SUITE_REPEATS=1`
+  - pass: `logs/latency-suite-20260704-020002.{json,md}`
+  - partial-origin 2/3、final-origin 1320.7ms、partial-origin p50 375.9ms
+
+### 次のセッションでやること（追加3）
+- G1/S16 の自動ゲートは 3 回連続 pass したので、次は Step 5 の VAP p_yielding 効果切り分けへ進む。
+- 追加でやるなら、latency suite の negative first-audio 表示を「発話終了前に first audio が出た」として
+  Markdown 上でわかりやすく表示する改善を検討する。
+
+### 追加でやったこと4
+- G5: `DialogueTurnPressure` に `yielding_opportunity` / `silence_opportunity` を追加し、
+  `score_breakdown` に `pressure_dialogue_yielding_opportunity` /
+  `pressure_dialogue_silence_opportunity` /
+  `pressure_dialogue_turn_opportunity_from_yielding` /
+  `pressure_dialogue_turn_opportunity_from_silence` を出すようにした。
+- `p_yielding` 欠損を `1.0` とみなす conversation 側補完をやめた。
+  これにより「VAP が yielding を出した」ケースと「silence fallback が効いた」ケースが artifact 上で混ざらない。
+- `TOMOKO_V2_FAKE_STT_EVENTS` から `p_yielding` / `p_turn_yielding` /
+  `recommended_silence_ms` を `StreamingSttEvent` へ流せるようにし、fake replay で VAP lane を deterministic に再現できるようにした。
+- `scripts/v2_scenario_replay.py` に `score_breakdown_any` assertion を追加した。
+  `scripts/scenarios/vap-yielding-opportunity.json` は partial decision の
+  `yielding=0.92 / silence=0.0 / from_yielding=1.0` と final decision の
+  `yielding=0.0 / silence=1.0 / from_silence=1.0` を同一 artifact 内で assert する。
+- `final-divergence` scenario は暗黙の p_yielding に依存していたため、partial fake STT event に
+  `p_yielding=0.92` を明示した。
+
+### 追加検証5
+- `uv run pytest -m unit tests/unit/test_v2_semantic_scheduler.py tests/unit/test_v2_speech_order_flow.py -q`
+  - 48 passed
+- `uv run pytest -m unit tests/unit/test_v2_scenario_replay.py tests/unit/test_v2_scripted_stt_backend.py -q`
+  - 11 passed
+- `make v2-scenario-replay SCENARIO=vap-yielding-opportunity`
+  - pass: `logs/scenario-vap-yielding-opportunity-20260704-021212.json`
+- `make v2-scenario-replay SCENARIO=final-divergence`
+  - pass: `logs/scenario-final-divergence-20260704-021338.json`
+- `make v2-scenario-suite`
+  - pass: fake scenarios passed; real-overlap scenarios are skipped by runtime filter
+  - G5 artifact: `logs/scenario-vap-yielding-opportunity-20260704-021449.json`
+  - final-divergence artifact: `logs/scenario-final-divergence-20260704-021443.json`
+
+### 次のセッションでやること（追加4）
+- Step 6 / G6: motivation を「閾値を動かす圧力」として設計・実装する。
+- 先に unit test で `semantic medium + motivation high -> 前のめり fire` と
+  `motivation low -> 従来 threshold` の表を固定し、その後 replay A/B artifact を残す。
+
+### 追加検証6
+- `make check`
+  - ruff passed, unit 190 passed / 1 deselected
+- `git diff --check`
+  - passed
+
+### 追加でやったこと5
+- Step 6 / G6: `MotivationPressure` に `conversation_heat` / `topic_continuity` /
+  `threshold_shift` を追加し、personality と直近会話履歴から motivation による閾値シフトを計算するようにした。
+- `LlmFireGate` / `SpeechEmissionGate` は motivation を score 加点ではなく閾値シフトとして扱うようにした。
+  `score_breakdown` には `motivation_threshold_shift` と `pressure_motivation_threshold_shift` を残す。
+- `TomokoConversationCore` は current text と recent history を `MotivationPressureModel` へ渡すようにし、
+  低 semantic partial でも high motivation + p_yielding が揃った場合は短い撤回可能な interjection
+  `いや、それってさ。` を LLM なしで出すようにした。
+- fake replay で personality A/B を固定できるよう、
+  `TOMOKO_V2_FAKE_PERSONALITY` と scenario JSON の `fake_personality` を追加した。
+- `scripts/v2_scenario_replay.py` に speech-order の text / reason / 最大文字数 assertion を追加した。
+  これにより「短い割り込み」が artifact 上で直接検証できる。
+- `scripts/scenarios/motivation-threshold-high.json` /
+  `scripts/scenarios/motivation-threshold-low.json` /
+  `scripts/scenarios/motivation-interjection-high.json` を追加した。
+
+### 追加検証7
+- `uv run pytest -m unit tests/unit/test_v2_semantic_scheduler.py tests/unit/test_v2_speech_order_flow.py tests/unit/test_v2_scenario_replay.py tests/unit/test_v2_internal_ws.py -q`
+  - 70 passed
+- `make v2-scenario-replay SCENARIO=motivation-interjection-high`
+  - pass: `logs/scenario-motivation-interjection-high-20260704-023149.json`
+- `make v2-scenario-suite`
+  - pass: fake scenarios passed; real-overlap scenarios are skipped by runtime filter
+  - G6 interjection artifact: `logs/scenario-motivation-interjection-high-20260704-023202.json`
+  - G6 high profile artifact: `logs/scenario-motivation-threshold-high-20260704-023203.json`
+  - G6 low profile artifact: `logs/scenario-motivation-threshold-low-20260704-023204.json`
+  - G5 regression artifact after latest suite: `logs/scenario-vap-yielding-opportunity-20260704-023209.json`
+- `make check`
+  - ruff passed, unit 195 passed / 1 deselected
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること（追加5）
+- f.md Step 7 / G7-G8 へ進む。次は user-status / summary / think candidate など周辺プロセスの材料を
+  `WorldMaterials` / pressure に結線し、fake data + scenario / integration test で確認する。
+
+### 追加でやったこと6
+- Step 7 / user-status slice: `WorldMaterials` に `user_present` /
+  `user_status_confidence` / `user_activity_relevance` を追加し、
+  `WorldPressure` に `user_presence` / `user_absence` を追加した。
+- `WorldPressureModel` は user absent のとき `importance` / `urgency` /
+  `deliverability` を 0 にし、score_breakdown に presence/absence を残すようにした。
+- `server.user_status.main.world_materials_from_user_status()` を追加し、
+  `UserStatusObservation` から既存 world materials を保ったまま presence を反映できるようにした。
+- `TomokoConversationCore.update_user_status()` を追加し、prompt snapshot の `user_status` と
+  world pressure material の両方へ反映するようにした。
+- Tomoko internal WS に `user_status` event / `user_status_ack` を追加し、
+  fake runtime 用に `TOMOKO_V2_FAKE_USER_STATUS` / scenario JSON `fake_user_status` を追加した。
+- 不在時は user が直接話しかけた本返答は維持しつつ、calendar followup append は suppress するようにした。
+
+### 追加検証8
+- `uv run pytest -m unit tests/unit/test_v2_background_models.py tests/unit/test_v2_internal_ws.py tests/unit/test_v2_semantic_scheduler.py tests/unit/test_v2_speech_order_flow.py tests/unit/test_v2_calendar_append.py tests/unit/test_v2_scenario_replay.py -q`
+  - 92 passed
+- `make v2-scenario-replay SCENARIO=user-status-absent-pressure`
+  - pass: `logs/scenario-user-status-absent-pressure-20260704-023943.json`
+- `make v2-scenario-suite`
+  - pass: fake scenarios passed; real-overlap scenarios are skipped by runtime filter
+  - Step 7 user-status artifact: `logs/scenario-user-status-absent-pressure-20260704-024009.json`
+- `make check`
+  - ruff passed, unit 201 passed / 1 deselected
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること（追加6）
+- Step 7 継続。次は summary-process の fixture 会話ログ -> `SessionSummary` + embedding の DB integration、
+  または think-process の candidate seed -> active candidate -> initiative pressure の replay を作る。
+
+### 追加でやったこと7
+- Step 7 / summary slice: `insert_session_summary_sql()` と `insert_summary_embedding_sql()` を追加し、
+  `SessionSummary` を `v2_session_summaries` / `v2_summary_embeddings` に書けるようにした。
+- `summary_text` は `keyword: conclusion` の形で保存し、embedding は deterministic な
+  `SessionSummary.embedding` を `double precision[]` 向けの list param として渡す。
+- `tests/integration/test_v2_db_schema.py` に summary / embedding insert を追加した。
+  `TEST_DATABASE_URL` 未設定では skip だが、DB あり環境では schema integration として走る。
+- fixture 会話ログから `summarize_session()` が keyword / conclusion / embedding を作る unit test を追加した。
+
+### 追加検証9
+- `uv run pytest -m unit tests/unit/test_v2_background_models.py tests/unit/test_v2_semantic_scheduler.py::test_session_summary_db_bridge_writes_summary_and_embedding -q`
+  - 13 passed
+- `uv run pytest -m integration tests/integration/test_v2_db_schema.py -q`
+  - 1 skipped (`TEST_DATABASE_URL` 未設定)
+- `make check`
+  - ruff passed, unit 203 passed / 1 deselected
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること（追加7）
+- Step 7 継続。残る大きな自動化は think-process candidate を Tomoko の initiative 発話へ結線し、
+  「無音 -> candidate 由来の自発発話」replay を exit 0 にすること。
+
+### 追加でやったこと8
+- Step 7 / candidate slice: `WorldMaterials.candidate_pressure` と
+  `WorldPressure.candidate_pressure` を追加し、candidate score を world pressure に反映できるようにした。
+- `TomokoConversationCore.candidate_provider` を追加し、active `CandidateRecord` を
+  prompt snapshot の `VOLATILE_RECALL` と world pressure の両方へ流すようにした。
+- fake runtime 用に `TOMOKO_V2_FAKE_CANDIDATES` と scenario JSON `fake_candidates` を追加した。
+- `scripts/scenarios/candidate-pressure-context.json` を追加し、
+  fake candidate が `pressure_world_candidate_pressure` / `pressure_world_importance` に出ることを assert した。
+
+### 追加検証10
+- `uv run pytest -m unit tests/unit/test_v2_semantic_scheduler.py::test_world_pressure_model_includes_candidate_pressure tests/unit/test_v2_speech_order_flow.py::test_tomoko_conversation_core_includes_active_candidates_in_prompt_snapshot tests/unit/test_v2_scenario_replay.py::test_load_scenario_fills_defaults -q`
+  - 3 passed
+- `make v2-scenario-replay SCENARIO=candidate-pressure-context`
+  - pass: `logs/scenario-candidate-pressure-context-20260704-024639.json`
+- `make v2-scenario-suite`
+  - pass: fake scenarios passed; real-overlap scenarios are skipped by runtime filter
+  - candidate pressure artifact: `logs/scenario-candidate-pressure-context-20260704-024648.json`
+- `make check`
+  - ruff passed, unit 205 passed / 1 deselected
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること（追加8）
+- Step 7 継続。`initiative_tick` 相当の Tomoko-owned trigger を作り、
+  speech input なしの silence + candidate pressure から speech-order を出す replay を追加する。
+
+### 追加でやったこと9
+- Step 7 / candidate initiative slice: Tomoko-owned `initiative_tick` を追加し、
+  speech input なしでも active candidate + silence + user present から initiative speech-order を作れるようにした。
+- `TomokoConversationCore.handle_initiative_tick()` を追加し、candidate provider の active candidate を
+  `PromptScope.INITIATIVE` の prompt に渡し、既存の `LlmFireGate` / `SpeechEmissionGate` を通して発話する。
+  `user_present=False`、発話中、再生中、無音不足、candidate なしの場合は prompt 生成前に suppress する。
+- hot-path public `/ws` と Tomoko internal WS に JSON event `initiative_tick` を追加した。
+  REST endpoint は増やさず、既存 WebSocket 上の event type 追加に留めた。
+- `scripts/v2_scenario_replay.py` に音声を送らない `event` step を追加した。
+  replay から `{"type":"initiative_tick"}` を送れるため、空文字 STT final で無音を偽装しない。
+- `scripts/scenarios/candidate-initiative-silence.json` を追加し、
+  transcript なしに candidate 由来の initiative speech-order と TTS が出ることを assert した。
+- `scripts/scenarios/candidate-initiative-absent-suppressed.json` を追加し、
+  user absent では active candidate があっても initiative tick が suppress されることを public `/ws` で assert した。
+
+### 追加検証11
+- `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py::test_tomoko_conversation_core_initiative_tick_speaks_from_candidate tests/unit/test_v2_speech_order_flow.py::test_tomoko_conversation_core_initiative_tick_suppresses_when_absent tests/unit/test_v2_scenario_replay.py::test_load_scenario_fills_defaults -q`
+  - 3 passed
+- `make v2-scenario-replay SCENARIO=candidate-initiative-silence`
+  - pass: `logs/scenario-candidate-initiative-silence-20260704-025714.json`
+- `make v2-scenario-replay SCENARIO=candidate-initiative-absent-suppressed`
+  - pass: `logs/scenario-candidate-initiative-absent-suppressed-20260704-025845.json`
+- `make v2-scenario-suite`
+  - pass: fake scenarios passed; real-overlap scenarios are skipped by runtime filter
+  - candidate initiative artifact: `logs/scenario-candidate-initiative-silence-20260704-025854.json`
+  - absent suppress artifact: `logs/scenario-candidate-initiative-absent-suppressed-20260704-025853.json`
+- `make check`
+  - ruff passed, unit 207 passed / 1 deselected
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること（追加9）
+- Step 7 継続。残る未完了は server/think 側で summary / calendar / world info から
+  `CandidateRecord` を生成して provider に積む実体化、summary-process の session close runner 結線、
+  user-status OCR fixture integration、info-aquire の fake calendar DB 取り込み。
+
+### 追加でやったこと10
+- Step 7 / think-process slice: `server.think.main` に `calendar_item_seeds()` /
+  `summary_memory_seed()` / `world_info_seed()` / `build_candidates()` を追加し、
+  summary / calendar / world info を既存 `CandidateSeed` / `CandidateRecord` に正規化できるようにした。
+- `world_info_seed()` は既存 `should_candidate_from_world()` を通し、stale / sensitive /
+  private / do_not_speak / low confidence の情報は candidate 化しない。
+- fake runtime の candidate provider を拡張し、明示 `TOMOKO_V2_FAKE_CANDIDATES` に加えて
+  `TOMOKO_V2_FAKE_CALENDAR` と `TOMOKO_V2_FAKE_WORLD_INFO` からも
+  `server.think.build_candidates()` 経由で candidate を作るようにした。
+- scenario harness に `fake_world_info` を追加した。
+- `scripts/scenarios/calendar-initiative-silence.json` を追加し、明示 `fake_candidates` なしでも
+  fake calendar -> think candidate -> initiative speech-order -> TTS が通ることを assert した。
+- `scripts/scenarios/world-info-initiative-silence.json` を追加し、world info -> filtered candidate ->
+  initiative speech-order -> TTS が通ることを assert した。
+
+### 追加検証12
+- `uv run pytest -m unit tests/unit/test_v2_background_models.py::test_think_process_builds_candidates_from_summary_calendar_and_world tests/unit/test_v2_background_models.py::test_think_process_filters_blocked_world_info tests/unit/test_v2_scenario_replay.py::test_load_scenario_fills_defaults -q`
+  - 3 passed
+- `make v2-scenario-replay SCENARIO=calendar-initiative-silence`
+  - first run failed as expected before provider wiring: `logs/scenario-calendar-initiative-silence-20260704-030314.json`
+  - after provider wiring pass: `logs/scenario-calendar-initiative-silence-20260704-030428.json`
+- `make v2-scenario-replay SCENARIO=world-info-initiative-silence`
+  - pass: `logs/scenario-world-info-initiative-silence-20260704-030523.json`
+- `make check`
+  - ruff passed, unit 209 passed / 1 deselected
+- `make v2-scenario-suite`
+  - pass: fake scenarios passed; real-overlap scenarios are skipped by runtime filter
+  - calendar initiative artifact: `logs/scenario-calendar-initiative-silence-20260704-030553.json`
+  - world info initiative artifact: `logs/scenario-world-info-initiative-silence-20260704-030610.json`
+
+### 次のセッションでやること（追加10）
+- Step 7 継続。次は DB rows から think candidate を読む runner/provider か、
+  summary-process の session close runner 結線へ進む。
+
+### 追加でやったこと11
+- Step 7 / candidate DB bridge slice: `insert_candidate_sql()` と `candidate_from_row()` を追加し、
+  `CandidateRecord` を `v2_candidates` に `source/source_key` で upsert してから同じ DTO に戻せるようにした。
+- `tests/integration/test_v2_db_schema.py` に `v2_candidates` insert/upsert を追加した。
+  `TEST_DATABASE_URL` 未設定では skip だが、実 DB あり環境では schema drift を検出できる。
+- `assign_conversation_session()` の open session 再利用 path が
+  `UPDATE v2_conversation_sessions SET last_activity_at` を出す regression test を追加した。
+  DB split worker が普通の連続会話で activity を進められることを unit で固定した。
+
+### 追加検証13
+- `uv run pytest -m unit tests/unit/test_v2_runtime_foundation.py::test_assign_conversation_session_reuses_open_session_and_updates_activity tests/unit/test_v2_semantic_scheduler.py::test_candidate_db_bridge_upserts_and_round_trips_row -q`
+  - 2 passed
+- `uv run pytest -m integration tests/integration/test_v2_db_schema.py -q`
+  - 1 skipped (`TEST_DATABASE_URL` 未設定)
+- `make check`
+  - ruff passed, unit 211 passed / 1 deselected
+
+### 次のセッションでやること（追加11）
+- Step 7 継続。次は実 DB の `v2_candidates` rows を Tomoko の
+  `candidate_provider` へ積む read bridge / provider か、session close から
+  summary を書く runner 結線へ進む。
+
+### 追加でやったこと12
+- Step 7 / candidate DB read bridge slice: `select_active_candidates_sql()` と
+  `load_active_candidates()` を追加し、active かつ期限切れでない `v2_candidates` rows を
+  score / urgency / priority 順で `CandidateRecord` に戻せるようにした。
+- `TomokoConversationCore.update_candidate_records()` を追加し、DB 由来 candidate records を
+  既存の fake/env `candidate_provider` と同じ prompt snapshot / world pressure 経路に合流させた。
+- Tomoko realtime に TTL 付き DB candidate cache を追加した。
+  `TOMOKO_V2_DB_CANDIDATES=1` のときだけ読み、失敗時は `candidate_refresh_failed` をログに残して
+  会話処理を止めない。fake runtime では env 未設定のため DB 読みをしない。
+- `make v2-tomoko` が `TOMOKO_V2_DB_CANDIDATES="$(TOMOKO_V2_DB_CANDIDATES)"` を渡すようにした。
+
+### 追加検証14
+- `uv run pytest -m unit tests/unit/test_v2_internal_ws.py::test_tomoko_realtime_refreshes_db_candidates_into_core tests/unit/test_v2_semantic_scheduler.py::test_active_candidate_db_bridge_reads_ordered_rows tests/unit/test_v2_speech_order_flow.py::test_tomoko_conversation_core_includes_updated_candidate_records tests/unit/test_v2_runtime_foundation.py::test_makefile_exposes_v2_runtime_targets_in_order -q`
+  - 4 passed
+- `make check`
+  - ruff passed, unit 214 passed / 1 deselected
+- `uv run pytest -m integration tests/integration/test_v2_db_schema.py -q`
+  - 1 skipped (`TEST_DATABASE_URL` 未設定)
+- `make v2-scenario-suite`
+  - pass: fake scenarios passed; real-overlap scenarios are skipped by runtime filter
+  - latest world-info initiative artifact: `logs/scenario-world-info-initiative-silence-20260704-031747.json`
+
+### 次のセッションでやること（追加12）
+- Step 7 継続。次は think-process runner が実 DB の world/session summary rows を読み、
+  `build_candidates()` -> `insert_candidate_sql()` で `v2_candidates` に積む write bridge を作る。
+
+### 追加でやったこと13
+- Step 7 / candidate DB write bridge slice: `select_recent_session_summaries_sql()` と
+  `select_recent_world_interpretations_sql()` を追加し、session summary / world interpretation rows を
+  candidate seed の材料として読めるようにした。
+- `materialize_candidates_from_db()` を `server.think.main` に追加し、
+  DB から読んだ summaries / world rows を `build_candidates()` に通して
+  `insert_candidate_sql()` で `v2_candidates` へ upsert するようにした。
+- `world_seed_from_interpretation_row()` は world interpretation の `flags` を
+  `world_info_seed()` の stale / sensitive / private / do_not_speak filter に渡す。
+- `server.runtime process think` の heartbeat tick から materializer を呼ぶようにした。
+  DB 接続や materialize 失敗は `think_candidate_tick_failed` にして process 自体は止めない。
+- `_database_ready()` は `TOMOKO_DATABASE_URL` 未設定でも `default_dsn()` を使って見るようにした。
+  make runtime の既定 DB でも readiness と think tick が同じ DSN を向く。
+
+### 追加検証15
+- `uv run pytest -m unit tests/unit/test_v2_background_models.py::test_think_process_materializes_db_rows_into_candidates tests/unit/test_v2_runtime_foundation.py::test_makefile_exposes_v2_runtime_targets_in_order -q`
+  - 2 passed
+- `make check`
+  - ruff passed, unit 215 passed / 1 deselected
+- `uv run pytest -m integration tests/integration/test_v2_db_schema.py -q`
+  - 1 skipped (`TEST_DATABASE_URL` 未設定)
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること（追加13）
+- Step 7 継続。次は session close から `v2_session_summaries` / `v2_summary_embeddings` を作る runner、
+  または info-aquire の fake calendar/world fixture を `v2_world_*` rows に入れる入口を作る。
+
+### 追加でやったこと14
+- Step 7 / summary runner slice: `select_unsummarized_closed_sessions_sql()` と
+  `load_session_utterance_texts()` を追加し、ended session かつ未要約の session から
+  utterance text を取り出せるようにした。
+- `materialize_summaries_from_db()` を `server.summary.main` に追加し、
+  `summarize_session()` -> `insert_session_summary_sql()` -> `insert_summary_embedding_sql()` で
+  `v2_session_summaries` / `v2_summary_embeddings` を作るようにした。
+- `server.runtime process summary` の heartbeat tick から summary materializer を呼ぶようにした。
+  失敗時は `summary_tick_failed` をログに残して process は止めない。
+
+### 追加検証16
+- `uv run pytest -m unit tests/unit/test_v2_background_models.py::test_summary_process_materializes_closed_sessions_into_summary_rows tests/unit/test_v2_runtime_foundation.py::test_makefile_exposes_v2_runtime_targets_in_order -q`
+  - 2 passed
+- `make check`
+  - ruff passed, unit 216 passed / 1 deselected
+- `uv run pytest -m integration tests/integration/test_v2_db_schema.py -q`
+  - 1 skipped (`TEST_DATABASE_URL` 未設定)
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること（追加14）
+- Step 7 継続。次は info-aquire の fake calendar/world fixture を
+  `v2_world_documents` / `v2_world_items` / `v2_world_interpretations` rows に入れる入口を作る。
+
+### 追加でやったこと15
+- Step 7 / info-aquire fixture DB slice: `insert_world_document_sql()` /
+  `insert_world_item_sql()` / `insert_world_interpretation_sql()` を追加し、
+  `v2_world_*` rows を deterministic UUID で idempotent upsert できるようにした。
+- `materialize_info_fixtures_from_payloads()` と `materialize_info_fixtures_from_env()` を
+  `server.info.main` に追加した。
+  `TOMOKO_V2_FAKE_CALENDAR` は calendar source の world rows に、
+  `TOMOKO_V2_FAKE_WORLD_INFO` は world source の world rows に入れる。
+- `server.runtime process info` の heartbeat tick から fixture materializer を呼ぶようにした。
+  失敗時は `info_tick_failed` をログに残して process は止めない。
+
+### 追加検証17
+- `uv run pytest -m unit tests/unit/test_v2_background_models.py::test_info_process_materializes_fake_fixtures_into_world_rows tests/unit/test_v2_runtime_foundation.py::test_makefile_exposes_v2_runtime_targets_in_order -q`
+  - 2 passed
+- `make check`
+  - ruff passed, unit 217 passed / 1 deselected
+- `uv run pytest -m integration tests/integration/test_v2_db_schema.py -q`
+  - 1 skipped (`TEST_DATABASE_URL` 未設定)
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること（追加15）
+- Step 7 の残りは、`TEST_DATABASE_URL` ありの実 DB integration / runtime smoke と、
+  user-status OCR fixture 画像 integration。
+
+### 追加検証18
+- `tests/integration/test_v2_db_schema.py` に summary -> info fixture -> think ->
+  active candidates の DB materializer chain integration test を追加した。
+- `uv run pytest -m integration tests/integration/test_v2_db_schema.py -q`
+  - 2 skipped (`TEST_DATABASE_URL` 未設定)
+- `make check`
+  - ruff passed, unit 217 passed / 2 deselected
+
+### 次のセッションでやること（追加16）
+- `TEST_DATABASE_URL` がある環境で追加した DB chain integration test を実行する。
+  それまでは user-status OCR fixture 画像 integration が残る。
+
+### 追加でやったこと16
+- Step 7 / user-status OCR fixture slice: `observation_from_ocr_artifact()` を追加し、
+  fixture image path から `ocr_text()` を通して `UserStatusObservation` を作れるようにした。
+- unit test では `ocr_text()` を差し替え、artifact path / visible_text /
+  `coding_or_terminal` activity inference が DTO に入ることを固定した。
+
+### 追加検証19
+- `uv run pytest -m unit tests/unit/test_v2_runtime_foundation.py::test_ocr_artifact_builds_user_status_observation -q`
+  - 1 passed
+- `make check`
+  - ruff passed, unit 218 passed / 2 deselected
+- `uv run pytest -m integration tests/integration/test_v2_db_schema.py -q`
+  - 2 skipped (`TEST_DATABASE_URL` 未設定)
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること（追加17）
+- Step 7 の残りは、実 OCR sidecar を使う fixture image integration と、
+  `TEST_DATABASE_URL` ありの DB chain integration 実行。
+
+## 2026-07-04 セッション5
+
+### やること（開始時に書く）
+- Step 7 継続。`TEST_DATABASE_URL` ありで DB chain integration を実走し、
+  必要なら `make test-integration` から同じ検証が走るようにする。
+- 実 OCR sidecar を使う fixture image integration の残りを確認し、
+  できる範囲で unit から integration へ近づける。
+
+### やったこと
+- `make db-up` で local Postgres を確認し、`TEST_DATABASE_URL=postgresql://tomoko:tomoko@localhost:5432/tomoko`
+  付きで DB materializer chain integration を実走した。
+- `Makefile` に `TEST_DATABASE_URL ?= postgresql://tomoko:tomoko@localhost:5432/tomoko` を追加し、
+  `make test-integration` が local DB に対して integration を実走するようにした。
+- `tests/integration/test_v2_user_status_ocr.py` を追加し、Pillow で生成した fixture image を
+  実 OCR sidecar/tesseract 経由で `UserStatusObservation` に変換する integration test を追加した。
+- `f.md` の Step 7 user-status / summary-process / think-process / info-aquire と
+  integration 完了条件を完了扱いに更新した。
+
+### 追加検証20
+- `docker exec tomoko-postgres pg_isready -U tomoko -d tomoko`
+  - accepting connections
+- `TEST_DATABASE_URL=postgresql://tomoko:tomoko@localhost:5432/tomoko uv run pytest -m integration tests/integration/test_v2_db_schema.py -q`
+  - 2 passed
+- `uv run pytest -m integration tests/integration/test_v2_user_status_ocr.py -q`
+  - 1 passed
+- `make test-integration`
+  - 3 passed / 218 deselected
+
+### 次のセッションでやること（追加18）
+- Step 8 / G9 AttentionMode へ進む。PLAN に Phase を起こし、wake / idle / stop intent の
+  threshold profile 遷移を unit + replay で固定する。
+
+### 追加でやったこと1
+- Step 8 / AttentionMode slice: `TomokoConversationCore` に `attention_mode` を追加し、
+  wake cue で conversation、長い silence gap で ambient へ遷移する threshold profile を実装した。
+- stop intent は STOP order を出しつつ ambient profile に戻るようにした。
+- ambient profile では wake ではない低 saturation 発話を suppress し、
+  `score_breakdown` に `attention_mode_conversation` / `attention_mode_ambient` /
+  `attention_ambient_min_saturation` を残すようにした。
+- scripted STT observation の `recommended_silence_ms` を turn materials の silence として扱い、
+  replay で idle gap を deterministic に再現できるようにした。
+- `scripts/scenarios/attention-mode-idle-wake.json` を追加し、
+  wake -> response -> long silence -> low-saturation monologue suppress -> wake recovery を assert した。
+- `PLAN.md` に Phase S22 として AttentionMode threshold profile を追記し、
+  `f.md` Step 8 の項目と完了条件をチェック済みにした。
+
+### 追加検証21
+- `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py::test_attention_mode_idle_suppresses_low_saturation_until_wake tests/unit/test_v2_speech_order_flow.py::test_attention_mode_stop_intent_returns_to_ambient -q`
+  - 2 passed
+- `make v2-scenario-replay SCENARIO=attention-mode-idle-wake`
+  - PASS: `logs/scenario-attention-mode-idle-wake-20260704-034352.json`
+- `make check`
+  - ruff passed, unit 220 passed / 3 deselected
+- `make test-integration`
+  - 3 passed / 220 deselected
+- `make v2-scenario-suite`
+  - PASS: AttentionMode scenario included; real-only overlap scenarios skipped by runtime filter
+- `git diff --check`
+  - passed
+
+### 次のセッションでやること（追加19）
+- Step 9 / G10 に進む。internal WS 起動時に port listen 元を検査し、
+  8765 を他プロセスが掴んでいる場合の明示エラーと `TOMOKO_INTERNAL_WS_PORT` 案内を追加する。
+
+### 追加でやったこと2
+- Step 9 / G10: `server/runtime_ports.py` を追加し、internal WS port の free / occupied
+  検査と lsof listener 行の取得を実装した。
+- `server.runtime guard-internal-ws-port` を追加し、`make v2-tomoko` の uvicorn 起動前に
+  `TOMOKO_INTERNAL_WS_HOST` / `TOMOKO_INTERNAL_WS_PORT` を検査するようにした。
+  競合時は listen 元と `TOMOKO_INTERNAL_WS_PORT=<free-port>` の案内を出して止める。
+- `scripts/v2_autopilot.py` と `make autopilot` を追加した。
+  always-on で `make check` / `make test-integration` / fake `v2-scenario-suite` を実行し、
+  runtime が立っていれば real overlap replace/stop と full latency suite も続けて走る。
+- `scripts/v2_llm_judge.py` と `make v2-llm-judge` を追加した。
+  直近 scenario artifact の transcript を 31B OpenAI-compatible endpoint に渡し、
+  JSONL に naturalness / duplicate / missed / awkward を残す。
+- real latency の失敗から、Apple Speech の partial 表記揺れ
+  (`お勧めの昼ご飯` / `の話を`) と、ambient で抑制されていた
+  request-like final (`今日やるべきことを3つ挙げて`) を unit test に固定した。
+- `PARTIAL_ACK_TOPIC_CUES` に昼ご飯/ご飯/おすすめ/お勧め/話/説明/もう一度/やるべき/挙げて等を追加し、
+  `ATTENTION_REQUEST_CUES` におすすめ/昼ご飯/説明/やるべき/挙げて/3つ等を追加した。
+  `話` は final の ambient request 判定には入れず、partial acknowledgement だけに限定した。
+- `scripts/seeds/utterances.txt` の会議 seed を Apple Speech で安定しやすい
+  `今週の会議の時間を教えて` に寄せた。
+- `PLAN.md` Phase S23、`f.md` Step 9、`MEMORY.md` Step 9、
+  `_docs/latency.md` に今回の gate / 実測結果を追記した。
+
+### 詰まったこと・解決したこと2
+- 最初の full `make autopilot` は latency suite だけ失敗した。
+  原因は `おすすめの昼ごはんを教えて` と `さっきの話をもう一度説明して` が
+  partial ack cue に引っかからず final-origin で遅くなったこと、
+  `今日やるべきことを三つ挙げて` が final で `今日やるべきことを3つ挙げて` と認識され、
+  ambient attention に suppress されたことだった。
+- Tomoko の tmux window が一度消え、古い uvicorn PID だけが 8765 を listen していた。
+  これは G10 の想定どおりの事故形なので、PID を止めた上で `tomoko` window を作り直し、
+  port guard の正常ログを確認してから latency を再計測した。
+
+### 追加検証22
+- `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py::test_tomoko_conversation_core_acknowledges_lunch_topic_variant tests/unit/test_v2_speech_order_flow.py::test_tomoko_conversation_core_acknowledges_story_topic_fragment tests/unit/test_v2_speech_order_flow.py::test_attention_mode_ambient_allows_task_list_request -q`
+  - 追加直後は 3 failed、cue 追加後は 3 passed
+- `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py -q`
+  - 39 passed
+- `uv run python -m scripts.v2_latency_suite --url ws://0.0.0.0:8000/ws --voice Kyoko --count 10 --repeats 1`
+  - PASS: `logs/latency-suite-20260704-042227.json`
+- `make autopilot`
+  - PASS: `logs/autopilot-20260704-042721.json`
+  - `make check`: ruff passed, unit 234 passed / 3 deselected
+  - `make test-integration`: 3 passed / 234 deselected
+  - `make v2-scenario-suite`: PASS
+  - real overlap replace: PASS `logs/scenario-real-overlap-replace-20260704-042400.json`
+  - real overlap stop: PASS `logs/scenario-real-overlap-stop-20260704-042420.json`
+  - full latency: PASS `logs/latency-suite-20260704-042438.json`
+    (`runs_no_audio=0`, final-origin p50 1342.6ms / p95 1358.7ms,
+    partial-origin p50 -141.4ms)
+- `make v2-llm-judge`
+  - PASS: `logs/llm-judge.jsonl`
+  - latest judge target `logs/scenario-real-overlap-stop-20260704-042420.json`
+  - naturalness 1.0、duplicate/missed/awkward 0
+
+### 次のセッションでやること（追加20）
+- Step 9 までの自動 gate は閉じた。
+  残りは f.md §5 の人間確認項目:
+  実マイク・実スピーカーでの体感、weight/threshold の好み調整、
+  実 Google Calendar / Chrome 連携の認証、8765 競合運用判断、
+  口喧嘩できる Tomoko の関係性評価。
+
+### 追加でやったこと3
+- f.md / PLAN に残っていた calendar append の real runtime 確認を実施した。
+  最初は `make v2-scenario-replay SCENARIO=calendar-append SCENARIO_RUNTIME=real` が
+  append_after_current なしで失敗した。
+- 原因は `fake_calendar` が fake subprocess の環境変数にしか注入されず、
+  既存 real runtime の `calendar_items_provider` には入らないことだった。
+  そこで scenario runner の real mode では `/ws` の `latency_control` から
+  `set_fake_calendar` を送り、hot-path -> internal WS -> Tomoko realtime の
+  `scenario_fixture` で一時 calendar provider を入れるようにした。
+- sequential autopilot 内では前シナリオの notified calendar key が残って
+  append が dedupe されることも見つけたため、real scenario 開始時に
+  `latency_control/reset_conversation` を先に送るようにした。
+- `make autopilot` の runtime-ready real checks に `calendar-append` を追加した。
+- `tests/integration/test_v2_db_schema.py` の DB materializer chain test は、
+  local DB に過去 candidate が溜まると top 12 に summary candidate が入らず失敗した。
+  `load_active_candidates(limit=1000)` に広げ、world 側は candidate text で確認する形にした。
+
+### 追加検証23
+- `uv run pytest -m unit tests/unit/test_v2_internal_ws.py::test_tomoko_internal_ws_accepts_scenario_calendar_fixture tests/unit/test_v2_scenario_replay.py::test_scenario_control_events_include_calendar_fixture_for_real_runtime -q`
+  - 2 passed
+- `uv run pytest -m unit tests/unit/test_v2_internal_ws.py tests/unit/test_v2_scenario_replay.py -q`
+  - 23 passed
+- `make v2-scenario-replay SCENARIO=calendar-append SCENARIO_RUNTIME=real`
+  - PASS: `logs/scenario-calendar-append-20260704-043944.json`
+- `make test-integration`
+  - 3 passed / 236 deselected
+- `make autopilot`
+  - PASS: `logs/autopilot-20260704-044545.json`
+  - `make check`: ruff passed, unit 236 passed / 3 deselected
+  - `make test-integration`: 3 passed / 236 deselected
+  - `make v2-scenario-suite`: PASS
+  - real overlap replace: PASS `logs/scenario-real-overlap-replace-20260704-044127.json`
+  - real overlap stop: PASS `logs/scenario-real-overlap-stop-20260704-044248.json`
+  - real calendar append: PASS `logs/scenario-calendar-append-20260704-044302.json`
+  - full latency: PASS `logs/latency-suite-20260704-044312.json`
+    (`runs_no_audio=0`, final-origin p50 1339.7ms / p95 1343.2ms,
+    partial-origin p50 -163.8ms)
+- `make v2-llm-judge`
+  - PASS: latest target `logs/scenario-calendar-append-20260704-044302.json`
+  - naturalness 1.0、duplicate/missed/awkward 0
+
+### 次のセッションでやること（追加21）
+- 自動化で実走できる f.md / PLAN の未完了項目は閉じた。
+  残りは実マイク・実スピーカー体感、好みの threshold 調整、実外部連携認証、
+  8765 競合時に port を変える運用判断。

@@ -8,12 +8,20 @@ from pathlib import Path
 
 import httpx
 import psycopg
+from psycopg.rows import dict_row
 
 from server.audio.stt import apple_speech_runtime_available
-from server.info.main import calendar_dto_map, parse_minimal_ics
+from server.info.main import (
+    calendar_dto_map,
+    materialize_info_fixtures_from_env,
+    parse_minimal_ics,
+)
+from server.runtime_ports import check_tcp_port_available
 from server.shared.db import default_dsn
 from server.shared.logging import JsonlLogger
 from server.shared.models import new_id
+from server.summary.main import materialize_summaries_from_db
+from server.think.main import materialize_candidates_from_db
 from server.tomoko.db_worker import run_default_worker
 from server.user_status.ocr_runtime import ocr_runtime_available
 
@@ -97,6 +105,12 @@ async def run_process(process_name: str) -> None:
                 logger.log(str(event["event"]), process=process_name, **_event_fields(event))
                 _console_event(process_name, str(event["event"]), **_event_fields(event))
             previous_readiness = readiness
+            if process_name == "info":
+                await _run_info_tick(logger)
+            if process_name == "think":
+                await _run_think_candidate_tick(logger)
+            if process_name == "summary":
+                await _run_summary_tick(logger)
             logger.log("heartbeat", process=process_name)
             _console_event(process_name, "heartbeat")
             await asyncio.sleep(5)
@@ -147,9 +161,7 @@ def report_latest() -> Path:
 
 
 def _database_ready() -> bool:
-    dsn = os.environ.get("TOMOKO_DATABASE_URL")
-    if not dsn:
-        return False
+    dsn = os.environ.get("TOMOKO_DATABASE_URL", default_dsn())
     try:
         with psycopg.connect(dsn, connect_timeout=2) as conn:
             conn.execute("SELECT 1")
@@ -164,6 +176,88 @@ def _http_ready(url: str) -> bool:
     except httpx.HTTPError:
         return False
     return response.status_code < 500
+
+
+async def _run_think_candidate_tick(logger: JsonlLogger) -> None:
+    try:
+        async with await psycopg.AsyncConnection.connect(
+            os.environ.get("TOMOKO_DATABASE_URL", default_dsn()),
+            autocommit=True,
+            row_factory=dict_row,
+        ) as conn:
+            result = await materialize_candidates_from_db(conn)
+    except Exception as exc:
+        logger.log("think_candidate_tick_failed", process="think", error=type(exc).__name__)
+        _console_event("think", "candidate_tick_failed", error=type(exc).__name__)
+        return
+    logger.log(
+        "think_candidates_materialized",
+        process="think",
+        summaries_read=result.summaries_read,
+        world_items_read=result.world_items_read,
+        candidates_upserted=result.candidates_upserted,
+    )
+    _console_event(
+        "think",
+        "candidates_materialized",
+        summaries_read=result.summaries_read,
+        world_items_read=result.world_items_read,
+        candidates_upserted=result.candidates_upserted,
+    )
+
+
+async def _run_summary_tick(logger: JsonlLogger) -> None:
+    try:
+        async with await psycopg.AsyncConnection.connect(
+            os.environ.get("TOMOKO_DATABASE_URL", default_dsn()),
+            autocommit=True,
+            row_factory=dict_row,
+        ) as conn:
+            result = await materialize_summaries_from_db(conn)
+    except Exception as exc:
+        logger.log("summary_tick_failed", process="summary", error=type(exc).__name__)
+        _console_event("summary", "summary_tick_failed", error=type(exc).__name__)
+        return
+    logger.log(
+        "summaries_materialized",
+        process="summary",
+        sessions_read=result.sessions_read,
+        summaries_upserted=result.summaries_upserted,
+    )
+    _console_event(
+        "summary",
+        "summaries_materialized",
+        sessions_read=result.sessions_read,
+        summaries_upserted=result.summaries_upserted,
+    )
+
+
+async def _run_info_tick(logger: JsonlLogger) -> None:
+    try:
+        async with await psycopg.AsyncConnection.connect(
+            os.environ.get("TOMOKO_DATABASE_URL", default_dsn()),
+            autocommit=True,
+            row_factory=dict_row,
+        ) as conn:
+            result = await materialize_info_fixtures_from_env(conn)
+    except Exception as exc:
+        logger.log("info_tick_failed", process="info", error=type(exc).__name__)
+        _console_event("info", "info_tick_failed", error=type(exc).__name__)
+        return
+    logger.log(
+        "info_fixtures_materialized",
+        process="info",
+        documents_upserted=result.documents_upserted,
+        items_upserted=result.items_upserted,
+        interpretations_upserted=result.interpretations_upserted,
+    )
+    _console_event(
+        "info",
+        "fixtures_materialized",
+        documents_upserted=result.documents_upserted,
+        items_upserted=result.items_upserted,
+        interpretations_upserted=result.interpretations_upserted,
+    )
 
 
 def _flatten_readiness(payload: dict[str, object], prefix: str = "") -> dict[str, bool]:
@@ -189,6 +283,16 @@ def main() -> None:
     subparsers.add_parser("info-once")
     subparsers.add_parser("readiness")
     subparsers.add_parser("report-latest")
+    port_guard = subparsers.add_parser("guard-internal-ws-port")
+    port_guard.add_argument(
+        "--host",
+        default=os.environ.get("TOMOKO_INTERNAL_WS_BIND_HOST", "0.0.0.0"),
+    )
+    port_guard.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("TOMOKO_INTERNAL_WS_PORT", "8765")),
+    )
     args = parser.parse_args()
     if args.command == "process":
         try:
@@ -208,6 +312,17 @@ def main() -> None:
         print(json.dumps(snapshot, ensure_ascii=False))
     elif args.command == "report-latest":
         print(report_latest())
+    elif args.command == "guard-internal-ws-port":
+        result = check_tcp_port_available(args.host, args.port)
+        if not result.available:
+            print(result.message())
+            raise SystemExit(2)
+        _console_event(
+            "runtime",
+            "internal_ws_port_available",
+            host=args.host,
+            port=args.port,
+        )
 
 
 def _console_event(process: str, event: str, **fields: object) -> None:

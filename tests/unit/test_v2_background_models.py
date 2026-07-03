@@ -8,7 +8,12 @@ import pytest
 from server.evaluation import EvaluationLogger
 from server.floor_holding import HoldingAction, HoldingStateMachine
 from server.follow_up import FollowUpQueue
-from server.info.main import calendar_dto_map, parse_minimal_ics, should_candidate_from_world
+from server.info.main import (
+    calendar_dto_map,
+    materialize_info_fixtures_from_payloads,
+    parse_minimal_ics,
+    should_candidate_from_world,
+)
 from server.initiative import InitiativeInputs, InitiativeMotivationModel
 from server.lifecycle import PromptLifecycleManager
 from server.shared.models import (
@@ -17,11 +22,28 @@ from server.shared.models import (
     EvalTurn,
     PromptRequest,
     PromptScope,
+    WorldMaterials,
+    utc_now,
 )
 from server.short_reaction import ShortReactionKind, ShortReactionLifecycle, parse_short_reaction
 from server.stop import ObedienceArbitrator, classify_stop_intent
-from server.think.main import CandidateStore, calendar_reminder_seed
-from server.user_status.main import ArtifactRetention, OSMetadata, build_user_status_observation
+from server.summary.main import materialize_summaries_from_db, summarize_session
+from server.think.main import (
+    CandidateStore,
+    build_candidates,
+    calendar_item_seeds,
+    calendar_reminder_seed,
+    materialize_candidates_from_db,
+    summary_memory_seed,
+    world_info_seed,
+    world_seed_from_interpretation_row,
+)
+from server.user_status.main import (
+    ArtifactRetention,
+    OSMetadata,
+    build_user_status_observation,
+    world_materials_from_user_status,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -79,6 +101,23 @@ def test_user_status_uses_ocr_and_os_metadata_not_raw_image(tmp_path: Path) -> N
     assert retention.prune() == [artifact]
 
 
+def test_user_status_presence_maps_to_world_materials() -> None:
+    observation = build_user_status_observation(
+        present=False,
+        ocr_text="",
+        metadata=OSMetadata(app_name=None, window_title=None, url=None),
+        artifact_path=None,
+    )
+    base = WorldMaterials(calendar_urgency=0.8, external_result_importance=0.6)
+
+    materials = world_materials_from_user_status(observation, base=base)
+
+    assert materials.user_present is False
+    assert materials.user_status_confidence == pytest.approx(0.3)
+    assert materials.calendar_urgency == pytest.approx(0.8)
+    assert materials.external_result_importance == pytest.approx(0.6)
+
+
 def test_info_process_calendar_and_world_filter() -> None:
     events = parse_minimal_ics(
         """BEGIN:VEVENT
@@ -112,6 +151,231 @@ def test_candidate_store_dedupes_and_preserves_lifecycle() -> None:
     assert first.id == second.id
     assert len(store.active()) == 1
     assert first.candidate_score > 0
+
+
+def test_think_process_builds_candidates_from_summary_calendar_and_world() -> None:
+    summary = summarize_session(
+        uuid4(),
+        [
+            "予定 明日は雨なら会議前に傘を確認する",
+            "忘れないようにしたい",
+        ],
+    )
+    world_seed = world_info_seed(
+        source_key="weather-rain",
+        text="外は雨が強くなっている",
+        confidence=0.9,
+        stale=False,
+        sensitive=False,
+        private=False,
+        do_not_speak=False,
+    )
+    assert calendar_item_seeds({"20260704T120000": "Design review"})[0].source == "calendar"
+    assert summary_memory_seed(summary).source == "summary"
+
+    records = build_candidates(
+        calendar_items={"20260704T120000": "Design review"},
+        summaries=[summary],
+        world_seeds=[world_seed],
+    )
+
+    assert {record.source for record in records} == {"calendar", "summary", "world"}
+    assert {record.source_key for record in records} == {
+        "20260704T120000",
+        str(summary.id),
+        "weather-rain",
+    }
+    assert all(record.lifecycle == "active" for record in records)
+    assert all(record.candidate_score > 0.0 for record in records)
+    assert any("雨" in record.text for record in records)
+
+
+def test_think_process_filters_blocked_world_info() -> None:
+    assert world_info_seed(
+        source_key="private-tab",
+        text="秘密のメモが開かれている",
+        confidence=0.95,
+        stale=False,
+        sensitive=False,
+        private=True,
+        do_not_speak=False,
+    ) is None
+
+
+class _InfoFixtureConnection:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[object, ...]]] = []
+
+    async def execute(self, query: str, params: tuple[object, ...]) -> _ThinkRowsCursor:
+        self.calls.append((query, params))
+        return _ThinkRowsCursor([])
+
+
+@pytest.mark.asyncio
+async def test_info_process_materializes_fake_fixtures_into_world_rows() -> None:
+    conn = _InfoFixtureConnection()
+
+    result = await materialize_info_fixtures_from_payloads(
+        conn,
+        calendar_items={"20260704T120000": "Design review"},
+        world_items=[
+            {
+                "source_key": "weather-rain-now",
+                "text": "外は雨が強くなっている",
+                "confidence": 0.9,
+                "flags": {"stale": False, "sensitive": False},
+            }
+        ],
+    )
+
+    document_calls = [call for call in conn.calls if "INSERT INTO v2_world_documents" in call[0]]
+    item_calls = [call for call in conn.calls if "INSERT INTO v2_world_items" in call[0]]
+    interpretation_calls = [
+        call for call in conn.calls if "INSERT INTO v2_world_interpretations" in call[0]
+    ]
+    assert result.documents_upserted == 2
+    assert result.items_upserted == 2
+    assert result.interpretations_upserted == 2
+    assert len(document_calls) == 2
+    assert len(item_calls) == 2
+    assert len(interpretation_calls) == 2
+    assert any("calendar" in call[1] for call in document_calls)
+    assert any("world" in call[1] for call in document_calls)
+    assert any("Design review" in str(call[1]) for call in interpretation_calls)
+    assert any("雨" in str(call[1]) for call in interpretation_calls)
+
+
+class _ThinkRowsCursor:
+    def __init__(self, rows: list[dict[str, object]]) -> None:
+        self.rows = rows
+
+    async def fetchall(self) -> list[dict[str, object]]:
+        return self.rows
+
+
+class _ThinkCandidateConnection:
+    def __init__(self) -> None:
+        now = utc_now()
+        self.summary_id = uuid4()
+        self.session_id = uuid4()
+        self.world_interpretation_id = uuid4()
+        self.calls: list[tuple[str, tuple[object, ...]]] = []
+        self.summary_rows = [
+            {
+                "id": self.summary_id,
+                "session_id": self.session_id,
+                "keyword": "予定",
+                "conclusion": "雨なら会議前に傘を確認する",
+                "embedding": [0.1, 0.2, 0.3],
+                "trace_id": uuid4(),
+                "created_at": now,
+            }
+        ]
+        self.world_rows = [
+            {
+                "id": self.world_interpretation_id,
+                "summary": "外は雨が強くなっている",
+                "confidence": 0.9,
+                "flags": {"stale": False, "sensitive": False},
+                "trace_id": uuid4(),
+                "created_at": now,
+            }
+        ]
+
+    async def execute(
+        self,
+        query: str,
+        params: tuple[object, ...],
+    ) -> _ThinkRowsCursor:
+        self.calls.append((query, params))
+        if "FROM v2_session_summaries" in query:
+            return _ThinkRowsCursor(self.summary_rows)
+        if "FROM v2_world_interpretations" in query:
+            return _ThinkRowsCursor(self.world_rows)
+        return _ThinkRowsCursor([])
+
+
+@pytest.mark.asyncio
+async def test_think_process_materializes_db_rows_into_candidates() -> None:
+    conn = _ThinkCandidateConnection()
+    world_seed = world_seed_from_interpretation_row(conn.world_rows[0])
+
+    result = await materialize_candidates_from_db(
+        conn,
+        summary_limit=1,
+        world_limit=1,
+    )
+
+    insert_calls = [call for call in conn.calls if "INSERT INTO v2_candidates" in call[0]]
+    assert world_seed is not None
+    assert world_seed.source == "world"
+    assert world_seed.source_key == str(conn.world_interpretation_id)
+    assert result.summaries_read == 1
+    assert result.world_items_read == 1
+    assert result.candidates_upserted == 2
+    assert len(insert_calls) == 2
+    assert any(str(conn.summary_id) in str(call[1]) for call in insert_calls)
+    assert any(str(conn.world_interpretation_id) in str(call[1]) for call in insert_calls)
+
+
+class _SummaryCandidateConnection:
+    def __init__(self) -> None:
+        self.session_id = uuid4()
+        self.calls: list[tuple[str, tuple[object, ...]]] = []
+        self.session_rows = [{"id": self.session_id}]
+        self.utterance_rows = [
+            {"text": "予定 今日は会議が多い"},
+            {"text": "優先順位を整理しよう"},
+        ]
+
+    async def execute(
+        self,
+        query: str,
+        params: tuple[object, ...],
+    ) -> _ThinkRowsCursor:
+        self.calls.append((query, params))
+        if "FROM v2_conversation_sessions" in query:
+            return _ThinkRowsCursor(self.session_rows)
+        if "FROM v2_utterances" in query:
+            assert params == (self.session_id,)
+            return _ThinkRowsCursor(self.utterance_rows)
+        return _ThinkRowsCursor([])
+
+
+@pytest.mark.asyncio
+async def test_summary_process_materializes_closed_sessions_into_summary_rows() -> None:
+    conn = _SummaryCandidateConnection()
+
+    result = await materialize_summaries_from_db(conn, limit=1)
+
+    summary_calls = [call for call in conn.calls if "INSERT INTO v2_session_summaries" in call[0]]
+    embedding_calls = [
+        call for call in conn.calls if "INSERT INTO v2_summary_embeddings" in call[0]
+    ]
+    assert result.sessions_read == 1
+    assert result.summaries_upserted == 1
+    assert len(summary_calls) == 1
+    assert len(embedding_calls) == 1
+    assert conn.session_id in summary_calls[0][1]
+    assert "予定" in summary_calls[0][1]
+    assert "会議" in str(summary_calls[0][1])
+
+
+def test_summary_process_builds_keyword_conclusion_and_embedding() -> None:
+    session_id = uuid4()
+    summary = summarize_session(
+        session_id,
+        [
+            "予定 今日は会議が多い",
+            "優先順位を整理しよう",
+        ],
+    )
+
+    assert summary.session_id == session_id
+    assert summary.keyword == "予定"
+    assert "会議" in summary.conclusion
+    assert len(summary.embedding) == 8
+    assert sum(summary.embedding) == pytest.approx(1.0)
 
 
 def test_prompt_lifecycle_cancels_by_policy_and_is_idempotent() -> None:

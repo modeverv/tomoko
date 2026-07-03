@@ -1,0 +1,58 @@
+{
+  "name": "world-info-initiative-silence",
+  "description": "Fake world information is filtered and converted into an initiative candidate by the think helper.",
+  "runtime": "any",
+  "fake_reply": "外の雨、少し強くなってるみたい。",
+  "fake_world_info": [
+    {
+      "source_key": "weather-rain-now",
+      "text": "外は雨が強くなっている",
+      "confidence": 0.9,
+      "stale": false,
+      "sensitive": false,
+      "private": false,
+      "do_not_speak": false
+    }
+  ],
+  "steps": [
+    {
+      "event": {"type": "initiative_tick"},
+      "wait_for": "prompt_complete",
+      "expect": {
+        "min_events": {
+          "initiative_tick_ack": 1,
+          "scheduler_decision": 1,
+          "speech_order": 1
+        },
+        "max_events": {"transcript": 0},
+        "speech_order_modes": ["replace_current"],
+        "speech_order_text_contains": "雨",
+        "speech_order_reason_contains": "candidate pressure initiative tick",
+        "score_breakdown_any": {
+          "pressure_world_candidate_pressure": {"min": 0.62},
+          "pressure_world_importance": {"min": 0.62},
+          "pressure_world_deliverability": {"min": 0.9}
+        }
+      }
+    }
+  ],
+  "expect": {
+    "min_events": {
+      "initiative_tick_ack": 1,
+      "scheduler_decision": 1,
+      "speech_order": 1,
+      "binary_audio": 1,
+      "prompt_complete": 1
+    },
+    "max_events": {"transcript": 0},
+    "speech_order_modes": ["replace_current"],
+    "speech_order_text_contains": "雨",
+    "speech_order_reason_contains": "candidate pressure initiative tick",
+    "score_breakdown_any": {
+      "pressure_world_candidate_pressure": {"min": 0.62},
+      "pressure_world_importance": {"min": 0.62},
+      "pressure_world_deliverability": {"min": 0.9}
+    },
+    "forbid_events": ["prompt_error"]
+  }
+}

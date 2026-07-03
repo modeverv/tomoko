@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from server.hot_path.model_executor import TtsBackend, is_complete_wav_chunk
@@ -11,6 +12,10 @@ from server.shared.models import (
     SpeechOrder,
     SpeechOrderMode,
 )
+
+SENTENCE_ENDINGS = frozenset("。！？!?")
+SOFT_SENTENCE_PAUSES = frozenset("、,")
+SOFT_SENTENCE_MIN_CHARS = 16
 
 
 @dataclass(slots=True)
@@ -32,6 +37,14 @@ class SpeechOrderExecutor:
     protect_inflight_replace: bool = False
 
     async def execute(self, order: SpeechOrder) -> SpeechOrderExecutionResult:
+        return await self.execute_stream(order)
+
+    async def execute_stream(
+        self,
+        order: SpeechOrder,
+        *,
+        on_chunk: Callable[[AudioChunkOut], Awaitable[None]] | None = None,
+    ) -> SpeechOrderExecutionResult:
         _console_event(
             "speech_order_received",
             order_id=str(order.id),
@@ -67,7 +80,7 @@ class SpeechOrderExecutor:
             self.replace_generation()
             self.append_queue.clear()
 
-        return await self._synthesize_current(order)
+        return await self._synthesize_current(order, on_chunk=on_chunk)
 
     def begin_external_playback(self, order: SpeechOrder, *, score: float) -> None:
         self.current_order = order
@@ -87,26 +100,33 @@ class SpeechOrderExecutor:
     def is_current_generation(self, generation: int) -> bool:
         return generation == self.current_generation
 
-    async def _synthesize_current(self, order: SpeechOrder) -> SpeechOrderExecutionResult:
+    async def _synthesize_current(
+        self,
+        order: SpeechOrder,
+        *,
+        on_chunk: Callable[[AudioChunkOut], Awaitable[None]] | None = None,
+    ) -> SpeechOrderExecutionResult:
         generation = self.current_generation
         self.current_order = order
         request = prompt_request_for_order(order)
         chunks: list[AudioChunkOut] = []
         discarded = 0
-        async for chunk in self.tts_backend.synthesize_chunks(request, order.text):
-            if not self.is_current_generation(generation):
-                discarded += 1
-                continue
-            if not is_complete_wav_chunk(chunk):
-                raise ValueError("TTS backend must yield complete WAV chunks")
-            chunks.append(
-                AudioChunkOut(
+        for synthesis_text in split_speech_order_text(order.text):
+            async for chunk in self.tts_backend.synthesize_chunks(request, synthesis_text):
+                if not self.is_current_generation(generation):
+                    discarded += 1
+                    continue
+                if not is_complete_wav_chunk(chunk):
+                    raise ValueError("TTS backend must yield complete WAV chunks")
+                audio_chunk = AudioChunkOut(
                     request_id=order.id,
                     chunk=chunk,
                     sample_rate=16000,
                     trace_id=order.trace_id,
                 )
-            )
+                chunks.append(audio_chunk)
+                if on_chunk is not None:
+                    await on_chunk(audio_chunk)
         if chunks:
             chunks[-1].is_final = True
         if self.is_current_generation(generation) and self.current_order == order:
@@ -123,6 +143,30 @@ class SpeechOrderExecutor:
             audio_chunks=chunks,
             discarded_chunks=discarded,
         )
+
+
+def split_speech_order_text(text: str) -> list[str]:
+    stripped = text.strip()
+    if not stripped:
+        return []
+    segments: list[str] = []
+    start = 0
+    for index, char in enumerate(text):
+        is_sentence_end = char in SENTENCE_ENDINGS
+        is_soft_pause = (
+            char in SOFT_SENTENCE_PAUSES
+            and index + 1 - start >= SOFT_SENTENCE_MIN_CHARS
+        )
+        if not (is_sentence_end or is_soft_pause):
+            continue
+        segment = text[start : index + 1].strip()
+        if segment:
+            segments.append(segment)
+        start = index + 1
+    tail = text[start:].strip()
+    if tail:
+        segments.append(tail)
+    return segments or [stripped]
 
 
 def prompt_request_for_order(order: SpeechOrder) -> PromptRequest:

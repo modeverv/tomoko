@@ -1,0 +1,25 @@
+{
+  "name": "basic-reply",
+  "description": "Single user utterance -> transcript -> scheduler decision -> speech order -> audio.",
+  "runtime": "any",
+  "fake_transcript": "トモコ、今日の予定を教えて",
+  "steps": [
+    {
+      "say": "トモコ、今日の予定を教えて",
+      "wait_for": "prompt_complete",
+      "wait_timeout_sec": 45.0
+    }
+  ],
+  "expect": {
+    "min_events": {
+      "transcript": 1,
+      "scheduler_decision": 1,
+      "speech_order": 1,
+      "binary_audio": 1,
+      "prompt_complete": 1
+    },
+    "require_event_order": ["transcript", "speech_order", "binary_audio"],
+    "forbid_events": ["prompt_error"],
+    "final_transcript_contains": "予定"
+  }
+}

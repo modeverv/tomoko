@@ -1,0 +1,64 @@
+{
+  "name": "candidate-initiative-absent-suppressed",
+  "description": "Absent user status suppresses a silence initiative tick even when an active candidate exists (Step 7).",
+  "runtime": "any",
+  "fake_reply": "呼ばれないはず。",
+  "fake_user_status": {
+    "present": false,
+    "activity_label": "away",
+    "summary": "away: no user detected",
+    "confidence": 0.95
+  },
+  "fake_candidates": [
+    {
+      "source": "world",
+      "source_key": "rain-now",
+      "text": "いま外は雨が降っている",
+      "priority": 0.8,
+      "urgency": 0.6,
+      "intrusion": 0.1,
+      "maturity": 1.0,
+      "candidate_score": 0.9,
+      "context_tags": ["weather"]
+    }
+  ],
+  "steps": [
+    {
+      "event": {"type": "initiative_tick"},
+      "wait_for": "scheduler_decision",
+      "expect": {
+        "min_events": {
+          "initiative_tick_ack": 1,
+          "scheduler_decision": 1
+        },
+        "max_events": {
+          "transcript": 0,
+          "speech_order": 0,
+          "prompt_complete": 0
+        },
+        "score_breakdown_any": {
+          "pressure_world_user_presence": {"equals": 0.0},
+          "pressure_world_user_absence": {"equals": 1.0},
+          "pressure_world_candidate_pressure": {"equals": 0.0}
+        }
+      }
+    }
+  ],
+  "expect": {
+    "min_events": {
+      "initiative_tick_ack": 1,
+      "scheduler_decision": 1
+    },
+    "max_events": {
+      "transcript": 0,
+      "speech_order": 0,
+      "prompt_complete": 0
+    },
+    "score_breakdown_any": {
+      "pressure_world_user_presence": {"equals": 0.0},
+      "pressure_world_user_absence": {"equals": 1.0},
+      "pressure_world_candidate_pressure": {"equals": 0.0}
+    },
+    "forbid_events": ["prompt_error"]
+  }
+}

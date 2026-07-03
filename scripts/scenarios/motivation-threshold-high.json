@@ -1,0 +1,49 @@
+{
+  "name": "motivation-threshold-high",
+  "description": "High talkativeness/curiosity with topic continuity raises the motivation threshold shift (G6).",
+  "runtime": "any",
+  "fake_reply": "そこ、気になるね。",
+  "fake_personality": {
+    "talkativeness": 0.9,
+    "curiosity": 0.9,
+    "restraint": 0.1,
+    "empathy": 0.6,
+    "interrupt_tolerance": 0.8
+  },
+  "fake_stt_events": [
+    [{"text": "今日の予定の話をしよう", "is_final": true}],
+    [{"text": "予定の続きが気になる", "is_final": true}],
+    [{"text": "予定、それは違う気がする", "is_final": true}]
+  ],
+  "steps": [
+    {
+      "say": "今日の予定の話をしよう",
+      "wait_for": "prompt_complete",
+      "expect": {"min_events": {"scheduler_decision": 1, "speech_order": 1}}
+    },
+    {
+      "say": "予定の続きが気になる",
+      "wait_for": "prompt_complete",
+      "expect": {"min_events": {"scheduler_decision": 1, "speech_order": 1}}
+    },
+    {
+      "say": "予定、それは違う気がする",
+      "wait_for": "prompt_complete",
+      "expect": {
+        "min_events": {"scheduler_decision": 1, "speech_order": 1},
+        "score_breakdown_any": {
+          "pressure_motivation_conversation_heat": {"min": 1.0},
+          "pressure_motivation_threshold_shift": {"min": 0.1}
+        }
+      }
+    }
+  ],
+  "expect": {
+    "min_events": {"transcript": 3, "scheduler_decision": 3, "speech_order": 3},
+    "score_breakdown_any": {
+      "pressure_motivation_conversation_heat": {"min": 1.0},
+      "pressure_motivation_threshold_shift": {"min": 0.1}
+    },
+    "forbid_events": ["prompt_error"]
+  }
+}

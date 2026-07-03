@@ -55,6 +55,9 @@ class HotPathConversationResult:
     execution_result: PromptExecutionResult
     scheduler_output: SpeechSchedulerOutput | None = None
     speech_order: SpeechOrder | None = None
+    followup_orders: list[SpeechOrder] = field(default_factory=list)
+    deferred_tts_orders: list[SpeechOrder] = field(default_factory=list)
+    stage_timings_ms: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +107,7 @@ class HotPathAudioConversation:
     conversation_core: TomokoConversationCore | None = None
     speech_executor: SpeechOrderExecutor | None = None
     speech_rms_threshold: float = 0.02
+    defer_tts_to_sender: bool = False
     stt_gate: SegmentSttGate = field(default_factory=SegmentSttGate)
     context_builder: ContextSnapshotBuilderV2 = field(default_factory=ContextSnapshotBuilderV2)
     _audio_clock_ms: float = field(default_factory=lambda: time.time() * 1000.0)
@@ -179,14 +183,17 @@ class HotPathAudioConversation:
         samples: tuple[float, ...],
         now_ms: float,
     ) -> HotPathConversationResult | None:
+        total_started = time.perf_counter()
         process_stream_chunk = getattr(self.stt_backend, "process_stream_chunk", None)
         if process_stream_chunk is None:
             return None
+        stt_started = time.perf_counter()
         event = await process_stream_chunk(
             samples,
             sample_rate=self.vad.sample_rate,
             started_at_ms=now_ms,
         )
+        stage_timings = {"stt_partial_ms": _elapsed_ms(stt_started)}
         if event is None:
             return None
         observation = PartialTranscriptObservation(
@@ -209,9 +216,17 @@ class HotPathAudioConversation:
                 context_snapshot=None,
                 prompt_request=None,
                 execution_result=PromptExecutionResult(),
+                stage_timings_ms={
+                    **stage_timings,
+                    "total_ms": _elapsed_ms(total_started),
+                },
             )
+        tomoko_started = time.perf_counter()
         turn = await self.conversation_core.handle_observation(observation)
+        stage_timings["tomoko_ms"] = _elapsed_ms(tomoko_started)
         execution_result = PromptExecutionResult(model_events=list(turn.model_events))
+        tts_ms = 0.0
+        deferred_tts_orders: list[SpeechOrder] = []
         if turn.speech_order is not None:
             _console_event(
                 "partial_speech_order",
@@ -219,8 +234,15 @@ class HotPathAudioConversation:
                 mode=turn.speech_order.mode.value,
                 reason=turn.speech_order.reason,
             )
-            audio_result = await self.speech_executor.execute(turn.speech_order)
-            execution_result.audio_chunks.extend(audio_result.audio_chunks)
+            if self.defer_tts_to_sender:
+                deferred_tts_orders.append(turn.speech_order)
+            else:
+                tts_started = time.perf_counter()
+                audio_result = await self.speech_executor.execute(turn.speech_order)
+                tts_ms += _elapsed_ms(tts_started)
+                execution_result.audio_chunks.extend(audio_result.audio_chunks)
+        stage_timings["tts_ms"] = tts_ms
+        stage_timings["total_ms"] = _elapsed_ms(total_started)
         return HotPathConversationResult(
             observations=[observation],
             durable_utterance=None,
@@ -229,6 +251,8 @@ class HotPathAudioConversation:
             execution_result=execution_result,
             scheduler_output=turn.scheduler_output,
             speech_order=turn.speech_order,
+            deferred_tts_orders=deferred_tts_orders,
+            stage_timings_ms=stage_timings,
         )
 
     def _reset_stt_stream(self) -> None:
@@ -236,9 +260,66 @@ class HotPathAudioConversation:
         if reset_stream is not None:
             reset_stream()
 
+    def reset_runtime_state(self) -> None:
+        self.vad.reset()
+        self._reset_stt_stream()
+        self._active_segment_trace_id = None
+        self._recent_utterances.clear()
+        self._recent_history.clear()
+        self._audio_clock_ms = time.time() * 1000.0
+
+    async def process_initiative_tick(self) -> HotPathConversationResult | None:
+        if self.conversation_core is None or self.speech_executor is None:
+            return None
+        total_started = time.perf_counter()
+        handle_tick = getattr(self.conversation_core, "handle_initiative_tick", None)
+        if handle_tick is None:
+            _console_event("initiative_tick_skipped", reason="missing_core_method")
+            return None
+        tomoko_started = time.perf_counter()
+        turn = await handle_tick()
+        stage_timings = {
+            "tomoko_ms": _elapsed_ms(tomoko_started),
+        }
+        execution_result = PromptExecutionResult(model_events=list(turn.model_events))
+        tts_ms = 0.0
+        deferred_tts_orders: list[SpeechOrder] = []
+        if turn.speech_order is not None:
+            _console_event(
+                "initiative_speech_order",
+                order_id=str(turn.speech_order.id),
+                mode=turn.speech_order.mode.value,
+                reason=turn.speech_order.reason,
+            )
+            orders = [turn.speech_order, *turn.followup_orders]
+            if self.defer_tts_to_sender:
+                deferred_tts_orders.extend(orders)
+            else:
+                tts_started = time.perf_counter()
+                audio_result = await self.speech_executor.execute(turn.speech_order)
+                tts_ms += _elapsed_ms(tts_started)
+                execution_result.audio_chunks.extend(audio_result.audio_chunks)
+        stage_timings["tts_ms"] = tts_ms
+        stage_timings["total_ms"] = _elapsed_ms(total_started)
+        return HotPathConversationResult(
+            observations=[],
+            durable_utterance=None,
+            context_snapshot=turn.context_snapshot,
+            prompt_request=turn.prompt_request,
+            execution_result=execution_result,
+            scheduler_output=turn.scheduler_output,
+            speech_order=turn.speech_order,
+            followup_orders=list(turn.followup_orders),
+            deferred_tts_orders=deferred_tts_orders,
+            stage_timings_ms=stage_timings,
+        )
+
     async def process_segment(self, segment: AudioSpeechSegment) -> HotPathConversationResult:
+        total_started = time.perf_counter()
         _console_event("stt_start", samples=len(segment.samples))
+        stt_started = time.perf_counter()
         observations = await observation_events(segment, self.stt_backend)
+        stage_timings = {"stt_ms": _elapsed_ms(stt_started)}
         final_text = next(
             (observation.text for observation in observations if observation.is_final),
             "",
@@ -258,9 +339,17 @@ class HotPathAudioConversation:
                     context_snapshot=None,
                     prompt_request=None,
                     execution_result=PromptExecutionResult(),
+                    stage_timings_ms={
+                        **stage_timings,
+                        "total_ms": _elapsed_ms(total_started),
+                    },
                 )
+            tomoko_started = time.perf_counter()
             turn = await self.conversation_core.handle_observation(observation)
+            stage_timings["tomoko_ms"] = _elapsed_ms(tomoko_started)
             execution_result = PromptExecutionResult(model_events=list(turn.model_events))
+            tts_ms = 0.0
+            deferred_tts_orders: list[SpeechOrder] = []
             if turn.speech_order is not None:
                 _console_event(
                     "speech_order",
@@ -268,8 +357,28 @@ class HotPathAudioConversation:
                     mode=turn.speech_order.mode.value,
                     reason=turn.speech_order.reason,
                 )
-                audio_result = await self.speech_executor.execute(turn.speech_order)
-                execution_result.audio_chunks.extend(audio_result.audio_chunks)
+                orders = [turn.speech_order, *turn.followup_orders]
+                if self.defer_tts_to_sender:
+                    deferred_tts_orders.extend(orders)
+                else:
+                    tts_started = time.perf_counter()
+                    audio_result = await self.speech_executor.execute(turn.speech_order)
+                    tts_ms += _elapsed_ms(tts_started)
+                    execution_result.audio_chunks.extend(audio_result.audio_chunks)
+                for followup in turn.followup_orders:
+                    _console_event(
+                        "speech_order",
+                        order_id=str(followup.id),
+                        mode=followup.mode.value,
+                        reason=followup.reason,
+                    )
+                    if not self.defer_tts_to_sender:
+                        tts_started = time.perf_counter()
+                        followup_result = await self.speech_executor.execute(followup)
+                        tts_ms += _elapsed_ms(tts_started)
+                        execution_result.audio_chunks.extend(followup_result.audio_chunks)
+            stage_timings["tts_ms"] = tts_ms
+            stage_timings["total_ms"] = _elapsed_ms(total_started)
             return HotPathConversationResult(
                 observations=observations,
                 durable_utterance=turn.durable_utterance,
@@ -278,6 +387,9 @@ class HotPathAudioConversation:
                 execution_result=execution_result,
                 scheduler_output=turn.scheduler_output,
                 speech_order=turn.speech_order,
+                followup_orders=list(turn.followup_orders),
+                deferred_tts_orders=deferred_tts_orders,
+                stage_timings_ms=stage_timings,
             )
 
         assert self.tomoko_core is not None
@@ -397,6 +509,10 @@ def segment_rms(samples: tuple[float, ...]) -> float:
     if not samples:
         return 0.0
     return math.sqrt(sum(sample * sample for sample in samples) / len(samples))
+
+
+def _elapsed_ms(started: float) -> float:
+    return (time.perf_counter() - started) * 1000.0
 
 
 def text_from_execution_result(result: PromptExecutionResult) -> str:

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from server.shared.models import (
     CancelPolicy,
+    CandidateRecord,
     ContextSnapshot,
     ConversationHistoryItem,
     PromptRequest,
@@ -56,6 +57,41 @@ class PromptBuilderV2:
             trace_id=snapshot.trace_id,
         )
 
+    def build_initiative(
+        self,
+        snapshot: ContextSnapshot,
+        candidate: CandidateRecord,
+    ) -> PromptRequest:
+        instruction = (
+            "次のtomoko発話だけ返す。"
+            "ユーザー発話がない無音中なので、候補を自然に短く一言だけ出す。"
+        )
+        runtime_context = self._format_runtime_context(snapshot, snapshot.calendar_items)
+        candidates = self._format_candidates(snapshot)
+        sections = [
+            "SYSTEM:",
+            self._format_system(),
+            "INSTRUCTION:",
+            instruction,
+            "SESSION_TRANSCRIPT:",
+            self._format_history_transcript(snapshot),
+        ]
+        if runtime_context:
+            sections.extend(["RUNTIME_CONTEXT:", runtime_context])
+        if candidates:
+            sections.extend(["VOLATILE_RECALL:", candidates])
+        return PromptRequest(
+            prompt_text="\n".join(sections),
+            scope=PromptScope.INITIATIVE,
+            decision_id=None,
+            utterance_id=None,
+            candidate_id=candidate.id,
+            priority=60,
+            cancel_policy=CancelPolicy.CANCEL_ON_USER_SPEAKING,
+            context_snapshot_id=snapshot.id,
+            trace_id=snapshot.trace_id,
+        )
+
     def _format_system(self) -> str:
         return self.system_header
 
@@ -86,6 +122,15 @@ class PromptBuilderV2:
                 for text in snapshot.recent_utterances
             ]
         history.append(ConversationHistoryItem(speaker="user", text=current_utterance))
+        return "\n".join(_format_transcript_item(item) for item in history)
+
+    def _format_history_transcript(self, snapshot: ContextSnapshot) -> str:
+        history = list(snapshot.recent_history)
+        if not history:
+            history = [
+                ConversationHistoryItem(speaker="user", text=text)
+                for text in snapshot.recent_utterances
+            ]
         return "\n".join(_format_transcript_item(item) for item in history)
 
     def _format_candidates(self, snapshot: ContextSnapshot) -> str:

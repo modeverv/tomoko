@@ -1,0 +1,103 @@
+{
+  "name": "attention-mode-idle-wake",
+  "description": "Wake enters conversation profile, long silence returns to ambient, low-saturation monologue is ignored, and wake returns to conversation.",
+  "runtime": "fake",
+  "fake_reply": "聞くね。",
+  "fake_stt_events": [
+    [
+      {
+        "text": "トモコ、聞いて",
+        "is_final": true
+      }
+    ],
+    [
+      {
+        "text": "今日は疲れた",
+        "is_final": true,
+        "recommended_silence_ms": 10000
+      }
+    ],
+    [
+      {
+        "text": "トモコ、戻って",
+        "is_final": true
+      }
+    ]
+  ],
+  "steps": [
+    {
+      "say": "トモコ、聞いて",
+      "wait_for": "prompt_complete",
+      "expect": {
+        "min_events": {
+          "scheduler_decision": 1,
+          "speech_order": 1,
+          "prompt_complete": 1
+        },
+        "score_breakdown_any": {
+          "attention_mode_conversation": {
+            "equals": 1.0
+          }
+        }
+      }
+    },
+    {
+      "say": "今日は疲れた",
+      "wait_for": "scheduler_decision",
+      "wait_timeout_sec": 5,
+      "expect": {
+        "min_events": {
+          "scheduler_decision": 1
+        },
+        "max_events": {
+          "speech_order": 0,
+          "prompt_complete": 0
+        },
+        "score_breakdown_any": {
+          "attention_mode_ambient": {
+            "equals": 1.0
+          }
+        }
+      }
+    },
+    {
+      "say": "トモコ、戻って",
+      "wait_for": "prompt_complete",
+      "expect": {
+        "min_events": {
+          "scheduler_decision": 1,
+          "speech_order": 1,
+          "prompt_complete": 1
+        },
+        "score_breakdown_any": {
+          "attention_mode_conversation": {
+            "equals": 1.0
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "min_events": {
+      "transcript": 3,
+      "scheduler_decision": 3,
+      "speech_order": 2,
+      "prompt_complete": 2
+    },
+    "forbid_events": [
+      "prompt_error"
+    ],
+    "score_breakdown_any": [
+      {
+        "attention_mode_ambient": {
+          "equals": 1.0
+        }
+      },
+      {
+        "attention_mode_conversation": {
+          "equals": 1.0
+        }
+      }
+    ]
+  }
+}

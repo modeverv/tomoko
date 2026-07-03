@@ -1,0 +1,35 @@
+{
+  "name": "overlap-replace",
+  "description": "User overlaps Tomoko's reply with a new question -> replace_current order supersedes it (PLAN S9).",
+  "runtime": "any",
+  "fake_reply": "答えるね。",
+  "fake_stt_events": [
+    [{"text": "今日の予定を教えて", "is_final": true}],
+    [{"text": "やっぱりそれはいいから明日の天気がどうなるかだけ教えて", "is_final": true}]
+  ],
+  "steps": [
+    {
+      "say": "今日の予定を教えて",
+      "chunk_sleep_ms": 16,
+      "wait_for": "prompt_complete",
+      "expect": {
+        "min_events": {"speech_order": 1, "binary_audio": 1}
+      }
+    },
+    {
+      "say": "やっぱりそれはいいから明日の天気がどうなるかだけ教えて",
+      "overlap_during_playback": true,
+      "chunk_sleep_ms": 16,
+      "wait_for": "prompt_complete",
+      "expect": {
+        "min_events": {"speech_order": 1, "binary_audio": 1},
+        "speech_order_modes": ["replace_current"]
+      }
+    }
+  ],
+  "expect": {
+    "min_events": {"transcript": 2, "speech_order": 2, "binary_audio": 2},
+    "speech_order_modes": ["replace_current", "replace_current"],
+    "forbid_events": ["prompt_error"]
+  }
+}

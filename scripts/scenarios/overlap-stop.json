@@ -1,0 +1,35 @@
+{
+  "name": "overlap-stop",
+  "description": "User overlaps Tomoko's reply with a stop intent -> stop order, append queue cleared (PLAN S9).",
+  "runtime": "any",
+  "fake_reply": "長めのお話をするね、今日はいろいろあったんだよ。",
+  "fake_stt_events": [
+    [{"text": "トモコ、何か長めに話して", "is_final": true}],
+    [{"text": "もういい、ストップ", "is_final": true}]
+  ],
+  "steps": [
+    {
+      "say": "トモコ、何か長めに話して",
+      "wait_for": "prompt_complete",
+      "expect": {
+        "min_events": {"speech_order": 1, "binary_audio": 1},
+        "speech_order_modes": ["replace_current"]
+      }
+    },
+    {
+      "say": "もういい、ストップ",
+      "overlap_during_playback": true,
+      "wait_for": "speech_order",
+      "expect": {
+        "min_events": {"speech_order": 1},
+        "max_events": {"binary_audio": 0},
+        "speech_order_modes": ["stop"]
+      }
+    }
+  ],
+  "expect": {
+    "min_events": {"transcript": 2, "speech_order": 2},
+    "speech_order_modes": ["replace_current", "stop"],
+    "forbid_events": ["prompt_error"]
+  }
+}

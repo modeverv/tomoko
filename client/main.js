@@ -11,6 +11,9 @@ let audioContext = null;
 let playbackTime = 0;
 let timelineSequence = 0;
 let acceptingAudio = true;
+let playbackGain = null;
+const REPLACE_FADE_SEC = 0.08;
+const REPLACE_SILENCE_GAP_SEC = 0.15;
 const activeAudioSources = new Set();
 
 async function populateAudioOutputs() {
@@ -75,6 +78,9 @@ async function connect() {
     if (payload.type === "speech_order") {
       if (payload.mode === "stop") {
         stopLocalPlayback();
+      } else if (payload.mode === "replace_current") {
+        fadeOutAndCutPlayback();
+        acceptingAudio = true;
       } else {
         acceptingAudio = true;
       }
@@ -94,12 +100,47 @@ async function connect() {
   });
 }
 
+function ensurePlaybackGain() {
+  if (!audioContext) audioContext = new AudioContext();
+  if (!playbackGain) {
+    playbackGain = audioContext.createGain();
+    playbackGain.connect(audioContext.destination);
+  }
+  return playbackGain;
+}
+
+function fadeOutAndCutPlayback() {
+  if (!audioContext || activeAudioSources.size === 0) {
+    if (audioContext) playbackTime = audioContext.currentTime;
+    return;
+  }
+  const gain = ensurePlaybackGain();
+  const now = audioContext.currentTime;
+  gain.gain.cancelScheduledValues(now);
+  gain.gain.setValueAtTime(gain.gain.value, now);
+  gain.gain.linearRampToValueAtTime(0.0001, now + REPLACE_FADE_SEC);
+  const sources = [...activeAudioSources];
+  activeAudioSources.clear();
+  sources.forEach((source) => {
+    try {
+      source.stop(now + REPLACE_FADE_SEC + 0.01);
+    } catch (error) {
+      console.log("[tomoko:client] audio_fade_stop_ignored", error);
+    }
+  });
+  const resumeAt = now + REPLACE_FADE_SEC + REPLACE_SILENCE_GAP_SEC;
+  gain.gain.setValueAtTime(1.0, resumeAt);
+  playbackTime = resumeAt;
+  appendTimelineItem("system", "audio replaced (fade)");
+  console.log("[tomoko:client] audio_replace_fade", { resumeAt });
+}
+
 async function playAudioChunk(arrayBuffer) {
   if (!audioContext) audioContext = new AudioContext();
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
   const source = audioContext.createBufferSource();
   source.buffer = audioBuffer;
-  source.connect(audioContext.destination);
+  source.connect(ensurePlaybackGain());
   activeAudioSources.add(source);
   source.onended = () => activeAudioSources.delete(source);
   const startAt = Math.max(audioContext.currentTime, playbackTime);

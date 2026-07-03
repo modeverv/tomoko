@@ -826,3 +826,525 @@ v2 hot-path の MaAI は、相槌素材用の `mode="bc_2type"` と turn-yieldin
 `v1/loras/lora/fused_model/*.safetensors`、`v1/loras/lora/adapters/*.safetensors`、
 `.venv/`、`models/`、`logs/` の実ファイルである。`v1/loras` で Git 管理されているのは
 README / script 類だけで、safetensors は `.gitignore` 対象だった。
+
+## 2026-07-04 セッション3 確定した判断
+
+### latency suite は no-audio を必ず失敗として扱う
+`scripts/v2_latency_suite.py` は `runs_no_audio == 0` を必須ターゲットにする。
+first audio p50/p95 が計算できない no-audio run を pass 扱いにすると、runtime reload 中の無音失敗を
+latency 改善と誤認するため。
+
+### request-complete partial は初回 confirmation で通す
+partial STT が `教えて` / `してください` / `お願い` / `?` など request 完了らしい suffix で終わる場合は、
+2 回目の類似 partial を待たずに partial speech-order を許可する。
+`これは誰` のような未完了 partial は従来どおり confirmation 待ちにする。
+
+### latency suite の transcript / speech-order timing は client-observed 境界
+現行 real `/ws` では、client が受け取る `transcript` / `speech_order` event は
+Tomoko 側の `process_segment` が LLM/TTS 実行まで終えた後に見えることがある。
+そのため suite の timing breakdown は体感境界として扱い、内部 STT/LLM/TTS stage 切り分けには
+server log または別の internal timing artifact を使う。
+
+## 2026-07-04 セッション3 気づき
+
+### G1 の latest single-seed 失敗は STT ではなく Tomoko/LLM と TTS が主因
+`latency_stage` 追加後の `logs/latency-suite-20260704-010457.{json,md}` では、
+final-origin first audio 7938.6ms の内訳が STT 337.3ms、Tomoko/LLM 3480.7ms、TTS 3676.3ms、
+stage total 7494.4ms だった。
+同じ seed を同一 runtime に繰り返し流すと session history の影響で返答が長文化し、
+TTS latency をさらに悪化させる。G1 suite は session 汚染を明示するか、fresh runtime/session での測定導線が必要。
+
+### TTS streaming は backend だけでなく hot-path result 境界を変えないと first audio に効かない
+`VoicevoxChunkedTtsBackend` は async iterator だが、現行 `SpeechOrderExecutor.execute()` は
+全 chunk を集め終えてから `HotPathConversationResult` を返し、その後 `_send_prompt_execution_result()` が
+まとめて browser へ送る。したがって VOICEVOX の segment/chunk 設定だけでは first audio は前倒しされない。
+first phrase delivery を効かせるには、speech-order event を先に送ったうえで TTS chunk を生成順に
+result queue / WebSocket へ流す配線が必要。
+
+### latency suite は測定前に Tomoko conversation state を reset する
+同じ seed を同一 runtime に繰り返し流すと、session history の影響で Tomoko 返答が長文化する。
+2026-07-04 セッション3で `/ws` の `latency_control/reset_conversation` から internal WS の
+`reset_conversation` へ転送する導線を追加し、`scripts/v2_latency_suite.py` は各 run 前に既定で reset する。
+reset 後 artifact `logs/latency-suite-20260704-011004.{json,md}` では final-origin 6310.7ms、
+STT 553.3ms、Tomoko/LLM 3078.5ms、TTS 2232.8ms、stage total 5864.7ms。
+履歴汚染は抑えられたが、S16 目標にはまだ届かない。
+
+## 2026-07-04 セッション4 確定した判断
+
+### audio conversation の speech-order TTS は sender 側で実行する
+`HotPathAudioConversation` は `/ws` audio conversation では speech-order を作った時点で
+`HotPathConversationResult.deferred_tts_orders` に渡し、TTS 完了を待たずに result queue へ返す。
+`_send_audio_conversation_result()` は `speech_order` event を先に送り、その後
+`SpeechOrderExecutor.execute_stream()` の chunk callback から binary audio を逐次送る。
+
+このため audio conversation の deferred path では `tts_result` は binary audio 送信後の summary event になる。
+text prompt path (`prompt` / `text_prompt` / `user_text`) は従来どおり `tts_result` → binary audio の順序を維持する。
+`latency_stage.stage_timings_ms["tts_ms"] == 0.0` は「TTS が無くなった」ではなく、
+TTS が hot-path result 生成後の sender 境界へ移ったことを意味する。
+
+### voice output は first sentence を最短単位にする
+G1 latency のため、Tomoko LLM stream は最初の完全文(`。！？!?`)で打ち切り、
+speech-order text は first sentence のみとする。
+さらに speech-order text は VOICEVOX 合成前に文単位へ分割し、先頭短文から順に合成・送信する。
+この方針により、reset 後 1-seed は 6310.7ms -> deferred-only 5076.1ms ->
+sentence split 3425.6ms -> first-sentence cutoff 2627.4ms まで改善した。
+
+最新 3-seed artifact `logs/latency-suite-20260704-013026.{json,md}` は no-audio 0、
+partial-origin 0/3、final-origin p50 3122.4ms / p95 5143.9ms、stage total p50 1470.3ms / p95 2679.2ms。
+S16 は未達で、残る主因は partial-origin が出ていないことと、final-origin では
+voice_end→final/order の待ち + first short TTS がまだ積み上がること。
+
+### RemoteTomokoWsCore は stale internal WS を捨てて一度 reconnect する
+Tomoko realtime を再起動した後、hot-path が古い internal WS を握り続けると
+`ConnectionClosedError` で public `/ws` handler 全体が落ち、latency suite が no-audio になる。
+`RemoteTomokoWsCore` は reset / observation request で `websockets.ConnectionClosed` を受けたら
+cached socket を close/drop し、1 回だけ reconnect して同じ request をやり直す。
+
+## 2026-07-04 セッション4 気づき
+
+### 次の G1 レバーは final-origin shaving ではなく安全な partial-origin audio
+first-sentence cutoff 後、1-seed artifact `logs/latency-suite-20260704-012939.{json,md}` では
+STT 334.3ms、Tomoko/LLM 742.4ms、order→first audio 1114.1ms まで縮んだ。
+一方で real partial は `今日` / `今日の予定` のような未完了名詞句で止まり、
+full reply を出すには危険なため partial-origin は 0/3 のまま。
+
+次は partial `今日の予定` のような未完了入力に full answer を出すのではなく、
+短い acknowledgement / filler の speech-order を出し、final で本回答へ replace する設計が候補。
+これなら first audio 目標に効きつつ、final STT divergence の上書き設計とも整合する。
+
+## 2026-07-04 セッション4 追加の確定した判断
+
+### incomplete topic partial は full answer ではなく acknowledgement を出す
+`今日の予定` / `今日の天気は...` のような未完了 topic partial は、full reply ではなく
+`うん、聞いてるよ。` の短い acknowledgement speech-order を出す。
+active partial ack は final reconcile の根拠にしないため、final STT が来たら本回答で replace できる。
+一方、`これは誰` のような曖昧 partial は従来どおり partial start gate の confirmation 待ちにする。
+
+この方針で `logs/latency-suite-20260704-015746.{json,md}`、
+`logs/latency-suite-20260704-015947.{json,md}`、
+`logs/latency-suite-20260704-020002.{json,md}` が 3 回連続 pass した。
+最新値は partial-origin 2/3、final-origin 約 1.32s、partial-origin p50 約 0.38s。
+
+### clock question は LLM ではなく local system time の direct speech にする
+`今何時` / `今いつ` / `今の時間` 系は LLM に渡さず、local system time から
+`今はH時MM分だよ。` を生成する。
+G1 測定中に LLM が古い日付・時刻を返す問題があり、これは world knowledge ではなく
+local runtime fact として deterministic に扱うほうが正しい。
+
+### latency reset は hot-path VAD/STT も reset する
+`latency_control/reset_conversation` は Tomoko conversation state だけでなく、
+hot-path の VAD buffer、streaming STT stream、active trace、hot-path 短期履歴も reset する。
+first-audio で測定を切った後、Apple Speech の遅延 final/partial が次 run に混ざると
+latency suite が誤って pass/fail するため、測定境界では物理入力側も含めて reset する。
+
+## 2026-07-04 セッション4 G5 の確定した判断
+
+### p_yielding 欠損は full yielding とみなさない
+`TurnMaterials.p_yielding is None` は「VAP が yielding を出した」ではなく「値がない」として扱う。
+conversation 境界で欠損を `1.0` に補完すると、`turn_opportunity` が VAP 由来なのか
+silence fallback 由来なのかを score_breakdown / artifact で切り分けられないため。
+
+### turn_opportunity は yielding と silence の内訳を score_breakdown に残す
+`DialogueTurnPressure` は `turn_opportunity` の合成値だけでなく、
+`yielding_opportunity` と `silence_opportunity` も保持する。
+Tomoko の `score_breakdown` には
+`pressure_dialogue_yielding_opportunity`、
+`pressure_dialogue_silence_opportunity`、
+`pressure_dialogue_turn_opportunity_from_yielding`、
+`pressure_dialogue_turn_opportunity_from_silence`
+を出し、DB / scenario artifact からどちらの入力が効いたかを確認できるようにする。
+
+### G5 regression は scripted p_yielding で deterministic に固定する
+say 音声だけでは VAP の `p_yielding` が安定して立たない可能性があるため、
+G5 の自動回帰は `TOMOKO_V2_FAKE_STT_EVENTS` に `p_yielding` を明示する fake replay で固定する。
+`logs/scenario-vap-yielding-opportunity-20260704-021449.json` では、
+partial decision が `yielding=0.92 / silence=0.0 / from_yielding=1.0`、
+final decision が `yielding=0.0 / silence=1.0 / from_silence=1.0` として同一 artifact 内で PASS した。
+
+## 2026-07-04 セッション4 G6 の確定した判断
+
+### motivation は score 加点ではなく gate threshold shift として扱う
+`MotivationPressure.threshold_shift` は `LlmFireGate` / `SpeechEmissionGate` の score に直接加点しない。
+会話熱量、話題継続度、personality から作った shift で fire / emit / append / replace の閾値を下げ、
+`score_breakdown` には `motivation_threshold_shift` と
+`pressure_motivation_threshold_shift` を観測用に残す。
+これにより「なぜ前のめりになったか」を DB / scenario artifact から読める一方、
+pressure score そのものの意味を崩さない。
+
+### high motivation の低 semantic partial は短い撤回可能 interjection にする
+semantic saturation が低く、request-complete ではない partial でも、
+`threshold_shift >= 0.12` かつ `p_yielding >= 0.7` なら full answer ではなく
+固定の短い interjection `いや、それってさ。` を出す。
+この speech-order は active partial reply として final reconcile しないため、
+final STT が来たら通常回答で replace できる。
+
+`logs/scenario-motivation-interjection-high-20260704-023202.json` では
+text / reason / 文字数 / `motivation_interjection=1.0` /
+`pressure_motivation_threshold_shift>=0.12` が PASS した。
+unit では partial 直後に LLM が呼ばれず、final で通常回答に replace されることも固定している。
+
+### fake_personality は A/B replay 専用の検証 fixture として使う
+`TOMOKO_V2_FAKE_PERSONALITY` は fake runtime scenario のための fixture であり、
+runtime hot-path へ personality や motivation を渡す設計ではない。
+hot-path は引き続き speech-order を物理実行するだけで、motivation の判断は Tomoko process 側に閉じる。
+
+G6 の A/B regression は `logs/scenario-motivation-threshold-high-20260704-023203.json` と
+`logs/scenario-motivation-threshold-low-20260704-023204.json` で確認した。
+high profile は conversation heat 1.0 時に `threshold_shift >= 0.1`、
+low profile は同条件で `threshold_shift <= 0.02` を満たす。
+
+## 2026-07-04 セッション4 Step 7 user-status の確定した判断
+
+### user presence は WorldMaterials から WorldPressure へ落として観測する
+`UserStatusObservation.present` は `WorldMaterials.user_present` に写し、
+`WorldPressure.user_presence` / `user_absence` として score_breakdown に残す。
+user absent のときは world/candidate/calendar 由来の自発的な発話材料を届けないため、
+`WorldPressureModel` は `importance` / `urgency` / `deliverability` を 0 にする。
+一方で user が実際に STT で話しかけた本返答は DialoguePressure 側で成立するため、
+presence absent だけで直接返答までは止めない。
+
+### user absent では calendar followup append を出さない
+calendar append は user への自発的な付加通知なので、
+`world_materials.user_present is False` のとき `_maybe_calendar_followup()` は何も出さない。
+`logs/scenario-user-status-absent-pressure-20260704-024009.json` では、
+同じ近接 calendar 条件でも speech_order が main reply 1 件だけになり、
+`pressure_world_user_absence=1.0` / `pressure_world_urgency=0.0` として PASS した。
+
+### fake_user_status は周辺プロセス結線の自動回帰 fixture
+`TOMOKO_V2_FAKE_USER_STATUS` と scenario JSON の `fake_user_status` は、
+user-status process から Tomoko process へ材料が届いた後の挙動を fake runtime で固定するための fixture。
+runtime 経路としては internal WS の `user_status` event / `user_status_ack` を追加し、
+Tomoko core の `update_user_status()` が prompt snapshot と world materials の両方を更新する。
+
+## 2026-07-04 セッション4 Step 7 summary の確定した判断
+
+### SessionSummary は summary と embedding を同じ id で冪等 insert する
+`SessionSummary` は `v2_session_summaries` に `id=session_summary.id` で保存し、
+対応する `v2_summary_embeddings` も同じ UUID を row id として使う。
+テーブルは別なので id の共有は問題なく、同じ summary を再処理しても
+`ON CONFLICT (id) DO NOTHING` で重複 embedding を増やさない。
+
+`summary_text` は `keyword: conclusion` の可読テキストとして保存する。
+embedding は `SessionSummary.embedding` を `double precision[]` 用の list param に変換する。
+unit では `insert_session_summary_sql()` / `insert_summary_embedding_sql()` を固定し、
+integration schema test には `v2_session_summaries` と `v2_summary_embeddings` の insert を追加した。
+
+## 2026-07-04 セッション4 Step 7 candidate の確定した判断
+
+### candidate は prompt context と WorldPressure の両方へ流す
+think-process が積む `CandidateRecord` は、Tomoko core の `candidate_provider` から取得し、
+active candidate だけを `ContextSnapshot.candidates` に入れる。
+prompt では既存の `VOLATILE_RECALL` (`candidate[source:key]=text`) として使い、
+発話判断では最大 `candidate_score` を `WorldMaterials.candidate_pressure` に落とす。
+
+`WorldPressureModel` は `candidate_pressure` を importance / urgency / relevance に反映し、
+`pressure_world_candidate_pressure` を score_breakdown に残す。
+fake runtime では `TOMOKO_V2_FAKE_CANDIDATES` / scenario `fake_candidates` で注入し、
+`logs/scenario-candidate-pressure-context-20260704-024648.json` で
+`pressure_world_candidate_pressure=0.9` を確認した。
+
+残る Step 7 の中心は、speech input なしの `initiative_tick` 相当を Tomoko process が所有し、
+silence + candidate pressure から speech-order を作る replay を追加すること。
+
+## 2026-07-04 セッション4 Step 7 candidate initiative の確定した判断
+
+### 自発発話 tick は Tomoko process が所有し既存 WebSocket event として流す
+speech input なしの自発発話開始は、hot-path やブラウザの状態判定ではなく
+Tomoko process の `TomokoConversationCore.handle_initiative_tick()` が所有する。
+public `/ws` と internal `/internal/hot-path` には `initiative_tick` event type だけを追加し、
+REST endpoint は増やさない。
+
+`handle_initiative_tick()` は active candidate、turn materials の silence / speech probability、
+user presence、current speech/playback を見て、prompt 生成前に suppress できる。
+発話可能な場合だけ `PromptScope.INITIATIVE` の prompt を作り、
+既存の `LlmFireGate` / `SpeechEmissionGate` を通して speech-order にする。
+
+### 無音 replay は空文字 STT final で偽装しない
+`scripts/v2_scenario_replay.py` は `steps[].event` を受け付ける。
+これにより `{"type":"initiative_tick"}` を直接 public `/ws` に送れるため、
+無音を `text=""` の STT observation として偽装しない。
+artifact では transcript が 0 件のまま scheduler_decision / speech_order / TTS を確認する。
+
+`logs/scenario-candidate-initiative-silence-20260704-025854.json` では
+`pressure_world_candidate_pressure>=0.9`、`pressure_world_deliverability>=0.9`、
+speech_order reason `candidate pressure initiative tick`、binary_audio / prompt_complete が PASS した。
+`logs/scenario-candidate-initiative-absent-suppressed-20260704-025853.json` では
+user absent により `pressure_world_user_absence=1.0`、speech_order 0、prompt_complete 0 が PASS した。
+
+## 2026-07-04 セッション4 Step 7 think-process candidate helper の確定した判断
+
+### think-process の最小責務は CandidateSeed への正規化に置く
+Step 7 の実体化では、summary / calendar / world info をいきなり Tomoko に直結せず、
+まず `CandidateSeed` に正規化してから `CandidateStore.upsert_seed()` で active
+`CandidateRecord` にする。
+`server.think.main.build_candidates()` は calendar items、`SessionSummary`、world info seeds を受け取り、
+重複 source/source_key を store 境界で dedupe する。
+
+### world info は既存 filter を通ってから candidate 化する
+`world_info_seed()` は `server.info.main.should_candidate_from_world()` を通す。
+confidence 低下、stale、sensitive、private、do_not_speak のいずれかに該当する情報は
+candidate seed を返さない。
+この filter は world information の安全弁であり、Tomoko の発話 gate に渡す前の think-process 側責務に置く。
+
+### fake calendar/world info は replay 用の candidate 供給 fixture
+fake runtime では `TOMOKO_V2_FAKE_CALENDAR` と `TOMOKO_V2_FAKE_WORLD_INFO` からも
+`build_candidates()` 経由で candidate provider に active candidate を積む。
+明示 `TOMOKO_V2_FAKE_CANDIDATES` は従来通り直接注入として残す。
+
+`logs/scenario-calendar-initiative-silence-20260704-030553.json` では
+明示 fake candidate なしで calendar material から `candidate_source=calendar` の
+initiative speech-order が出た。
+`logs/scenario-world-info-initiative-silence-20260704-030610.json` では
+world info から `candidate_source=world` の initiative speech-order が出た。
+どちらも transcript 0 のまま public `/ws` -> internal WS -> Tomoko gate -> TTS まで PASS した。
+
+## 2026-07-04 セッション4 Step 7 candidate DB bridge の確定した判断
+
+### CandidateRecord は source/source_key で冪等 upsert する
+think-process が作った `CandidateRecord` は `v2_candidates` に保存し、
+`source/source_key` の一意性で同じ材料を更新する。
+`insert_candidate_sql()` は priority / urgency / intrusion / maturity /
+candidate_score / lifecycle / context_tags をまとめて upsert し、
+`candidate_from_row()` は DB row を同じ DTO に戻す。
+
+この境界は Tomoko core の `candidate_provider` が DB 由来 candidates を読む前段であり、
+fake runtime の `TOMOKO_V2_FAKE_*` 経路とは分けて検証する。
+unit では upsert SQL と DTO round-trip を固定し、integration schema test では
+`v2_candidates` への insert/upsert を追加した。
+
+### DB split の session reuse は last_activity_at 更新で表す
+open session が idle gap 未満で再利用されるとき、
+`assign_conversation_session()` は新規 session を作らず
+`UPDATE v2_conversation_sessions SET last_activity_at = ... WHERE id = ...` だけを出す。
+この経路は連続会話の通常 path なので、unit regression test で直接固定する。
+
+## 2026-07-04 セッション4 Step 7 candidate DB read bridge の確定した判断
+
+### Tomoko realtime は active candidates を TTL 付きで読む
+`v2_candidates` に積まれた active candidate は、Tomoko realtime が
+`TOMOKO_V2_DB_CANDIDATES=1` のときだけ読む。
+読み込みは `select_active_candidates_sql()` / `load_active_candidates()` を通し、
+`lifecycle='active'` かつ `expires_at IS NULL OR expires_at > now()` の rows を
+`candidate_score DESC, urgency DESC, priority DESC, created_at DESC` の順で取得する。
+
+取得結果は `TomokoConversationCore.update_candidate_records()` に渡し、
+既存の fake/env `candidate_provider` と同じ `_candidate_items()` 経路に合流させる。
+これにより DB 由来 candidate も prompt snapshot の `VOLATILE_RECALL` と
+`WorldPressure.candidate_pressure` に反映される。
+
+### DB candidate 読み込み失敗は会話を止めない
+DB candidate refresh は補助材料なので、失敗しても stt observation / initiative tick の処理は止めない。
+失敗時は `candidate_refresh_failed` を console log に残し、直前に読めた candidate records は
+core 側の通常状態として保持される。
+fake runtime scenario では `TOMOKO_V2_DB_CANDIDATES` を渡さないため、DB なしでも replay suite が通る。
+
+## 2026-07-04 セッション4 Step 7 candidate DB write bridge の確定した判断
+
+### think-process は summary/world rows から v2_candidates を materialize する
+think-process の DB 実体化は `materialize_candidates_from_db()` に置く。
+この関数は `v2_session_summaries` と `v2_world_interpretations` を読み、
+既存の `build_candidates()` で `CandidateRecord` に正規化してから
+`insert_candidate_sql()` で `v2_candidates` へ `source/source_key` upsert する。
+
+session summary は `summary_memory_seed()` に流し、world interpretation は
+`world_seed_from_interpretation_row()` から `world_info_seed()` に渡す。
+world row の `flags` は stale / sensitive / private / do_not_speak filter として扱い、
+candidate 化してよい情報だけを `v2_candidates` に積む。
+
+### runtime の think heartbeat は candidate materializer tick を持つ
+`server.runtime process think` は heartbeat ごとに candidate materializer tick を実行する。
+DB 接続や materialize に失敗しても process は止めず、
+`think_candidate_tick_failed` をログに残して次の heartbeat を待つ。
+`_database_ready()` は `default_dsn()` を見るため、`TOMOKO_DATABASE_URL` 未設定でも
+make runtime の既定 DB と readiness / think tick が揃う。
+
+## 2026-07-04 セッション4 Step 7 summary runner の確定した判断
+
+### summary-process は ended session から索引 summary を作る
+summary-process の DB 実体化は `materialize_summaries_from_db()` に置く。
+対象は `ended_at IS NOT NULL` かつ `v2_session_summaries` がまだ存在しない
+`v2_conversation_sessions` で、session 内の `v2_utterances.text` を時系列に読んで
+`summarize_session()` に渡す。
+
+生成した `SessionSummary` は `insert_session_summary_sql()` と
+`insert_summary_embedding_sql()` で保存する。
+ここで作る summary は原本ではなく検索・候補化のための索引であり、
+think-process が後段で `summary_memory_seed()` に流して candidate 化する。
+
+### runtime の summary heartbeat は失敗しても process を止めない
+`server.runtime process summary` は heartbeat ごとに summary materializer tick を実行する。
+DB 接続や materialize に失敗しても process は止めず、
+`summary_tick_failed` をログに残して次の heartbeat を待つ。
+
+## 2026-07-04 セッション4 Step 7 info-aquire fixture DB の確定した判断
+
+### fake calendar/world fixture は v2_world_* rows に idempotent upsert する
+info-aquire の DB 実体化では、`TOMOKO_V2_FAKE_CALENDAR` と
+`TOMOKO_V2_FAKE_WORLD_INFO` を直接 Tomoko に渡すのではなく、
+まず `v2_world_documents` / `v2_world_items` / `v2_world_interpretations` に保存する。
+document / item / interpretation の id は source/source_key から deterministic UUID で作り、
+heartbeat が同じ fixture を何度処理しても rows が増殖しないようにする。
+
+calendar fixture は source `calendar` の world rows として保存し、
+world info fixture は source `world` の world rows として保存する。
+後段の think-process は `v2_world_interpretations` を読み、
+`world_info_seed()` の confidence / flags filter を通して candidate 化する。
+
+### runtime の info heartbeat は fixture materializer tick を持つ
+`server.runtime process info` は heartbeat ごとに fixture materializer tick を実行する。
+DB 接続や materialize に失敗しても process は止めず、
+`info_tick_failed` をログに残して次の heartbeat を待つ。
+
+## 2026-07-04 セッション4 Step 7 user-status OCR artifact の確定した判断
+
+### OCR fixture path から UserStatusObservation までを一つの境界にする
+user-status の fixture 画像 integration では、画像 path と OS metadata から
+`UserStatusObservation` を作る境界を `observation_from_ocr_artifact()` に置く。
+この関数は `ocr_text(path)` を呼び、既存の `build_user_status_observation()` へ渡す。
+
+artifact path は DTO の `artifact_path` に残し、OCR 結果は `visible_text` と activity inference に使う。
+unit では `ocr_text()` を差し替えて path -> OCR text -> `coding_or_terminal` 判定を固定した。
+残る実機側の確認は、Vision OCR / tesseract sidecar を使う fixture image integration で行う。
+
+## 2026-07-04 セッション5 Step 7 integration 完了の確定した判断
+
+### make test-integration は local DB と実 OCR fixture を実走する
+`TEST_DATABASE_URL ?= postgresql://tomoko:tomoko@localhost:5432/tomoko` を Makefile に置き、
+`make test-integration` は既定で local Postgres に対して integration tests を実行する。
+`make db-up` 済みの local container では、
+`tests/integration/test_v2_db_schema.py` の DB materializer chain と
+`tests/integration/test_v2_user_status_ocr.py` の OCR fixture image test が実走し、
+3 passed になった。
+
+### Step 7 の周辺プロセス chain は unit と integration の両方で閉じた
+Step 7 の fake data chain は、info fixture -> `v2_world_*` rows ->
+think materializer -> `v2_candidates` -> Tomoko realtime candidate refresh ->
+initiative speech-order まで unit / replay / DB integration で確認した。
+user-status は fake user_status WS と実 OCR fixture image の両方で確認し、
+absent 時の initiative suppress も replay で固定した。
+
+## 2026-07-04 セッション5 Step 8 AttentionMode の確定した判断
+
+### AttentionMode は tomoko-process 所有の threshold profile として扱う
+会話中か、聞き取りに戻っているかの判定は hot-path / client に置かない。
+`TomokoConversationCore.attention_mode` が `conversation` / `ambient` profile を所有し、
+wake cue で conversation、長い silence gap または stop intent で ambient に戻る。
+
+この profile は新しいターン状態機械ではなく、発話 gate の閾値プロファイルである。
+ambient profile では wake ではない低 semantic saturation 発話を suppress し、
+再 wake で conversation profile に戻す。
+
+### hot-path へ渡すのは観測可能な profile breakdown だけにする
+hot-path は `attention_mode` を判断せず、従来通り `speech_order` / `cancel_order` を物理実行する。
+tomoko-process は `score_breakdown` に `attention_mode_conversation` /
+`attention_mode_ambient` / `attention_ambient_min_saturation` を残し、
+artifact から profile 遷移を検証できるようにする。
+
+`logs/scenario-attention-mode-idle-wake-20260704-034352.json` では
+wake -> response -> long silence -> low saturation monologue suppress -> wake recovery が PASS した。
+`make v2-scenario-suite` でも AttentionMode scenario を含めて PASS している。
+
+## 2026-07-04 セッション5 Step 9 回帰ゲートと運用の確定した判断
+
+### internal WS port guard は uvicorn 起動前に止める
+`make v2-tomoko` は uvicorn を起動する前に
+`server.runtime guard-internal-ws-port` を実行する。
+既定 port 8765 が空いていれば `[tomoko:runtime] internal_ws_port_available ...` を出す。
+他プロセスが listen していれば、PID / command / address を含む listener 行と、
+`TOMOKO_INTERNAL_WS_PORT=<free-port>` の案内を出して非 0 exit する。
+
+既定 port は変えない。
+競合が起きたときだけ、作業者が明示的に `TOMOKO_INTERNAL_WS_PORT` を変える。
+これは 2026-07-04 の作業中に Tomoko の tmux window が消え、
+古い uvicorn PID だけが 8765 を掴んだ状態を再発見したための運用防壁である。
+
+### autopilot は always-on gate と runtime-ready gate を分ける
+`make autopilot` は常に `make check` / `make test-integration` /
+fake `v2-scenario-suite` を実行する。
+その後、hot-path `/ws` が ready なら real overlap replace/stop と
+full `v2-latency-suite` も実行する。
+runtime が未起動なら real gate は skipped として artifact に残し、
+unit / integration / fake replay の回帰ゲートは落とさない。
+
+最新の成功 artifact は `logs/autopilot-20260704-042721.json`。
+`make check` は 234 passed / 3 deselected、
+`make test-integration` は 3 passed / 234 deselected、
+fake scenario suite / real overlap replace / real overlap stop /
+latency suite が全て exit 0 だった。
+
+### LLM-as-judge は gate ではなく観測レイヤにする
+`make v2-llm-judge` は直近 scenario artifact の transcript を
+31B OpenAI-compatible endpoint に渡し、`logs/llm-judge.jsonl` に保存する。
+31B が使えない場合は skipped JSONL を残すだけで、通常の regression gate は落とさない。
+fenced JSON を返すモデルでも parse する。
+
+最新実行では `logs/scenario-real-overlap-stop-20260704-042420.json` を judge し、
+naturalness 1.0、duplicate/missed/awkward 0 だった。
+
+### 実 STT 表記揺れは partial acknowledgement cue に寄せて吸収する
+real latency suite では Apple Speech が `昼ごはん` を `昼ご飯`、
+`おすすめ` を `お勧め`、`さっきの話...` の partial を `の話を` のように返した。
+これらは full answer を早撃ちするのではなく、safe acknowledgement
+`うん、聞いてるよ。` を early speech-order として出す cue に寄せる。
+
+`話` は partial acknowledgement topic cue には入れるが、
+ambient attention の final request cue には入れない。
+これにより、独り言としての「話」を conversation 復帰扱いしすぎず、
+実測で遅かった partial だけを前倒しできる。
+
+### ambient でも request-like final は会話復帰させる
+AttentionMode ambient は低 saturation の独り言を suppress するが、
+`今日やるべきことを3つ挙げて` のような request-like final は
+conversation profile に戻して応答する。
+`やるべき` / `挙げて` / `あげて` / `三つ` / `3つ` は
+request cue として扱う。
+
+最新 full latency suite `logs/latency-suite-20260704-042438.json` は
+`runs_no_audio=0`、final-origin p50 1342.6ms / p95 1358.7ms、
+partial-origin p50 -141.4ms で PASS。
+前回 no-audio になっていた `今日やるべきことを三つ挙げて` も
+partial-origin で初回音声が出た。
+
+### real scenario の fixture は latency_control 経由で注入する
+fake scenario の `fake_calendar` は subprocess 起動時の環境変数で入るが、
+既に起動済みの real runtime には届かない。
+real runtime で一時 fixture を使う場合は、ブラウザ通常ロジックではなく
+scenario / latency harness 用の `latency_control` lane を使う。
+
+`scripts/v2_scenario_replay.py` は real mode の接続直後に
+`latency_control/reset_conversation` を送り、その後必要なら
+`latency_control/set_fake_calendar` を送る。
+hot-path はこれを internal WS の `scenario_fixture` に変換し、
+Tomoko realtime が `TomokoConversationCore.update_calendar_items_provider()` に
+一時 calendar provider を入れる。
+
+reset を先に送る理由は、同じ予定 key が前シナリオで通知済みになっていると
+`_notified_calendar_keys` により append followup が dedupe されるため。
+これにより `make autopilot` 内で real overlap の後に real calendar append を走らせても、
+`logs/scenario-calendar-append-20260704-044302.json` が
+replace_current -> append_after_current で PASS した。
+
+### autopilot の real gate は calendar append も含める
+`make autopilot` の runtime-ready real checks は
+real overlap replace / real overlap stop / real calendar append / full latency suite を含む。
+最新成功 artifact は `logs/autopilot-20260704-044545.json`。
+`make check` は 236 passed / 3 deselected、
+`make test-integration` は 3 passed / 236 deselected、
+fake scenario suite、real overlap replace/stop、real calendar append、full latency が全て exit 0。
+
+最新 full latency suite `logs/latency-suite-20260704-044312.json` は
+`runs_no_audio=0`、final-origin p50 1339.7ms / p95 1343.2ms、
+partial-origin p50 -163.8ms で PASS。
+最新 LLM-as-judge は `logs/scenario-calendar-append-20260704-044302.json` を評価し、
+naturalness 1.0、duplicate/missed/awkward 0 だった。
+
+### DB materializer chain integration は育った local DB を前提に広めに読む
+local `tomoko` DB は integration / runtime smoke を繰り返すと `v2_candidates` が育つ。
+`load_active_candidates(limit=12)` のような狭い上位取得だけで
+今回 materialize した summary candidate を探すと、既存 candidate に押し出されて
+flaky になる。
+
+integration test では `limit=1000` で active candidates を読み、
+summary source が存在することと、world materializer 由来の雨テキストが candidate に載ることを確認する。
+world interpretation の入力 `source_key` は candidate 化の際に interpretation row UUID へ変わるため、
+入力 source_key の完全一致では検証しない。

@@ -11,6 +11,7 @@ V2_CONFIG ?= config/v2.toml
 COMPOSE ?= docker compose --project-directory . -f docker/docker-compose.yml
 DB_DUMP_DIR ?= logs/db-dumps
 DB_DUMP_FILE ?= $(DB_DUMP_DIR)/tomoko-v2-$(shell date +%Y%m%d-%H%M%S).sql
+TEST_DATABASE_URL ?= postgresql://tomoko:tomoko@localhost:5432/tomoko
 PYTHON ?= uv run python
 PYTEST ?= uv run pytest
 RUFF ?= uv run ruff
@@ -34,6 +35,7 @@ TOMOKO_V2_MAAI_BACKCHANNEL ?= 1
 TOMOKO_V2_MAAI_BACKCHANNEL_THRESHOLD ?= 0.5
 TOMOKO_V2_MAAI_BACKCHANNEL_COOLDOWN_MS ?= 1500
 TOMOKO_V2_BACKCHANNEL_ASSET_DIR ?= assets/backchannels
+TOMOKO_V2_DB_CANDIDATES ?= 1
 TOMOKO_V2_WS_SPLIT ?= 1
 TOMOKO_INTERNAL_WS_BIND_HOST ?= 0.0.0.0
 TOMOKO_INTERNAL_WS_CONNECT_HOST ?= 127.0.0.1
@@ -60,8 +62,8 @@ WS_LATENCY_VOICE ?= Kyoko
 .PHONY: background-once background-watch background-dry-run
 .PHONY: tmux-runtime tmux-run tmux-attach tmux-stop tmux-list run stop a
 .PHONY: v2-runtime v2-stop v2-runtime-ready llm-run llm-stop voicevox-run v2-ocr-smoke ocr-smoke
-.PHONY: v2-initiative-sim v2-floor-bench v2-report-latest v2-scheduler-report v2-llm-tts-smoke v2-conversation-smoke v2-scheduler-conversation-smoke v2-db-split-smoke v2-say-latency-smoke v2-scheduler-say-latency-smoke v2-five-turn-smoke v2-semantic-early-smoke
-.PHONY: db-up db-stop db-down db-dump test-unit test-integration lint check smoke-ws-voice-latency log-report monitor system-monitor
+.PHONY: v2-initiative-sim v2-floor-bench v2-report-latest v2-scheduler-report v2-llm-tts-smoke v2-conversation-smoke v2-scheduler-conversation-smoke v2-db-split-smoke v2-say-latency-smoke v2-scheduler-say-latency-smoke v2-five-turn-smoke v2-semantic-early-smoke v2-scenario-replay v2-scenario-suite v2-latency-suite v2-llm-judge
+.PHONY: db-up db-stop db-down db-dump test-unit test-integration lint check autopilot smoke-ws-voice-latency log-report monitor system-monitor
 
 deps:
 	uv sync
@@ -93,7 +95,8 @@ edge-kitchen-reload:
 	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=logs/edge-kitchen.log $(PYTHON) -m uvicorn server.hot_path.app:app --host $(HOST) --port $(EDGE_KITCHEN_PORT) --log-level $(UVICORN_LOG_LEVEL) --reload
 
 v2-tomoko:
-	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TOMOKO_LOG_FILE) $(PYTHON) -m uvicorn server.tomoko.realtime:app --host $(TOMOKO_INTERNAL_WS_BIND_HOST) --port $(TOMOKO_INTERNAL_WS_PORT) --log-level $(UVICORN_LOG_LEVEL)
+	$(PYTHON) -m server.runtime guard-internal-ws-port --host "$(TOMOKO_INTERNAL_WS_BIND_HOST)" --port "$(TOMOKO_INTERNAL_WS_PORT)"
+	PYTHONUNBUFFERED=1 TOMOKO_LOG_LEVEL=$(TOMOKO_LOG_LEVEL) TOMOKO_LOG_FILE=$(TOMOKO_LOG_FILE) TOMOKO_V2_DB_CANDIDATES="$(TOMOKO_V2_DB_CANDIDATES)" $(PYTHON) -m uvicorn server.tomoko.realtime:app --host $(TOMOKO_INTERNAL_WS_BIND_HOST) --port $(TOMOKO_INTERNAL_WS_PORT) --log-level $(UVICORN_LOG_LEVEL)
 
 v2-think thinker thinker2:
 	$(PYTHON) -m server.runtime process think
@@ -216,6 +219,24 @@ v2-say-latency-smoke:
 v2-scheduler-say-latency-smoke:
 	$(PYTHON) -m scripts.v2_scheduler_say_latency_smoke --url "$(WS_LATENCY_URL)" --text "$(WS_LATENCY_TEXT)" --voice "$(WS_LATENCY_VOICE)"
 
+SCENARIO ?= basic-reply
+SCENARIO_RUNTIME ?=
+
+v2-scenario-replay:
+	$(PYTHON) -m scripts.v2_scenario_replay --scenario scripts/scenarios/$(SCENARIO).json --url "$(WS_LATENCY_URL)" --voice "$(WS_LATENCY_VOICE)" $(if $(SCENARIO_RUNTIME),--runtime $(SCENARIO_RUNTIME),)
+
+v2-scenario-suite:
+	$(PYTHON) -m scripts.v2_scenario_replay --suite scripts/scenarios --runtime fake --voice "$(WS_LATENCY_VOICE)"
+
+LATENCY_SUITE_COUNT ?= 10
+LATENCY_SUITE_REPEATS ?= 3
+
+v2-latency-suite:
+	$(PYTHON) -m scripts.v2_latency_suite --url "$(WS_LATENCY_URL)" --voice "$(WS_LATENCY_VOICE)" --count $(LATENCY_SUITE_COUNT) --repeats $(LATENCY_SUITE_REPEATS)
+
+v2-llm-judge:
+	$(PYTHON) -m scripts.v2_llm_judge --url "http://$(DFLASH_CONNECT_HOST):$(DFLASH_31B_PORT)" --model "$(DFLASH_31B_MODEL)"
+
 v2-five-turn-smoke:
 	$(PYTHON) -m scripts.v2_five_turn_smoke --url "$(WS_LATENCY_URL)" --voice "$(WS_LATENCY_VOICE)"
 
@@ -252,12 +273,15 @@ test-unit:
 	$(PYTEST) -m unit
 
 test-integration:
-	$(PYTEST) -m integration
+	TEST_DATABASE_URL="$(TEST_DATABASE_URL)" $(PYTEST) -m integration
 
 lint:
 	$(RUFF) check server scripts background-process tests
 
 check: lint test-unit
+
+autopilot:
+	$(PYTHON) -m scripts.v2_autopilot --url "$(WS_LATENCY_URL)" --voice "$(WS_LATENCY_VOICE)" --latency-count $(LATENCY_SUITE_COUNT) --latency-repeats $(LATENCY_SUITE_REPEATS)
 
 smoke-ws-voice-latency:
 	@echo "v2 websocket smoke should use $(WS_LATENCY_URL) with text: $(WS_LATENCY_TEXT)"

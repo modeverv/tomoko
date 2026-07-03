@@ -310,8 +310,11 @@ process 分離に戻す。DB row が本体、NOTIFY は id-only wakeup とする
 - [x] Tomoko 発話中に user speaking が入ったとき、scheduler が `replace_current` または `stop` を出せるようにする。
 - [x] stop intent は `stop` action に変換する。
 - [x] `replace_current` 時に古い TTS chunk が混ざらないことを test する。
-- [ ] 必要なら短い無音 / fade event を入れる。
-- [ ] live smoke で、発話途中の上書きが破綻しないことを確認する。
+- [x] 必要なら短い無音 / fade event を入れる。(2026-07-04 client が replace_current で 80ms fade + 150ms gap)
+- [x] live smoke で、発話途中の上書きが破綻しないことを確認する。
+  (fake WS split の overlap-stop / overlap-replace scenario replay は PASS。real runtime での確認が残り)
+  2026-07-04 セッション3で上記「real runtime での確認が残り」は解消した。
+  起動済み real runtime に対して `real-overlap-stop` / `real-overlap-replace` を replay し、どちらも PASS。
 
 ### 完了条件
 
@@ -329,8 +332,11 @@ process 分離に戻す。DB row が本体、NOTIFY は id-only wakeup とする
 - [x] candidate pressure を scheduler input に入れる。
 - [x] 現在発話中で calendar pressure が十分高い場合、`append_after_current` を選べるようにする。
 - [x] `append_after_current` queue の unit test を追加する。
-- [ ] fake calendar scenario の smoke を作る。
-- [ ] live で「返答 -> 予定通知」が続くことを確認する。
+- [x] fake calendar scenario の smoke を作る。(2026-07-04 `calendar-append` scenario replay、
+  返答 replace_current -> `calendar pressure appended notice after reply` の append を artifact で確認)
+- [x] live で「返答 -> 予定通知」が続くことを確認する。
+  2026-07-04: real runtime で `make v2-scenario-replay SCENARIO=calendar-append SCENARIO_RUNTIME=real`
+  が PASS。最新 artifact は `logs/scenario-calendar-append-20260704-044302.json`。
 
 ### 完了条件
 
@@ -347,14 +353,14 @@ STT final を待たない会話に近づける。
 - [x] partial STT observation を DB に保存する。
 - [x] stable prefix を scheduler input に渡す。
 - [x] partial の saturation が高い場合に speech-order を出せるようにする。
-- [ ] final STT が後からずれた場合、新 speech-order で上書きする。
+- [x] final STT が後からずれた場合、新 speech-order で上書きする。
 - [x] 「ただ」「でも」「というか」などの意味変化で replace / suppress できるようにする。
 - [x] offline replay / fake partial stream test を追加する。
 
 ### 完了条件
 
 - [x] final STT 前に speech-order を出す path がある。
-- [ ] 後続 partial / final の意味変化で上書きできる。
+- [x] 後続 partial / final の意味変化で上書きできる。(2026-07-03 divergent final -> replace_current)
 - [x] false early のログが分析できる。
 
 ## Phase S12: tuning and evaluation loop
@@ -500,7 +506,7 @@ v2 でも同じ `streaming` / `stream_interval_ms` / `stream_min_audio_ms` /
 - [x] `pytest -m unit` の focused test が通る。
 - [x] `ruff check` が通る。
 - [x] 実 E2B endpoint で partial 由来の scheduler `replace_current` が final transcript 前に出る。
-- [ ] first audio がユーザー発話終了前、または終了直後の目標範囲に入る。
+- [x] first audio がユーザー発話終了前、または終了直後の目標範囲に入る。
 
 ## 2026-06-18 セッション21 進捗追記
 
@@ -529,6 +535,24 @@ QuickTime などで録音した音声ファイルを 16kHz mono PCM WAV に変�
 clean hot-path で `_reference/test.m4a` を流した artifact `logs/say-latency-20260618-161626.json` では、
 final transcript `こんにちは今の気分を教えてくださいませ`、voice-end to first audio 5864.3ms。
 この録音では partial saturation が閾値未満で、早期発話ではなく final 起点になった。
+
+## 2026-07-04 セッション4 進捗追記
+
+G1/S16 の real runtime latency suite が 3 回連続で exit 0 になった。
+未完了 topic partial では full answer ではなく短い acknowledgement (`うん、聞いてるよ。`) を出し、
+final STT の本回答で replace できるようにした。
+`今何時` / `今いつ` 系は LLM に渡さず local system time の direct speech にした。
+`latency_control/reset_conversation` は Tomoko state だけでなく hot-path の VAD / streaming STT /
+active trace も reset する。
+
+Artifacts:
+- `logs/latency-suite-20260704-015746.{json,md}`:
+  partial-origin 2/3、all p50 447.9ms / p95 1236.2ms、
+  final-origin 1323.7ms、partial-origin p50 384.6ms。
+- `logs/latency-suite-20260704-015947.{json,md}`:
+  partial-origin 2/3、final-origin 1316.3ms、partial-origin p50 372.9ms。
+- `logs/latency-suite-20260704-020002.{json,md}`:
+  partial-origin 2/3、final-origin 1320.7ms、partial-origin p50 375.9ms。
 
 ## 2026-06-18 セッション23 進捗追記
 
@@ -669,3 +693,85 @@ internal WebSocket を制御線の origin にする。DB は Tomoko process 側�
 - [x] unit test で `turn_materials -> stt_observation -> speech_order` の bidirectional WS contract が通る。
 - [x] fake `/ws` smoke で hot-path と Tomoko realtime process を別 process にして会話が成立する。
 - [x] `_docs/latency.md` に DB split との latency 比較を残す。
+
+## 2026-07-04 セッション5 Phase S22: AttentionMode threshold profile
+
+task.md Phase 6.5 の「会話と聞き取りの自然遷移」は、新しい会話状態機械を
+hot-path や client に増やさず、tomoko-process が所有する threshold profile として扱う。
+
+呼びかけ(wake)で `conversation` profile に入り、長い無音 gap または
+「もういいよ」系 stop intent で `ambient` profile に戻る。
+`ambient` profile では低 semantic saturation の独り言を suppress し、
+再び wake cue が来た時だけ `conversation` profile に戻す。
+
+hot-path は `attention_mode` を判断しない。
+tomoko-process が `score_breakdown` に `attention_mode_conversation` /
+`attention_mode_ambient` / `attention_ambient_min_saturation` を載せ、
+hot-path は従来通り `speech_order` / `cancel_order` を物理実行する。
+
+### 実装手順
+
+- [x] `TomokoConversationCore` に `attention_mode` を置き、wake cue で conversation、
+      idle silence で ambient へ遷移させる。
+- [x] stop intent は STOP order を出した上で ambient profile に戻す。
+- [x] ambient profile では wake ではない低 saturation 発話を suppress する。
+- [x] scripted STT observation の `recommended_silence_ms` を turn materials の
+      silence として扱い、replay で idle gap を決定論的に再現できるようにする。
+- [x] unit test で idle suppress / wake recovery / stop intent ambient return を固定する。
+- [x] replay scenario で wake -> response -> long silence -> low-saturation monologue suppress
+      -> wake recovery を固定する。
+
+### 完了条件
+
+- [x] `uv run pytest -m unit tests/unit/test_v2_speech_order_flow.py::test_attention_mode_idle_suppresses_low_saturation_until_wake tests/unit/test_v2_speech_order_flow.py::test_attention_mode_stop_intent_returns_to_ambient -q`
+      が 2 passed。
+- [x] `make v2-scenario-replay SCENARIO=attention-mode-idle-wake` が exit 0。
+      artifact は `logs/scenario-attention-mode-idle-wake-20260704-034352.json`。
+- [x] `make v2-scenario-suite` が AttentionMode scenario を含めて exit 0。
+
+## 2026-07-04 セッション5 Phase S23: regression autopilot and live operation guard
+
+Step 9 は、ここまでの v2 会話・割り込み・周辺プロセス・AttentionMode を
+一回で戻せる運用ゲートとして固定する。
+起動時に internal WS の既定 port 8765 を他プロセスが掴んでいる場合は、
+uvicorn の曖昧な bind failure ではなく、listen 元と
+`TOMOKO_INTERNAL_WS_PORT` の逃がし方を明示して止める。
+
+autopilot は always-on の unit / integration / fake replay と、
+runtime が既に立っている場合だけ実走できる real overlap / real calendar append /
+real latency を同じ artifact に残す。
+LLM-as-judge は自動 gate ではなく、直近シナリオ transcript を 31B に渡し、
+重複発話・取りこぼし・不自然な割り込みの調整材料を JSONL に残す観測レイヤとする。
+
+### 実装手順
+
+- [x] `server/runtime_ports.py` に TCP port guard を追加し、
+      free / occupied port と lsof listener parsing を unit test で固定する。
+- [x] `server.runtime guard-internal-ws-port` を追加し、
+      `make v2-tomoko` の uvicorn 起動前に 8765 を検査する。
+- [x] `scripts/v2_autopilot.py` と `make autopilot` を追加し、
+      `make check` / `make test-integration` / fake scenario suite /
+      runtime ready 時の real overlap / real calendar append / latency suite を連続実行する。
+- [x] `scripts/v2_llm_judge.py` と `make v2-llm-judge` を追加し、
+      直近 scenario artifact の transcript を 31B に渡して JSONL に保存する。
+- [x] 実 runtime latency で no-audio になった request-like final と、
+      Apple Speech の表記揺れ partial を regression test にして、
+      AttentionMode request cues / partial acknowledgement topic cues に反映する。
+- [x] `f.md` / `LOG.md` / `MEMORY.md` / `_docs/latency.md` に実測結果を追記する。
+
+### 完了条件
+
+- [x] `make autopilot` が exit 0。
+      artifact は `logs/autopilot-20260704-044545.json`。
+      内訳は `make check` 236 passed / 3 deselected、
+      `make test-integration` 3 passed / 236 deselected、
+      fake `make v2-scenario-suite` PASS、real overlap replace/stop PASS、
+      real calendar append PASS、
+      `make v2-latency-suite LATENCY_SUITE_COUNT=10 LATENCY_SUITE_REPEATS=3` PASS。
+- [x] full latency suite で `runs_no_audio=0`、
+      final-origin p50 1339.7ms / p95 1343.2ms、
+      partial-origin p50 -163.8ms。
+      artifact は `logs/latency-suite-20260704-044312.json` / `.md`。
+- [x] `make v2-llm-judge` が exit 0。
+      最新は `logs/scenario-calendar-append-20260704-044302.json` を judge し、
+      `logs/llm-judge.jsonl` に naturalness 1.0、duplicate/missed/awkward 0 を保存。

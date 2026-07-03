@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
 from collections.abc import Callable
@@ -13,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from server.audio.stt import (
     AppleSpeechStreamingBackend,
+    ScriptedStreamingSttBackend,
     StaticStreamingSttBackend,
     StreamingSttEvent,
 )
@@ -45,12 +47,15 @@ from server.hot_path.turn_materials import (
 from server.hot_path.ws_control import create_remote_ws_conversation_core
 from server.shared.db import default_dsn
 from server.shared.models import (
+    AudioChunkOut,
     AudioSpeechSegment,
     CancelPolicy,
     ModelOutputEvent,
     PromptRequest,
     PromptScope,
+    SpeechOrder,
 )
+from server.tomoko.calendar import fake_calendar_provider_from_env_payload
 from server.tomoko.conversation import TomokoConversationCore
 from server.tomoko.main import TomokoProcessCore
 from server.tomoko.prompt import PromptBuilderV2, prompt_cache_shape
@@ -78,7 +83,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     if isinstance(conversation, HotPathDbSplitConversation):
         await conversation.warm_connections()
     result_queue: asyncio.Queue[HotPathConversationResult] = asyncio.Queue()
-    result_sender = asyncio.create_task(_send_audio_result_queue(websocket, result_queue))
+    result_sender = asyncio.create_task(
+        _send_audio_result_queue(websocket, result_queue, conversation)
+    )
     turn_materials = TurnMaterialAggregator(
         window_ms=int(os.environ.get("TOMOKO_TURN_SIGNAL_WINDOW_MS", "200"))
     )
@@ -169,6 +176,42 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         encode_server_event("audio_control_ack", command="stop")
                     )
                     continue
+                if (
+                    not isinstance(event, bytes)
+                    and event.event_type == "latency_control"
+                    and event.payload.get("command") == "reset_conversation"
+                ):
+                    await _reset_conversation_state(conversation)
+                    await websocket.send_text(
+                        encode_server_event(
+                            "latency_control_ack",
+                            command="reset_conversation",
+                        )
+                    )
+                    continue
+                if (
+                    not isinstance(event, bytes)
+                    and event.event_type == "latency_control"
+                    and event.payload.get("command") == "set_fake_calendar"
+                ):
+                    calendar_items = await _set_fake_calendar_fixture(
+                        conversation,
+                        event.payload.get("items", []),
+                    )
+                    await websocket.send_text(
+                        encode_server_event(
+                            "latency_control_ack",
+                            command="set_fake_calendar",
+                            calendar_items=calendar_items,
+                        )
+                    )
+                    continue
+                if not isinstance(event, bytes) and event.event_type == "initiative_tick":
+                    queued = await _run_initiative_tick(conversation, result_queue)
+                    await websocket.send_text(
+                        encode_server_event("initiative_tick_ack", queued=queued)
+                    )
+                    continue
                 if not isinstance(event, bytes) and event.event_type in PROMPT_EVENT_TYPES:
                     await _run_prompt(websocket, _prompt_request_from_event(event.payload))
     except WebSocketDisconnect:
@@ -193,6 +236,65 @@ def _stop_conversation_playback(conversation: object) -> None:
         return
     speech_executor.stop_playback(reason="ui_stop")
     _console_event("audio_control_stop", stopped=True)
+
+
+async def _reset_conversation_state(conversation: object) -> None:
+    _stop_conversation_playback(conversation)
+    runtime_reset = getattr(conversation, "reset_runtime_state", None)
+    if runtime_reset is not None:
+        runtime_reset()
+        _console_event("latency_control_runtime_reset", conversation=type(conversation).__name__)
+    core = getattr(conversation, "conversation_core", None)
+    reset = getattr(core, "reset_conversation", None)
+    if reset is None:
+        _console_event(
+            "latency_control_reset_skipped",
+            core=type(core).__name__ if core is not None else None,
+        )
+        return
+    await reset()
+    _console_event("latency_control_reset", core=type(core).__name__)
+
+
+async def _set_fake_calendar_fixture(
+    conversation: object,
+    items: object,
+) -> int:
+    payload = list(items) if isinstance(items, list) else []
+    core = getattr(conversation, "conversation_core", None)
+    set_fixture = getattr(core, "set_scenario_fixture", None)
+    if set_fixture is not None:
+        ack = await set_fixture(fake_calendar=payload)
+        return int(ack.get("calendar_items", 0))
+    update_provider = getattr(core, "update_calendar_items_provider", None)
+    if update_provider is None:
+        _console_event("scenario_calendar_fixture_skipped", core=type(core).__name__)
+        return 0
+    provider = fake_calendar_provider_from_env_payload(payload)
+    update_provider(provider)
+    calendar_items = len(provider())
+    _console_event("scenario_calendar_fixture", calendar_items=calendar_items)
+    return calendar_items
+
+
+async def _run_initiative_tick(
+    conversation: HotPathAudioConversation | HotPathDbSplitConversation,
+    result_queue: asyncio.Queue[HotPathConversationResult],
+) -> bool:
+    process_tick = getattr(conversation, "process_initiative_tick", None)
+    if process_tick is None:
+        _console_event("initiative_tick_skipped", reason="missing_process_method")
+        return False
+    result = await process_tick()
+    if result is None:
+        _console_event("initiative_tick_skipped", reason="no_result")
+        return False
+    await result_queue.put(result)
+    _console_event(
+        "initiative_tick_queued",
+        has_speech_order=result.speech_order is not None,
+    )
+    return True
 
 
 class AudioPartialLane:
@@ -323,11 +425,16 @@ class AudioFinalLane:
 async def _send_audio_result_queue(
     websocket: WebSocket,
     result_queue: asyncio.Queue[HotPathConversationResult],
+    conversation: HotPathAudioConversation | HotPathDbSplitConversation,
 ) -> None:
     while True:
         result = await result_queue.get()
         try:
-            await _send_audio_conversation_result(websocket, result)
+            await _send_audio_conversation_result(
+                websocket,
+                result,
+                getattr(conversation, "speech_executor", None),
+            )
         finally:
             result_queue.task_done()
 
@@ -335,7 +442,32 @@ async def _send_audio_result_queue(
 async def _send_audio_conversation_result(
     websocket: WebSocket,
     result: HotPathConversationResult,
+    speech_executor: SpeechOrderExecutor | None = None,
 ) -> None:
+    if result.stage_timings_ms:
+        origin = (
+            "partial"
+            if result.observations and not result.observations[0].is_final
+            else "final"
+        )
+        trace_id = str(result.observations[0].trace_id) if result.observations else None
+        rounded_timings = {
+            key: round(value, 3) for key, value in result.stage_timings_ms.items()
+        }
+        _console_event(
+            "latency_stage",
+            origin=origin,
+            trace_id=trace_id,
+            stage_timings_ms=rounded_timings,
+        )
+        await websocket.send_text(
+            encode_server_event(
+                "latency_stage",
+                origin=origin,
+                trace_id=trace_id,
+                stage_timings_ms=rounded_timings,
+            )
+        )
     for observation in result.observations:
         _console_event(
             "stt_observation",
@@ -397,18 +529,44 @@ async def _send_audio_conversation_result(
                 priority=result.speech_order.priority,
             )
         )
+        for followup in result.followup_orders:
+            _console_event(
+                "speech_order",
+                order_id=str(followup.id),
+                mode=followup.mode.value,
+            )
+            await websocket.send_text(
+                encode_server_event(
+                    "speech_order",
+                    order_id=str(followup.id),
+                    text=followup.text,
+                    mode=followup.mode.value,
+                    reason=followup.reason,
+                    priority=followup.priority,
+                )
+            )
     if result.prompt_request is None:
         if result.execution_result.audio_chunks:
             await _send_backchannel_execution_result(websocket, result.execution_result)
         return
-    if result.speech_order is not None and not result.execution_result.audio_chunks:
+    if (
+        result.speech_order is not None
+        and not result.execution_result.audio_chunks
+        and not result.deferred_tts_orders
+    ):
         _console_event(
             "prompt_result_deferred",
             request_id=str(result.prompt_request.id),
             order_id=str(result.speech_order.id),
         )
         return
-    await _send_prompt_execution_result(websocket, result.prompt_request, result.execution_result)
+    await _send_prompt_execution_result(
+        websocket,
+        result.prompt_request,
+        result.execution_result,
+        deferred_tts_orders=result.deferred_tts_orders,
+        speech_executor=speech_executor,
+    )
 
 
 async def _run_prompt(websocket: WebSocket, request: PromptRequest) -> None:
@@ -439,6 +597,9 @@ async def _send_prompt_execution_result(
     websocket: WebSocket,
     request: PromptRequest,
     result: PromptExecutionResult,
+    *,
+    deferred_tts_orders: list[SpeechOrder] | None = None,
+    speech_executor: SpeechOrderExecutor | None = None,
 ) -> None:
     await websocket.send_text(
         encode_server_event(
@@ -482,6 +643,50 @@ async def _send_prompt_execution_result(
         (event.text for event in result.model_events if event.event_kind == "complete"),
         "",
     )
+    if deferred_tts_orders:
+        if speech_executor is None:
+            raise RuntimeError("deferred TTS orders require a speech executor")
+        streamed_chunks: list[AudioChunkOut] = []
+        for order in deferred_tts_orders:
+            execution = await speech_executor.execute_stream(
+                order,
+                on_chunk=lambda chunk: _send_streamed_audio_chunk(websocket, chunk),
+            )
+            streamed_chunks.extend(execution.audio_chunks)
+            if execution.audio_chunks and execution.audio_chunks[-1].is_final:
+                await websocket.send_text(
+                    encode_server_event(
+                        "audio_complete",
+                        request_id=str(execution.audio_chunks[-1].request_id),
+                        sample_rate=execution.audio_chunks[-1].sample_rate,
+                        content_type=execution.audio_chunks[-1].content_type,
+                    )
+                )
+        audio_chunks = [*result.audio_chunks, *streamed_chunks]
+        if audio_chunks:
+            _console_event(
+                "tts_result",
+                request_id=str(request.id),
+                text=tts_text,
+                chunks=len(audio_chunks),
+                bytes=sum(len(chunk.chunk) for chunk in audio_chunks),
+            )
+            await websocket.send_text(
+                encode_server_event(
+                    "tts_result",
+                    request_id=str(request.id),
+                    text=tts_text,
+                    audio_chunks=len(audio_chunks),
+                    audio_bytes=sum(len(chunk.chunk) for chunk in audio_chunks),
+                    content_type=audio_chunks[-1].content_type,
+                )
+            )
+        await websocket.send_text(
+            encode_server_event("prompt_complete", request_id=str(request.id))
+        )
+        _console_event("prompt_complete", request_id=str(request.id))
+        return
+
     if result.audio_chunks:
         _console_event(
             "tts_result",
@@ -521,6 +726,16 @@ async def _send_prompt_execution_result(
 
     await websocket.send_text(encode_server_event("prompt_complete", request_id=str(request.id)))
     _console_event("prompt_complete", request_id=str(request.id))
+
+
+async def _send_streamed_audio_chunk(websocket: WebSocket, chunk: AudioChunkOut) -> None:
+    _console_event(
+        "audio_chunk",
+        request_id=str(chunk.request_id),
+        bytes=len(chunk.chunk),
+        final=chunk.is_final,
+    )
+    await websocket.send_bytes(chunk.chunk)
 
 
 async def _send_backchannel_execution_result(
@@ -629,15 +844,7 @@ def _audio_conversation() -> HotPathAudioConversation | HotPathDbSplitConversati
             conversation = HotPathDbSplitConversation(
                 dsn=default_dsn(),
                 vad=VADProcessor(),
-                stt_backend=StaticStreamingSttBackend(
-                    [
-                        StreamingSttEvent(
-                            os.environ.get("TOMOKO_V2_FAKE_TRANSCRIPT", "トモコ、返事して"),
-                            True,
-                            1.0,
-                        )
-                    ]
-                )
+                stt_backend=_fake_stt_backend()
                 if _fake_runtime_enabled()
                 else AppleSpeechStreamingBackend(),
                 speech_executor=SpeechOrderExecutor(tts_backend, protect_inflight_replace=True),
@@ -648,19 +855,12 @@ def _audio_conversation() -> HotPathAudioConversation | HotPathDbSplitConversati
                 tts_backend = StaticWavTtsBackend([b"RIFFxxxxWAVEdata"])
             conversation = HotPathAudioConversation(
                 vad=VADProcessor(),
-                stt_backend=StaticStreamingSttBackend(
-                    [
-                        StreamingSttEvent(
-                            os.environ.get("TOMOKO_V2_FAKE_TRANSCRIPT", "トモコ、返事して"),
-                            True,
-                            1.0,
-                        )
-                    ]
-                )
+                stt_backend=_fake_stt_backend()
                 if _fake_runtime_enabled()
                 else AppleSpeechStreamingBackend(),
                 conversation_core=create_remote_ws_conversation_core(),
                 speech_executor=SpeechOrderExecutor(tts_backend, protect_inflight_replace=True),
+                defer_tts_to_sender=True,
             )
         elif _fake_runtime_enabled():
             chat_backend = StaticChatBackend(
@@ -669,15 +869,7 @@ def _audio_conversation() -> HotPathAudioConversation | HotPathDbSplitConversati
             tts_backend = StaticWavTtsBackend([b"RIFFxxxxWAVEdata"])
             conversation = HotPathAudioConversation(
                 vad=VADProcessor(),
-                stt_backend=StaticStreamingSttBackend(
-                    [
-                        StreamingSttEvent(
-                            os.environ.get("TOMOKO_V2_FAKE_TRANSCRIPT", "トモコ、返事して"),
-                            True,
-                            1.0,
-                        )
-                    ]
-                ),
+                stt_backend=_fake_stt_backend(),
                 conversation_core=TomokoConversationCore(
                     session_model=SessionBoundaryModel(),
                     saturation_judge=SemanticSaturationJudge(),
@@ -687,9 +879,11 @@ def _audio_conversation() -> HotPathAudioConversation | HotPathDbSplitConversati
                     prompt_builder=PromptBuilderV2(),
                 ),
                 speech_executor=SpeechOrderExecutor(tts_backend, protect_inflight_replace=True),
+                defer_tts_to_sender=True,
             )
         else:
             conversation = create_default_audio_conversation(_prompt_executor())
+            conversation.defer_tts_to_sender = True
         app.state.audio_conversation = conversation
     return conversation
 
@@ -698,12 +892,58 @@ def _fake_runtime_enabled() -> bool:
     return os.environ.get("TOMOKO_V2_FAKE_RUNTIME") == "1"
 
 
+def _fake_stt_backend() -> StaticStreamingSttBackend | ScriptedStreamingSttBackend:
+    raw = os.environ.get("TOMOKO_V2_FAKE_STT_EVENTS")
+    if raw:
+        payload = json.loads(raw)
+        groups = payload if payload and isinstance(payload[0], list) else [payload]
+        utterances = [
+            [
+                StreamingSttEvent(
+                    str(item["text"]),
+                    bool(item.get("is_final", False)),
+                    float(item.get("stability", 1.0)),
+                    p_yielding=_optional_float(
+                        item.get("p_yielding", item.get("p_turn_yielding"))
+                    ),
+                    recommended_silence_ms=_optional_int(
+                        item.get("recommended_silence_ms")
+                    ),
+                )
+                for item in group
+            ]
+            for group in groups
+        ]
+        return ScriptedStreamingSttBackend(utterances)
+    return StaticStreamingSttBackend(
+        [
+            StreamingSttEvent(
+                os.environ.get("TOMOKO_V2_FAKE_TRANSCRIPT", "トモコ、返事して"),
+                True,
+                1.0,
+            )
+        ]
+    )
+
+
 def _db_split_enabled() -> bool:
     return os.environ.get("TOMOKO_V2_DB_SPLIT") == "1"
 
 
 def _ws_split_enabled() -> bool:
     return os.environ.get("TOMOKO_V2_WS_SPLIT", "0") == "1"
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    return int(value)
 
 
 def _fake_prompt_executor() -> PromptExecutor:

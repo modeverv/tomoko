@@ -8,15 +8,20 @@ import pytest
 from server.shared.logging import JsonlLogger
 from server.shared.models import (
     CancelPolicy,
+    CandidateLifecycle,
+    CandidateRecord,
+    ConversationHistoryItem,
     DialogueTurnPressure,
     DurableUtterance,
     LlmFireDecision,
     LlmFireGateInput,
     MotivationPressure,
     NaturalSpeechPressure,
+    PersonalityMaterials,
     PreparedSpeechCandidate,
     PromptRequest,
     PromptScope,
+    SessionSummary,
     SpeechEmissionDecision,
     SpeechEmissionGateInput,
     SpeechOrder,
@@ -26,21 +31,33 @@ from server.shared.models import (
     SpeechSchedulerOutput,
     SpeechSchedulerThresholds,
     TurnMaterials,
+    WorldMaterials,
     WorldPressure,
 )
 from server.tomoko.db_bridge import (
+    candidate_from_row,
     close_conversation_session_sql,
     insert_audio_output_event_sql,
+    insert_candidate_sql,
     insert_conversation_session_sql,
     insert_prompt_request_for_order_sql,
     insert_prompt_request_sql,
     insert_scheduler_decision_sql,
+    insert_session_summary_sql,
     insert_speech_order_sql,
+    insert_summary_embedding_sql,
     insert_utterance_sql,
+    load_active_candidates,
     notify_speech_order_sql,
+    select_active_candidates_sql,
     update_conversation_session_activity_sql,
 )
 from server.tomoko.gates import LlmFireGate, SpeechEmissionGate
+from server.tomoko.pressures import (
+    DialogueTurnPressureModel,
+    MotivationPressureModel,
+    WorldPressureModel,
+)
 from server.tomoko.scheduler import SpeechScheduler, detect_stop_intent
 from server.tomoko.semantic import (
     DEFAULT_DISTILLED_SATURATION_MODEL_PATH,
@@ -227,6 +244,46 @@ def test_llm_fire_gate_synthesizes_dialogue_pressure_for_fire() -> None:
     assert "pressure synthesis" in decision.reason
 
 
+def test_dialogue_turn_pressure_tracks_vap_yielding_separately_from_silence() -> None:
+    pressure = DialogueTurnPressureModel().calculate(
+        turn_materials=TurnMaterials(
+            window_ms=200,
+            user_speaking=False,
+            speech_probability=0.0,
+            p_yielding=0.92,
+            silence_ms=120,
+            playback_active=False,
+            stt_partial="今日の予定",
+        ),
+        semantic_saturation=0.5,
+        stable_prefix="今日の予定",
+    )
+
+    assert pressure.yielding_opportunity == pytest.approx(0.92)
+    assert pressure.silence_opportunity == pytest.approx(0.1)
+    assert pressure.turn_opportunity == pytest.approx(0.92)
+
+
+def test_dialogue_turn_pressure_keeps_silence_fallback_visible() -> None:
+    pressure = DialogueTurnPressureModel().calculate(
+        turn_materials=TurnMaterials(
+            window_ms=200,
+            user_speaking=False,
+            speech_probability=0.0,
+            p_yielding=None,
+            silence_ms=900,
+            playback_active=False,
+            stt_partial="今日の予定",
+        ),
+        semantic_saturation=0.5,
+        stable_prefix="今日の予定",
+    )
+
+    assert pressure.yielding_opportunity == pytest.approx(0.0)
+    assert pressure.silence_opportunity == pytest.approx(0.75)
+    assert pressure.turn_opportunity == pytest.approx(0.75)
+
+
 def test_llm_fire_gate_synthesizes_motivation_pressure_without_stt() -> None:
     materials = TurnMaterials(
         window_ms=200,
@@ -249,6 +306,153 @@ def test_llm_fire_gate_synthesizes_motivation_pressure_without_stt() -> None:
 
     assert decision.decision == LlmFireDecision.FIRE
     assert decision.score >= 0.55
+
+
+def test_motivation_pressure_model_turns_heat_and_topic_into_threshold_shift() -> None:
+    model = MotivationPressureModel()
+    turn = TurnMaterials(
+        window_ms=200,
+        user_speaking=True,
+        speech_probability=0.25,
+        p_yielding=0.8,
+        silence_ms=120,
+        playback_active=False,
+        stt_partial="その予定の話なんだけど",
+    )
+    low = model.calculate(
+        turn_materials=turn,
+        personality_materials=PersonalityMaterials(
+            talkativeness=0.2,
+            curiosity=0.2,
+            restraint=0.8,
+            interrupt_tolerance=0.1,
+        ),
+        recent_history=[],
+        current_text="その予定の話なんだけど",
+    )
+    high = model.calculate(
+        turn_materials=turn,
+        personality_materials=PersonalityMaterials(
+            talkativeness=0.9,
+            curiosity=0.9,
+            restraint=0.1,
+            interrupt_tolerance=0.8,
+        ),
+        recent_history=[
+            ConversationHistoryItem(speaker="user", text="今日の予定の話をしよう"),
+            ConversationHistoryItem(speaker="tomoko", text="予定、気になってる"),
+            ConversationHistoryItem(speaker="user", text="その予定なんだけど"),
+            ConversationHistoryItem(speaker="tomoko", text="続き聞きたい"),
+        ],
+        current_text="その予定の話なんだけど",
+    )
+
+    assert high.conversation_heat > low.conversation_heat
+    assert high.topic_continuity > low.topic_continuity
+    assert high.threshold_shift > low.threshold_shift
+    assert high.threshold_shift > 0.1
+
+
+def test_world_pressure_model_suppresses_speaking_when_user_is_absent() -> None:
+    model = WorldPressureModel()
+    turn = TurnMaterials(
+        window_ms=200,
+        user_speaking=False,
+        speech_probability=0.0,
+        p_yielding=0.9,
+        silence_ms=3000,
+        playback_active=False,
+    )
+    present = model.calculate(
+        turn_materials=turn,
+        world_materials=WorldMaterials(
+            calendar_urgency=0.9,
+            external_result_importance=0.7,
+            user_present=True,
+        ),
+        personality_materials=PersonalityMaterials(restraint=0.1),
+    )
+    absent = model.calculate(
+        turn_materials=turn,
+        world_materials=WorldMaterials(
+            calendar_urgency=0.9,
+            external_result_importance=0.7,
+            user_present=False,
+        ),
+        personality_materials=PersonalityMaterials(restraint=0.1),
+    )
+
+    assert present.urgency > 0.0
+    assert present.deliverability > 0.0
+    assert present.user_presence == pytest.approx(1.0)
+    assert absent.importance == pytest.approx(0.0)
+    assert absent.urgency == pytest.approx(0.0)
+    assert absent.deliverability == pytest.approx(0.0)
+    assert absent.user_presence == pytest.approx(0.0)
+    assert absent.user_absence == pytest.approx(1.0)
+
+
+def test_world_pressure_model_includes_candidate_pressure() -> None:
+    model = WorldPressureModel()
+    turn = TurnMaterials(
+        window_ms=200,
+        user_speaking=False,
+        speech_probability=0.0,
+        p_yielding=0.8,
+        silence_ms=2400,
+        playback_active=False,
+    )
+
+    pressure = model.calculate(
+        turn_materials=turn,
+        world_materials=WorldMaterials(candidate_pressure=0.85),
+        personality_materials=PersonalityMaterials(curiosity=0.7, restraint=0.1),
+    )
+
+    assert pressure.importance >= 0.85
+    assert pressure.relevance >= 0.85
+    assert pressure.candidate_pressure == pytest.approx(0.85)
+
+
+def test_llm_fire_gate_lowers_fire_threshold_when_motivation_is_high() -> None:
+    materials = TurnMaterials(
+        window_ms=200,
+        user_speaking=False,
+        speech_probability=0.0,
+        p_yielding=0.4,
+        silence_ms=200,
+        playback_active=False,
+        stt_partial="それは違う気が",
+    )
+    base_input = LlmFireGateInput(
+        turn_materials=materials,
+        dialogue_pressure=DialogueTurnPressure(
+            reply_readiness=0.56,
+            turn_opportunity=0.25,
+            semantic_saturation=0.55,
+            text_presence=1.0,
+        ),
+        motivation_pressure=MotivationPressure(
+            initiative_desire=0.25,
+            threshold_shift=0.0,
+        ),
+    )
+    low = LlmFireGate().decide(base_input)
+    high = LlmFireGate().decide(
+        LlmFireGateInput(
+            turn_materials=materials,
+            dialogue_pressure=base_input.dialogue_pressure,
+            motivation_pressure=MotivationPressure(
+                initiative_desire=0.25,
+                threshold_shift=0.14,
+            ),
+        )
+    )
+
+    assert low.decision == LlmFireDecision.DO_NOT_FIRE
+    assert high.decision == LlmFireDecision.FIRE
+    assert high.score_breakdown["motivation_threshold_shift"] == pytest.approx(0.14)
+    assert "motivation threshold shift" in high.reason
 
 
 def test_speech_emission_gate_uses_materials_and_pressure_for_barge_in_risk() -> None:
@@ -317,6 +521,49 @@ def test_speech_emission_gate_uses_materials_and_pressure_for_barge_in_risk() ->
     assert hold.score_breakdown["interruption_risk"] < 0
     assert emit.decision == SpeechEmissionDecision.REPLACE_CURRENT
     assert emit.score_breakdown["motivation"] > 0
+
+
+def test_speech_emission_gate_lowers_emit_threshold_when_motivation_is_high() -> None:
+    materials = TurnMaterials(
+        window_ms=200,
+        user_speaking=False,
+        speech_probability=0.0,
+        p_yielding=0.5,
+        silence_ms=200,
+        playback_active=False,
+    )
+    candidate = PreparedSpeechCandidate(
+        text="いや、それってさ。",
+        priority=0.6,
+        freshness=0.5,
+        semantic_confidence=0.4,
+    )
+    base = SpeechEmissionGateInput(
+        candidate=candidate,
+        turn_materials=materials,
+        dialogue_pressure=DialogueTurnPressure(turn_opportunity=0.1),
+        motivation_pressure=MotivationPressure(
+            initiative_desire=0.2,
+            threshold_shift=0.0,
+        ),
+    )
+    low = SpeechEmissionGate().decide(base)
+    high = SpeechEmissionGate().decide(
+        SpeechEmissionGateInput(
+            candidate=candidate,
+            turn_materials=materials,
+            dialogue_pressure=base.dialogue_pressure,
+            motivation_pressure=MotivationPressure(
+                initiative_desire=0.2,
+                threshold_shift=0.14,
+            ),
+        )
+    )
+
+    assert low.decision == SpeechEmissionDecision.SUPPRESS
+    assert high.decision == SpeechEmissionDecision.EMIT_NOW
+    assert high.score_breakdown["motivation_threshold_shift"] == pytest.approx(0.14)
+    assert "motivation threshold shift" in high.reason
 
 
 def test_speech_scheduler_suppresses_low_saturation_partial_start() -> None:
@@ -488,6 +735,145 @@ def test_prompt_request_sql_does_not_reference_unpersisted_snapshot_fk() -> None
     assert request.context_snapshot_id not in sql.params
     assert request.utterance_id not in sql.params
     assert request.candidate_id not in sql.params
+
+
+def test_session_summary_db_bridge_writes_summary_and_embedding() -> None:
+    session_id = uuid4()
+    summary = SessionSummary(
+        session_id=session_id,
+        keyword="予定",
+        conclusion="予定の相談をしていた",
+        embedding=(0.1, 0.2, 0.3),
+    )
+
+    summary_sql = insert_session_summary_sql(summary)
+    embedding_sql = insert_summary_embedding_sql(summary)
+
+    assert "v2_session_summaries" in summary_sql.query
+    assert "summary_text" in summary_sql.query
+    assert "予定: 予定の相談をしていた" in summary_sql.params
+    assert "v2_summary_embeddings" in embedding_sql.query
+    assert summary.id in embedding_sql.params
+    assert [0.1, 0.2, 0.3] in embedding_sql.params
+
+
+def test_candidate_db_bridge_upserts_and_round_trips_row() -> None:
+    record = CandidateRecord(
+        seed_id=uuid4(),
+        source="world",
+        source_key="rain-now",
+        text="いま外は雨が降っている",
+        priority=0.8,
+        urgency=0.6,
+        intrusion=0.1,
+        maturity=1.0,
+        lifecycle=CandidateLifecycle.ACTIVE,
+        context_tags=("weather", "world"),
+        candidate_score=0.9,
+    )
+
+    sql = insert_candidate_sql(record)
+
+    assert "v2_candidates" in sql.query
+    assert "ON CONFLICT (source, source_key) DO UPDATE" in sql.query
+    assert record.id in sql.params
+    assert record.seed_id in sql.params
+    assert ["weather", "world"] in sql.params
+
+    restored = candidate_from_row(
+        {
+            "id": record.id,
+            "seed_id": record.seed_id,
+            "source": record.source,
+            "source_key": record.source_key,
+            "text": record.text,
+            "priority": record.priority,
+            "urgency": record.urgency,
+            "intrusion": record.intrusion,
+            "maturity": record.maturity,
+            "candidate_score": record.candidate_score,
+            "lifecycle": record.lifecycle.value,
+            "context_tags": list(record.context_tags),
+            "expires_at": record.expires_at,
+            "spoken_at": record.spoken_at,
+            "trace_id": record.trace_id,
+            "created_at": record.created_at,
+        }
+    )
+
+    assert restored == record
+
+
+class _CandidateRowsCursor:
+    def __init__(self, rows: list[dict[str, object]]) -> None:
+        self.rows = rows
+
+    async def fetchall(self) -> list[dict[str, object]]:
+        return self.rows
+
+
+class _CandidateRowsConnection:
+    def __init__(self, rows: list[dict[str, object]]) -> None:
+        self.rows = rows
+        self.calls: list[tuple[str, tuple[object, ...]]] = []
+
+    async def execute(
+        self,
+        query: str,
+        params: tuple[object, ...],
+    ) -> _CandidateRowsCursor:
+        self.calls.append((query, params))
+        return _CandidateRowsCursor(self.rows)
+
+
+@pytest.mark.asyncio
+async def test_active_candidate_db_bridge_reads_ordered_rows() -> None:
+    record = CandidateRecord(
+        seed_id=uuid4(),
+        source="world",
+        source_key="rain-now",
+        text="いま外は雨が降っている",
+        priority=0.8,
+        urgency=0.6,
+        intrusion=0.1,
+        maturity=1.0,
+        lifecycle=CandidateLifecycle.ACTIVE,
+        context_tags=("weather", "world"),
+        candidate_score=0.9,
+    )
+    command = select_active_candidates_sql(limit=3)
+    conn = _CandidateRowsConnection(
+        [
+            {
+                "id": record.id,
+                "seed_id": record.seed_id,
+                "source": record.source,
+                "source_key": record.source_key,
+                "text": record.text,
+                "priority": record.priority,
+                "urgency": record.urgency,
+                "intrusion": record.intrusion,
+                "maturity": record.maturity,
+                "candidate_score": record.candidate_score,
+                "lifecycle": record.lifecycle.value,
+                "context_tags": list(record.context_tags),
+                "expires_at": record.expires_at,
+                "spoken_at": record.spoken_at,
+                "trace_id": record.trace_id,
+                "created_at": record.created_at,
+            }
+        ]
+    )
+
+    loaded = await load_active_candidates(conn, limit=3)
+
+    assert "FROM v2_candidates" in command.query
+    assert "lifecycle = %s" in command.query
+    assert "expires_at IS NULL OR expires_at > now()" in command.query
+    assert "ORDER BY candidate_score DESC" in command.query
+    assert command.params == (CandidateLifecycle.ACTIVE.value, 3)
+    assert conn.calls[0] == (command.query, command.params)
+    assert loaded == [record]
 
 
 def test_conversation_session_and_utterance_db_bridge_sql() -> None:

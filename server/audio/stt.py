@@ -27,6 +27,17 @@ DEFAULT_CONTEXTUAL_STRINGS = (
     "智子",
     "朋子",
     "tomoko",
+    "予定",
+    "会議",
+    "今週",
+    "今日",
+    "明日",
+    "天気",
+    "昼ごはん",
+    "優先順位",
+    "空き時間",
+    "締め切り",
+    "リマインド",
 )
 
 
@@ -250,6 +261,50 @@ class StaticStreamingSttBackend:
         for index, event in enumerate(self._events):
             if not event.is_final:
                 return self._events.pop(index)
+        return None
+
+    def reset_stream(self) -> None:
+        return None
+
+
+class ScriptedStreamingSttBackend:
+    """Fake STT that replays scripted utterances one VAD segment at a time.
+
+    Each utterance is a list of events: partials pop one per processed audio
+    chunk while that utterance is current, and its finals are yielded when the
+    segment closes, after which the next utterance becomes current.
+    """
+
+    def __init__(self, utterances: list[list[StreamingSttEvent]]) -> None:
+        self._utterances = [list(events) for events in utterances]
+        self._index = 0
+
+    async def transcribe_stream(
+        self,
+        _segment: AudioSpeechSegment,
+    ) -> AsyncIterator[StreamingSttEvent]:
+        if self._index >= len(self._utterances):
+            return
+        events = self._utterances[self._index]
+        self._index += 1
+        for event in events:
+            if event.is_final:
+                yield event
+
+    async def process_stream_chunk(
+        self,
+        _chunk: tuple[float, ...],
+        *,
+        sample_rate: int,
+        started_at_ms: float,
+    ) -> StreamingSttEvent | None:
+        del sample_rate, started_at_ms
+        if self._index >= len(self._utterances):
+            return None
+        events = self._utterances[self._index]
+        for index, event in enumerate(events):
+            if not event.is_final:
+                return events.pop(index)
         return None
 
     def reset_stream(self) -> None:

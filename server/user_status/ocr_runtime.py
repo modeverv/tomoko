@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from shutil import which
 
-from server.shared.models import utc_now
+from server.shared.models import UserStatusObservation, utc_now
 from server.user_status.main import OSMetadata, build_user_status_observation
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -163,6 +163,20 @@ def capture_ocr_observation_once(
         metadata=metadata,
         activity_label=observation.activity_label,
         present=observation.present,
+    )
+
+
+def observation_from_ocr_artifact(
+    path: Path,
+    *,
+    metadata: OSMetadata | None = None,
+    present: bool = True,
+) -> UserStatusObservation:
+    return build_user_status_observation(
+        present=present,
+        ocr_text=ocr_text(path),
+        metadata=metadata or OSMetadata(),
+        artifact_path=str(path),
     )
 
 
