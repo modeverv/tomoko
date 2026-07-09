@@ -4,50 +4,79 @@ const transcriptEl = document.querySelector("#transcript");
 const timelineItemsEl = document.querySelector("#timeline-items");
 const connectButton = document.querySelector("#connect");
 const stopButton = document.querySelector("#stop-audio");
+const inputSelect = document.querySelector("#audio-input");
 const outputSelect = document.querySelector("#audio-output");
+const playbackElement = document.querySelector("#playback-output");
 
 let ws = null;
 let audioContext = null;
+let audioWorkletReady = false;
 let playbackTime = 0;
 let timelineSequence = 0;
 let acceptingAudio = true;
 let playbackGain = null;
+let playbackDestination = null;
+let microphoneStream = null;
+let microphoneSource = null;
+let microphoneNode = null;
+let microphoneKeepAlive = null;
 const REPLACE_FADE_SEC = 0.08;
 const REPLACE_SILENCE_GAP_SEC = 0.15;
 const activeAudioSources = new Set();
 
-async function populateAudioOutputs() {
+async function populateAudioDevices() {
   if (!navigator.mediaDevices?.enumerateDevices) return;
   const devices = await navigator.mediaDevices.enumerateDevices();
-  outputSelect.replaceChildren(
-    ...devices
-      .filter((device) => device.kind === "audiooutput")
-      .map((device) => {
-        const option = document.createElement("option");
-        option.value = device.deviceId;
-        option.textContent = device.label || "Audio output";
-        return option;
-      }),
-  );
+  const inputDevices = devices.filter((device) => device.kind === "audioinput");
+  const outputDevices = devices.filter((device) => device.kind === "audiooutput");
+  updateDeviceSelect(inputSelect, inputDevices, "Default microphone", "Microphone");
+  updateDeviceSelect(outputSelect, outputDevices, "Default speaker", "Speaker");
+}
+
+function updateDeviceSelect(select, devices, defaultLabel, fallbackLabel) {
+  if (!select) return;
+  const previousValue = select.value;
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "";
+  defaultOption.textContent = defaultLabel;
+  const options = devices
+    .filter((device) => device.deviceId && device.deviceId !== "default")
+    .map((device, index) => {
+      const option = document.createElement("option");
+      option.value = device.deviceId;
+      option.textContent = device.label || `${fallbackLabel} ${index + 1}`;
+      return option;
+    });
+  select.replaceChildren(defaultOption, ...options);
+  if ([...select.options].some((option) => option.value === previousValue)) {
+    select.value = previousValue;
+  }
+}
+
+function selectedAudioInputConstraints() {
+  const deviceId = inputSelect?.value || "";
+  if (!deviceId) return { audio: true };
+  return { audio: { deviceId: { exact: deviceId } } };
 }
 
 async function connect() {
+  if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
+  await populateAudioDevices();
+  await ensureAudioContext();
+  await preparePlaybackOutput();
   ws = new WebSocket(`${location.origin.replace("http", "ws")}/ws`);
   ws.binaryType = "arraybuffer";
   ws.addEventListener("open", async () => {
     statusEl.textContent = "connected";
     appendTimelineItem("system", "connected");
     console.log("[tomoko:client] ws_open");
-    audioContext = new AudioContext({ sampleRate: 16000 });
-    await audioContext.audioWorklet.addModule("/client/audio-worklet.js");
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const source = audioContext.createMediaStreamSource(stream);
-    const node = new AudioWorkletNode(audioContext, "tomoko-mic");
-    node.port.onmessage = (event) => {
-      if (ws?.readyState === WebSocket.OPEN) ws.send(event.data);
-    };
-    source.connect(node);
-    console.log("[tomoko:client] mic_stream_started");
+    try {
+      await startMicrophoneCapture();
+    } catch (error) {
+      statusEl.textContent = "microphone error";
+      appendTimelineItem("system", "microphone error");
+      console.log("[tomoko:client] mic_stream_error", error);
+    }
   });
   ws.addEventListener("message", (event) => {
     if (event.data instanceof ArrayBuffer) {
@@ -94,19 +123,99 @@ async function connect() {
     debugEl.textContent = payload.type;
   });
   ws.addEventListener("close", () => {
+    stopMicrophoneCapture();
     statusEl.textContent = "disconnected";
     appendTimelineItem("system", "disconnected");
     console.log("[tomoko:client] ws_close");
   });
 }
 
+async function ensureAudioContext() {
+  if (!audioContext) audioContext = new AudioContext({ sampleRate: 16000 });
+  if (audioContext.state === "suspended") await audioContext.resume();
+  if (!audioWorkletReady) {
+    await audioContext.audioWorklet.addModule("/client/audio-worklet.js");
+    audioWorkletReady = true;
+  }
+  return audioContext;
+}
+
+async function startMicrophoneCapture() {
+  const context = await ensureAudioContext();
+  const nextStream = await navigator.mediaDevices.getUserMedia(selectedAudioInputConstraints());
+  const nextSource = context.createMediaStreamSource(nextStream);
+  const nextNode = new AudioWorkletNode(context, "tomoko-mic");
+  const nextKeepAlive = context.createGain();
+  nextKeepAlive.gain.value = 0;
+  nextNode.port.onmessage = (event) => {
+    if (ws?.readyState === WebSocket.OPEN) ws.send(event.data);
+  };
+  nextSource.connect(nextNode);
+  nextNode.connect(nextKeepAlive).connect(context.destination);
+  stopMicrophoneCapture();
+  microphoneStream = nextStream;
+  microphoneSource = nextSource;
+  microphoneNode = nextNode;
+  microphoneKeepAlive = nextKeepAlive;
+  await populateAudioDevices();
+  console.log("[tomoko:client] mic_stream_started", {
+    deviceId: inputSelect?.value || "default",
+  });
+}
+
+function stopMicrophoneCapture() {
+  if (microphoneNode) {
+    microphoneNode.port.onmessage = null;
+    microphoneNode.disconnect();
+  }
+  microphoneSource?.disconnect();
+  microphoneKeepAlive?.disconnect();
+  microphoneStream?.getTracks().forEach((track) => track.stop());
+  microphoneStream = null;
+  microphoneSource = null;
+  microphoneNode = null;
+  microphoneKeepAlive = null;
+}
+
 function ensurePlaybackGain() {
-  if (!audioContext) audioContext = new AudioContext();
+  if (!audioContext) audioContext = new AudioContext({ sampleRate: 16000 });
   if (!playbackGain) {
     playbackGain = audioContext.createGain();
-    playbackGain.connect(audioContext.destination);
+  }
+  if (!playbackDestination) {
+    playbackDestination = audioContext.createMediaStreamDestination();
+    playbackGain.connect(playbackDestination);
+    playbackElement.srcObject = playbackDestination.stream;
   }
   return playbackGain;
+}
+
+async function preparePlaybackOutput() {
+  ensurePlaybackGain();
+  await applyAudioOutputDevice();
+  try {
+    await playbackElement.play();
+  } catch (error) {
+    console.log("[tomoko:client] playback_element_start_deferred", error);
+  }
+}
+
+async function applyAudioOutputDevice() {
+  if (!playbackElement) return;
+  const deviceId = outputSelect?.value || "";
+  if (!("setSinkId" in playbackElement)) {
+    console.log("[tomoko:client] audio_output_sink_unavailable");
+    return;
+  }
+  try {
+    await playbackElement.setSinkId(deviceId);
+    console.log("[tomoko:client] audio_output_selected", {
+      deviceId: deviceId || "default",
+    });
+  } catch (error) {
+    debugEl.textContent = "audio_output_error";
+    console.log("[tomoko:client] audio_output_select_error", error);
+  }
 }
 
 function fadeOutAndCutPlayback() {
@@ -136,7 +245,7 @@ function fadeOutAndCutPlayback() {
 }
 
 async function playAudioChunk(arrayBuffer) {
-  if (!audioContext) audioContext = new AudioContext();
+  if (!audioContext) audioContext = new AudioContext({ sampleRate: 16000 });
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
   const source = audioContext.createBufferSource();
   source.buffer = audioBuffer;
@@ -174,8 +283,23 @@ stopButton.addEventListener("click", () => {
     ws.send(JSON.stringify({ type: "audio_control", command: "stop" }));
   }
 });
+inputSelect.addEventListener("change", async () => {
+  if (ws?.readyState !== WebSocket.OPEN) return;
+  try {
+    await startMicrophoneCapture();
+  } catch (error) {
+    debugEl.textContent = "audio_input_error";
+    console.log("[tomoko:client] audio_input_select_error", error);
+  }
+});
+outputSelect.addEventListener("change", () => {
+  applyAudioOutputDevice();
+});
+if (navigator.mediaDevices?.addEventListener) {
+  navigator.mediaDevices.addEventListener("devicechange", populateAudioDevices);
+}
 
-populateAudioOutputs();
+populateAudioDevices();
 
 function appendTimelineItem(kind, text, meta = "") {
   const item = document.createElement("li");

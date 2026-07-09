@@ -26,6 +26,21 @@ select {
   min-height: 36px;
 }
 
+.device-control {
+  display: grid;
+  gap: 4px;
+  color: #bdbdbd;
+  font-size: 12px;
+}
+
+.device-control select {
+  min-width: min(240px, 72vw);
+}
+
+#playback-output {
+  display: none;
+}
+
 #transcript {
   min-height: 32px;
   padding: 12px 0;

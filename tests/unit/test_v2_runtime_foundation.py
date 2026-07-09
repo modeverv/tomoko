@@ -676,6 +676,24 @@ def test_client_stop_button_stops_local_playback_and_stale_chunks() -> None:
     assert 'encode_server_event("audio_control_ack", command="stop")' in app_source
 
 
+def test_client_selects_recording_and_playback_devices_separately() -> None:
+    index = Path("client/index.html").read_text(encoding="utf-8")
+    script = Path("client/main.js").read_text(encoding="utf-8")
+
+    assert 'id="audio-input"' in index
+    assert 'id="audio-output"' in index
+    assert 'id="playback-output"' in index
+    assert "function selectedAudioInputConstraints()" in script
+    assert 'device.kind === "audioinput"' in script
+    assert 'device.kind === "audiooutput"' in script
+    assert "navigator.mediaDevices.getUserMedia(selectedAudioInputConstraints())" in script
+    assert "outputSelect.addEventListener" in script
+    assert "inputSelect.addEventListener" in script
+    assert "setSinkId" in script
+    assert "createMediaStreamDestination" in script
+    assert "playbackElement.srcObject = playbackDestination.stream" in script
+
+
 def test_ddl_has_core_tables_and_id_only_notify_function() -> None:
     ddl = Path("docker/postgres/init/100_v2_core.sql").read_text(encoding="utf-8")
     for table in [

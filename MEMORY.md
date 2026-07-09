@@ -1399,3 +1399,14 @@ process を落とすことだった。
 `http://127.0.0.1:<port>/v1/models` readiness を見て起動済み判定する。
 stale window は respawn し、既に ready な port は再起動しない。
 `scripts/run_dflash_server.sh` は dflash process の non-zero exit を retry する。
+
+## 2026-07-09 セッション3 確定した判断
+
+### browser UI の録音入力と再生出力は別々の client-only device routing にする
+8000番ポートの browser UI では、録音入力デバイスと音声再生出力デバイスを独立して選ぶ。
+録音側は `navigator.mediaDevices.getUserMedia()` の `deviceId` constraint で選択し、
+再生側は Web Audio の output を `MediaStreamAudioDestinationNode` から hidden `<audio>` に流し、
+`HTMLMediaElement.setSinkId()` で出力先を切り替える。
+
+これは物理 I/O のブラウザ機能であり、Tomoko の発話判断・`/ws` protocol・server-side state machine には入れない。
+`setSinkId()` 非対応ブラウザでは既定出力のまま fail-open し、会話処理は止めない。

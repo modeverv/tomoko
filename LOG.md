@@ -3560,3 +3560,34 @@
 
 ### 次のセッションでやること
 - cold start の完全再現が必要なら、31B window を落とした状態から helper の retry path を実時間で確認する。
+
+## 2026-07-09 セッション3
+
+### やること（開始時に書く）
+- 8000番ポートで動いている browser UI で、録音入力デバイスと音声再生出力デバイスを別々に選択できるようにする。
+- client-only の音声入出力 UI として実装し、`/ws` protocol や Tomoko 側の発話判断には手を入れない。
+- 先に unit/static contract test を追加し、`client/main.js` が input/output device selector と `setSinkId` 対応 playback routing を持つことを固定する。
+
+### やったこと
+- `client/index.html` に録音入力 `#audio-input`、再生出力 `#audio-output`、hidden 再生要素 `#playback-output` を追加した。
+- `client/main.js` で audioinput / audiooutput を別々に enumerate し、録音側は選択された `deviceId` を `getUserMedia()` に渡すようにした。
+- 再生側は `AudioContext.destination` 直結ではなく `createMediaStreamDestination()` -> hidden `<audio>` -> `setSinkId()` の経路に変更した。
+- 接続中に入力デバイスを切り替えた場合は mic stream / AudioWorklet を作り直し、出力デバイスを切り替えた場合は再生要素の sink だけを変更する。
+- `tests/unit/test_v2_runtime_foundation.py` に client static contract test を追加し、入力/出力デバイス選択が別々に残ることを固定した。
+
+### 詰まったこと・解決したこと
+- 作業時点では 8000番ポートが listen していなかったため、確認用に `make server` を一時起動して HTML/JS の配信を確認し、確認後に停止した。
+- ブラウザの再生出力選択は Web Audio の node だけでは標準的に完結しないため、hidden `<audio>` と `setSinkId()` に寄せた。非対応ブラウザでは既定出力のまま fail-open する。
+
+### 追加検証32
+- 追加した static contract test は実装前に `id="audio-input"` 不在で失敗することを確認。
+- `uv run pytest -m unit tests/unit/test_v2_runtime_foundation.py::test_client_selects_recording_and_playback_devices_separately -q` → 1 passed
+- `uv run pytest -m unit tests/unit/test_v2_runtime_foundation.py::test_client_renders_stt_and_tts_timeline tests/unit/test_v2_runtime_foundation.py::test_client_stop_button_stops_local_playback_and_stale_chunks tests/unit/test_v2_runtime_foundation.py::test_client_selects_recording_and_playback_devices_separately -q` → 3 passed
+- `node --check client/main.js` → pass
+- `uv run ruff check tests/unit/test_v2_runtime_foundation.py` → pass
+- `git diff --check` → pass
+- `uv run pytest -m unit -q` → 253 passed / 7 deselected
+- `make server` を一時起動し、`curl -fsS --max-time 2 http://127.0.0.1:8000/` と `/client/main.js` で `audio-input` / `audio-output` / `playback-output` / `setSinkId` / `createMediaStreamDestination` が配信されることを確認。
+
+### 次のセッションでやること
+- 実ブラウザ上で複数の実デバイスを接続した状態の耳チェックが必要なら、録音入力と再生出力を別々に切り替えて実機確認する。

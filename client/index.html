@@ -19,7 +19,15 @@
       <section class="controls">
         <button id="connect" type="button">Connect</button>
         <button id="stop-audio" type="button">Stop</button>
-        <select id="audio-output"></select>
+        <label class="device-control">
+          Input
+          <select id="audio-input" aria-label="Audio input"></select>
+        </label>
+        <label class="device-control">
+          Output
+          <select id="audio-output" aria-label="Audio output"></select>
+        </label>
+        <audio id="playback-output" autoplay></audio>
       </section>
     </main>
     <script type="module" src="/client/main.js"></script>
