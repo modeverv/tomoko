@@ -65,9 +65,19 @@ dflash route on `127.0.0.1:8081`. VOICEVOX defaults to the sibling
 `async-voicevox` streaming command and `127.0.0.1:50122`. Tomoko's VOICEVOX
 speech speed defaults to `TOMOKO_V2_VOICEVOX_SPEED=1.5`.
 
-STT defaults to the root Apple Speech sidecar under
-`.cache/tomoko/AppleSpeechSTT.app`, built from `scripts/apple_speech_stt/` on
-first use. OCR prefers the root Vision.framework sidecar from
+`make v2-runtime-ready` treats the main 26B LLM and VOICEVOX as required for
+hot-path startup. The 31B summary/background route is probed as optional, so a
+slow or failed 31B load is visible in the logs but does not prevent `/ws` from
+coming up.
+`make llm-run` still starts both dflash routes. The launcher checks the actual
+`/v1/models` readiness before starting a tmux window, respawns stale windows,
+and retries dflash startup so a slow 31B cold load does not permanently leave
+`:8081` down.
+
+STT defaults to WhisperKit / Argmax CLI with `large-v3-v20240930_turbo`,
+`cpuAndNeuralEngine` for both encoder and decoder, and `transcribe
+--stream-simulated` for partials from Tomoko's `/ws` audio chunks. Apple Speech
+remains available via `TOMOKO_V2_STT_BACKEND=apple_speech`. OCR prefers the root Vision.framework sidecar from
 `scripts/vision_ocr/` and falls back to `tesseract`. `make v2-conversation-smoke`
 starts a local hot-path server plus the tomoko heartbeat process with fake
 runtime providers, then sends float32 audio bytes over `/ws` to verify the

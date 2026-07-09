@@ -54,6 +54,10 @@ class RemoteTomokoWsCore:
     _ws: Any | None = field(default=None, init=False, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
     _latest_materials: TurnMaterials | None = None
+    _followups_pending: bool = field(default=False, init=False)
+
+    def has_pending_followup_work(self) -> bool:
+        return self._followups_pending
 
     def update_turn_materials(self, materials: TurnMaterials) -> None:
         self._latest_materials = materials
@@ -126,6 +130,7 @@ class RemoteTomokoWsCore:
             )
         )
         ack = await self._receive_expected(ws, "stt_observation_ack")
+        self._followups_pending = bool(ack.get("followups_pending", False))
         action = SpeechSchedulerAction(str(ack.get("action", "suppress")))
         expected_orders = ack.get("order_count")
         orders: list[SpeechOrder] = []
@@ -297,6 +302,38 @@ class RemoteTomokoWsCore:
             followup_orders=followup_orders,
         )
 
+    async def poll_followup_orders(self) -> tuple[list[SpeechOrder], bool]:
+        if not self.url:
+            raise RuntimeError("TOMOKO_INTERNAL_WS_URL is required for WS split")
+        async with self._lock:
+            # キャンセルされても要求/応答サイクルを完走させ、共有WSの
+            # プロトコル整合を保つ(途中放棄すると以後の全要求がデシンクする)。
+            task = asyncio.ensure_future(
+                self._with_reconnect(self._poll_followup_orders_ws)
+            )
+            try:
+                orders, pending = await asyncio.shield(task)
+            except asyncio.CancelledError:
+                with suppress(Exception):
+                    await task
+                raise
+            self._followups_pending = pending
+            return orders, pending
+
+    async def _poll_followup_orders_ws(self, ws: Any) -> tuple[list[SpeechOrder], bool]:
+        await ws.send(json.dumps({"type": "poll_orders"}, ensure_ascii=False))
+        ack = await self._receive_expected(ws, "poll_orders_ack")
+        orders: list[SpeechOrder] = []
+        for _ in range(int(ack.get("order_count", 0))):
+            message = await asyncio.wait_for(ws.recv(), timeout=self.request_timeout_sec)
+            event = json.loads(message)
+            if event.get("type") != "speech_order":
+                raise RuntimeError(f"expected speech_order, got {event}")
+            payload = dict(event)
+            payload.pop("type", None)
+            orders.append(SpeechOrder.from_dict(payload))
+        return orders, bool(ack.get("pending", False))
+
     async def _send_latest_materials(self, ws: Any) -> None:
         if self._latest_materials is None:
             return
@@ -349,6 +386,11 @@ class RemoteTomokoWsCore:
                 if attempt == 1:
                     raise
                 _console_event("ws_reconnecting", reason="connection_closed")
+            except Exception:
+                # 応答の読み残し等でプロトコル整合が壊れている可能性があるため、
+                # この接続は再利用せず破棄する(次回要求時に再接続)。
+                await self._drop_ws()
+                raise
         raise RuntimeError("unreachable reconnect state")
 
     async def _drop_ws(self) -> None:

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+import asyncio
+from collections.abc import AsyncIterator, Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from server.llm.chat import ChatBackend, create_default_real_chat_backend
 from server.shared.models import (
@@ -25,6 +27,7 @@ from server.shared.models import (
     PromptRequest,
     PromptScope,
     SemanticSaturationResult,
+    SessionSummary,
     SpeechEmissionDecision,
     SpeechEmissionGateInput,
     SpeechOrder,
@@ -65,10 +68,19 @@ from server.tomoko.semantic import (
     SemanticSaturationJudge,
     create_default_saturation_judge,
 )
+from server.tomoko.sense import (
+    SENSE_KIND_SCREENSHOT,
+    SENSE_KIND_WORLD_SEARCH,
+    SenseRequestRecord,
+)
 from server.tomoko.session import SessionBoundaryModel
 from server.user_status.main import world_materials_from_user_status
 
 PARTIAL_CONFIRM_SATURATION_THRESHOLD = 0.75
+# scheduler 側の partial_start_score_threshold(junk 弁別用)より緩い。
+# 通過後も confirm 2回一致 or 依頼完了形サフィックスが必要なので、
+# ストリーミング STT の密な partial での先行生成をここで許す。
+PARTIAL_START_SCORE_THRESHOLD = 0.65
 PARTIAL_CONFIRM_REQUIRED_COUNT = 2
 REQUEST_COMPLETE_PARTIAL_SUFFIXES = (
     "教えて",
@@ -85,6 +97,24 @@ REQUEST_COMPLETE_PARTIAL_SUFFIXES = (
     "?",
 )
 SPEECH_SENTENCE_ENDINGS = frozenset("。！？!?")
+REPLY_CONTINUATION_REASON = "reply continuation queued after first sentence"
+SENSE_ACK_TEXTS = {
+    SENSE_KIND_SCREENSHOT: "ちょっと画面見てみるね。",
+    SENSE_KIND_WORLD_SEARCH: "ちょっと調べてみるね。",
+}
+SENSE_KICK_REASONS = {
+    SENSE_KIND_SCREENSHOT: "screenshot sense kicked for user context",
+    SENSE_KIND_WORLD_SEARCH: "world search sense kicked for user request",
+}
+SENSE_FOLLOWUP_REASONS = {
+    SENSE_KIND_SCREENSHOT: "sense result follow-up after screenshot",
+    SENSE_KIND_WORLD_SEARCH: "sense result follow-up after world search",
+}
+SENSE_WORLD_SEARCH_FAILED_TEXT = "ごめん、うまく調べられなかったよ。"
+SENSE_WORLD_SEARCH_FAILED_REASON = "world search sense returned no result"
+SCREENSHOT_SENSE_CUES = ("画面", "スクリーン", "モニタ")
+SCREENSHOT_SENSE_PATTERNS = ("何して", "なにして", "何をして", "何やって", "なにやって")
+WORLD_SEARCH_SENSE_CUES = ("調べて", "検索して", "ぐぐって", "ググって")
 PARTIAL_ACK_REASON = "partial acknowledgement before complete request"
 PARTIAL_ACK_TEXT = "うん、聞いてるよ。"
 PARTIAL_ACK_SCORE_THRESHOLD = 0.45
@@ -228,8 +258,14 @@ class TomokoConversationCore:
     calendar_items_provider: Callable[[], dict[str, str]] | None = None
     candidate_provider: Callable[[], list[CandidateRecord]] | None = None
     candidate_records: list[CandidateRecord] = field(default_factory=list)
+    summary_records: list[SessionSummary] = field(default_factory=list)
     attention_mode: str = ATTENTION_MODE_CONVERSATION
     _notified_calendar_keys: set[str] = field(default_factory=set)
+    _continuation_task: asyncio.Task[None] | None = None
+    _pending_followup_orders: list[SpeechOrder] = field(default_factory=list)
+    sense_executor: Callable[[SenseRequestRecord], object] | None = None
+    sense_kinds: frozenset[str] | None = None
+    _sense_task: asyncio.Task[None] | None = None
 
     def update_turn_materials(self, materials: TurnMaterials) -> None:
         self.turn_materials = materials
@@ -249,6 +285,9 @@ class TomokoConversationCore:
 
     def update_candidate_records(self, records: list[CandidateRecord]) -> None:
         self.candidate_records = list(records)
+
+    def update_summary_records(self, records: list[SessionSummary]) -> None:
+        self.summary_records = list(records)
 
     def update_calendar_items_provider(
         self,
@@ -334,7 +373,7 @@ class TomokoConversationCore:
         snapshot = self.context_builder.build(
             session_id=None,
             recent_utterances=self._recent_utterances[-8:],
-            summaries=[],
+            summaries=list(self.summary_records),
             calendar_loader=self._calendar_items,
             user_status=self.user_status,
             candidates=candidate_records,
@@ -541,10 +580,16 @@ class TomokoConversationCore:
                 self.current_speech_score = 0.0
             if durable is not None:
                 self._remember_final_user(durable.text, observation)
+            if observation.is_final:
+                # final が先行 partial 返信に吸収されるケースでもカレンダー通知は
+                # 落とさない(poll_orders レーンで再生キューへ append される)
+                calendar_followup = self._maybe_calendar_followup(observation.trace_id)
+                if calendar_followup is not None:
+                    self._pending_followup_orders.append(calendar_followup)
             snapshot = self.context_builder.build(
                 session_id=session_id,
                 recent_utterances=self._recent_utterances[-8:],
-                summaries=[],
+                summaries=list(self.summary_records),
                 calendar_loader=self._calendar_items,
                 user_status=self.user_status,
                 candidates=self._candidate_items(),
@@ -643,7 +688,7 @@ class TomokoConversationCore:
         snapshot = self.context_builder.build(
             session_id=session_id,
             recent_utterances=self._recent_utterances[-8:],
-            summaries=[],
+            summaries=list(self.summary_records),
             calendar_loader=self._calendar_items,
             user_status=self.user_status,
             candidates=candidate_records,
@@ -760,6 +805,7 @@ class TomokoConversationCore:
                 basis_text,
                 saturation=saturation.saturation,
                 score=scheduler_output.score,
+                turn_materials=turn_materials,
             )
         ):
             if self._partial_ack_after_start_gate_allows(
@@ -788,6 +834,7 @@ class TomokoConversationCore:
             )
 
         if scheduler_output.action == SpeechSchedulerAction.STOP:
+            self._cancel_reply_continuation()
             if durable is not None and prior_session_history is None:
                 self._recent_utterances.append(durable.text)
                 self._recent_history.append(
@@ -846,12 +893,32 @@ class TomokoConversationCore:
                 prior_session_history=prior_session_history,
             )
 
+        sense_kind = _sense_kind_for_text(basis_text) if observation.is_final else None
+        if sense_kind is not None and self.sense_kinds is not None:
+            if sense_kind not in self.sense_kinds:
+                sense_kind = None
+        if sense_kind is not None and self.sense_executor is not None:
+            return self._sense_kick_result(
+                observation=observation,
+                durable=durable,
+                saturation=saturation,
+                scheduler_output=scheduler_output,
+                snapshot=snapshot,
+                basis_text=basis_text,
+                sense_kind=sense_kind,
+                prior_session_history=prior_session_history,
+            )
+
         request = self.prompt_builder.build_main_reply(
             snapshot,
             basis_text,
             concise=not observation.is_final,
         )
-        model_events = await self._generate_model_events(request)
+        reply_stream = self.chat_backend.stream(request)
+        model_events, continuation_tail = await self._collect_first_sentence_events(
+            request,
+            reply_stream,
+        )
         text_out = next(
             (event.text for event in model_events if event.event_kind == "complete"),
             "",
@@ -893,6 +960,7 @@ class TomokoConversationCore:
             **{f"emission_{key}": value for key, value in emission.score_breakdown.items()},
         }
         if scheduler_output.action == SpeechSchedulerAction.SUPPRESS:
+            await _close_stream(reply_stream)
             if durable is not None and prior_session_history is None:
                 self._recent_utterances.append(durable.text)
                 self._recent_history.append(
@@ -918,6 +986,17 @@ class TomokoConversationCore:
             scheduler_decision_id=scheduler_output.id,
             trace_id=observation.trace_id,
         )
+        self._cancel_reply_continuation()
+        if observation.is_final:
+            self._start_reply_continuation(
+                stream=reply_stream,
+                tail=continuation_tail,
+                priority=order.priority,
+                decision_id=scheduler_output.id,
+                trace_id=observation.trace_id,
+            )
+        else:
+            await _close_stream(reply_stream)
         self.current_speech_order = order
         self.current_speech_score = scheduler_output.score
         if not observation.is_final:
@@ -1059,10 +1138,11 @@ class TomokoConversationCore:
         *,
         saturation: float,
         score: float,
+        turn_materials: TurnMaterials,
     ) -> bool:
         if (
             saturation < PARTIAL_CONFIRM_SATURATION_THRESHOLD
-            and score < self.scheduler.thresholds.partial_start_score_threshold
+            and score < PARTIAL_START_SCORE_THRESHOLD
         ):
             self._partial_start_confirm_text = ""
             self._partial_start_confirm_count = 0
@@ -1073,8 +1153,7 @@ class TomokoConversationCore:
         if _looks_request_complete_partial(basis_text):
             self._partial_start_confirm_text = basis_text
             self._partial_start_confirm_count = PARTIAL_CONFIRM_REQUIRED_COUNT
-            self._partial_start_gate_last_reason = ""
-            return True
+            return self._partial_start_gate_yield_check(turn_materials)
         if not self._partial_start_confirm_text:
             self._partial_start_confirm_text = basis_text
             self._partial_start_confirm_count = 1
@@ -1089,13 +1168,69 @@ class TomokoConversationCore:
             return False
         self._partial_start_confirm_text = basis_text
         self._partial_start_confirm_count += 1
+        if self._partial_start_confirm_count < PARTIAL_CONFIRM_REQUIRED_COUNT:
+            self._partial_start_gate_last_reason = (
+                "partial start gate is waiting for confirmation"
+            )
+            return False
+        return self._partial_start_gate_yield_check(turn_materials)
+
+    def _partial_start_gate_yield_check(self, turn_materials: TurnMaterials) -> bool:
+        if (
+            turn_materials.user_speaking
+            and turn_materials.speech_probability > 0.3
+            and (turn_materials.p_yielding or 0.0) < 0.5
+            and turn_materials.silence_ms < 300
+        ):
+            # ユーザーがまだ話し続けている(譲る気配がない)間は、
+            # フル返信レーンの先行生成でユーザーを遮らない。相槌は ack レーンが担う。
+            self._partial_start_gate_last_reason = (
+                "partial start gate is waiting for user to yield"
+            )
+            return False
         self._partial_start_gate_last_reason = ""
-        return self._partial_start_confirm_count >= PARTIAL_CONFIRM_REQUIRED_COUNT
+        return True
 
     async def _generate_model_events(self, request: PromptRequest) -> list[ModelOutputEvent]:
         events: list[ModelOutputEvent] = []
         parts: list[str] = []
         async for delta in self.chat_backend.stream(request):
+            if not delta:
+                continue
+            parts.append(delta)
+            events.append(
+                ModelOutputEvent(
+                    request_id=request.id,
+                    event_kind="delta",
+                    text_delta=delta,
+                    trace_id=request.trace_id,
+                )
+            )
+        full_text = "".join(parts)
+        events.append(
+            ModelOutputEvent(
+                request_id=request.id,
+                event_kind="complete",
+                text=full_text,
+                trace_id=request.trace_id,
+            )
+        )
+        return events
+
+    async def _collect_first_sentence_events(
+        self,
+        request: PromptRequest,
+        stream: AsyncIterator[str],
+    ) -> tuple[list[ModelOutputEvent], str]:
+        """最初の文までを即時イベント化し、文境界を跨いだ余りを tail として返す。
+
+        stream は消費し切らずに返すので、final 返信では続きを
+        _start_reply_continuation でバックグラウンド生成できる。
+        """
+        events: list[ModelOutputEvent] = []
+        parts: list[str] = []
+        tail = ""
+        async for delta in stream:
             if not delta:
                 continue
             current_text = "".join(parts)
@@ -1106,17 +1241,17 @@ class TomokoConversationCore:
             else:
                 first_sentence = candidate_text[:cutoff].strip()
                 emit_delta = first_sentence[len(current_text) :]
-            if not emit_delta:
-                break
-            parts.append(emit_delta)
-            events.append(
-                ModelOutputEvent(
-                    request_id=request.id,
-                    event_kind="delta",
-                    text_delta=emit_delta,
-                    trace_id=request.trace_id,
+                tail = candidate_text[cutoff:]
+            if emit_delta:
+                parts.append(emit_delta)
+                events.append(
+                    ModelOutputEvent(
+                        request_id=request.id,
+                        event_kind="delta",
+                        text_delta=emit_delta,
+                        trace_id=request.trace_id,
+                    )
                 )
-            )
             if cutoff is not None:
                 break
         full_text = "".join(parts)
@@ -1128,7 +1263,246 @@ class TomokoConversationCore:
                 trace_id=request.trace_id,
             )
         )
-        return events
+        return events, tail
+
+    def _start_reply_continuation(
+        self,
+        *,
+        stream: AsyncIterator[str],
+        tail: str,
+        priority: int,
+        decision_id: UUID,
+        trace_id: UUID,
+    ) -> None:
+        self._continuation_task = asyncio.create_task(
+            self._consume_reply_continuation(
+                stream=stream,
+                tail=tail,
+                priority=priority,
+                decision_id=decision_id,
+                trace_id=trace_id,
+            )
+        )
+
+    async def _consume_reply_continuation(
+        self,
+        *,
+        stream: AsyncIterator[str],
+        tail: str,
+        priority: int,
+        decision_id: UUID,
+        trace_id: UUID,
+    ) -> None:
+        parts: list[str] = [tail]
+        try:
+            async for delta in stream:
+                if delta:
+                    parts.append(delta)
+        finally:
+            await _close_stream(stream)
+        text = "".join(parts).strip()
+        if not text:
+            return
+        order = SpeechOrder(
+            text=text,
+            mode=SpeechOrderMode.APPEND_AFTER_CURRENT,
+            reason=REPLY_CONTINUATION_REASON,
+            priority=priority,
+            scheduler_decision_id=decision_id,
+            trace_id=trace_id,
+        )
+        self._pending_followup_orders.append(order)
+        self._recent_history.append(ConversationHistoryItem(speaker="tomoko", text=text))
+        _console_event(
+            "reply_continuation_ready",
+            order_id=str(order.id),
+            chars=len(text),
+        )
+
+    def _queue_world_search_apology(self, record: SenseRequestRecord) -> None:
+        order = SpeechOrder(
+            text=SENSE_WORLD_SEARCH_FAILED_TEXT,
+            mode=SpeechOrderMode.APPEND_AFTER_CURRENT,
+            reason=SENSE_WORLD_SEARCH_FAILED_REASON,
+            priority=50,
+            trace_id=record.trace_id,
+        )
+        self._pending_followup_orders.append(order)
+        self._recent_history.append(
+            ConversationHistoryItem(speaker="tomoko", text=order.text)
+        )
+        _console_event(
+            "sense_apology_queued",
+            request_id=str(record.id),
+            order_id=str(order.id),
+        )
+
+    def _cancel_reply_continuation(self) -> None:
+        for task in (self._continuation_task, self._sense_task):
+            if task is not None and not task.done():
+                task.cancel()
+        self._continuation_task = None
+        self._sense_task = None
+        self._pending_followup_orders.clear()
+
+    def has_pending_followup_work(self) -> bool:
+        if self._pending_followup_orders:
+            return True
+        return any(
+            task is not None and not task.done()
+            for task in (self._continuation_task, self._sense_task)
+        )
+
+    def poll_followup_orders(self) -> tuple[list[SpeechOrder], bool]:
+        orders = list(self._pending_followup_orders)
+        self._pending_followup_orders.clear()
+        pending = any(
+            task is not None and not task.done()
+            for task in (self._continuation_task, self._sense_task)
+        )
+        return orders, pending
+
+    def _sense_kick_result(
+        self,
+        *,
+        observation: PartialTranscriptObservation,
+        durable: DurableUtterance | None,
+        saturation: SemanticSaturationResult,
+        scheduler_output: SpeechSchedulerOutput,
+        snapshot: ContextSnapshot,
+        basis_text: str,
+        sense_kind: str,
+        prior_session_history: list[ConversationHistoryItem] | None,
+    ) -> TomokoConversationResult:
+        self._cancel_reply_continuation()
+        scheduler_output.action = SpeechSchedulerAction.REPLACE_CURRENT
+        record = SenseRequestRecord(
+            kind=sense_kind,
+            query=basis_text,
+            requested_by="conversation_core",
+            trace_id=observation.trace_id,
+        )
+        result = self._direct_speech_result(
+            observation=observation,
+            durable=durable,
+            saturation=saturation,
+            scheduler_output=scheduler_output,
+            snapshot=snapshot,
+            text_out=SENSE_ACK_TEXTS[sense_kind],
+            reason=SENSE_KICK_REASONS[sense_kind],
+            prior_session_history=prior_session_history,
+            breakdown_key="sense_kick",
+        )
+        _console_event(
+            "sense_request_kicked",
+            request_id=str(record.id),
+            kind=record.kind,
+            query=basis_text[:60],
+        )
+        self._sense_task = asyncio.create_task(
+            self._run_sense_followup(record=record, basis_text=basis_text)
+        )
+        return result
+
+    async def _run_sense_followup(
+        self,
+        *,
+        record: SenseRequestRecord,
+        basis_text: str,
+    ) -> None:
+        executor = self.sense_executor
+        if executor is None:
+            return
+        try:
+            result = await executor(record)  # type: ignore[misc]
+        except Exception as exc:
+            _console_event(
+                "sense_executor_failed",
+                request_id=str(record.id),
+                error=type(exc).__name__,
+                message=str(exc),
+            )
+            return
+        if not result:
+            _console_event(
+                "sense_followup_skipped",
+                request_id=str(record.id),
+                reason="no_result",
+            )
+            if record.kind == SENSE_KIND_WORLD_SEARCH:
+                self._queue_world_search_apology(record)
+            return
+        extra_candidates: list[CandidateRecord] = []
+        if record.kind == SENSE_KIND_SCREENSHOT:
+            status = UserStatusObservation(
+                present=bool(result.get("present", True)),
+                activity_label=str(result.get("activity_label", "unknown_activity")),
+                summary=str(result.get("summary", "")),
+                source="sense_screenshot",
+                confidence=float(result.get("confidence", 0.5)),
+                visible_text=str(result.get("visible_text", ""))[:400],
+                app_name=result.get("app_name"),
+                window_title=result.get("window_title"),
+            )
+            self.update_user_status(status)
+        elif record.kind == SENSE_KIND_WORLD_SEARCH:
+            texts = [str(text).strip() for text in (result.get("texts") or [])]
+            texts = [text for text in texts if text]
+            if not texts:
+                _console_event(
+                    "sense_followup_skipped",
+                    request_id=str(record.id),
+                    reason="empty_search_result",
+                )
+                self._queue_world_search_apology(record)
+                return
+            extra_candidates = [
+                CandidateRecord(
+                    seed_id=uuid4(),
+                    source="world_search",
+                    source_key=f"sense-{record.id.hex[:8]}-{index}",
+                    text=text,
+                    priority=0.7,
+                    urgency=0.2,
+                    intrusion=0.1,
+                    maturity=1.0,
+                    lifecycle=CandidateLifecycle.ACTIVE,
+                    context_tags=("world_search",),
+                )
+                for index, text in enumerate(texts[:3])
+            ]
+        snapshot = self.context_builder.build(
+            session_id=None,
+            recent_utterances=self._recent_utterances[-8:],
+            summaries=list(self.summary_records),
+            calendar_loader=self._calendar_items,
+            user_status=self.user_status,
+            candidates=[*self._candidate_items(), *extra_candidates],
+            recent_history=self._recent_history[-8:],
+        )
+        request = self.prompt_builder.build_main_reply(snapshot, basis_text)
+        model_events = await self._generate_model_events(request)
+        text = next(
+            (event.text for event in model_events if event.event_kind == "complete"),
+            "",
+        ).strip()
+        if not text:
+            return
+        order = SpeechOrder(
+            text=text,
+            mode=SpeechOrderMode.APPEND_AFTER_CURRENT,
+            reason=SENSE_FOLLOWUP_REASONS.get(record.kind, "sense result follow-up"),
+            priority=60,
+            trace_id=record.trace_id,
+        )
+        self._pending_followup_orders.append(order)
+        self._recent_history.append(ConversationHistoryItem(speaker="tomoko", text=text))
+        _console_event(
+            "sense_followup_ready",
+            request_id=str(record.id),
+            order_id=str(order.id),
+            chars=len(text),
+        )
 
     def _inspect_append_dedupe(
         self,
@@ -1186,10 +1560,8 @@ class TomokoConversationCore:
             return False
         if detect_stop_intent(compact) >= 0.8:
             return False
-        if (
-            self.current_speech_order is not None
-            and self.current_speech_order.reason == PARTIAL_ACK_REASON
-            and _similar_enough(self._active_partial_ack_basis_text, compact)
+        if self._active_partial_ack_basis_text and _similar_enough(
+            self._active_partial_ack_basis_text, compact
         ):
             return False
         return True
@@ -1224,6 +1596,7 @@ class TomokoConversationCore:
         snapshot: ContextSnapshot,
         basis_text: str,
     ) -> TomokoConversationResult:
+        self._cancel_reply_continuation()
         scheduler_output.action = SpeechSchedulerAction.REPLACE_CURRENT
         scheduler_output.reason = PARTIAL_ACK_REASON
         scheduler_output.score_breakdown = {
@@ -1368,11 +1741,12 @@ class TomokoConversationCore:
         text_out: str,
         reason: str,
         prior_session_history: list[ConversationHistoryItem] | None,
+        breakdown_key: str = "direct_clock",
     ) -> TomokoConversationResult:
         scheduler_output.reason = reason
         scheduler_output.score_breakdown = {
             **scheduler_output.score_breakdown,
-            "direct_clock": 1.0,
+            breakdown_key: 1.0,
         }
         order = SpeechOrder(
             text=text_out,
@@ -1719,6 +2093,34 @@ def _first_sentence_cutoff(text: str) -> int | None:
         if char in SPEECH_SENTENCE_ENDINGS:
             return index + 1
     return None
+
+
+def _wants_screenshot_sense(text: str) -> bool:
+    compact = "".join(text.split())
+    if any(cue in compact for cue in SCREENSHOT_SENSE_CUES):
+        return True
+    return any(pattern in compact for pattern in SCREENSHOT_SENSE_PATTERNS)
+
+
+def _wants_world_search_sense(text: str) -> bool:
+    compact = "".join(text.split())
+    return any(cue in compact for cue in WORLD_SEARCH_SENSE_CUES)
+
+
+def _sense_kind_for_text(text: str) -> str | None:
+    if _wants_screenshot_sense(text):
+        return SENSE_KIND_SCREENSHOT
+    if _wants_world_search_sense(text):
+        return SENSE_KIND_WORLD_SEARCH
+    return None
+
+
+async def _close_stream(stream: AsyncIterator[str]) -> None:
+    aclose = getattr(stream, "aclose", None)
+    if aclose is None:
+        return
+    with suppress(Exception):
+        await aclose()
 
 
 def _similar_enough(left: str, right: str) -> bool:

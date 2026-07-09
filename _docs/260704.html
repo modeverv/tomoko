@@ -1,0 +1,1924 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tomoko Scenario Timeline 2026-07-04</title>
+  <style>
+    :root {
+      --bg: #f7f4ef;
+      --surface: #fffdf8;
+      --ink: #1f2428;
+      --muted: #687076;
+      --line: #d9d4ca;
+      --user: #2f6f9f;
+      --user-soft: #dcebf5;
+      --replace: #c4513f;
+      --replace-soft: #f8ded8;
+      --append: #2f7d58;
+      --append-soft: #dff0e7;
+      --stop: #252525;
+      --stop-soft: #e3e0dc;
+      --suppress: #7a756c;
+      --suppress-soft: #ece8df;
+      --audio: #b87524;
+      --audio-soft: #f4e5cf;
+      --shadow: 0 18px 48px rgba(38, 36, 32, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 15px; line-height: 1.55; }
+    a { color: inherit; text-decoration-color: rgba(47, 111, 159, .45); text-underline-offset: 3px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .86em; }
+    .page { max-width: 1480px; margin: 0 auto; padding: 28px; }
+    .top { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(560px, 1.6fr); gap: 24px; align-items: start; margin-bottom: 20px; }
+    .title-panel { padding: 4px 0; }
+    .kicker, .scenario-kicker { color: var(--muted); font-size: 12px; text-transform: uppercase; }
+    h1 { margin: 4px 0 10px; font-size: clamp(30px, 4vw, 52px); line-height: 1.05; font-weight: 760; }
+    h2 { margin: 0 0 12px; font-size: 20px; }
+    h3 { margin: 2px 0 6px; font-size: 24px; }
+    h4 { margin: 0 0 10px; font-size: 15px; }
+    .lead { max-width: 720px; color: #3d454b; }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; }
+    .metric { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; box-shadow: 0 8px 18px rgba(38, 36, 32, .05); min-height: 94px; }
+    .metric-label { color: var(--muted); font-size: 12px; }
+    .metric-value { font-size: 28px; font-weight: 760; margin: 2px 0; }
+    .metric-note { color: var(--muted); font-size: 12px; }
+    .toolbar, .legend, .run-panel, .judge-panel, .index-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin: 14px 0; }
+    .toolbar { position: sticky; top: 0; z-index: 20; box-shadow: 0 10px 24px rgba(38,36,32,.08); }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; }
+    button.filter { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 999px; padding: 8px 12px; font: inherit; cursor: pointer; }
+    button.filter.is-active { background: var(--ink); color: #fff; border-color: var(--ink); }
+    .legend-list { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+    .legend-item { display: inline-flex; align-items: center; gap: 7px; color: #3d454b; }
+    .swatch { width: 18px; height: 10px; border-radius: 10px; border: 1px solid rgba(0,0,0,.16); }
+    .swatch.voice { background: var(--user-soft); border-color: var(--user); } .swatch.final { background: var(--user); } .swatch.partial { background: #8ab5cf; }
+    .swatch.replace { background: var(--replace); } .swatch.append { background: var(--append); } .swatch.stop { background: var(--stop); } .swatch.suppress { background: var(--suppress); } .swatch.audio { background: var(--audio); }
+    .run-panel ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 6px 16px; padding-left: 18px; margin: 8px 0 0; }
+    .judge-metrics { display: flex; flex-wrap: wrap; gap: 8px; }
+    .judge-metrics span { border: 1px solid var(--line); border-radius: 999px; padding: 4px 9px; background: #fff; }
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); padding: 8px 9px; }
+    th { color: var(--muted); font-size: 12px; font-weight: 650; }
+    .index-panel table td:nth-child(5) { min-width: 320px; }
+    .scenario-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; margin: 18px 0; padding: 18px; box-shadow: var(--shadow); scroll-margin-top: 90px; }
+    .scenario-card.is-hidden { display: none; }
+    .scenario-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; }
+    .scenario-header p { margin: 0; color: #3d454b; }
+    .scenario-badges, .scenario-stats { display: flex; flex-wrap: wrap; gap: 8px; align-items: start; justify-content: flex-end; }
+    .tag, .event-chip, .time-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 8px; font-size: 12px; border: 1px solid var(--line); white-space: nowrap; background: #fff; }
+    .runtime-real { color: #fff; background: #355c7d; border-color: #355c7d; } .runtime-fake { background: #eee8dd; } .status-pass { background: #e0f0e6; border-color: #a8d2ba; } .status-fail { background: #f8ded8; border-color: #e0a99d; }
+    .scenario-stats { justify-content: flex-start; margin: 14px 0; }
+    .scenario-stats span { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; color: #3d454b; }
+    .timeline-wrap { position: relative; height: 230px; border: 1px solid var(--line); border-radius: 8px; background: linear-gradient(#fffdf8, #fbf8f1); overflow: hidden; margin: 12px 0; }
+    .plot { position: absolute; left: 112px; right: 18px; top: 0; bottom: 0; }
+    .axis { position: absolute; left: 0; right: 0; top: 8px; height: 28px; }
+    .axis-tick { position: absolute; top: 0; color: var(--muted); font-size: 11px; transform: translateX(-50%); white-space: nowrap; }
+    .axis-tick b { display: block; width: 1px; height: 192px; background: rgba(104,112,118,.15); margin: 17px auto 2px; }
+    .lane-label { position: absolute; left: -98px; width: 92px; color: var(--muted); font-size: 12px; }
+    .lane-user-label { top: 50px; } .lane-scheduler-label { top: 94px; } .lane-tomoko-label { top: 138px; } .lane-audio-label { top: 182px; }
+    .lane-line { position: absolute; left: 0; right: 0; height: 1px; background: rgba(104,112,118,.25); }
+    .lane-user-line { top: 60px; } .lane-scheduler-line { top: 104px; } .lane-tomoko-line { top: 148px; } .lane-audio-line { top: 192px; }
+    .voice-band { position: absolute; top: 46px; height: 28px; min-width: 9px; background: var(--user-soft); border: 1px solid var(--user); border-radius: 6px; overflow: hidden; color: #1f4e70; font-size: 12px; padding: 4px 7px; white-space: nowrap; text-overflow: ellipsis; }
+    .voice-band.is-overlap { background: #f6d8cd; border-color: var(--replace); color: #813225; box-shadow: inset 0 0 0 2px rgba(196,81,63,.15); }
+    .event-dot { position: absolute; width: 12px; height: 12px; transform: translate(-50%, -50%); border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.18), 0 4px 8px rgba(0,0,0,.16); z-index: 5; }
+    .event-dot span { position: absolute; left: 12px; top: -7px; max-width: 150px; background: rgba(255,253,248,.92); border: 1px solid rgba(217,212,202,.86); border-radius: 5px; padding: 1px 5px; color: #333; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lane-user { top: 60px; } .lane-scheduler { top: 104px; } .lane-tomoko { top: 148px; } .lane-audio { top: 192px; }
+    .is-final { background: var(--user); } .is-partial { background: #8ab5cf; } .is-replace { background: var(--replace); } .is-interrupt { background: #d92f23; width: 16px; height: 16px; border-radius: 4px; transform: translate(-50%, -50%) rotate(45deg); } .is-interrupt span { transform: rotate(-45deg); left: 13px; }
+    .is-append { background: var(--append); } .is-stop { background: var(--stop); } .is-suppress { background: var(--suppress); } .is-audio { background: var(--audio); } .is-neutral { background: #9ba2a7; }
+    .event-chip.is-interrupt, .event-chip.is-replace, .event-chip.is-overlap { background: var(--replace-soft); border-color: #e3afa6; color: #7f2d22; }
+    .event-chip.is-append { background: var(--append-soft); border-color: #add6bf; color: #1d5c3c; } .event-chip.is-stop { background: var(--stop-soft); color: #111; } .event-chip.is-suppress { background: var(--suppress-soft); color: #4d4942; }
+    .notes { margin: 10px 0 16px; padding-left: 18px; } .notes li { margin: 5px 0; }
+    .conversation-grid { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, .95fr); gap: 16px; align-items: start; }
+    .bubbles { display: grid; gap: 8px; }
+    .bubble { border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; background: #fff; }
+    .bubble time { color: var(--muted); font-size: 12px; margin-right: 8px; } .bubble strong { font-size: 13px; } .bubble p { margin: 4px 0 0; } .bubble small { display: block; color: var(--muted); margin-top: 4px; }
+    .bubble-user { border-left: 4px solid var(--user); } .bubble-user.is-partial-text { opacity: .72; } .bubble-tomoko { border-left: 4px solid var(--replace); } .bubble-tomoko.is-append { border-left-color: var(--append); } .bubble-tomoko.is-stop { border-left-color: var(--stop); } .bubble-system { border-left: 4px solid var(--suppress); background: #faf8f2; }
+    details { border: 1px solid var(--line); border-radius: 8px; background: #fff; } summary { cursor: pointer; padding: 10px; color: #3d454b; } .event-table { font-size: 12px; }
+    @media (max-width: 980px) { .page { padding: 16px; } .top, .conversation-grid, .scenario-header { grid-template-columns: 1fr; } .metrics { grid-template-columns: repeat(2, 1fr); } .scenario-badges { justify-content: flex-start; } .timeline-wrap { overflow-x: auto; min-width: 780px; } .voice-band, .event-dot { min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <div class="title-panel">
+        <div class="kicker">Tomoko v2 / latest scenario artifacts / 20260704</div>
+        <h1>Scenario Conversation Timeline</h1>
+        <p class="lead">最新の scenario test artifact をシナリオ名ごとに 1 本ずつ選び、ユーザー発話、scheduler 判断、Tomoko の speech_order、audio/control を同じ時間軸に並べた確認用ビューです。割り込みは通常の初回 <code>replace_current</code> と区別し、先行する Tomoko 発話の後に来た <code>replace_current</code> を <b>interrupt replace</b> として強調しています。</p>
+      </div>
+      <div class="metrics">
+        <div class="metric">
+          <div class="metric-label">Scenarios</div>
+          <div class="metric-value">19</div>
+          <div class="metric-note">latest per scenario name</div>
+        </div>
+        
+
+        <div class="metric">
+          <div class="metric-label">Real runtime</div>
+          <div class="metric-value">3</div>
+          <div class="metric-note">Kyoko / live /ws replays</div>
+        </div>
+        
+
+        <div class="metric">
+          <div class="metric-label">Passed</div>
+          <div class="metric-value">19/19</div>
+          <div class="metric-note">latest artifacts</div>
+        </div>
+        
+
+        <div class="metric">
+          <div class="metric-label">User overlaps</div>
+          <div class="metric-value">4</div>
+          <div class="metric-note">runner saw playback overlap</div>
+        </div>
+        
+
+        <div class="metric">
+          <div class="metric-label">Interrupt replaces</div>
+          <div class="metric-value">6</div>
+          <div class="metric-note">replace_current after prior speech</div>
+        </div>
+        
+
+        <div class="metric">
+          <div class="metric-label">Stops</div>
+          <div class="metric-value">2</div>
+          <div class="metric-note">stop speech orders</div>
+        </div>
+        
+
+        <div class="metric">
+          <div class="metric-label">Appends</div>
+          <div class="metric-value">8</div>
+          <div class="metric-note">queued after current speech</div>
+        </div>
+        
+
+        <div class="metric">
+          <div class="metric-label">Suppressions</div>
+          <div class="metric-value">13</div>
+          <div class="metric-note">scheduler stayed silent</div>
+        </div>
+        </div>
+    </header>
+
+    <nav class="toolbar" aria-label="scenario filters">
+      <div class="filters">
+        <button class="filter is-active" data-filter="all">All</button><button class="filter " data-filter="real">Real</button><button class="filter " data-filter="overlap">User overlap</button><button class="filter " data-filter="interrupt">Interrupt replace</button><button class="filter " data-filter="stop">Stop</button><button class="filter " data-filter="append">Append</button><button class="filter " data-filter="suppress">Suppress</button>
+      </div>
+    </nav>
+
+    <section class="legend">
+      <div class="legend-list">
+        <span class="legend-item"><span class="swatch voice"></span>User voice</span><span class="legend-item"><span class="swatch final"></span>Final transcript</span><span class="legend-item"><span class="swatch partial"></span>Partial transcript</span><span class="legend-item"><span class="swatch replace"></span>replace_current</span><span class="legend-item"><span class="swatch append"></span>append_after_current</span><span class="legend-item"><span class="swatch stop"></span>stop</span><span class="legend-item"><span class="swatch suppress"></span>suppress</span><span class="legend-item"><span class="swatch audio"></span>audio/control</span>
+      </div>
+    </section>
+
+    
+    <section class="run-panel">
+      <h2>Latest Autopilot Context</h2>
+      <p><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/autopilot-20260704-044545.json</code> · PASS · runtime_ready=True</p>
+      <ul><li><code>make check</code> <span>rc=0</span> <span>1.30s</span></li><li><code>make test-integration</code> <span>rc=0</span> <span>1.02s</span></li><li><code>make v2-scenario-suite</code> <span>rc=0</span> <span>21.16s</span></li><li><code>make v2-scenario-replay SCENARIO=real-overlap-replace SCENARIO_RUNTIME=real WS_LATENCY_URL=ws://0.0.0.0:8000/ws WS_LATENCY_VOICE=Kyoko</code> <span>rc=0</span> <span>81.09s</span></li><li><code>make v2-scenario-replay SCENARIO=real-overlap-stop SCENARIO_RUNTIME=real WS_LATENCY_URL=ws://0.0.0.0:8000/ws WS_LATENCY_VOICE=Kyoko</code> <span>rc=0</span> <span>14.41s</span></li><li><code>make v2-scenario-replay SCENARIO=calendar-append SCENARIO_RUNTIME=real WS_LATENCY_URL=ws://0.0.0.0:8000/ws WS_LATENCY_VOICE=Kyoko</code> <span>rc=0</span> <span>10.02s</span></li><li><code>make v2-latency-suite LATENCY_SUITE_COUNT=10 LATENCY_SUITE_REPEATS=3 WS_LATENCY_URL=ws://0.0.0.0:8000/ws WS_LATENCY_VOICE=Kyoko</code> <span>rc=0</span> <span>152.81s</span></li></ul>
+    </section>
+    
+    
+    <section class="judge-panel">
+      <h2>Latest LLM Judge</h2>
+      <p><code>logs/scenario-calendar-append-20260704-044302.json</code></p>
+      <div class="judge-metrics">
+        <span>naturalness <b>1.0</b></span>
+        <span>duplicate <b>0</b></span>
+        <span>missed <b>0</b></span>
+        <span>awkward interruption <b>0</b></span>
+      </div>
+      <p>The response is natural and helpful, providing both an opinion on the work and a timely reminder of the schedule.</p>
+    </section>
+    
+
+    <section class="index-panel">
+      <h2>Interrupt / Queue Index</h2>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>time</th><th>runtime</th><th>scenario</th><th>marker</th><th>detail</th><th>artifact</th></tr></thead>
+          <tbody>
+            <tr data-row-kind="suppress">
+              <td><span class="time-pill">2.73s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#calendar-append">calendar-append</a></td>
+              <td><span class="event-chip is-suppress">scheduler suppress</span></td>
+              <td>partial start gate is below confirmation thresholds / score=0.7271119463333333</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-calendar-append-20260704-044302.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="suppress">
+              <td><span class="time-pill">3.23s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#calendar-append">calendar-append</a></td>
+              <td><span class="event-chip is-suppress">scheduler suppress</span></td>
+              <td>partial start gate is below confirmation thresholds / score=0.7272793473333333</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-calendar-append-20260704-044302.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="append">
+              <td><span class="time-pill">6.35s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#calendar-append">calendar-append</a></td>
+              <td><span class="event-chip is-append">append_after_current</span></td>
+              <td>ところで、19:48から定例会議の予定があるよ。 / reason: calendar pressure appended notice after reply (urgency=0.84)</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-calendar-append-20260704-044302.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="suppress">
+              <td><span class="time-pill">3.93s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#real-overlap-replace">real-overlap-replace</a></td>
+              <td><span class="event-chip is-suppress">scheduler suppress</span></td>
+              <td>partial start gate is below confirmation thresholds / score=0.63</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-replace-20260704-044127.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="suppress">
+              <td><span class="time-pill">7.72s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#real-overlap-replace">real-overlap-replace</a></td>
+              <td><span class="event-chip is-suppress">scheduler suppress</span></td>
+              <td>partial start gate is below confirmation thresholds / score=0.7143075146092759</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-replace-20260704-044127.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="overlap">
+              <td><span class="time-pill">10.90s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#real-overlap-replace">real-overlap-replace</a></td>
+              <td><span class="event-chip is-overlap">user overlap</span></td>
+              <td>Tomoko playback 中に user step 1 が開始: やっぱりそれはいいから明日の天気がどうなるかだけ教えて</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-replace-20260704-044127.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="interrupt_replace">
+              <td><span class="time-pill">12.74s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#real-overlap-replace">real-overlap-replace</a></td>
+              <td><span class="event-chip is-replace">replace_current after prior speech</span></td>
+              <td>うん、聞いてるよ。 / reason: partial acknowledgement before complete request</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-replace-20260704-044127.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="interrupt_replace">
+              <td><span class="time-pill">14.46s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#real-overlap-replace">real-overlap-replace</a></td>
+              <td><span class="event-chip is-replace">replace_current after prior speech</span></td>
+              <td>あはは、ごめんごめん。 / reason: prepared speech crossed emit threshold</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-replace-20260704-044127.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="suppress">
+              <td><span class="time-pill">15.43s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#real-overlap-replace">real-overlap-replace</a></td>
+              <td><span class="event-chip is-suppress">scheduler suppress</span></td>
+              <td>partial reconciled with active partial reply / score=0.0</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-replace-20260704-044127.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="suppress">
+              <td><span class="time-pill">15.53s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#real-overlap-replace">real-overlap-replace</a></td>
+              <td><span class="event-chip is-suppress">scheduler suppress</span></td>
+              <td>partial reconciled with active partial reply / score=0.0</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-replace-20260704-044127.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="suppress">
+              <td><span class="time-pill">15.96s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#real-overlap-replace">real-overlap-replace</a></td>
+              <td><span class="event-chip is-suppress">scheduler suppress</span></td>
+              <td>partial reconciled with active partial reply / score=0.0</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-replace-20260704-044127.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="suppress">
+              <td><span class="time-pill">16.74s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#real-overlap-replace">real-overlap-replace</a></td>
+              <td><span class="event-chip is-suppress">scheduler suppress</span></td>
+              <td>final reconciled with active partial reply / score=0.0</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-replace-20260704-044127.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="suppress">
+              <td><span class="time-pill">3.00s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#real-overlap-stop">real-overlap-stop</a></td>
+              <td><span class="event-chip is-suppress">scheduler suppress</span></td>
+              <td>partial start gate is below confirmation thresholds / score=0.63</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-stop-20260704-044248.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="suppress">
+              <td><span class="time-pill">6.81s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#real-overlap-stop">real-overlap-stop</a></td>
+              <td><span class="event-chip is-suppress">scheduler suppress</span></td>
+              <td>partial start gate is below confirmation thresholds / score=0.709224945654985</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-stop-20260704-044248.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="overlap">
+              <td><span class="time-pill">9.75s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#real-overlap-stop">real-overlap-stop</a></td>
+              <td><span class="event-chip is-overlap">user overlap</span></td>
+              <td>Tomoko playback 中に user step 1 が開始: もういいよ、ストップ</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-stop-20260704-044248.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="stop">
+              <td><span class="time-pill">12.13s</span></td>
+              <td><span class="tag runtime-real">real</span></td>
+              <td><a href="#real-overlap-stop">real-overlap-stop</a></td>
+              <td><span class="event-chip is-stop">stop order</span></td>
+              <td>stop intent crossed emission threshold</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-stop-20260704-044248.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="suppress">
+              <td><span class="time-pill">74ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#attention-mode-idle-wake">attention-mode-idle-wake</a></td>
+              <td><span class="event-chip is-suppress">scheduler suppress</span></td>
+              <td>ambient attention suppresses low-saturation speech / score=0.0</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-attention-mode-idle-wake-20260704-044105.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="append">
+              <td><span class="time-pill">99ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#attention-mode-idle-wake">attention-mode-idle-wake</a></td>
+              <td><span class="event-chip is-append">append_after_current</span></td>
+              <td>聞くね。 / reason: prepared speech is high enough to append</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-attention-mode-idle-wake-20260704-044105.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="suppress">
+              <td><span class="time-pill">33ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#candidate-initiative-absent-suppressed">candidate-initiative-absent-suppressed</a></td>
+              <td><span class="event-chip is-suppress">scheduler suppress</span></td>
+              <td>user absence suppresses initiative tick / score=0.0</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-candidate-initiative-absent-suppressed-20260704-044110.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="suppress">
+              <td><span class="time-pill">56ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#final-divergence">final-divergence</a></td>
+              <td><span class="event-chip is-suppress">scheduler suppress</span></td>
+              <td>partial reconciled with active partial reply / score=0.0</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-final-divergence-20260704-044113.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="interrupt_replace">
+              <td><span class="time-pill">1.09s</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#final-divergence">final-divergence</a></td>
+              <td><span class="event-chip is-replace">replace_current after prior speech</span></td>
+              <td>はい、答えるね。 / reason: final diverged from active partial reply; replacing</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-final-divergence-20260704-044113.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="append">
+              <td><span class="time-pill">74ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#motivation-interjection-high">motivation-interjection-high</a></td>
+              <td><span class="event-chip is-append">append_after_current</span></td>
+              <td>通常回答。 / reason: prepared speech is high enough to append</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-motivation-interjection-high-20260704-044115.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="interrupt_replace">
+              <td><span class="time-pill">91ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#motivation-interjection-high">motivation-interjection-high</a></td>
+              <td><span class="event-chip is-replace">replace_current after prior speech</span></td>
+              <td>いや、それってさ。 / reason: motivation interjection before complete request</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-motivation-interjection-high-20260704-044115.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="append">
+              <td><span class="time-pill">78ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#motivation-threshold-high">motivation-threshold-high</a></td>
+              <td><span class="event-chip is-append">append_after_current</span></td>
+              <td>そこ、気になるね。 / reason: prepared speech is high enough to append</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-motivation-threshold-high-20260704-044116.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="append">
+              <td><span class="time-pill">97ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#motivation-threshold-high">motivation-threshold-high</a></td>
+              <td><span class="event-chip is-append">append_after_current</span></td>
+              <td>そこ、気になるね。 / reason: prepared speech is high enough to append</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-motivation-threshold-high-20260704-044116.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="append">
+              <td><span class="time-pill">78ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#motivation-threshold-low">motivation-threshold-low</a></td>
+              <td><span class="event-chip is-append">append_after_current</span></td>
+              <td>聞いてるよ。 / reason: prepared speech is high enough to append</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-motivation-threshold-low-20260704-044117.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="append">
+              <td><span class="time-pill">97ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#motivation-threshold-low">motivation-threshold-low</a></td>
+              <td><span class="event-chip is-append">append_after_current</span></td>
+              <td>聞いてるよ。 / reason: prepared speech is high enough to append</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-motivation-threshold-low-20260704-044117.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="overlap">
+              <td><span class="time-pill">488ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#overlap-replace">overlap-replace</a></td>
+              <td><span class="event-chip is-overlap">user overlap</span></td>
+              <td>Tomoko playback 中に user step 1 が開始: やっぱりそれはいいから明日の天気がどうなるかだけ教えて</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-overlap-replace-20260704-044118.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="interrupt_replace">
+              <td><span class="time-pill">956ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#overlap-replace">overlap-replace</a></td>
+              <td><span class="event-chip is-replace">replace_current after prior speech</span></td>
+              <td>答えるね。 / reason: prepared speech crossed emit threshold</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-overlap-replace-20260704-044118.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="overlap">
+              <td><span class="time-pill">55ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#overlap-stop">overlap-stop</a></td>
+              <td><span class="event-chip is-overlap">user overlap</span></td>
+              <td>Tomoko playback 中に user step 1 が開始: もういい、ストップ</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-overlap-stop-20260704-044120.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="stop">
+              <td><span class="time-pill">74ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#overlap-stop">overlap-stop</a></td>
+              <td><span class="event-chip is-stop">stop order</span></td>
+              <td>stop intent crossed emission threshold</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-overlap-stop-20260704-044120.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="append">
+              <td><span class="time-pill">75ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#two-turn-reply">two-turn-reply</a></td>
+              <td><span class="event-chip is-append">append_after_current</span></td>
+              <td>うん、聞こえてるよ。 / reason: prepared speech is high enough to append</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-two-turn-reply-20260704-044122.json</code></td>
+            </tr>
+            
+
+            <tr data-row-kind="interrupt_replace">
+              <td><span class="time-pill">532ms</span></td>
+              <td><span class="tag runtime-fake">fake</span></td>
+              <td><a href="#vap-yielding-opportunity">vap-yielding-opportunity</a></td>
+              <td><span class="event-chip is-replace">replace_current after prior speech</span></td>
+              <td>先に聞いているよ。 / reason: prepared speech crossed emit threshold</td>
+              <td><code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-vap-yielding-opportunity-20260704-044124.json</code></td>
+            </tr>
+            </tbody>
+        </table>
+      </div>
+    </section>
+
+    <main id="scenarios">
+      
+    <article class="scenario-card" id="real-overlap-replace" data-tags="all interrupt overlap real suppress">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:27 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-replace-20260704-044127.json</code></div>
+          <h3>real-overlap-replace</h3>
+          <p>Real runtime: user overlaps Tomoko&#x27;s reply with a new request; playback switches without stale audio (PLAN S9 live).</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-real">real</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>3</b> replace</span>
+        <span><b>0</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>6</b> suppress</span>
+        <span><b>3</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>3.35s</span><span class="axis-tick" style="left:40.000%"><b></b>6.70s</span><span class="axis-tick" style="left:60.000%"><b></b>10.04s</span><span class="axis-tick" style="left:80.000%"><b></b>13.39s</span><span class="axis-tick" style="left:99.200%"><b></b>16.74s</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:9.530%;width:39.287%" title="#0 トモコ、今日一日の過ごし方についてゆっくり長めに話して聞かせて"><span>#0 トモコ、今日一日の過ごし方についてゆっくり長めに話して聞かせて</span></div><div class="voice-band is-overlap" style="left:65.124%;width:29.873%" title="#1 やっぱりそれはいいから明日の天気がどうなるかだけ教えて"><span>#1 やっぱりそれはいいから明日の天気がどうなるかだけ教えて</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:9.404%" title="1.57s · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-audio is-neutral" style="left:9.425%" title="1.58s · latency_control_ack · control: reset_conversation"><span>control</span></div><div class="event-dot lane-user is-partial" style="left:23.453%" title="3.93s · transcript · partial: と"><span>partial</span></div><div class="event-dot lane-scheduler is-suppress" style="left:23.453%" title="3.93s · scheduler_decision · suppress: partial start gate is below confirmation thresholds score=0.63"><span>suppress</span></div><div class="event-dot lane-user is-partial" style="left:46.139%" title="7.72s · transcript · partial: ともに"><span>partial</span></div><div class="event-dot lane-scheduler is-suppress" style="left:46.139%" title="7.72s · scheduler_decision · suppress: partial start gate is below confirmation thresholds score=0.71"><span>suppress</span></div><div class="event-dot lane-user is-final" style="left:60.732%" title="10.17s · transcript · final: 智子今日1日の過ごし方についてゆっくり眺めに話して聞かせて"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:60.733%" title="10.17s · scheduler_decision · replace_current: prepared speech crossed emit threshold score=1.45"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:60.733%" title="10.17s · speech_order · reply replace: うーん、そうだね。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:60.733%" title="10.17s · model_complete · model complete: うーん、そうだね。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:65.122%" title="10.90s · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:65.122%" title="10.90s · audio_complete · audio complete: aca3e45c-b46f-49bd-9a46-ef7fa7b1439a"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:65.123%" title="10.90s · tts_result · tts result: うーん、そうだね。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:65.123%" title="10.90s · prompt_complete · prompt complete: aca3e45c-b46f-49bd-9a46-ef7fa7b1439a"><span>prompt complete</span></div><div class="event-dot lane-user is-partial" style="left:76.089%" title="12.74s · transcript · partial: やっぱりそれはい"><span>partial</span></div><div class="event-dot lane-scheduler is-replace" style="left:76.089%" title="12.74s · scheduler_decision · replace_current: partial acknowledgement before complete request score=0.86"><span>replace_current</span></div><div class="event-dot lane-tomoko is-interrupt" style="left:76.090%" title="12.74s · speech_order · interrupt replace: うん、聞いてるよ。"><span>interrupt replace</span></div><div class="event-dot lane-audio is-neutral" style="left:76.090%" title="12.74s · model_complete · model complete: うん、聞いてるよ。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:78.628%" title="13.16s · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:78.629%" title="13.16s · audio_complete · audio complete: 7e515ec7-a668-4dcc-ae82-7141aa632f79"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:78.630%" title="13.16s · tts_result · tts result: うん、聞いてるよ。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:78.630%" title="13.16s · prompt_complete · prompt complete: 7e515ec7-a668-4dcc-ae82-7141aa632f79"><span>prompt complete</span></div><div class="event-dot lane-user is-partial" style="left:86.411%" title="14.46s · transcript · partial: やっぱりそれはいいから"><span>partial</span></div><div class="event-dot lane-scheduler is-replace" style="left:86.411%" title="14.46s · scheduler_decision · replace_current: prepared speech crossed emit threshold score=1.29"><span>replace_current</span></div><div class="event-dot lane-tomoko is-interrupt" style="left:86.411%" title="14.46s · speech_order · interrupt replace: あはは、ごめんごめん。"><span>interrupt replace</span></div><div class="event-dot lane-audio is-neutral" style="left:86.412%" title="14.46s · model_complete · model complete: あはは、ごめんごめん。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:92.177%" title="15.43s · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:92.178%" title="15.43s · audio_complete · audio complete: 4fcc8521-9a3e-4233-a491-fa9046679df2"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:92.179%" title="15.43s · tts_result · tts result: あはは、ごめんごめん。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:92.179%" title="15.43s · prompt_complete · prompt complete: 4fcc8521-9a3e-4233-a491-fa9046679df2"><span>prompt complete</span></div><div class="event-dot lane-user is-partial" style="left:92.179%" title="15.43s · transcript · partial: やっぱりそれはいいから明日の天気"><span>partial</span></div><div class="event-dot lane-scheduler is-suppress" style="left:92.179%" title="15.43s · scheduler_decision · suppress: partial reconciled with active partial reply score=0.00"><span>suppress</span></div><div class="event-dot lane-user is-partial" style="left:92.776%" title="15.53s · transcript · partial: やっぱりそれはいいから明日の天気がどうなるか"><span>partial</span></div><div class="event-dot lane-scheduler is-suppress" style="left:92.776%" title="15.53s · scheduler_decision · suppress: partial reconciled with active partial reply score=0.00"><span>suppress</span></div><div class="event-dot lane-user is-partial" style="left:95.374%" title="15.96s · transcript · partial: やっぱりそれはいいから明日の天気がどうなるだけ"><span>partial</span></div><div class="event-dot lane-scheduler is-suppress" style="left:95.374%" title="15.96s · scheduler_decision · suppress: partial reconciled with active partial reply score=0.00"><span>suppress</span></div><div class="event-dot lane-user is-final" style="left:99.200%" title="16.74s · transcript · final: やっぱりそれはいいから明日の天気がどうなるかだけ教えて"><span>final</span></div><div class="event-dot lane-scheduler is-suppress" style="left:99.200%" title="16.74s · scheduler_decision · suppress: final reconciled with active partial reply score=0.00"><span>suppress</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li><span class="time-pill">3.93s</span> <span class="event-chip is-suppress">scheduler suppress</span> partial start gate is below confirmation thresholds / score=0.63</li><li><span class="time-pill">7.72s</span> <span class="event-chip is-suppress">scheduler suppress</span> partial start gate is below confirmation thresholds / score=0.7143075146092759</li><li><span class="time-pill">10.90s</span> <span class="event-chip is-overlap">user overlap</span> Tomoko playback 中に user step 1 が開始: やっぱりそれはいいから明日の天気がどうなるかだけ教えて</li><li><span class="time-pill">12.74s</span> <span class="event-chip is-replace">replace_current after prior speech</span> うん、聞いてるよ。 / reason: partial acknowledgement before complete request</li><li><span class="time-pill">14.46s</span> <span class="event-chip is-replace">replace_current after prior speech</span> あはは、ごめんごめん。 / reason: prepared speech crossed emit threshold</li><li><span class="time-pill">15.43s</span> <span class="event-chip is-suppress">scheduler suppress</span> partial reconciled with active partial reply / score=0.0</li><li><span class="time-pill">15.53s</span> <span class="event-chip is-suppress">scheduler suppress</span> partial reconciled with active partial reply / score=0.0</li><li><span class="time-pill">15.96s</span> <span class="event-chip is-suppress">scheduler suppress</span> partial reconciled with active partial reply / score=0.0</li><li><span class="time-pill">16.74s</span> <span class="event-chip is-suppress">scheduler suppress</span> final reconciled with active partial reply / score=0.0</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-partial-text"><time>3.93s</time><strong>user partial</strong><p>と</p></div>
+<div class="bubble bubble-system is-suppress"><time>3.93s</time><strong>scheduler · suppress</strong><p>partial start gate is below confirmation thresholds</p></div>
+<div class="bubble bubble-user is-partial-text"><time>7.72s</time><strong>user partial</strong><p>ともに</p></div>
+<div class="bubble bubble-system is-suppress"><time>7.72s</time><strong>scheduler · suppress</strong><p>partial start gate is below confirmation thresholds</p></div>
+<div class="bubble bubble-user is-final-text"><time>10.17s</time><strong>user final</strong><p>智子今日1日の過ごし方についてゆっくり眺めに話して聞かせて</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>10.17s</time><strong>Tomoko · replace_current</strong><p>うーん、そうだね。</p><small>prepared speech crossed emit threshold</small></div>
+<div class="bubble bubble-user is-partial-text"><time>12.74s</time><strong>user partial</strong><p>やっぱりそれはい</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>12.74s</time><strong>Tomoko · replace_current</strong><p>うん、聞いてるよ。</p><small>partial acknowledgement before complete request</small></div>
+<div class="bubble bubble-user is-partial-text"><time>14.46s</time><strong>user partial</strong><p>やっぱりそれはいいから</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>14.46s</time><strong>Tomoko · replace_current</strong><p>あはは、ごめんごめん。</p><small>prepared speech crossed emit threshold</small></div>
+<div class="bubble bubble-user is-partial-text"><time>15.43s</time><strong>user partial</strong><p>やっぱりそれはいいから明日の天気</p></div>
+<div class="bubble bubble-system is-suppress"><time>15.43s</time><strong>scheduler · suppress</strong><p>partial reconciled with active partial reply</p></div>
+<div class="bubble bubble-user is-partial-text"><time>15.53s</time><strong>user partial</strong><p>やっぱりそれはいいから明日の天気がどうなるか</p></div>
+<div class="bubble bubble-system is-suppress"><time>15.53s</time><strong>scheduler · suppress</strong><p>partial reconciled with active partial reply</p></div>
+<div class="bubble bubble-user is-partial-text"><time>15.96s</time><strong>user partial</strong><p>やっぱりそれはいいから明日の天気がどうなるだけ</p></div>
+<div class="bubble bubble-system is-suppress"><time>15.96s</time><strong>scheduler · suppress</strong><p>partial reconciled with active partial reply</p></div>
+<div class="bubble bubble-user is-final-text"><time>16.74s</time><strong>user final</strong><p>やっぱりそれはいいから明日の天気がどうなるかだけ教えて</p></div>
+<div class="bubble bubble-system is-suppress"><time>16.74s</time><strong>scheduler · suppress</strong><p>final reconciled with active partial reply</p></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>1.58s</td><td>latency_control_ack</td><td>control</td><td>reset_conversation</td><td>audio</td></tr>
+<tr><td>3.93s</td><td>transcript</td><td>partial</td><td>と</td><td>user</td></tr>
+<tr><td>3.93s</td><td>scheduler_decision</td><td>suppress</td><td>partial start gate is below confirmation thresholds score=0.63</td><td>scheduler</td></tr>
+<tr><td>7.72s</td><td>transcript</td><td>partial</td><td>ともに</td><td>user</td></tr>
+<tr><td>7.72s</td><td>scheduler_decision</td><td>suppress</td><td>partial start gate is below confirmation thresholds score=0.71</td><td>scheduler</td></tr>
+<tr><td>10.17s</td><td>transcript</td><td>final</td><td>智子今日1日の過ごし方についてゆっくり眺めに話して聞かせて</td><td>user</td></tr>
+<tr><td>10.17s</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=1.45</td><td>scheduler</td></tr>
+<tr><td>10.17s</td><td>speech_order</td><td>replace_current</td><td>うーん、そうだね。</td><td>tomoko</td></tr>
+<tr><td>10.17s</td><td>model_complete</td><td>model complete</td><td>うーん、そうだね。</td><td>audio</td></tr>
+<tr><td>10.90s</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>10.90s</td><td>audio_complete</td><td>audio complete</td><td>aca3e45c-b46f-49bd-9a46-ef7fa7b1439a</td><td>audio</td></tr>
+<tr><td>10.90s</td><td>tts_result</td><td>tts result</td><td>うーん、そうだね。</td><td>audio</td></tr>
+<tr><td>10.90s</td><td>prompt_complete</td><td>prompt complete</td><td>aca3e45c-b46f-49bd-9a46-ef7fa7b1439a</td><td>audio</td></tr>
+<tr><td>12.74s</td><td>transcript</td><td>partial</td><td>やっぱりそれはい</td><td>user</td></tr>
+<tr><td>12.74s</td><td>scheduler_decision</td><td>replace_current</td><td>partial acknowledgement before complete request score=0.86</td><td>scheduler</td></tr>
+<tr><td>12.74s</td><td>speech_order</td><td>replace_current</td><td>うん、聞いてるよ。</td><td>tomoko</td></tr>
+<tr><td>12.74s</td><td>model_complete</td><td>model complete</td><td>うん、聞いてるよ。</td><td>audio</td></tr>
+<tr><td>13.16s</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>13.16s</td><td>audio_complete</td><td>audio complete</td><td>7e515ec7-a668-4dcc-ae82-7141aa632f79</td><td>audio</td></tr>
+<tr><td>13.16s</td><td>tts_result</td><td>tts result</td><td>うん、聞いてるよ。</td><td>audio</td></tr>
+<tr><td>13.16s</td><td>prompt_complete</td><td>prompt complete</td><td>7e515ec7-a668-4dcc-ae82-7141aa632f79</td><td>audio</td></tr>
+<tr><td>14.46s</td><td>transcript</td><td>partial</td><td>やっぱりそれはいいから</td><td>user</td></tr>
+<tr><td>14.46s</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=1.29</td><td>scheduler</td></tr>
+<tr><td>14.46s</td><td>speech_order</td><td>replace_current</td><td>あはは、ごめんごめん。</td><td>tomoko</td></tr>
+<tr><td>14.46s</td><td>model_complete</td><td>model complete</td><td>あはは、ごめんごめん。</td><td>audio</td></tr>
+<tr><td>15.43s</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>15.43s</td><td>audio_complete</td><td>audio complete</td><td>4fcc8521-9a3e-4233-a491-fa9046679df2</td><td>audio</td></tr>
+<tr><td>15.43s</td><td>tts_result</td><td>tts result</td><td>あはは、ごめんごめん。</td><td>audio</td></tr>
+<tr><td>15.43s</td><td>prompt_complete</td><td>prompt complete</td><td>4fcc8521-9a3e-4233-a491-fa9046679df2</td><td>audio</td></tr>
+<tr><td>15.43s</td><td>transcript</td><td>partial</td><td>やっぱりそれはいいから明日の天気</td><td>user</td></tr>
+<tr><td>15.43s</td><td>scheduler_decision</td><td>suppress</td><td>partial reconciled with active partial reply score=0.00</td><td>scheduler</td></tr>
+<tr><td>15.53s</td><td>transcript</td><td>partial</td><td>やっぱりそれはいいから明日の天気がどうなるか</td><td>user</td></tr>
+<tr><td>15.53s</td><td>scheduler_decision</td><td>suppress</td><td>partial reconciled with active partial reply score=0.00</td><td>scheduler</td></tr>
+<tr><td>15.96s</td><td>transcript</td><td>partial</td><td>やっぱりそれはいいから明日の天気がどうなるだけ</td><td>user</td></tr>
+<tr><td>15.96s</td><td>scheduler_decision</td><td>suppress</td><td>partial reconciled with active partial reply score=0.00</td><td>scheduler</td></tr>
+<tr><td>16.74s</td><td>transcript</td><td>final</td><td>やっぱりそれはいいから明日の天気がどうなるかだけ教えて</td><td>user</td></tr>
+<tr><td>16.74s</td><td>scheduler_decision</td><td>suppress</td><td>final reconciled with active partial reply score=0.00</td><td>scheduler</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="real-overlap-stop" data-tags="all overlap real stop suppress">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:42:48 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-real-overlap-stop-20260704-044248.json</code></div>
+          <h3>real-overlap-stop</h3>
+          <p>Real runtime: user overlaps Tomoko&#x27;s reply with a stop intent; playback stops (PLAN S9 live).</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-real">real</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>1</b> replace</span>
+        <span><b>0</b> append</span>
+        <span><b>1</b> stop</span>
+        <span><b>2</b> suppress</span>
+        <span><b>1</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>2.43s</span><span class="axis-tick" style="left:40.000%"><b></b>4.85s</span><span class="axis-tick" style="left:60.000%"><b></b>7.28s</span><span class="axis-tick" style="left:80.000%"><b></b>9.71s</span><span class="axis-tick" style="left:99.200%"><b></b>12.13s</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:5.453%;width:54.558%" title="#0 トモコ、今日一日の過ごし方についてゆっくり長めに話して聞かせて"><span>#0 トモコ、今日一日の過ごし方についてゆっくり長めに話して聞かせて</span></div><div class="voice-band is-overlap" style="left:80.391%;width:13.117%" title="#1 もういいよ、ストップ"><span>#1 もういいよ、ストップ</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:5.286%" title="641ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-audio is-neutral" style="left:5.305%" title="644ms · latency_control_ack · control: reset_conversation"><span>control</span></div><div class="event-dot lane-user is-partial" style="left:24.702%" title="3.00s · transcript · partial: と"><span>partial</span></div><div class="event-dot lane-scheduler is-suppress" style="left:24.702%" title="3.00s · scheduler_decision · suppress: partial start gate is below confirmation thresholds score=0.63"><span>suppress</span></div><div class="event-dot lane-user is-partial" style="left:56.094%" title="6.81s · transcript · partial: ともに"><span>partial</span></div><div class="event-dot lane-scheduler is-suppress" style="left:56.094%" title="6.81s · scheduler_decision · suppress: partial start gate is below confirmation thresholds score=0.71"><span>suppress</span></div><div class="event-dot lane-user is-final" style="left:74.837%" title="9.08s · transcript · final: 智子今日1日の過ごし方についてゆっくり眺めに話して聞かせて"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:74.838%" title="9.08s · scheduler_decision · replace_current: prepared speech crossed emit threshold score=1.45"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:74.838%" title="9.08s · speech_order · reply replace: うーん、そうだね。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:74.838%" title="9.08s · model_complete · model complete: うーん、そうだね。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:80.314%" title="9.74s · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:80.317%" title="9.74s · audio_complete · audio complete: 19152044-dd48-49a9-9bb5-776c2ba84eaa"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:80.317%" title="9.74s · tts_result · tts result: うーん、そうだね。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:80.317%" title="9.74s · prompt_complete · prompt complete: 19152044-dd48-49a9-9bb5-776c2ba84eaa"><span>prompt complete</span></div><div class="event-dot lane-user is-final" style="left:99.200%" title="12.13s · transcript · final: もういいよストップ"><span>final</span></div><div class="event-dot lane-scheduler is-stop" style="left:99.200%" title="12.13s · scheduler_decision · stop: stop intent crossed emission threshold score=1.00"><span>stop</span></div><div class="event-dot lane-tomoko is-stop" style="left:99.200%" title="12.13s · speech_order · stop: stop intent crossed emission threshold"><span>stop</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="12.13s · prompt_complete · prompt complete: 095cf5ff-8348-49c6-b6f4-02227057d1fd"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li><span class="time-pill">3.00s</span> <span class="event-chip is-suppress">scheduler suppress</span> partial start gate is below confirmation thresholds / score=0.63</li><li><span class="time-pill">6.81s</span> <span class="event-chip is-suppress">scheduler suppress</span> partial start gate is below confirmation thresholds / score=0.709224945654985</li><li><span class="time-pill">9.75s</span> <span class="event-chip is-overlap">user overlap</span> Tomoko playback 中に user step 1 が開始: もういいよ、ストップ</li><li><span class="time-pill">12.13s</span> <span class="event-chip is-stop">stop order</span> stop intent crossed emission threshold</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-partial-text"><time>3.00s</time><strong>user partial</strong><p>と</p></div>
+<div class="bubble bubble-system is-suppress"><time>3.00s</time><strong>scheduler · suppress</strong><p>partial start gate is below confirmation thresholds</p></div>
+<div class="bubble bubble-user is-partial-text"><time>6.81s</time><strong>user partial</strong><p>ともに</p></div>
+<div class="bubble bubble-system is-suppress"><time>6.81s</time><strong>scheduler · suppress</strong><p>partial start gate is below confirmation thresholds</p></div>
+<div class="bubble bubble-user is-final-text"><time>9.08s</time><strong>user final</strong><p>智子今日1日の過ごし方についてゆっくり眺めに話して聞かせて</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>9.08s</time><strong>Tomoko · replace_current</strong><p>うーん、そうだね。</p><small>prepared speech crossed emit threshold</small></div>
+<div class="bubble bubble-user is-final-text"><time>12.13s</time><strong>user final</strong><p>もういいよストップ</p></div>
+<div class="bubble bubble-tomoko is-stop"><time>12.13s</time><strong>Tomoko · stop</strong><p>(stop / clear current audio)</p><small>stop intent crossed emission threshold</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>644ms</td><td>latency_control_ack</td><td>control</td><td>reset_conversation</td><td>audio</td></tr>
+<tr><td>3.00s</td><td>transcript</td><td>partial</td><td>と</td><td>user</td></tr>
+<tr><td>3.00s</td><td>scheduler_decision</td><td>suppress</td><td>partial start gate is below confirmation thresholds score=0.63</td><td>scheduler</td></tr>
+<tr><td>6.81s</td><td>transcript</td><td>partial</td><td>ともに</td><td>user</td></tr>
+<tr><td>6.81s</td><td>scheduler_decision</td><td>suppress</td><td>partial start gate is below confirmation thresholds score=0.71</td><td>scheduler</td></tr>
+<tr><td>9.08s</td><td>transcript</td><td>final</td><td>智子今日1日の過ごし方についてゆっくり眺めに話して聞かせて</td><td>user</td></tr>
+<tr><td>9.08s</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=1.45</td><td>scheduler</td></tr>
+<tr><td>9.08s</td><td>speech_order</td><td>replace_current</td><td>うーん、そうだね。</td><td>tomoko</td></tr>
+<tr><td>9.08s</td><td>model_complete</td><td>model complete</td><td>うーん、そうだね。</td><td>audio</td></tr>
+<tr><td>9.74s</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>9.74s</td><td>audio_complete</td><td>audio complete</td><td>19152044-dd48-49a9-9bb5-776c2ba84eaa</td><td>audio</td></tr>
+<tr><td>9.74s</td><td>tts_result</td><td>tts result</td><td>うーん、そうだね。</td><td>audio</td></tr>
+<tr><td>9.74s</td><td>prompt_complete</td><td>prompt complete</td><td>19152044-dd48-49a9-9bb5-776c2ba84eaa</td><td>audio</td></tr>
+<tr><td>12.13s</td><td>transcript</td><td>final</td><td>もういいよストップ</td><td>user</td></tr>
+<tr><td>12.13s</td><td>scheduler_decision</td><td>stop</td><td>stop intent crossed emission threshold score=1.00</td><td>scheduler</td></tr>
+<tr><td>12.13s</td><td>speech_order</td><td>stop</td><td>stop intent crossed emission threshold</td><td>tomoko</td></tr>
+<tr><td>12.13s</td><td>prompt_complete</td><td>prompt complete</td><td>095cf5ff-8348-49c6-b6f4-02227057d1fd</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="calendar-append" data-tags="all append real suppress">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:43:02 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-calendar-append-20260704-044302.json</code></div>
+          <h3>calendar-append</h3>
+          <p>Reply to the user, then append a near-future calendar notice after the reply (PLAN S10).</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-real">real</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>1</b> replace</span>
+        <span><b>1</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>2</b> suppress</span>
+        <span><b>2</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>1.76s</span><span class="axis-tick" style="left:40.000%"><b></b>3.52s</span><span class="axis-tick" style="left:60.000%"><b></b>5.28s</span><span class="axis-tick" style="left:80.000%"><b></b>7.04s</span><span class="axis-tick" style="left:99.200%"><b></b>8.80s</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:7.154%;width:29.814%" title="#0 トモコ、今の作業どう思う"><span>#0 トモコ、今の作業どう思う</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:6.677%" title="587ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-audio is-neutral" style="left:6.702%" title="589ms · latency_control_ack · control: reset_conversation"><span>control</span></div><div class="event-dot lane-audio is-neutral" style="left:6.929%" title="609ms · latency_control_ack · control: set_fake_calendar"><span>control</span></div><div class="event-dot lane-user is-partial" style="left:31.060%" title="2.73s · transcript · partial: 今"><span>partial</span></div><div class="event-dot lane-scheduler is-suppress" style="left:31.060%" title="2.73s · scheduler_decision · suppress: partial start gate is below confirmation thresholds score=0.73"><span>suppress</span></div><div class="event-dot lane-user is-partial" style="left:36.769%" title="3.23s · transcript · partial: 今の作業どう"><span>partial</span></div><div class="event-dot lane-scheduler is-suppress" style="left:36.769%" title="3.23s · scheduler_decision · suppress: partial start gate is below confirmation thresholds score=0.73"><span>suppress</span></div><div class="event-dot lane-user is-final" style="left:72.237%" title="6.35s · transcript · final: 智子今の作業どう思う"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:72.238%" title="6.35s · scheduler_decision · replace_current: prepared speech crossed emit threshold score=1.48"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:72.238%" title="6.35s · speech_order · reply replace: うーん、悪くないけど、もう少し詰められる気がするかな。"><span>reply replace</span></div><div class="event-dot lane-tomoko is-append" style="left:72.238%" title="6.35s · speech_order · append_after_current: ところで、19:48から定例会議の予定があるよ。"><span>append_after_current</span></div><div class="event-dot lane-audio is-neutral" style="left:72.238%" title="6.35s · model_complete · model complete: うーん、悪くないけど、もう少し詰められる気がするかな。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:86.022%" title="7.57s · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:86.068%" title="7.57s · audio_complete · audio complete: 554c86d3-d0c5-42a5-a961-2c749e7d2d61"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="8.80s · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="8.80s · audio_complete · audio complete: 90adc345-827c-49bb-9cf1-83407ec65481"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="8.80s · tts_result · tts result: うーん、悪くないけど、もう少し詰められる気がするかな。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="8.80s · prompt_complete · prompt complete: 554c86d3-d0c5-42a5-a961-2c749e7d2d61"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li><span class="time-pill">2.73s</span> <span class="event-chip is-suppress">scheduler suppress</span> partial start gate is below confirmation thresholds / score=0.7271119463333333</li><li><span class="time-pill">3.23s</span> <span class="event-chip is-suppress">scheduler suppress</span> partial start gate is below confirmation thresholds / score=0.7272793473333333</li><li><span class="time-pill">6.35s</span> <span class="event-chip is-append">append_after_current</span> ところで、19:48から定例会議の予定があるよ。 / reason: calendar pressure appended notice after reply (urgency=0.84)</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-partial-text"><time>2.73s</time><strong>user partial</strong><p>今</p></div>
+<div class="bubble bubble-system is-suppress"><time>2.73s</time><strong>scheduler · suppress</strong><p>partial start gate is below confirmation thresholds</p></div>
+<div class="bubble bubble-user is-partial-text"><time>3.23s</time><strong>user partial</strong><p>今の作業どう</p></div>
+<div class="bubble bubble-system is-suppress"><time>3.23s</time><strong>scheduler · suppress</strong><p>partial start gate is below confirmation thresholds</p></div>
+<div class="bubble bubble-user is-final-text"><time>6.35s</time><strong>user final</strong><p>智子今の作業どう思う</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>6.35s</time><strong>Tomoko · replace_current</strong><p>うーん、悪くないけど、もう少し詰められる気がするかな。</p><small>prepared speech crossed emit threshold</small></div>
+<div class="bubble bubble-tomoko is-append"><time>6.35s</time><strong>Tomoko · append_after_current</strong><p>ところで、19:48から定例会議の予定があるよ。</p><small>calendar pressure appended notice after reply (urgency=0.84)</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>589ms</td><td>latency_control_ack</td><td>control</td><td>reset_conversation</td><td>audio</td></tr>
+<tr><td>609ms</td><td>latency_control_ack</td><td>control</td><td>set_fake_calendar</td><td>audio</td></tr>
+<tr><td>2.73s</td><td>transcript</td><td>partial</td><td>今</td><td>user</td></tr>
+<tr><td>2.73s</td><td>scheduler_decision</td><td>suppress</td><td>partial start gate is below confirmation thresholds score=0.73</td><td>scheduler</td></tr>
+<tr><td>3.23s</td><td>transcript</td><td>partial</td><td>今の作業どう</td><td>user</td></tr>
+<tr><td>3.23s</td><td>scheduler_decision</td><td>suppress</td><td>partial start gate is below confirmation thresholds score=0.73</td><td>scheduler</td></tr>
+<tr><td>6.35s</td><td>transcript</td><td>final</td><td>智子今の作業どう思う</td><td>user</td></tr>
+<tr><td>6.35s</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=1.48</td><td>scheduler</td></tr>
+<tr><td>6.35s</td><td>speech_order</td><td>replace_current</td><td>うーん、悪くないけど、もう少し詰められる気がするかな。</td><td>tomoko</td></tr>
+<tr><td>6.35s</td><td>speech_order</td><td>append_after_current</td><td>ところで、19:48から定例会議の予定があるよ。</td><td>tomoko</td></tr>
+<tr><td>6.35s</td><td>model_complete</td><td>model complete</td><td>うーん、悪くないけど、もう少し詰められる気がするかな。</td><td>audio</td></tr>
+<tr><td>7.57s</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>7.57s</td><td>audio_complete</td><td>audio complete</td><td>554c86d3-d0c5-42a5-a961-2c749e7d2d61</td><td>audio</td></tr>
+<tr><td>8.80s</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>8.80s</td><td>audio_complete</td><td>audio complete</td><td>90adc345-827c-49bb-9cf1-83407ec65481</td><td>audio</td></tr>
+<tr><td>8.80s</td><td>tts_result</td><td>tts result</td><td>うーん、悪くないけど、もう少し詰められる気がするかな。</td><td>audio</td></tr>
+<tr><td>8.80s</td><td>prompt_complete</td><td>prompt complete</td><td>554c86d3-d0c5-42a5-a961-2c749e7d2d61</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="overlap-replace" data-tags="all fake interrupt overlap">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:18 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-overlap-replace-20260704-044118.json</code></div>
+          <h3>overlap-replace</h3>
+          <p>User overlaps Tomoko&#x27;s reply with a new question -&gt; replace_current order supersedes it (PLAN S9).</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>2</b> replace</span>
+        <span><b>0</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>0</b> suppress</span>
+        <span><b>2</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>191ms</span><span class="axis-tick" style="left:40.000%"><b></b>383ms</span><span class="axis-tick" style="left:60.000%"><b></b>574ms</span><span class="axis-tick" style="left:80.000%"><b></b>765ms</span><span class="axis-tick" style="left:99.200%"><b></b>956ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:1.110%;width:23.305%" title="#0 今日の予定を教えて"><span>#0 今日の予定を教えて</span></div><div class="voice-band is-overlap" style="left:51.047%;width:23.263%" title="#1 やっぱりそれはいいから明日の天気がどうなるかだけ教えて"><span>#1 やっぱりそれはいいから明日の天気がどうなるかだけ教えて</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:1.127%" title="11ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-user is-final" style="left:50.577%" title="484ms · transcript · final: 今日の予定を教えて"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:50.580%" title="484ms · scheduler_decision · replace_current: prepared speech crossed emit threshold score=1.36"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:50.582%" title="484ms · speech_order · reply replace: 答えるね。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:50.583%" title="484ms · model_complete · model complete: 答えるね。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:50.584%" title="484ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:50.584%" title="484ms · audio_complete · audio complete: 8cfe8cee-0f57-4750-b6ae-a6e4b4a723be"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:50.584%" title="484ms · tts_result · tts result: 答えるね。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:50.585%" title="484ms · prompt_complete · prompt complete: 8cfe8cee-0f57-4750-b6ae-a6e4b4a723be"><span>prompt complete</span></div><div class="event-dot lane-user is-final" style="left:99.200%" title="956ms · transcript · final: やっぱりそれはいいから明日の天気がどうなるかだけ教えて"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:99.200%" title="956ms · scheduler_decision · replace_current: prepared speech crossed emit threshold score=1.31"><span>replace_current</span></div><div class="event-dot lane-tomoko is-interrupt" style="left:99.200%" title="956ms · speech_order · interrupt replace: 答えるね。"><span>interrupt replace</span></div><div class="event-dot lane-audio is-neutral" style="left:99.200%" title="956ms · model_complete · model complete: 答えるね。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="956ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="956ms · audio_complete · audio complete: 04676fa7-513f-4b36-a951-b51c621600a1"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="956ms · tts_result · tts result: 答えるね。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="956ms · prompt_complete · prompt complete: 04676fa7-513f-4b36-a951-b51c621600a1"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li><span class="time-pill">488ms</span> <span class="event-chip is-overlap">user overlap</span> Tomoko playback 中に user step 1 が開始: やっぱりそれはいいから明日の天気がどうなるかだけ教えて</li><li><span class="time-pill">956ms</span> <span class="event-chip is-replace">replace_current after prior speech</span> 答えるね。 / reason: prepared speech crossed emit threshold</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-final-text"><time>484ms</time><strong>user final</strong><p>今日の予定を教えて</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>484ms</time><strong>Tomoko · replace_current</strong><p>答えるね。</p><small>prepared speech crossed emit threshold</small></div>
+<div class="bubble bubble-user is-final-text"><time>956ms</time><strong>user final</strong><p>やっぱりそれはいいから明日の天気がどうなるかだけ教えて</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>956ms</time><strong>Tomoko · replace_current</strong><p>答えるね。</p><small>prepared speech crossed emit threshold</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>484ms</td><td>transcript</td><td>final</td><td>今日の予定を教えて</td><td>user</td></tr>
+<tr><td>484ms</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=1.36</td><td>scheduler</td></tr>
+<tr><td>484ms</td><td>speech_order</td><td>replace_current</td><td>答えるね。</td><td>tomoko</td></tr>
+<tr><td>484ms</td><td>model_complete</td><td>model complete</td><td>答えるね。</td><td>audio</td></tr>
+<tr><td>484ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>484ms</td><td>audio_complete</td><td>audio complete</td><td>8cfe8cee-0f57-4750-b6ae-a6e4b4a723be</td><td>audio</td></tr>
+<tr><td>484ms</td><td>tts_result</td><td>tts result</td><td>答えるね。</td><td>audio</td></tr>
+<tr><td>484ms</td><td>prompt_complete</td><td>prompt complete</td><td>8cfe8cee-0f57-4750-b6ae-a6e4b4a723be</td><td>audio</td></tr>
+<tr><td>956ms</td><td>transcript</td><td>final</td><td>やっぱりそれはいいから明日の天気がどうなるかだけ教えて</td><td>user</td></tr>
+<tr><td>956ms</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=1.31</td><td>scheduler</td></tr>
+<tr><td>956ms</td><td>speech_order</td><td>replace_current</td><td>答えるね。</td><td>tomoko</td></tr>
+<tr><td>956ms</td><td>model_complete</td><td>model complete</td><td>答えるね。</td><td>audio</td></tr>
+<tr><td>956ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>956ms</td><td>audio_complete</td><td>audio complete</td><td>04676fa7-513f-4b36-a951-b51c621600a1</td><td>audio</td></tr>
+<tr><td>956ms</td><td>tts_result</td><td>tts result</td><td>答えるね。</td><td>audio</td></tr>
+<tr><td>956ms</td><td>prompt_complete</td><td>prompt complete</td><td>04676fa7-513f-4b36-a951-b51c621600a1</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="overlap-stop" data-tags="all fake overlap stop">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:20 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-overlap-stop-20260704-044120.json</code></div>
+          <h3>overlap-stop</h3>
+          <p>User overlaps Tomoko&#x27;s reply with a stop intent -&gt; stop order, append queue cleared (PLAN S9).</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>1</b> replace</span>
+        <span><b>0</b> append</span>
+        <span><b>1</b> stop</span>
+        <span><b>0</b> suppress</span>
+        <span><b>1</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>24ms</span><span class="axis-tick" style="left:40.000%"><b></b>48ms</span><span class="axis-tick" style="left:60.000%"><b></b>72ms</span><span class="axis-tick" style="left:80.000%"><b></b>96ms</span><span class="axis-tick" style="left:99.200%"><b></b>120ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:8.518%;width:1.100%" title="#0 トモコ、何か長めに話して"><span>#0 トモコ、何か長めに話して</span></div><div class="voice-band is-overlap" style="left:45.710%;width:1.100%" title="#1 もういい、ストップ"><span>#1 もういい、ストップ</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:10.643%" title="13ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-user is-final" style="left:37.763%" title="45ms · transcript · final: トモコ、何か長めに話して"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:37.783%" title="45ms · scheduler_decision · replace_current: prepared speech crossed emit threshold score=0.93"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:37.789%" title="45ms · speech_order · reply replace: 長めのお話をするね、今日はいろいろあったんだよ。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:37.802%" title="45ms · model_complete · model complete: 長めのお話をするね、今日はいろいろあったんだよ。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:37.803%" title="45ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:37.807%" title="45ms · audio_complete · audio complete: 6120d5c9-7d12-4da0-a319-8b8e43ea75f0"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:37.815%" title="45ms · tts_result · tts result: 長めのお話をするね、今日はいろいろあったんだよ。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:37.818%" title="45ms · prompt_complete · prompt complete: 6120d5c9-7d12-4da0-a319-8b8e43ea75f0"><span>prompt complete</span></div><div class="event-dot lane-user is-final" style="left:62.033%" title="74ms · transcript · final: もういい、ストップ"><span>final</span></div><div class="event-dot lane-scheduler is-stop" style="left:62.041%" title="74ms · scheduler_decision · stop: stop intent crossed emission threshold score=1.00"><span>stop</span></div><div class="event-dot lane-tomoko is-stop" style="left:62.046%" title="74ms · speech_order · stop: stop intent crossed emission threshold"><span>stop</span></div><div class="event-dot lane-audio is-audio" style="left:62.059%" title="74ms · prompt_complete · prompt complete: 203ae328-f732-4a1f-8972-0a6ad8f7994d"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li><span class="time-pill">55ms</span> <span class="event-chip is-overlap">user overlap</span> Tomoko playback 中に user step 1 が開始: もういい、ストップ</li><li><span class="time-pill">74ms</span> <span class="event-chip is-stop">stop order</span> stop intent crossed emission threshold</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-final-text"><time>45ms</time><strong>user final</strong><p>トモコ、何か長めに話して</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>45ms</time><strong>Tomoko · replace_current</strong><p>長めのお話をするね、今日はいろいろあったんだよ。</p><small>prepared speech crossed emit threshold</small></div>
+<div class="bubble bubble-user is-final-text"><time>74ms</time><strong>user final</strong><p>もういい、ストップ</p></div>
+<div class="bubble bubble-tomoko is-stop"><time>74ms</time><strong>Tomoko · stop</strong><p>(stop / clear current audio)</p><small>stop intent crossed emission threshold</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>45ms</td><td>transcript</td><td>final</td><td>トモコ、何か長めに話して</td><td>user</td></tr>
+<tr><td>45ms</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=0.93</td><td>scheduler</td></tr>
+<tr><td>45ms</td><td>speech_order</td><td>replace_current</td><td>長めのお話をするね、今日はいろいろあったんだよ。</td><td>tomoko</td></tr>
+<tr><td>45ms</td><td>model_complete</td><td>model complete</td><td>長めのお話をするね、今日はいろいろあったんだよ。</td><td>audio</td></tr>
+<tr><td>45ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>45ms</td><td>audio_complete</td><td>audio complete</td><td>6120d5c9-7d12-4da0-a319-8b8e43ea75f0</td><td>audio</td></tr>
+<tr><td>45ms</td><td>tts_result</td><td>tts result</td><td>長めのお話をするね、今日はいろいろあったんだよ。</td><td>audio</td></tr>
+<tr><td>45ms</td><td>prompt_complete</td><td>prompt complete</td><td>6120d5c9-7d12-4da0-a319-8b8e43ea75f0</td><td>audio</td></tr>
+<tr><td>74ms</td><td>transcript</td><td>final</td><td>もういい、ストップ</td><td>user</td></tr>
+<tr><td>74ms</td><td>scheduler_decision</td><td>stop</td><td>stop intent crossed emission threshold score=1.00</td><td>scheduler</td></tr>
+<tr><td>74ms</td><td>speech_order</td><td>stop</td><td>stop intent crossed emission threshold</td><td>tomoko</td></tr>
+<tr><td>74ms</td><td>prompt_complete</td><td>prompt complete</td><td>203ae328-f732-4a1f-8972-0a6ad8f7994d</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="motivation-interjection-high" data-tags="all append fake interrupt">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:15 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-motivation-interjection-high-20260704-044115.json</code></div>
+          <h3>motivation-interjection-high</h3>
+          <p>High motivation can emit a short retractable interjection before the final request is complete (G6).</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>2</b> replace</span>
+        <span><b>1</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>0</b> suppress</span>
+        <span><b>3</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>24ms</span><span class="axis-tick" style="left:40.000%"><b></b>48ms</span><span class="axis-tick" style="left:60.000%"><b></b>72ms</span><span class="axis-tick" style="left:80.000%"><b></b>96ms</span><span class="axis-tick" style="left:99.200%"><b></b>120ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:8.733%;width:1.100%" title="#0 今の構成を見てる"><span>#0 今の構成を見てる</span></div><div class="voice-band" style="left:46.038%;width:1.100%" title="#1 構成の順番が多い"><span>#1 構成の順番が多い</span></div><div class="voice-band" style="left:65.123%;width:1.100%" title="#2 構成、それ違う気が"><span>#2 構成、それ違う気が</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:10.976%" title="13ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-user is-final" style="left:33.969%" title="41ms · transcript · final: 今の構成を見てる"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:33.989%" title="41ms · scheduler_decision · replace_current: prepared speech crossed emit threshold score=0.85"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:33.994%" title="41ms · speech_order · reply replace: 通常回答。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:34.005%" title="41ms · model_complete · model complete: 通常回答。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:34.006%" title="41ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:34.009%" title="41ms · audio_complete · audio complete: 6b42f2d6-7c85-4382-bd82-384cc2f662bc"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:34.013%" title="41ms · tts_result · tts result: 通常回答。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:34.015%" title="41ms · prompt_complete · prompt complete: 6b42f2d6-7c85-4382-bd82-384cc2f662bc"><span>prompt complete</span></div><div class="event-dot lane-user is-final" style="left:61.962%" title="74ms · transcript · final: 構成の順番が多い"><span>final</span></div><div class="event-dot lane-scheduler is-append" style="left:61.985%" title="74ms · scheduler_decision · append_after_current: prepared speech is high enough to append score=0.86"><span>append_after_current</span></div><div class="event-dot lane-tomoko is-append" style="left:61.991%" title="74ms · speech_order · append_after_current: 通常回答。"><span>append_after_current</span></div><div class="event-dot lane-audio is-neutral" style="left:62.003%" title="74ms · model_complete · model complete: 通常回答。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:62.005%" title="74ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:62.008%" title="74ms · audio_complete · audio complete: b373ba7b-74ef-4698-a3f7-a8e5af065710"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:62.012%" title="74ms · tts_result · tts result: 通常回答。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:62.014%" title="74ms · prompt_complete · prompt complete: b373ba7b-74ef-4698-a3f7-a8e5af065710"><span>prompt complete</span></div><div class="event-dot lane-user is-partial" style="left:75.835%" title="91ms · transcript · partial: 構成、それ違う気が"><span>partial</span></div><div class="event-dot lane-scheduler is-replace" style="left:75.851%" title="91ms · scheduler_decision · replace_current: motivation interjection before complete request score=0.82"><span>replace_current</span></div><div class="event-dot lane-tomoko is-interrupt" style="left:75.856%" title="91ms · speech_order · interrupt replace: いや、それってさ。"><span>interrupt replace</span></div><div class="event-dot lane-audio is-neutral" style="left:75.871%" title="91ms · model_complete · model complete: いや、それってさ。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:75.873%" title="91ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:75.877%" title="91ms · audio_complete · audio complete: 67b49fda-0fe1-4ee4-86e8-1d2a1997fcf9"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:75.881%" title="91ms · tts_result · tts result: いや、それってさ。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:75.883%" title="91ms · prompt_complete · prompt complete: 67b49fda-0fe1-4ee4-86e8-1d2a1997fcf9"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li><span class="time-pill">74ms</span> <span class="event-chip is-append">append_after_current</span> 通常回答。 / reason: prepared speech is high enough to append</li><li><span class="time-pill">91ms</span> <span class="event-chip is-replace">replace_current after prior speech</span> いや、それってさ。 / reason: motivation interjection before complete request</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-final-text"><time>41ms</time><strong>user final</strong><p>今の構成を見てる</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>41ms</time><strong>Tomoko · replace_current</strong><p>通常回答。</p><small>prepared speech crossed emit threshold</small></div>
+<div class="bubble bubble-user is-final-text"><time>74ms</time><strong>user final</strong><p>構成の順番が多い</p></div>
+<div class="bubble bubble-tomoko is-append"><time>74ms</time><strong>Tomoko · append_after_current</strong><p>通常回答。</p><small>prepared speech is high enough to append</small></div>
+<div class="bubble bubble-user is-partial-text"><time>91ms</time><strong>user partial</strong><p>構成、それ違う気が</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>91ms</time><strong>Tomoko · replace_current</strong><p>いや、それってさ。</p><small>motivation interjection before complete request</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>41ms</td><td>transcript</td><td>final</td><td>今の構成を見てる</td><td>user</td></tr>
+<tr><td>41ms</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=0.85</td><td>scheduler</td></tr>
+<tr><td>41ms</td><td>speech_order</td><td>replace_current</td><td>通常回答。</td><td>tomoko</td></tr>
+<tr><td>41ms</td><td>model_complete</td><td>model complete</td><td>通常回答。</td><td>audio</td></tr>
+<tr><td>41ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>41ms</td><td>audio_complete</td><td>audio complete</td><td>6b42f2d6-7c85-4382-bd82-384cc2f662bc</td><td>audio</td></tr>
+<tr><td>41ms</td><td>tts_result</td><td>tts result</td><td>通常回答。</td><td>audio</td></tr>
+<tr><td>41ms</td><td>prompt_complete</td><td>prompt complete</td><td>6b42f2d6-7c85-4382-bd82-384cc2f662bc</td><td>audio</td></tr>
+<tr><td>74ms</td><td>transcript</td><td>final</td><td>構成の順番が多い</td><td>user</td></tr>
+<tr><td>74ms</td><td>scheduler_decision</td><td>append_after_current</td><td>prepared speech is high enough to append score=0.86</td><td>scheduler</td></tr>
+<tr><td>74ms</td><td>speech_order</td><td>append_after_current</td><td>通常回答。</td><td>tomoko</td></tr>
+<tr><td>74ms</td><td>model_complete</td><td>model complete</td><td>通常回答。</td><td>audio</td></tr>
+<tr><td>74ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>74ms</td><td>audio_complete</td><td>audio complete</td><td>b373ba7b-74ef-4698-a3f7-a8e5af065710</td><td>audio</td></tr>
+<tr><td>74ms</td><td>tts_result</td><td>tts result</td><td>通常回答。</td><td>audio</td></tr>
+<tr><td>74ms</td><td>prompt_complete</td><td>prompt complete</td><td>b373ba7b-74ef-4698-a3f7-a8e5af065710</td><td>audio</td></tr>
+<tr><td>91ms</td><td>transcript</td><td>partial</td><td>構成、それ違う気が</td><td>user</td></tr>
+<tr><td>91ms</td><td>scheduler_decision</td><td>replace_current</td><td>motivation interjection before complete request score=0.82</td><td>scheduler</td></tr>
+<tr><td>91ms</td><td>speech_order</td><td>replace_current</td><td>いや、それってさ。</td><td>tomoko</td></tr>
+<tr><td>91ms</td><td>model_complete</td><td>model complete</td><td>いや、それってさ。</td><td>audio</td></tr>
+<tr><td>91ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>91ms</td><td>audio_complete</td><td>audio complete</td><td>67b49fda-0fe1-4ee4-86e8-1d2a1997fcf9</td><td>audio</td></tr>
+<tr><td>91ms</td><td>tts_result</td><td>tts result</td><td>いや、それってさ。</td><td>audio</td></tr>
+<tr><td>91ms</td><td>prompt_complete</td><td>prompt complete</td><td>67b49fda-0fe1-4ee4-86e8-1d2a1997fcf9</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="final-divergence" data-tags="all fake interrupt suppress">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:13 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-final-divergence-20260704-044113.json</code></div>
+          <h3>final-divergence</h3>
+          <p>Partial-based early reply is replaced when the final STT diverges from the partial basis (PLAN S11).</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>2</b> replace</span>
+        <span><b>0</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>1</b> suppress</span>
+        <span><b>2</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>218ms</span><span class="axis-tick" style="left:40.000%"><b></b>435ms</span><span class="axis-tick" style="left:60.000%"><b></b>653ms</span><span class="axis-tick" style="left:80.000%"><b></b>870ms</span><span class="axis-tick" style="left:99.200%"><b></b>1.09s</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:0.895%;width:57.744%" title="#0 今日の予定を教えて、というのは冗談で、明日の会議の資料はどこにあるか教えて"><span>#0 今日の予定を教えて、というのは冗談で、明日の会議の資料はどこにあるか教えて</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:0.908%" title="10ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-user is-partial" style="left:3.417%" title="37ms · transcript · partial: 今日の予定を教えて"><span>partial</span></div><div class="event-dot lane-scheduler is-replace" style="left:3.419%" title="37ms · scheduler_decision · replace_current: prepared speech crossed emit threshold score=1.18"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:3.420%" title="37ms · speech_order · reply replace: はい、答えるね。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:3.422%" title="37ms · model_complete · model complete: はい、答えるね。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:3.422%" title="37ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:3.422%" title="37ms · audio_complete · audio complete: e0dbdbc9-352b-4cad-85d3-cf80f3692373"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:3.422%" title="37ms · tts_result · tts result: はい、答えるね。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:3.423%" title="37ms · prompt_complete · prompt complete: e0dbdbc9-352b-4cad-85d3-cf80f3692373"><span>prompt complete</span></div><div class="event-dot lane-user is-partial" style="left:5.129%" title="56ms · transcript · partial: 今日の予定を教えてください"><span>partial</span></div><div class="event-dot lane-scheduler is-suppress" style="left:5.130%" title="56ms · scheduler_decision · suppress: partial reconciled with active partial reply score=0.00"><span>suppress</span></div><div class="event-dot lane-user is-final" style="left:99.200%" title="1.09s · transcript · final: 明日の会議の資料はどこにあるか教えて"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:99.200%" title="1.09s · scheduler_decision · replace_current: final diverged from active partial reply; replacing score=1.35"><span>replace_current</span></div><div class="event-dot lane-tomoko is-interrupt" style="left:99.200%" title="1.09s · speech_order · interrupt replace: はい、答えるね。"><span>interrupt replace</span></div><div class="event-dot lane-audio is-neutral" style="left:99.200%" title="1.09s · model_complete · model complete: はい、答えるね。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="1.09s · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="1.09s · audio_complete · audio complete: 75790d4d-2dbc-4ebe-b626-9a0aeaa44c6a"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="1.09s · tts_result · tts result: はい、答えるね。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="1.09s · prompt_complete · prompt complete: 75790d4d-2dbc-4ebe-b626-9a0aeaa44c6a"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li><span class="time-pill">56ms</span> <span class="event-chip is-suppress">scheduler suppress</span> partial reconciled with active partial reply / score=0.0</li><li><span class="time-pill">1.09s</span> <span class="event-chip is-replace">replace_current after prior speech</span> はい、答えるね。 / reason: final diverged from active partial reply; replacing</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-partial-text"><time>37ms</time><strong>user partial</strong><p>今日の予定を教えて</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>37ms</time><strong>Tomoko · replace_current</strong><p>はい、答えるね。</p><small>prepared speech crossed emit threshold</small></div>
+<div class="bubble bubble-user is-partial-text"><time>56ms</time><strong>user partial</strong><p>今日の予定を教えてください</p></div>
+<div class="bubble bubble-system is-suppress"><time>56ms</time><strong>scheduler · suppress</strong><p>partial reconciled with active partial reply</p></div>
+<div class="bubble bubble-user is-final-text"><time>1.09s</time><strong>user final</strong><p>明日の会議の資料はどこにあるか教えて</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>1.09s</time><strong>Tomoko · replace_current</strong><p>はい、答えるね。</p><small>final diverged from active partial reply; replacing</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>37ms</td><td>transcript</td><td>partial</td><td>今日の予定を教えて</td><td>user</td></tr>
+<tr><td>37ms</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=1.18</td><td>scheduler</td></tr>
+<tr><td>37ms</td><td>speech_order</td><td>replace_current</td><td>はい、答えるね。</td><td>tomoko</td></tr>
+<tr><td>37ms</td><td>model_complete</td><td>model complete</td><td>はい、答えるね。</td><td>audio</td></tr>
+<tr><td>37ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>37ms</td><td>audio_complete</td><td>audio complete</td><td>e0dbdbc9-352b-4cad-85d3-cf80f3692373</td><td>audio</td></tr>
+<tr><td>37ms</td><td>tts_result</td><td>tts result</td><td>はい、答えるね。</td><td>audio</td></tr>
+<tr><td>37ms</td><td>prompt_complete</td><td>prompt complete</td><td>e0dbdbc9-352b-4cad-85d3-cf80f3692373</td><td>audio</td></tr>
+<tr><td>56ms</td><td>transcript</td><td>partial</td><td>今日の予定を教えてください</td><td>user</td></tr>
+<tr><td>56ms</td><td>scheduler_decision</td><td>suppress</td><td>partial reconciled with active partial reply score=0.00</td><td>scheduler</td></tr>
+<tr><td>1.09s</td><td>transcript</td><td>final</td><td>明日の会議の資料はどこにあるか教えて</td><td>user</td></tr>
+<tr><td>1.09s</td><td>scheduler_decision</td><td>replace_current</td><td>final diverged from active partial reply; replacing score=1.35</td><td>scheduler</td></tr>
+<tr><td>1.09s</td><td>speech_order</td><td>replace_current</td><td>はい、答えるね。</td><td>tomoko</td></tr>
+<tr><td>1.09s</td><td>model_complete</td><td>model complete</td><td>はい、答えるね。</td><td>audio</td></tr>
+<tr><td>1.09s</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>1.09s</td><td>audio_complete</td><td>audio complete</td><td>75790d4d-2dbc-4ebe-b626-9a0aeaa44c6a</td><td>audio</td></tr>
+<tr><td>1.09s</td><td>tts_result</td><td>tts result</td><td>はい、答えるね。</td><td>audio</td></tr>
+<tr><td>1.09s</td><td>prompt_complete</td><td>prompt complete</td><td>75790d4d-2dbc-4ebe-b626-9a0aeaa44c6a</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="attention-mode-idle-wake" data-tags="all append fake suppress">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:05 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-attention-mode-idle-wake-20260704-044105.json</code></div>
+          <h3>attention-mode-idle-wake</h3>
+          <p>Wake enters conversation profile, long silence returns to ambient, low-saturation monologue is ignored, and wake returns to conversation.</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>1</b> replace</span>
+        <span><b>1</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>1</b> suppress</span>
+        <span><b>2</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>24ms</span><span class="axis-tick" style="left:40.000%"><b></b>48ms</span><span class="axis-tick" style="left:60.000%"><b></b>72ms</span><span class="axis-tick" style="left:80.000%"><b></b>96ms</span><span class="axis-tick" style="left:99.200%"><b></b>120ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:9.265%;width:1.100%" title="#0 トモコ、聞いて"><span>#0 トモコ、聞いて</span></div><div class="voice-band" style="left:46.570%;width:1.100%" title="#1 今日は疲れた"><span>#1 今日は疲れた</span></div><div class="voice-band" style="left:65.846%;width:1.100%" title="#2 トモコ、戻って"><span>#2 トモコ、戻って</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:11.524%" title="14ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-user is-final" style="left:34.587%" title="42ms · transcript · final: トモコ、聞いて"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:34.609%" title="42ms · scheduler_decision · replace_current: prepared speech crossed emit threshold score=0.93"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:34.616%" title="42ms · speech_order · reply replace: 聞くね。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:34.638%" title="42ms · model_complete · model complete: 聞くね。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:34.642%" title="42ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:34.648%" title="42ms · audio_complete · audio complete: 433b1528-6dd8-4c26-8e6a-71cf9b95d75d"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:34.652%" title="42ms · tts_result · tts result: 聞くね。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:34.655%" title="42ms · prompt_complete · prompt complete: 433b1528-6dd8-4c26-8e6a-71cf9b95d75d"><span>prompt complete</span></div><div class="event-dot lane-user is-final" style="left:62.052%" title="74ms · transcript · final: 今日は疲れた"><span>final</span></div><div class="event-dot lane-scheduler is-suppress" style="left:62.068%" title="74ms · scheduler_decision · suppress: ambient attention suppresses low-saturation speech score=0.00"><span>suppress</span></div><div class="event-dot lane-user is-final" style="left:82.871%" title="99ms · transcript · final: トモコ、戻って"><span>final</span></div><div class="event-dot lane-scheduler is-append" style="left:82.900%" title="99ms · scheduler_decision · append_after_current: prepared speech is high enough to append score=0.95"><span>append_after_current</span></div><div class="event-dot lane-tomoko is-append" style="left:82.906%" title="99ms · speech_order · append_after_current: 聞くね。"><span>append_after_current</span></div><div class="event-dot lane-audio is-neutral" style="left:82.917%" title="100ms · model_complete · model complete: 聞くね。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:82.919%" title="100ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:82.922%" title="100ms · audio_complete · audio complete: 23f2897f-a38a-4d25-adf2-aa140509dbaa"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:82.926%" title="100ms · tts_result · tts result: 聞くね。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:82.929%" title="100ms · prompt_complete · prompt complete: 23f2897f-a38a-4d25-adf2-aa140509dbaa"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li><span class="time-pill">74ms</span> <span class="event-chip is-suppress">scheduler suppress</span> ambient attention suppresses low-saturation speech / score=0.0</li><li><span class="time-pill">99ms</span> <span class="event-chip is-append">append_after_current</span> 聞くね。 / reason: prepared speech is high enough to append</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-final-text"><time>42ms</time><strong>user final</strong><p>トモコ、聞いて</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>42ms</time><strong>Tomoko · replace_current</strong><p>聞くね。</p><small>prepared speech crossed emit threshold</small></div>
+<div class="bubble bubble-user is-final-text"><time>74ms</time><strong>user final</strong><p>今日は疲れた</p></div>
+<div class="bubble bubble-system is-suppress"><time>74ms</time><strong>scheduler · suppress</strong><p>ambient attention suppresses low-saturation speech</p></div>
+<div class="bubble bubble-user is-final-text"><time>99ms</time><strong>user final</strong><p>トモコ、戻って</p></div>
+<div class="bubble bubble-tomoko is-append"><time>99ms</time><strong>Tomoko · append_after_current</strong><p>聞くね。</p><small>prepared speech is high enough to append</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>42ms</td><td>transcript</td><td>final</td><td>トモコ、聞いて</td><td>user</td></tr>
+<tr><td>42ms</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=0.93</td><td>scheduler</td></tr>
+<tr><td>42ms</td><td>speech_order</td><td>replace_current</td><td>聞くね。</td><td>tomoko</td></tr>
+<tr><td>42ms</td><td>model_complete</td><td>model complete</td><td>聞くね。</td><td>audio</td></tr>
+<tr><td>42ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>42ms</td><td>audio_complete</td><td>audio complete</td><td>433b1528-6dd8-4c26-8e6a-71cf9b95d75d</td><td>audio</td></tr>
+<tr><td>42ms</td><td>tts_result</td><td>tts result</td><td>聞くね。</td><td>audio</td></tr>
+<tr><td>42ms</td><td>prompt_complete</td><td>prompt complete</td><td>433b1528-6dd8-4c26-8e6a-71cf9b95d75d</td><td>audio</td></tr>
+<tr><td>74ms</td><td>transcript</td><td>final</td><td>今日は疲れた</td><td>user</td></tr>
+<tr><td>74ms</td><td>scheduler_decision</td><td>suppress</td><td>ambient attention suppresses low-saturation speech score=0.00</td><td>scheduler</td></tr>
+<tr><td>99ms</td><td>transcript</td><td>final</td><td>トモコ、戻って</td><td>user</td></tr>
+<tr><td>99ms</td><td>scheduler_decision</td><td>append_after_current</td><td>prepared speech is high enough to append score=0.95</td><td>scheduler</td></tr>
+<tr><td>99ms</td><td>speech_order</td><td>append_after_current</td><td>聞くね。</td><td>tomoko</td></tr>
+<tr><td>100ms</td><td>model_complete</td><td>model complete</td><td>聞くね。</td><td>audio</td></tr>
+<tr><td>100ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>100ms</td><td>audio_complete</td><td>audio complete</td><td>23f2897f-a38a-4d25-adf2-aa140509dbaa</td><td>audio</td></tr>
+<tr><td>100ms</td><td>tts_result</td><td>tts result</td><td>聞くね。</td><td>audio</td></tr>
+<tr><td>100ms</td><td>prompt_complete</td><td>prompt complete</td><td>23f2897f-a38a-4d25-adf2-aa140509dbaa</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="vap-yielding-opportunity" data-tags="all fake interrupt">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:24 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-vap-yielding-opportunity-20260704-044124.json</code></div>
+          <h3>vap-yielding-opportunity</h3>
+          <p>Low-silence partial turn opportunity should come from VAP p_yielding, not silence fallback (G5).</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>2</b> replace</span>
+        <span><b>0</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>0</b> suppress</span>
+        <span><b>2</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>106ms</span><span class="axis-tick" style="left:40.000%"><b></b>213ms</span><span class="axis-tick" style="left:60.000%"><b></b>319ms</span><span class="axis-tick" style="left:80.000%"><b></b>426ms</span><span class="axis-tick" style="left:99.200%"><b></b>532ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:2.350%;width:51.598%" title="#0 今日の予定を教えて"><span>#0 今日の予定を教えて</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:2.377%" title="13ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-user is-partial" style="left:7.301%" title="39ms · transcript · partial: 今日の予定"><span>partial</span></div><div class="event-dot lane-scheduler is-replace" style="left:7.306%" title="39ms · scheduler_decision · replace_current: partial acknowledgement before complete request score=0.90"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:7.308%" title="39ms · speech_order · reply replace: うん、聞いてるよ。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:7.310%" title="39ms · model_complete · model complete: うん、聞いてるよ。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:7.311%" title="39ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:7.312%" title="39ms · audio_complete · audio complete: 3493245b-5c5d-402e-a443-d347c759c865"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:7.313%" title="39ms · tts_result · tts result: うん、聞いてるよ。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:7.313%" title="39ms · prompt_complete · prompt complete: 3493245b-5c5d-402e-a443-d347c759c865"><span>prompt complete</span></div><div class="event-dot lane-user is-final" style="left:99.200%" title="532ms · transcript · final: 今日の予定を教えて"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:99.200%" title="532ms · scheduler_decision · replace_current: prepared speech crossed emit threshold score=1.32"><span>replace_current</span></div><div class="event-dot lane-tomoko is-interrupt" style="left:99.200%" title="532ms · speech_order · interrupt replace: 先に聞いているよ。"><span>interrupt replace</span></div><div class="event-dot lane-audio is-neutral" style="left:99.200%" title="532ms · model_complete · model complete: 先に聞いているよ。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="532ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="532ms · audio_complete · audio complete: 55421429-b9d4-42ec-b079-902b84b54fbd"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="532ms · tts_result · tts result: 先に聞いているよ。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:99.200%" title="532ms · prompt_complete · prompt complete: 55421429-b9d4-42ec-b079-902b84b54fbd"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li><span class="time-pill">532ms</span> <span class="event-chip is-replace">replace_current after prior speech</span> 先に聞いているよ。 / reason: prepared speech crossed emit threshold</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-partial-text"><time>39ms</time><strong>user partial</strong><p>今日の予定</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>39ms</time><strong>Tomoko · replace_current</strong><p>うん、聞いてるよ。</p><small>partial acknowledgement before complete request</small></div>
+<div class="bubble bubble-user is-final-text"><time>532ms</time><strong>user final</strong><p>今日の予定を教えて</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>532ms</time><strong>Tomoko · replace_current</strong><p>先に聞いているよ。</p><small>prepared speech crossed emit threshold</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>39ms</td><td>transcript</td><td>partial</td><td>今日の予定</td><td>user</td></tr>
+<tr><td>39ms</td><td>scheduler_decision</td><td>replace_current</td><td>partial acknowledgement before complete request score=0.90</td><td>scheduler</td></tr>
+<tr><td>39ms</td><td>speech_order</td><td>replace_current</td><td>うん、聞いてるよ。</td><td>tomoko</td></tr>
+<tr><td>39ms</td><td>model_complete</td><td>model complete</td><td>うん、聞いてるよ。</td><td>audio</td></tr>
+<tr><td>39ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>39ms</td><td>audio_complete</td><td>audio complete</td><td>3493245b-5c5d-402e-a443-d347c759c865</td><td>audio</td></tr>
+<tr><td>39ms</td><td>tts_result</td><td>tts result</td><td>うん、聞いてるよ。</td><td>audio</td></tr>
+<tr><td>39ms</td><td>prompt_complete</td><td>prompt complete</td><td>3493245b-5c5d-402e-a443-d347c759c865</td><td>audio</td></tr>
+<tr><td>532ms</td><td>transcript</td><td>final</td><td>今日の予定を教えて</td><td>user</td></tr>
+<tr><td>532ms</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=1.32</td><td>scheduler</td></tr>
+<tr><td>532ms</td><td>speech_order</td><td>replace_current</td><td>先に聞いているよ。</td><td>tomoko</td></tr>
+<tr><td>532ms</td><td>model_complete</td><td>model complete</td><td>先に聞いているよ。</td><td>audio</td></tr>
+<tr><td>532ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>532ms</td><td>audio_complete</td><td>audio complete</td><td>55421429-b9d4-42ec-b079-902b84b54fbd</td><td>audio</td></tr>
+<tr><td>532ms</td><td>tts_result</td><td>tts result</td><td>先に聞いているよ。</td><td>audio</td></tr>
+<tr><td>532ms</td><td>prompt_complete</td><td>prompt complete</td><td>55421429-b9d4-42ec-b079-902b84b54fbd</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="basic-reply" data-tags="all fake">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:07 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-basic-reply-20260704-044107.json</code></div>
+          <h3>basic-reply</h3>
+          <p>Single user utterance -&gt; transcript -&gt; scheduler decision -&gt; speech order -&gt; audio.</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>1</b> replace</span>
+        <span><b>0</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>0</b> suppress</span>
+        <span><b>1</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>24ms</span><span class="axis-tick" style="left:40.000%"><b></b>48ms</span><span class="axis-tick" style="left:60.000%"><b></b>72ms</span><span class="axis-tick" style="left:80.000%"><b></b>96ms</span><span class="axis-tick" style="left:99.200%"><b></b>120ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:9.141%;width:1.100%" title="#0 トモコ、今日の予定を教えて"><span>#0 トモコ、今日の予定を教えて</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:11.309%" title="14ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-user is-final" style="left:35.617%" title="43ms · transcript · final: トモコ、今日の予定を教えて"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:35.636%" title="43ms · scheduler_decision · replace_current: prepared speech crossed emit threshold score=0.93"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:35.641%" title="43ms · speech_order · reply replace: うん、聞こえてるよ。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:35.651%" title="43ms · model_complete · model complete: うん、聞こえてるよ。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:35.653%" title="43ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:35.662%" title="43ms · audio_complete · audio complete: c6ffc517-6a88-41c1-8f16-52a7b394e5be"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:35.667%" title="43ms · tts_result · tts result: うん、聞こえてるよ。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:35.670%" title="43ms · prompt_complete · prompt complete: c6ffc517-6a88-41c1-8f16-52a7b394e5be"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li>No interrupt / queue / suppress marker in this scenario.</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-final-text"><time>43ms</time><strong>user final</strong><p>トモコ、今日の予定を教えて</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>43ms</time><strong>Tomoko · replace_current</strong><p>うん、聞こえてるよ。</p><small>prepared speech crossed emit threshold</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>43ms</td><td>transcript</td><td>final</td><td>トモコ、今日の予定を教えて</td><td>user</td></tr>
+<tr><td>43ms</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=0.93</td><td>scheduler</td></tr>
+<tr><td>43ms</td><td>speech_order</td><td>replace_current</td><td>うん、聞こえてるよ。</td><td>tomoko</td></tr>
+<tr><td>43ms</td><td>model_complete</td><td>model complete</td><td>うん、聞こえてるよ。</td><td>audio</td></tr>
+<tr><td>43ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>43ms</td><td>audio_complete</td><td>audio complete</td><td>c6ffc517-6a88-41c1-8f16-52a7b394e5be</td><td>audio</td></tr>
+<tr><td>43ms</td><td>tts_result</td><td>tts result</td><td>うん、聞こえてるよ。</td><td>audio</td></tr>
+<tr><td>43ms</td><td>prompt_complete</td><td>prompt complete</td><td>c6ffc517-6a88-41c1-8f16-52a7b394e5be</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="calendar-initiative-silence" data-tags="all fake">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:09 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-calendar-initiative-silence-20260704-044109.json</code></div>
+          <h3>calendar-initiative-silence</h3>
+          <p>Fake calendar material is converted by the think helper into an initiative candidate without explicit fake_candidates.</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>1</b> replace</span>
+        <span><b>0</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>0</b> suppress</span>
+        <span><b>1</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>24ms</span><span class="axis-tick" style="left:40.000%"><b></b>48ms</span><span class="axis-tick" style="left:60.000%"><b></b>72ms</span><span class="axis-tick" style="left:80.000%"><b></b>96ms</span><span class="axis-tick" style="left:99.200%"><b></b>120ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:8.653%;width:1.100%" title="#0 "><span>#0 </span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:8.707%" title="10ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-scheduler is-neutral" style="left:31.581%" title="38ms · initiative_tick_ack · initiative: initiative_tick_ack"><span>initiative</span></div><div class="event-dot lane-scheduler is-replace" style="left:32.060%" title="38ms · scheduler_decision · replace_current: candidate pressure initiative tick score=1.46"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:32.067%" title="38ms · speech_order · reply replace: そろそろ定例会議だよ。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:32.080%" title="38ms · model_complete · model complete: そろそろ定例会議だよ。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:32.084%" title="39ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:32.088%" title="39ms · audio_complete · audio complete: 295952f0-4bd6-4d1c-80aa-240abc1e53dd"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:32.092%" title="39ms · tts_result · tts result: そろそろ定例会議だよ。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:32.095%" title="39ms · prompt_complete · prompt complete: 295952f0-4bd6-4d1c-80aa-240abc1e53dd"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li>No interrupt / queue / suppress marker in this scenario.</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-tomoko is-replace"><time>38ms</time><strong>Tomoko · replace_current</strong><p>そろそろ定例会議だよ。</p><small>candidate pressure initiative tick</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>38ms</td><td>initiative_tick_ack</td><td>initiative</td><td>initiative_tick_ack</td><td>scheduler</td></tr>
+<tr><td>38ms</td><td>scheduler_decision</td><td>replace_current</td><td>candidate pressure initiative tick score=1.46</td><td>scheduler</td></tr>
+<tr><td>38ms</td><td>speech_order</td><td>replace_current</td><td>そろそろ定例会議だよ。</td><td>tomoko</td></tr>
+<tr><td>38ms</td><td>model_complete</td><td>model complete</td><td>そろそろ定例会議だよ。</td><td>audio</td></tr>
+<tr><td>39ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>39ms</td><td>audio_complete</td><td>audio complete</td><td>295952f0-4bd6-4d1c-80aa-240abc1e53dd</td><td>audio</td></tr>
+<tr><td>39ms</td><td>tts_result</td><td>tts result</td><td>そろそろ定例会議だよ。</td><td>audio</td></tr>
+<tr><td>39ms</td><td>prompt_complete</td><td>prompt complete</td><td>295952f0-4bd6-4d1c-80aa-240abc1e53dd</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="candidate-initiative-absent-suppressed" data-tags="all fake suppress">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:10 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-candidate-initiative-absent-suppressed-20260704-044110.json</code></div>
+          <h3>candidate-initiative-absent-suppressed</h3>
+          <p>Absent user status suppresses a silence initiative tick even when an active candidate exists (Step 7).</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>0</b> replace</span>
+        <span><b>0</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>1</b> suppress</span>
+        <span><b>0</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>24ms</span><span class="axis-tick" style="left:40.000%"><b></b>48ms</span><span class="axis-tick" style="left:60.000%"><b></b>72ms</span><span class="axis-tick" style="left:80.000%"><b></b>96ms</span><span class="axis-tick" style="left:99.200%"><b></b>120ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:8.222%;width:1.100%" title="#0 "><span>#0 </span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:8.270%" title="10ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-scheduler is-neutral" style="left:27.312%" title="33ms · initiative_tick_ack · initiative: initiative_tick_ack"><span>initiative</span></div><div class="event-dot lane-scheduler is-suppress" style="left:27.489%" title="33ms · scheduler_decision · suppress: user absence suppresses initiative tick score=0.00"><span>suppress</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li><span class="time-pill">33ms</span> <span class="event-chip is-suppress">scheduler suppress</span> user absence suppresses initiative tick / score=0.0</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-system is-suppress"><time>33ms</time><strong>scheduler · suppress</strong><p>user absence suppresses initiative tick</p></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>33ms</td><td>initiative_tick_ack</td><td>initiative</td><td>initiative_tick_ack</td><td>scheduler</td></tr>
+<tr><td>33ms</td><td>scheduler_decision</td><td>suppress</td><td>user absence suppresses initiative tick score=0.00</td><td>scheduler</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="candidate-initiative-silence" data-tags="all fake">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:11 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-candidate-initiative-silence-20260704-044111.json</code></div>
+          <h3>candidate-initiative-silence</h3>
+          <p>Silence initiative tick turns an active world candidate into a Tomoko-owned spontaneous speech order (Step 7).</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>1</b> replace</span>
+        <span><b>0</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>0</b> suppress</span>
+        <span><b>1</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>24ms</span><span class="axis-tick" style="left:40.000%"><b></b>48ms</span><span class="axis-tick" style="left:60.000%"><b></b>72ms</span><span class="axis-tick" style="left:80.000%"><b></b>96ms</span><span class="axis-tick" style="left:99.200%"><b></b>120ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:8.685%;width:1.100%" title="#0 "><span>#0 </span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:8.732%" title="10ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-scheduler is-neutral" style="left:30.404%" title="36ms · initiative_tick_ack · initiative: initiative_tick_ack"><span>initiative</span></div><div class="event-dot lane-scheduler is-replace" style="left:31.054%" title="37ms · scheduler_decision · replace_current: candidate pressure initiative tick score=1.40"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:31.062%" title="37ms · speech_order · reply replace: そういえば、外は雨みたい。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:31.077%" title="37ms · model_complete · model complete: そういえば、外は雨みたい。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:31.079%" title="37ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:31.082%" title="37ms · audio_complete · audio complete: abc46b84-d570-4ed0-9d1f-f5b54711879c"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:31.086%" title="37ms · tts_result · tts result: そういえば、外は雨みたい。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:31.089%" title="37ms · prompt_complete · prompt complete: abc46b84-d570-4ed0-9d1f-f5b54711879c"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li>No interrupt / queue / suppress marker in this scenario.</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-tomoko is-replace"><time>37ms</time><strong>Tomoko · replace_current</strong><p>そういえば、外は雨みたい。</p><small>candidate pressure initiative tick</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>36ms</td><td>initiative_tick_ack</td><td>initiative</td><td>initiative_tick_ack</td><td>scheduler</td></tr>
+<tr><td>37ms</td><td>scheduler_decision</td><td>replace_current</td><td>candidate pressure initiative tick score=1.40</td><td>scheduler</td></tr>
+<tr><td>37ms</td><td>speech_order</td><td>replace_current</td><td>そういえば、外は雨みたい。</td><td>tomoko</td></tr>
+<tr><td>37ms</td><td>model_complete</td><td>model complete</td><td>そういえば、外は雨みたい。</td><td>audio</td></tr>
+<tr><td>37ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>37ms</td><td>audio_complete</td><td>audio complete</td><td>abc46b84-d570-4ed0-9d1f-f5b54711879c</td><td>audio</td></tr>
+<tr><td>37ms</td><td>tts_result</td><td>tts result</td><td>そういえば、外は雨みたい。</td><td>audio</td></tr>
+<tr><td>37ms</td><td>prompt_complete</td><td>prompt complete</td><td>abc46b84-d570-4ed0-9d1f-f5b54711879c</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="candidate-pressure-context" data-tags="all fake">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:12 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-candidate-pressure-context-20260704-044112.json</code></div>
+          <h3>candidate-pressure-context</h3>
+          <p>Think-process candidate fixture is exposed as prompt context and world candidate pressure (Step 7).</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>1</b> replace</span>
+        <span><b>0</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>0</b> suppress</span>
+        <span><b>1</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>24ms</span><span class="axis-tick" style="left:40.000%"><b></b>48ms</span><span class="axis-tick" style="left:60.000%"><b></b>72ms</span><span class="axis-tick" style="left:80.000%"><b></b>96ms</span><span class="axis-tick" style="left:99.200%"><b></b>120ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:8.536%;width:1.100%" title="#0 トモコ、今どう思う"><span>#0 トモコ、今どう思う</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:10.796%" title="13ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-user is-final" style="left:35.167%" title="42ms · transcript · final: トモコ、今どう思う"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:35.190%" title="42ms · scheduler_decision · replace_current: prepared speech crossed emit threshold score=0.98"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:35.196%" title="42ms · speech_order · reply replace: 雨のことも踏まえるね。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:35.208%" title="42ms · model_complete · model complete: 雨のことも踏まえるね。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:35.210%" title="42ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:35.213%" title="42ms · audio_complete · audio complete: 5d0f6b10-03f3-487a-b1c5-47dadd42d738"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:35.217%" title="42ms · tts_result · tts result: 雨のことも踏まえるね。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:35.219%" title="42ms · prompt_complete · prompt complete: 5d0f6b10-03f3-487a-b1c5-47dadd42d738"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li>No interrupt / queue / suppress marker in this scenario.</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-final-text"><time>42ms</time><strong>user final</strong><p>トモコ、今どう思う</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>42ms</time><strong>Tomoko · replace_current</strong><p>雨のことも踏まえるね。</p><small>prepared speech crossed emit threshold</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>42ms</td><td>transcript</td><td>final</td><td>トモコ、今どう思う</td><td>user</td></tr>
+<tr><td>42ms</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=0.98</td><td>scheduler</td></tr>
+<tr><td>42ms</td><td>speech_order</td><td>replace_current</td><td>雨のことも踏まえるね。</td><td>tomoko</td></tr>
+<tr><td>42ms</td><td>model_complete</td><td>model complete</td><td>雨のことも踏まえるね。</td><td>audio</td></tr>
+<tr><td>42ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>42ms</td><td>audio_complete</td><td>audio complete</td><td>5d0f6b10-03f3-487a-b1c5-47dadd42d738</td><td>audio</td></tr>
+<tr><td>42ms</td><td>tts_result</td><td>tts result</td><td>雨のことも踏まえるね。</td><td>audio</td></tr>
+<tr><td>42ms</td><td>prompt_complete</td><td>prompt complete</td><td>5d0f6b10-03f3-487a-b1c5-47dadd42d738</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="motivation-threshold-high" data-tags="all append fake">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:16 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-motivation-threshold-high-20260704-044116.json</code></div>
+          <h3>motivation-threshold-high</h3>
+          <p>High talkativeness/curiosity with topic continuity raises the motivation threshold shift (G6).</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>1</b> replace</span>
+        <span><b>2</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>0</b> suppress</span>
+        <span><b>3</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>24ms</span><span class="axis-tick" style="left:40.000%"><b></b>48ms</span><span class="axis-tick" style="left:60.000%"><b></b>72ms</span><span class="axis-tick" style="left:80.000%"><b></b>96ms</span><span class="axis-tick" style="left:99.200%"><b></b>120ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:8.107%;width:1.100%" title="#0 今日の予定の話をしよう"><span>#0 今日の予定の話をしよう</span></div><div class="voice-band" style="left:45.333%;width:1.100%" title="#1 予定の続きが気になる"><span>#1 予定の続きが気になる</span></div><div class="voice-band" style="left:65.104%;width:1.100%" title="#2 予定、それは違う気がする"><span>#2 予定、それは違う気がする</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:10.277%" title="12ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-user is-final" style="left:33.149%" title="40ms · transcript · final: 今日の予定の話をしよう"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:33.174%" title="40ms · scheduler_decision · replace_current: prepared speech crossed emit threshold score=1.04"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:33.180%" title="40ms · speech_order · reply replace: そこ、気になるね。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:33.191%" title="40ms · model_complete · model complete: そこ、気になるね。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:33.192%" title="40ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:33.196%" title="40ms · audio_complete · audio complete: b8d61a9d-61f5-49fc-8f9a-ed961b360dc8"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:33.199%" title="40ms · tts_result · tts result: そこ、気になるね。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:33.202%" title="40ms · prompt_complete · prompt complete: b8d61a9d-61f5-49fc-8f9a-ed961b360dc8"><span>prompt complete</span></div><div class="event-dot lane-user is-final" style="left:65.044%" title="78ms · transcript · final: 予定の続きが気になる"><span>final</span></div><div class="event-dot lane-scheduler is-append" style="left:65.064%" title="78ms · scheduler_decision · append_after_current: prepared speech is high enough to append score=1.06"><span>append_after_current</span></div><div class="event-dot lane-tomoko is-append" style="left:65.070%" title="78ms · speech_order · append_after_current: そこ、気になるね。"><span>append_after_current</span></div><div class="event-dot lane-audio is-neutral" style="left:65.081%" title="78ms · model_complete · model complete: そこ、気になるね。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:65.082%" title="78ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:65.086%" title="78ms · audio_complete · audio complete: 401f7a2e-0ba3-482d-9e15-aabb99d72741"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:65.089%" title="78ms · tts_result · tts result: そこ、気になるね。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:65.091%" title="78ms · prompt_complete · prompt complete: 401f7a2e-0ba3-482d-9e15-aabb99d72741"><span>prompt complete</span></div><div class="event-dot lane-user is-final" style="left:80.625%" title="97ms · transcript · final: 予定、それは違う気がする"><span>final</span></div><div class="event-dot lane-scheduler is-append" style="left:80.644%" title="97ms · scheduler_decision · append_after_current: prepared speech is high enough to append score=1.07"><span>append_after_current</span></div><div class="event-dot lane-tomoko is-append" style="left:80.649%" title="97ms · speech_order · append_after_current: そこ、気になるね。"><span>append_after_current</span></div><div class="event-dot lane-audio is-neutral" style="left:80.660%" title="97ms · model_complete · model complete: そこ、気になるね。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:80.661%" title="97ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:80.664%" title="97ms · audio_complete · audio complete: 79e06f70-d5c6-4f6b-86f3-567aa4a946ad"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:80.668%" title="97ms · tts_result · tts result: そこ、気になるね。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:80.670%" title="97ms · prompt_complete · prompt complete: 79e06f70-d5c6-4f6b-86f3-567aa4a946ad"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li><span class="time-pill">78ms</span> <span class="event-chip is-append">append_after_current</span> そこ、気になるね。 / reason: prepared speech is high enough to append</li><li><span class="time-pill">97ms</span> <span class="event-chip is-append">append_after_current</span> そこ、気になるね。 / reason: prepared speech is high enough to append</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-final-text"><time>40ms</time><strong>user final</strong><p>今日の予定の話をしよう</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>40ms</time><strong>Tomoko · replace_current</strong><p>そこ、気になるね。</p><small>prepared speech crossed emit threshold</small></div>
+<div class="bubble bubble-user is-final-text"><time>78ms</time><strong>user final</strong><p>予定の続きが気になる</p></div>
+<div class="bubble bubble-tomoko is-append"><time>78ms</time><strong>Tomoko · append_after_current</strong><p>そこ、気になるね。</p><small>prepared speech is high enough to append</small></div>
+<div class="bubble bubble-user is-final-text"><time>97ms</time><strong>user final</strong><p>予定、それは違う気がする</p></div>
+<div class="bubble bubble-tomoko is-append"><time>97ms</time><strong>Tomoko · append_after_current</strong><p>そこ、気になるね。</p><small>prepared speech is high enough to append</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>40ms</td><td>transcript</td><td>final</td><td>今日の予定の話をしよう</td><td>user</td></tr>
+<tr><td>40ms</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=1.04</td><td>scheduler</td></tr>
+<tr><td>40ms</td><td>speech_order</td><td>replace_current</td><td>そこ、気になるね。</td><td>tomoko</td></tr>
+<tr><td>40ms</td><td>model_complete</td><td>model complete</td><td>そこ、気になるね。</td><td>audio</td></tr>
+<tr><td>40ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>40ms</td><td>audio_complete</td><td>audio complete</td><td>b8d61a9d-61f5-49fc-8f9a-ed961b360dc8</td><td>audio</td></tr>
+<tr><td>40ms</td><td>tts_result</td><td>tts result</td><td>そこ、気になるね。</td><td>audio</td></tr>
+<tr><td>40ms</td><td>prompt_complete</td><td>prompt complete</td><td>b8d61a9d-61f5-49fc-8f9a-ed961b360dc8</td><td>audio</td></tr>
+<tr><td>78ms</td><td>transcript</td><td>final</td><td>予定の続きが気になる</td><td>user</td></tr>
+<tr><td>78ms</td><td>scheduler_decision</td><td>append_after_current</td><td>prepared speech is high enough to append score=1.06</td><td>scheduler</td></tr>
+<tr><td>78ms</td><td>speech_order</td><td>append_after_current</td><td>そこ、気になるね。</td><td>tomoko</td></tr>
+<tr><td>78ms</td><td>model_complete</td><td>model complete</td><td>そこ、気になるね。</td><td>audio</td></tr>
+<tr><td>78ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>78ms</td><td>audio_complete</td><td>audio complete</td><td>401f7a2e-0ba3-482d-9e15-aabb99d72741</td><td>audio</td></tr>
+<tr><td>78ms</td><td>tts_result</td><td>tts result</td><td>そこ、気になるね。</td><td>audio</td></tr>
+<tr><td>78ms</td><td>prompt_complete</td><td>prompt complete</td><td>401f7a2e-0ba3-482d-9e15-aabb99d72741</td><td>audio</td></tr>
+<tr><td>97ms</td><td>transcript</td><td>final</td><td>予定、それは違う気がする</td><td>user</td></tr>
+<tr><td>97ms</td><td>scheduler_decision</td><td>append_after_current</td><td>prepared speech is high enough to append score=1.07</td><td>scheduler</td></tr>
+<tr><td>97ms</td><td>speech_order</td><td>append_after_current</td><td>そこ、気になるね。</td><td>tomoko</td></tr>
+<tr><td>97ms</td><td>model_complete</td><td>model complete</td><td>そこ、気になるね。</td><td>audio</td></tr>
+<tr><td>97ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>97ms</td><td>audio_complete</td><td>audio complete</td><td>79e06f70-d5c6-4f6b-86f3-567aa4a946ad</td><td>audio</td></tr>
+<tr><td>97ms</td><td>tts_result</td><td>tts result</td><td>そこ、気になるね。</td><td>audio</td></tr>
+<tr><td>97ms</td><td>prompt_complete</td><td>prompt complete</td><td>79e06f70-d5c6-4f6b-86f3-567aa4a946ad</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="motivation-threshold-low" data-tags="all append fake">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:17 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-motivation-threshold-low-20260704-044117.json</code></div>
+          <h3>motivation-threshold-low</h3>
+          <p>Low talkativeness/curiosity with high restraint keeps the motivation threshold shift near zero (G6).</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>1</b> replace</span>
+        <span><b>2</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>0</b> suppress</span>
+        <span><b>3</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>24ms</span><span class="axis-tick" style="left:40.000%"><b></b>48ms</span><span class="axis-tick" style="left:60.000%"><b></b>72ms</span><span class="axis-tick" style="left:80.000%"><b></b>96ms</span><span class="axis-tick" style="left:99.200%"><b></b>120ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:8.505%;width:1.100%" title="#0 今日の予定の話をしよう"><span>#0 今日の予定の話をしよう</span></div><div class="voice-band" style="left:45.827%;width:1.100%" title="#1 予定の続きが気になる"><span>#1 予定の続きが気になる</span></div><div class="voice-band" style="left:65.039%;width:1.100%" title="#2 予定、それは違う気がする"><span>#2 予定、それは違う気がする</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:10.745%" title="13ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-user is-final" style="left:34.295%" title="41ms · transcript · final: 今日の予定の話をしよう"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:34.315%" title="41ms · scheduler_decision · replace_current: prepared speech crossed emit threshold score=0.87"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:34.320%" title="41ms · speech_order · reply replace: 聞いてるよ。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:34.331%" title="41ms · model_complete · model complete: 聞いてるよ。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:34.333%" title="41ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:34.336%" title="41ms · audio_complete · audio complete: 2ff35613-00cc-4ea9-a6ee-9583d3fe6874"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:34.347%" title="41ms · tts_result · tts result: 聞いてるよ。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:34.350%" title="41ms · prompt_complete · prompt complete: 2ff35613-00cc-4ea9-a6ee-9583d3fe6874"><span>prompt complete</span></div><div class="event-dot lane-user is-final" style="left:64.966%" title="78ms · transcript · final: 予定の続きが気になる"><span>final</span></div><div class="event-dot lane-scheduler is-append" style="left:64.995%" title="78ms · scheduler_decision · append_after_current: prepared speech is high enough to append score=0.87"><span>append_after_current</span></div><div class="event-dot lane-tomoko is-append" style="left:65.002%" title="78ms · speech_order · append_after_current: 聞いてるよ。"><span>append_after_current</span></div><div class="event-dot lane-audio is-neutral" style="left:65.013%" title="78ms · model_complete · model complete: 聞いてるよ。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:65.015%" title="78ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:65.018%" title="78ms · audio_complete · audio complete: f3088f93-4665-4b72-9c3e-00770420dca3"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:65.024%" title="78ms · tts_result · tts result: 聞いてるよ。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:65.026%" title="78ms · prompt_complete · prompt complete: f3088f93-4665-4b72-9c3e-00770420dca3"><span>prompt complete</span></div><div class="event-dot lane-user is-final" style="left:80.904%" title="97ms · transcript · final: 予定、それは違う気がする"><span>final</span></div><div class="event-dot lane-scheduler is-append" style="left:80.923%" title="97ms · scheduler_decision · append_after_current: prepared speech is high enough to append score=0.87"><span>append_after_current</span></div><div class="event-dot lane-tomoko is-append" style="left:80.928%" title="97ms · speech_order · append_after_current: 聞いてるよ。"><span>append_after_current</span></div><div class="event-dot lane-audio is-neutral" style="left:80.939%" title="97ms · model_complete · model complete: 聞いてるよ。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:80.941%" title="97ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:80.944%" title="97ms · audio_complete · audio complete: c71e8a24-298a-4d8c-9ab6-be5d7cd8d9b7"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:80.948%" title="97ms · tts_result · tts result: 聞いてるよ。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:80.958%" title="97ms · prompt_complete · prompt complete: c71e8a24-298a-4d8c-9ab6-be5d7cd8d9b7"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li><span class="time-pill">78ms</span> <span class="event-chip is-append">append_after_current</span> 聞いてるよ。 / reason: prepared speech is high enough to append</li><li><span class="time-pill">97ms</span> <span class="event-chip is-append">append_after_current</span> 聞いてるよ。 / reason: prepared speech is high enough to append</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-final-text"><time>41ms</time><strong>user final</strong><p>今日の予定の話をしよう</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>41ms</time><strong>Tomoko · replace_current</strong><p>聞いてるよ。</p><small>prepared speech crossed emit threshold</small></div>
+<div class="bubble bubble-user is-final-text"><time>78ms</time><strong>user final</strong><p>予定の続きが気になる</p></div>
+<div class="bubble bubble-tomoko is-append"><time>78ms</time><strong>Tomoko · append_after_current</strong><p>聞いてるよ。</p><small>prepared speech is high enough to append</small></div>
+<div class="bubble bubble-user is-final-text"><time>97ms</time><strong>user final</strong><p>予定、それは違う気がする</p></div>
+<div class="bubble bubble-tomoko is-append"><time>97ms</time><strong>Tomoko · append_after_current</strong><p>聞いてるよ。</p><small>prepared speech is high enough to append</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>41ms</td><td>transcript</td><td>final</td><td>今日の予定の話をしよう</td><td>user</td></tr>
+<tr><td>41ms</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=0.87</td><td>scheduler</td></tr>
+<tr><td>41ms</td><td>speech_order</td><td>replace_current</td><td>聞いてるよ。</td><td>tomoko</td></tr>
+<tr><td>41ms</td><td>model_complete</td><td>model complete</td><td>聞いてるよ。</td><td>audio</td></tr>
+<tr><td>41ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>41ms</td><td>audio_complete</td><td>audio complete</td><td>2ff35613-00cc-4ea9-a6ee-9583d3fe6874</td><td>audio</td></tr>
+<tr><td>41ms</td><td>tts_result</td><td>tts result</td><td>聞いてるよ。</td><td>audio</td></tr>
+<tr><td>41ms</td><td>prompt_complete</td><td>prompt complete</td><td>2ff35613-00cc-4ea9-a6ee-9583d3fe6874</td><td>audio</td></tr>
+<tr><td>78ms</td><td>transcript</td><td>final</td><td>予定の続きが気になる</td><td>user</td></tr>
+<tr><td>78ms</td><td>scheduler_decision</td><td>append_after_current</td><td>prepared speech is high enough to append score=0.87</td><td>scheduler</td></tr>
+<tr><td>78ms</td><td>speech_order</td><td>append_after_current</td><td>聞いてるよ。</td><td>tomoko</td></tr>
+<tr><td>78ms</td><td>model_complete</td><td>model complete</td><td>聞いてるよ。</td><td>audio</td></tr>
+<tr><td>78ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>78ms</td><td>audio_complete</td><td>audio complete</td><td>f3088f93-4665-4b72-9c3e-00770420dca3</td><td>audio</td></tr>
+<tr><td>78ms</td><td>tts_result</td><td>tts result</td><td>聞いてるよ。</td><td>audio</td></tr>
+<tr><td>78ms</td><td>prompt_complete</td><td>prompt complete</td><td>f3088f93-4665-4b72-9c3e-00770420dca3</td><td>audio</td></tr>
+<tr><td>97ms</td><td>transcript</td><td>final</td><td>予定、それは違う気がする</td><td>user</td></tr>
+<tr><td>97ms</td><td>scheduler_decision</td><td>append_after_current</td><td>prepared speech is high enough to append score=0.87</td><td>scheduler</td></tr>
+<tr><td>97ms</td><td>speech_order</td><td>append_after_current</td><td>聞いてるよ。</td><td>tomoko</td></tr>
+<tr><td>97ms</td><td>model_complete</td><td>model complete</td><td>聞いてるよ。</td><td>audio</td></tr>
+<tr><td>97ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>97ms</td><td>audio_complete</td><td>audio complete</td><td>c71e8a24-298a-4d8c-9ab6-be5d7cd8d9b7</td><td>audio</td></tr>
+<tr><td>97ms</td><td>tts_result</td><td>tts result</td><td>聞いてるよ。</td><td>audio</td></tr>
+<tr><td>97ms</td><td>prompt_complete</td><td>prompt complete</td><td>c71e8a24-298a-4d8c-9ab6-be5d7cd8d9b7</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="two-turn-reply" data-tags="all append fake">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:22 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-two-turn-reply-20260704-044122.json</code></div>
+          <h3>two-turn-reply</h3>
+          <p>Two user utterances in one session -&gt; two speech orders, per-step windows verified.</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>1</b> replace</span>
+        <span><b>1</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>0</b> suppress</span>
+        <span><b>2</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>24ms</span><span class="axis-tick" style="left:40.000%"><b></b>48ms</span><span class="axis-tick" style="left:60.000%"><b></b>72ms</span><span class="axis-tick" style="left:80.000%"><b></b>96ms</span><span class="axis-tick" style="left:99.200%"><b></b>120ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:8.156%;width:1.100%" title="#0 トモコ、短く返事して"><span>#0 トモコ、短く返事して</span></div><div class="voice-band" style="left:45.218%;width:1.100%" title="#1 ありがとう、今の返事ちゃんと聞こえてるよ"><span>#1 ありがとう、今の返事ちゃんと聞こえてるよ</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:10.227%" title="12ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-user is-final" style="left:33.850%" title="41ms · transcript · final: トモコ、短く返事して"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:33.883%" title="41ms · scheduler_decision · replace_current: prepared speech crossed emit threshold score=0.93"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:33.897%" title="41ms · speech_order · reply replace: うん、聞こえてるよ。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:33.914%" title="41ms · model_complete · model complete: うん、聞こえてるよ。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:33.915%" title="41ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:33.920%" title="41ms · audio_complete · audio complete: f77c5196-3ded-4901-9c93-f9e7aeb92a94"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:33.924%" title="41ms · tts_result · tts result: うん、聞こえてるよ。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:33.926%" title="41ms · prompt_complete · prompt complete: f77c5196-3ded-4901-9c93-f9e7aeb92a94"><span>prompt complete</span></div><div class="event-dot lane-user is-final" style="left:62.742%" title="75ms · transcript · final: トモコ、短く返事して"><span>final</span></div><div class="event-dot lane-scheduler is-append" style="left:62.773%" title="75ms · scheduler_decision · append_after_current: prepared speech is high enough to append score=0.95"><span>append_after_current</span></div><div class="event-dot lane-tomoko is-append" style="left:62.779%" title="75ms · speech_order · append_after_current: うん、聞こえてるよ。"><span>append_after_current</span></div><div class="event-dot lane-audio is-neutral" style="left:62.790%" title="75ms · model_complete · model complete: うん、聞こえてるよ。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:62.801%" title="75ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:62.811%" title="75ms · audio_complete · audio complete: 5559106b-4f03-4511-95c9-713e346852d7"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:62.818%" title="75ms · tts_result · tts result: うん、聞こえてるよ。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:62.824%" title="75ms · prompt_complete · prompt complete: 5559106b-4f03-4511-95c9-713e346852d7"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li><span class="time-pill">75ms</span> <span class="event-chip is-append">append_after_current</span> うん、聞こえてるよ。 / reason: prepared speech is high enough to append</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-final-text"><time>41ms</time><strong>user final</strong><p>トモコ、短く返事して</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>41ms</time><strong>Tomoko · replace_current</strong><p>うん、聞こえてるよ。</p><small>prepared speech crossed emit threshold</small></div>
+<div class="bubble bubble-user is-final-text"><time>75ms</time><strong>user final</strong><p>トモコ、短く返事して</p></div>
+<div class="bubble bubble-tomoko is-append"><time>75ms</time><strong>Tomoko · append_after_current</strong><p>うん、聞こえてるよ。</p><small>prepared speech is high enough to append</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>41ms</td><td>transcript</td><td>final</td><td>トモコ、短く返事して</td><td>user</td></tr>
+<tr><td>41ms</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=0.93</td><td>scheduler</td></tr>
+<tr><td>41ms</td><td>speech_order</td><td>replace_current</td><td>うん、聞こえてるよ。</td><td>tomoko</td></tr>
+<tr><td>41ms</td><td>model_complete</td><td>model complete</td><td>うん、聞こえてるよ。</td><td>audio</td></tr>
+<tr><td>41ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>41ms</td><td>audio_complete</td><td>audio complete</td><td>f77c5196-3ded-4901-9c93-f9e7aeb92a94</td><td>audio</td></tr>
+<tr><td>41ms</td><td>tts_result</td><td>tts result</td><td>うん、聞こえてるよ。</td><td>audio</td></tr>
+<tr><td>41ms</td><td>prompt_complete</td><td>prompt complete</td><td>f77c5196-3ded-4901-9c93-f9e7aeb92a94</td><td>audio</td></tr>
+<tr><td>75ms</td><td>transcript</td><td>final</td><td>トモコ、短く返事して</td><td>user</td></tr>
+<tr><td>75ms</td><td>scheduler_decision</td><td>append_after_current</td><td>prepared speech is high enough to append score=0.95</td><td>scheduler</td></tr>
+<tr><td>75ms</td><td>speech_order</td><td>append_after_current</td><td>うん、聞こえてるよ。</td><td>tomoko</td></tr>
+<tr><td>75ms</td><td>model_complete</td><td>model complete</td><td>うん、聞こえてるよ。</td><td>audio</td></tr>
+<tr><td>75ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>75ms</td><td>audio_complete</td><td>audio complete</td><td>5559106b-4f03-4511-95c9-713e346852d7</td><td>audio</td></tr>
+<tr><td>75ms</td><td>tts_result</td><td>tts result</td><td>うん、聞こえてるよ。</td><td>audio</td></tr>
+<tr><td>75ms</td><td>prompt_complete</td><td>prompt complete</td><td>5559106b-4f03-4511-95c9-713e346852d7</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="user-status-absent-pressure" data-tags="all fake">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:23 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-user-status-absent-pressure-20260704-044123.json</code></div>
+          <h3>user-status-absent-pressure</h3>
+          <p>Absent user status suppresses spontaneous calendar followup while preserving the direct reply (Step 7).</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>1</b> replace</span>
+        <span><b>0</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>0</b> suppress</span>
+        <span><b>1</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>24ms</span><span class="axis-tick" style="left:40.000%"><b></b>48ms</span><span class="axis-tick" style="left:60.000%"><b></b>72ms</span><span class="axis-tick" style="left:80.000%"><b></b>96ms</span><span class="axis-tick" style="left:99.200%"><b></b>120ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:8.710%;width:1.100%" title="#0 トモコ、今の作業どう思う"><span>#0 トモコ、今の作業どう思う</span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:10.895%" title="13ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-user is-final" style="left:35.266%" title="42ms · transcript · final: トモコ、今の作業どう思う"><span>final</span></div><div class="event-dot lane-scheduler is-replace" style="left:35.285%" title="42ms · scheduler_decision · replace_current: prepared speech crossed emit threshold score=0.91"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:35.290%" title="42ms · speech_order · reply replace: 今の作業、短く見るね。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:35.301%" title="42ms · model_complete · model complete: 今の作業、短く見るね。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:35.303%" title="42ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:35.306%" title="42ms · audio_complete · audio complete: 49895348-c031-491d-801f-a5e18a16e0da"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:35.310%" title="42ms · tts_result · tts result: 今の作業、短く見るね。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:35.312%" title="42ms · prompt_complete · prompt complete: 49895348-c031-491d-801f-a5e18a16e0da"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li>No interrupt / queue / suppress marker in this scenario.</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-user is-final-text"><time>42ms</time><strong>user final</strong><p>トモコ、今の作業どう思う</p></div>
+<div class="bubble bubble-tomoko is-replace"><time>42ms</time><strong>Tomoko · replace_current</strong><p>今の作業、短く見るね。</p><small>prepared speech crossed emit threshold</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>42ms</td><td>transcript</td><td>final</td><td>トモコ、今の作業どう思う</td><td>user</td></tr>
+<tr><td>42ms</td><td>scheduler_decision</td><td>replace_current</td><td>prepared speech crossed emit threshold score=0.91</td><td>scheduler</td></tr>
+<tr><td>42ms</td><td>speech_order</td><td>replace_current</td><td>今の作業、短く見るね。</td><td>tomoko</td></tr>
+<tr><td>42ms</td><td>model_complete</td><td>model complete</td><td>今の作業、短く見るね。</td><td>audio</td></tr>
+<tr><td>42ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>42ms</td><td>audio_complete</td><td>audio complete</td><td>49895348-c031-491d-801f-a5e18a16e0da</td><td>audio</td></tr>
+<tr><td>42ms</td><td>tts_result</td><td>tts result</td><td>今の作業、短く見るね。</td><td>audio</td></tr>
+<tr><td>42ms</td><td>prompt_complete</td><td>prompt complete</td><td>49895348-c031-491d-801f-a5e18a16e0da</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    <article class="scenario-card" id="world-info-initiative-silence" data-tags="all fake">
+      <header class="scenario-header">
+        <div>
+          <div class="scenario-kicker">2026-07-04 04:41:25 · <code>/Users/seijiro/Sync/sync_work/by-llms/tomoko/logs/scenario-world-info-initiative-silence-20260704-044125.json</code></div>
+          <h3>world-info-initiative-silence</h3>
+          <p>Fake world information is filtered and converted into an initiative candidate by the think helper.</p>
+        </div>
+        <div class="scenario-badges">
+          <span class="tag runtime-fake">fake</span>
+          <span class="tag status-pass">PASS</span>
+        </div>
+      </header>
+      <div class="scenario-stats">
+        <span><b>1</b> replace</span>
+        <span><b>0</b> append</span>
+        <span><b>0</b> stop</span>
+        <span><b>0</b> suppress</span>
+        <span><b>1</b> audio chunks</span>
+      </div>
+      
+      <div class="timeline-wrap">
+        <div class="plot">
+        <div class="axis"><span class="axis-tick" style="left:0.400%"><b></b>0ms</span><span class="axis-tick" style="left:20.000%"><b></b>24ms</span><span class="axis-tick" style="left:40.000%"><b></b>48ms</span><span class="axis-tick" style="left:60.000%"><b></b>72ms</span><span class="axis-tick" style="left:80.000%"><b></b>96ms</span><span class="axis-tick" style="left:99.200%"><b></b>120ms</span></div>
+        <div class="lane-label lane-user-label">user voice / STT</div>
+        <div class="lane-label lane-scheduler-label">scheduler</div>
+        <div class="lane-label lane-tomoko-label">Tomoko order</div>
+        <div class="lane-label lane-audio-label">audio / control</div>
+        <div class="lane-line lane-user-line"></div>
+        <div class="lane-line lane-scheduler-line"></div>
+        <div class="lane-line lane-tomoko-line"></div>
+        <div class="lane-line lane-audio-line"></div>
+        <div class="voice-band" style="left:8.159%;width:1.100%" title="#0 "><span>#0 </span></div>
+        <div class="event-dot lane-audio is-neutral" style="left:8.232%" title="10ms · ready · ready: {&#x27;process&#x27;: &#x27;hot-path&#x27;}"><span>ready</span></div><div class="event-dot lane-scheduler is-neutral" style="left:25.725%" title="31ms · initiative_tick_ack · initiative: initiative_tick_ack"><span>initiative</span></div><div class="event-dot lane-scheduler is-replace" style="left:26.270%" title="32ms · scheduler_decision · replace_current: candidate pressure initiative tick score=1.28"><span>replace_current</span></div><div class="event-dot lane-tomoko is-replace" style="left:26.278%" title="32ms · speech_order · reply replace: 外の雨、少し強くなってるみたい。"><span>reply replace</span></div><div class="event-dot lane-audio is-neutral" style="left:26.290%" title="32ms · model_complete · model complete: 外の雨、少し強くなってるみたい。"><span>model complete</span></div><div class="event-dot lane-audio is-audio" style="left:26.291%" title="32ms · binary_audio · binary audio: binary_audio"><span>binary audio</span></div><div class="event-dot lane-audio is-audio" style="left:26.295%" title="32ms · audio_complete · audio complete: a0d947c7-7527-4cbd-aa1a-cd122a3280af"><span>audio complete</span></div><div class="event-dot lane-audio is-audio" style="left:26.301%" title="32ms · tts_result · tts result: 外の雨、少し強くなってるみたい。"><span>tts result</span></div><div class="event-dot lane-audio is-audio" style="left:26.303%" title="32ms · prompt_complete · prompt complete: a0d947c7-7527-4cbd-aa1a-cd122a3280af"><span>prompt complete</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li>No interrupt / queue / suppress marker in this scenario.</li></ul>
+    
+      <div class="conversation-grid">
+        <section>
+          <h4>Conversation Readout</h4>
+          <div class="bubbles"><div class="bubble bubble-tomoko is-replace"><time>32ms</time><strong>Tomoko · replace_current</strong><p>外の雨、少し強くなってるみたい。</p><small>candidate pressure initiative tick</small></div></div>
+        </section>
+        <section>
+          <h4>Event Table</h4>
+          <details>
+            <summary>Show compact timeline events</summary>
+            <div class="table-scroll">
+              <table class="event-table"><thead><tr><th>time</th><th>type</th><th>label</th><th>detail</th><th>lane</th></tr></thead><tbody><tr><td>31ms</td><td>initiative_tick_ack</td><td>initiative</td><td>initiative_tick_ack</td><td>scheduler</td></tr>
+<tr><td>32ms</td><td>scheduler_decision</td><td>replace_current</td><td>candidate pressure initiative tick score=1.28</td><td>scheduler</td></tr>
+<tr><td>32ms</td><td>speech_order</td><td>replace_current</td><td>外の雨、少し強くなってるみたい。</td><td>tomoko</td></tr>
+<tr><td>32ms</td><td>model_complete</td><td>model complete</td><td>外の雨、少し強くなってるみたい。</td><td>audio</td></tr>
+<tr><td>32ms</td><td>binary_audio</td><td>binary audio</td><td>binary_audio</td><td>audio</td></tr>
+<tr><td>32ms</td><td>audio_complete</td><td>audio complete</td><td>a0d947c7-7527-4cbd-aa1a-cd122a3280af</td><td>audio</td></tr>
+<tr><td>32ms</td><td>tts_result</td><td>tts result</td><td>外の雨、少し強くなってるみたい。</td><td>audio</td></tr>
+<tr><td>32ms</td><td>prompt_complete</td><td>prompt complete</td><td>a0d947c7-7527-4cbd-aa1a-cd122a3280af</td><td>audio</td></tr></tbody></table>
+            </div>
+          </details>
+        </section>
+      </div>
+    </article>
+    
+    </main>
+  </div>
+  <script>
+    const buttons = Array.from(document.querySelectorAll('button.filter'));
+    const cards = Array.from(document.querySelectorAll('.scenario-card'));
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const filter = button.dataset.filter;
+        buttons.forEach((b) => b.classList.toggle('is-active', b === button));
+        cards.forEach((card) => {
+          const tags = (card.dataset.tags || '').split(/\s+/);
+          card.classList.toggle('is-hidden', filter !== 'all' && !tags.includes(filter));
+        });
+      });
+    });
+  </script>
+</body>
+</html>

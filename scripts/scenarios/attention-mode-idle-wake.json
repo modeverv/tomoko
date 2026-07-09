@@ -43,6 +43,7 @@
     },
     {
       "say": "今日は疲れた",
+      "pre_pause_ms": 800,
       "wait_for": "scheduler_decision",
       "wait_timeout_sec": 5,
       "expect": {
@@ -62,6 +63,7 @@
     },
     {
       "say": "トモコ、戻って",
+      "pre_pause_ms": 800,
       "wait_for": "prompt_complete",
       "expect": {
         "min_events": {

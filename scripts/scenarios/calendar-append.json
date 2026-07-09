@@ -1,17 +1,18 @@
 {
   "name": "calendar-append",
-  "description": "Reply to the user, then append a near-future calendar notice after the reply (PLAN S10).",
+  "description": "User talks at length (~120 chars) about their work; Tomoko replies, then appends a near-future calendar notice after the reply (PLAN S10).",
   "runtime": "any",
   "fake_reply": "今の作業、いい感じだと思うよ。",
-  "fake_transcript": "トモコ、今の作業どう思う",
+  "fake_transcript": "トモコ、さっきからずっとこのコードのリファクタリングを進めてたんだけど、テストもようやく全部通って、前よりだいぶ読みやすくなった気がするんだよね、自分ではけっこう手応えを感じてるんだけど、トモコから見て今の作業の進め方はどう思うか、率直な感想を聞かせて",
   "fake_calendar": [{"offset_min": 5, "title": "定例会議"}],
   "steps": [
     {
-      "say": "トモコ、今の作業どう思う",
-      "wait_for": "prompt_complete",
+      "say": "トモコ、さっきからずっとこのコードのリファクタリングを進めてたんだけど、テストもようやく全部通って、前よりだいぶ読みやすくなった気がするんだよね、自分ではけっこう手応えを感じてるんだけど、トモコから見て今の作業の進め方はどう思うか、率直な感想を聞かせて",
+      "wait_for": "speech_order:append_after_current",
+      "wait_timeout_sec": 90.0,
       "expect": {
         "min_events": {"speech_order": 2, "binary_audio": 2},
-        "speech_order_modes": ["replace_current", "append_after_current"]
+        "speech_order_modes_includes": ["replace_current", "append_after_current"]
       }
     }
   ],
@@ -22,7 +23,7 @@
       "binary_audio": 2,
       "prompt_complete": 1
     },
-    "speech_order_modes": ["replace_current", "append_after_current"],
+    "speech_order_modes_includes": ["replace_current", "append_after_current"],
     "forbid_events": ["prompt_error"]
   }
 }

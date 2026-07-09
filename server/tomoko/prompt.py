@@ -18,9 +18,28 @@ def is_clock_question(text: str) -> bool:
     return "何時" in text or "いま何時" in text or "what time" in lowered
 
 
+DEFAULT_SYSTEM_HEADER = (
+    "あなたは「トモコ」。ユーザーと同じ部屋にいる日本語の音声パートナー。\n"
+    "出力はそのまま音声合成で読み上げられる。話し言葉だけで返し、"
+    "箇条書き・記号・絵文字・英語の混在は使わない。\n"
+    "一文は短めにして、文末は必ず「。」「！」「？」のどれかで区切る。\n"
+    "質問には最初の一文から中身のある答えを言う。前置きや相槌だけで終わらせない。\n"
+    "知らないこと・できないことは正直にそう言う。"
+)
+# partial/final で同一文字列を保つこと: instruction が揺れると
+# SYSTEM+INSTRUCTION の KV キャッシュ prefix が再利用できなくなる。
+# partial 応答の短さは conversation 側の first-sentence cutoff で機械的に担保する。
+MAIN_REPLY_INSTRUCTION = (
+    "次のtomoko発話だけ返す。"
+    "最初の一文は短く、聞かれたことの要点から先に答える。"
+    "続きの文で少し詳しく足して、全体で2〜4文。"
+    "軽い雑談や言いかけには一文で短く返す。"
+)
+
+
 @dataclass(frozen=True, slots=True)
 class PromptBuilderV2:
-    system_header: str = "Tomoko v2: natural local voice conversation."
+    system_header: str = DEFAULT_SYSTEM_HEADER
 
     def build_main_reply(
         self,
@@ -29,8 +48,9 @@ class PromptBuilderV2:
         *,
         concise: bool = False,
     ) -> PromptRequest:
+        del concise
         calendar = {} if is_clock_question(current_utterance) else snapshot.calendar_items
-        instruction = "次のtomoko発話だけ返す。"
+        instruction = MAIN_REPLY_INSTRUCTION
         runtime_context = self._format_runtime_context(snapshot, calendar)
         candidates = self._format_candidates(snapshot)
         sections = [
@@ -108,6 +128,8 @@ class PromptBuilderV2:
         lines.extend(f"calendar[{when}]={what}" for when, what in sorted(calendar.items()))
         if snapshot.user_status is not None:
             lines.append(f"user_status={snapshot.user_status.activity_label}")
+            if snapshot.user_status.summary:
+                lines.append(f"user_status_summary={snapshot.user_status.summary}")
         return "\n".join(lines)
 
     def _format_session_transcript(

@@ -11,46 +11,92 @@
     "interrupt_tolerance": 0.85
   },
   "fake_stt_events": [
-    [{"text": "今の構成を見てる", "is_final": true}],
-    [{"text": "構成の順番が多い", "is_final": true}],
-    [{"text": "構成、それ違う気が", "is_final": false, "stability": 0.85, "p_yielding": 0.9}]
+    [
+      {
+        "text": "今の構成を見てる",
+        "is_final": true
+      }
+    ],
+    [
+      {
+        "text": "構成の順番が多い",
+        "is_final": true
+      }
+    ],
+    [
+      {
+        "text": "構成、それ違う気が",
+        "is_final": false,
+        "stability": 0.85,
+        "p_yielding": 0.9
+      }
+    ]
   ],
   "steps": [
     {
       "say": "今の構成を見てる",
       "wait_for": "prompt_complete",
-      "expect": {"min_events": {"scheduler_decision": 1, "speech_order": 1}}
+      "expect": {
+        "min_events": {
+          "scheduler_decision": 1,
+          "speech_order": 1
+        }
+      }
     },
     {
       "say": "構成の順番が多い",
       "wait_for": "prompt_complete",
-      "expect": {"min_events": {"scheduler_decision": 1, "speech_order": 1}}
+      "expect": {
+        "min_events": {
+          "scheduler_decision": 1,
+          "speech_order": 1
+        }
+      }
     },
     {
       "say": "構成、それ違う気が",
       "wait_for": "speech_order",
       "expect": {
-        "min_events": {"scheduler_decision": 1, "speech_order": 1},
+        "min_events": {
+          "scheduler_decision": 1,
+          "speech_order": 1
+        },
         "speech_order_text_contains": "いや、それってさ。",
         "speech_order_reason_contains": "motivation interjection",
         "max_speech_order_text_chars": 10,
         "score_breakdown_any": {
-          "motivation_interjection": {"equals": 1.0},
-          "pressure_motivation_conversation_heat": {"min": 0.5},
-          "pressure_motivation_threshold_shift": {"min": 0.12}
+          "motivation_interjection": {
+            "equals": 1.0
+          },
+          "pressure_motivation_conversation_heat": {
+            "min": 0.5
+          },
+          "pressure_motivation_threshold_shift": {
+            "min": 0.12
+          }
         }
       }
     }
   ],
   "expect": {
-    "min_events": {"transcript": 3, "scheduler_decision": 3, "speech_order": 3},
+    "min_events": {
+      "transcript": 3,
+      "scheduler_decision": 3,
+      "speech_order": 3
+    },
     "speech_order_text_contains": "いや、それってさ。",
     "speech_order_reason_contains": "motivation interjection",
     "max_speech_order_text_chars": 10,
     "score_breakdown_any": {
-      "motivation_interjection": {"equals": 1.0},
-      "pressure_motivation_threshold_shift": {"min": 0.12}
+      "motivation_interjection": {
+        "equals": 1.0
+      },
+      "pressure_motivation_threshold_shift": {
+        "min": 0.12
+      }
     },
-    "forbid_events": ["prompt_error"]
+    "forbid_events": [
+      "prompt_error"
+    ]
   }
 }

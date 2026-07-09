@@ -1348,3 +1348,54 @@ integration test では `limit=1000` で active candidates を読み、
 summary source が存在することと、world materializer 由来の雨テキストが candidate に載ることを確認する。
 world interpretation の入力 `source_key` は candidate 化の際に interpretation row UUID へ変わるため、
 入力 source_key の完全一致では検証しない。
+
+## 2026-07-05 セッション2 確定した判断
+
+### root v2 の STT 本線は WhisperKit / Argmax CLI large-v3-turbo
+root v2 の default STT backend は Apple Speech ではなく
+WhisperKit / Argmax CLI の `large-v3-v20240930_turbo` とする。
+encoder / decoder compute units はどちらも `cpuAndNeuralEngine` を既定にする。
+
+Apple Speech backend は削除せず、`TOMOKO_V2_STT_BACKEND=apple_speech` で戻せる
+fallback として残す。
+
+### Argmax CLI の `--stream` は hot-path 主経路に使わない
+手元の `whisperkit-cli transcribe --help` では `--stream` は
+CLI が microphone を直接読む経路であり、Tomoko のブラウザ `/ws` float32 chunk を受け取る経路ではない。
+そのため root v2 の partial STT は、server 側で累積した発話 chunk を WAV にして
+`transcribe --stream-simulated` に渡す。final STT は同じ CLI の
+`transcribe --audio-path` で確定する。
+
+この判断は `/ws` 単一路線、クライアント非ロジック、hot-path 所有の VAD/STT 境界を守るためである。
+
+## 2026-07-09 セッション1 確定した判断
+
+### hot-path startup readiness は main 26B LLM と VOICEVOX だけを必須にする
+`make run` の hot-path window は、main 会話 LLM `:8082` と VOICEVOX `:50122` が ready なら
+`/ws` server を起動する。summary/background 用 31B route `:8081` は optional readiness として
+probe し、落ちていれば `[optional-missing]` を出すが startup の exit code には含めない。
+
+2026-07-09 の実測では、`llm-31b` の dflash generation worker が
+`DFlash generation worker failed to publish a complete runtime bundle within 300.0s` で落ち、
+`:8081` が connection refused になった。その状態でも `:8082` / `:50122` / `:8765` は起動済みで、
+hot-path `:8000` は新しい readiness で起動できた。
+
+この判断は、hot-path が会話入口の physical audio interface であり、
+summary/background LLM load の失敗でユーザーとの `/ws` 入口まで塞がないためである。
+
+## 2026-07-09 セッション2 確定した判断
+
+### dflash launcher は tmux window ではなく `/v1/models` readiness を真実にする
+31B dflash (`:8081`) が起動しない主因は、dflash 本体が
+`wait_until_ready(timeout_s=300.0)` を hard-code しており、
+31B cold load が 300 秒以内に runtime bundle を publish できない場合に
+process を落とすことだった。
+
+同じ起動ログでは、次の retry が `Starting httpd at 0.0.0.0 on port 8081...`
+まで進んで 31B は実際に listen した。その後さらに重複起動が走り、
+`OSError: [Errno 48] Address already in use` が出ていた。
+
+`scripts/run_llm.sh` は tmux window の有無だけではなく、実際の
+`http://127.0.0.1:<port>/v1/models` readiness を見て起動済み判定する。
+stale window は respawn し、既に ready な port は再起動しない。
+`scripts/run_dflash_server.sh` は dflash process の non-zero exit を retry する。

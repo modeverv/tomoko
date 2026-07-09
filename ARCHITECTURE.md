@@ -90,6 +90,23 @@ gemmma 4 31b mlx + dflash + MTP draft付き
 ### ocrはできればapple(vision flamework)
 ### ユーザーのPC前にいる、いないはE2Bでの構造化出力(いる、いないの2値出力)
 
+## 2026-07-05 追記: STT 本線は WhisperKit / Argmax CLI large-v3-turbo
+
+上の「STT はapple」は現行 v2 の本線ではない。Apple Speech は
+`TOMOKO_V2_STT_BACKEND=apple_speech` で戻せる fallback として残し、
+root v2 の default STT backend は WhisperKit / Argmax CLI の
+`large-v3-v20240930_turbo` にする。
+
+Tomoko のマイク入力はブラウザから `/ws` に float32 chunk として届くため、
+Argmax CLI の `transcribe --stream` が持つ「CLI 自身が microphone を直接読む」
+経路は hot-path の主経路には使わない。partial は server 側で累積した
+発話 chunk を WAV にして `transcribe --stream-simulated` に渡し、final は同じ
+CLI の `transcribe --audio-path` で確定させる。
+
+compute units は encoder / decoder ともに `cpuAndNeuralEngine` を既定にする。
+これにより `/ws` 単一路線、クライアント非ロジック、hot-path 所有の VAD/STT
+境界を保ったまま WhisperKit large-v3-turbo を使う。
+
 ## 2026-06-18 追記: hot-path は人格の物理インターフェースである
 
 上の設計における「hot-path-process は tomoko-process に対して透過的である」という説明を、
@@ -1003,3 +1020,24 @@ tomoko-process -> PostgreSQL:
 `LISTEN/NOTIFY` は hot control RPC から外し、WS control plane の fallback /
 比較用として残す。DB は保存と再現の場所、WebSocket は神経系、
 hot-path は反射、Tomoko process は人格、world worker は外界認識として分離する。
+
+## 2026-07-09 追記: hot-path startup readiness は main LLM だけを必須にする
+
+`make run` の hot-path startup gate は、会話の first audio に必要な main LLM
+(`:8082`) と VOICEVOX (`:50122`) だけを必須依存として待つ。
+summary/background 用の 31B route (`:8081`) は optional readiness として probe し、
+失敗をログに出すが `/ws` startup は止めない。
+
+これは hot-path が physical audio interface であり、summary/background worker の
+補助 LLM load 失敗でユーザーとの会話入口まで塞がないためである。
+
+## 2026-07-09 追記: dflash launcher は tmux window ではなく readiness を真実にする
+
+31B dflash は cold load 時に dflash 本体の hard-coded
+`wait_until_ready(timeout_s=300.0)` に負けて落ちることがある。
+また、retry 後に `:8081` が既に ready になっている状態でさらに起動を試すと
+`Address already in use` になる。
+
+そのため `scripts/run_llm.sh` は、tmux window の有無だけで起動済み判定をしない。
+`/v1/models` が ready なら再起動せず、window が stale なら respawn し、
+`scripts/run_dflash_server.sh` 側で dflash process の non-zero exit を retry する。

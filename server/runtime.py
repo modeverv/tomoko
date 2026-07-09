@@ -10,7 +10,7 @@ import httpx
 import psycopg
 from psycopg.rows import dict_row
 
-from server.audio.stt import apple_speech_runtime_available
+from server.audio.stt import apple_speech_runtime_available, whisperkit_runtime_available
 from server.info.main import (
     calendar_dto_map,
     materialize_info_fixtures_from_env,
@@ -27,21 +27,40 @@ from server.user_status.ocr_runtime import ocr_runtime_available
 
 
 def readiness_snapshot() -> dict[str, object]:
-    llm_urls = os.environ.get(
-        "TOMOKO_V2_LLM_READY_URLS",
-        "http://127.0.0.1:8081/v1/models http://127.0.0.1:8082/v1/models",
-    ).split()
+    required_llm_urls, optional_llm_urls = _llm_readiness_urls()
     voicevox_url = os.environ.get(
         "TOMOKO_V2_VOICEVOX_READY_URL",
         "http://127.0.0.1:50122/version",
     )
     return {
         "database": _database_ready(),
-        "llm": {url: _http_ready(url) for url in llm_urls},
+        "llm": {url: _http_ready(url) for url in required_llm_urls},
+        "optional_llm": {url: _http_ready(url) for url in optional_llm_urls},
         "voicevox": {voicevox_url: _http_ready(voicevox_url)},
         "apple_speech": apple_speech_runtime_available(),
+        "whisperkit": whisperkit_runtime_available(),
         "ocr": ocr_runtime_available(),
     }
+
+
+def _llm_readiness_urls() -> tuple[list[str], list[str]]:
+    legacy_urls = os.environ.get("TOMOKO_V2_LLM_READY_URLS")
+    required_urls = os.environ.get("TOMOKO_V2_REQUIRED_LLM_READY_URLS")
+    optional_urls = os.environ.get("TOMOKO_V2_OPTIONAL_LLM_READY_URLS")
+    if required_urls is not None:
+        required = required_urls.split()
+    elif legacy_urls is not None:
+        required = legacy_urls.split()
+    else:
+        required = ["http://127.0.0.1:8082/v1/models"]
+
+    if optional_urls is not None:
+        optional = optional_urls.split()
+    elif legacy_urls is not None and required_urls is None:
+        optional = []
+    else:
+        optional = ["http://127.0.0.1:8081/v1/models"]
+    return required, optional
 
 
 def readiness_transition_events(
@@ -111,6 +130,8 @@ async def run_process(process_name: str) -> None:
                 await _run_think_candidate_tick(logger)
             if process_name == "summary":
                 await _run_summary_tick(logger)
+            if process_name == "user-status":
+                await _run_user_status_tick(logger)
             logger.log("heartbeat", process=process_name)
             _console_event(process_name, "heartbeat")
             await asyncio.sleep(5)
@@ -232,7 +253,69 @@ async def _run_summary_tick(logger: JsonlLogger) -> None:
     )
 
 
+async def _run_user_status_tick(logger: JsonlLogger) -> None:
+    from server.user_status.worker import (
+        maybe_capture_periodic_camera_presence,
+        maybe_capture_periodic_user_status,
+        process_camera_presence_sense_requests,
+        process_screenshot_sense_requests,
+    )
+
+    camera_enabled = os.environ.get("TOMOKO_V2_CAMERA_PRESENCE", "0") == "1"
+    try:
+        async with await psycopg.AsyncConnection.connect(
+            os.environ.get("TOMOKO_DATABASE_URL", default_dsn()),
+            autocommit=True,
+            row_factory=dict_row,
+        ) as conn:
+            result = await process_screenshot_sense_requests(conn)
+            periodic = await maybe_capture_periodic_user_status(
+                conn,
+                interval_sec=float(
+                    os.environ.get("TOMOKO_V2_USER_STATUS_INTERVAL_SEC", "0")
+                ),
+            )
+            camera_result = None
+            camera_periodic = False
+            if camera_enabled:
+                camera_result = await process_camera_presence_sense_requests(conn)
+                camera_periodic = await maybe_capture_periodic_camera_presence(
+                    conn,
+                    interval_sec=float(
+                        os.environ.get("TOMOKO_V2_CAMERA_PRESENCE_INTERVAL_SEC", "30")
+                    ),
+                )
+    except Exception as exc:
+        logger.log("user_status_tick_failed", process="user-status", error=type(exc).__name__)
+        _console_event("user-status", "tick_failed", error=type(exc).__name__)
+        return
+    camera_claimed = camera_result.requests_claimed if camera_result else 0
+    if result.requests_claimed or periodic or camera_claimed or camera_periodic:
+        logger.log(
+            "user_status_sense_processed",
+            process="user-status",
+            requests_claimed=result.requests_claimed,
+            requests_done=result.requests_done,
+            requests_failed=result.requests_failed,
+            periodic_captured=periodic,
+            camera_requests_claimed=camera_claimed,
+            camera_periodic_captured=camera_periodic,
+        )
+        _console_event(
+            "user-status",
+            "sense_processed",
+            claimed=result.requests_claimed,
+            done=result.requests_done,
+            failed=result.requests_failed,
+            periodic=periodic,
+            camera_claimed=camera_claimed,
+            camera_periodic=camera_periodic,
+        )
+
+
 async def _run_info_tick(logger: JsonlLogger) -> None:
+    from server.info.worker import process_world_search_sense_requests
+
     try:
         async with await psycopg.AsyncConnection.connect(
             os.environ.get("TOMOKO_DATABASE_URL", default_dsn()),
@@ -240,10 +323,28 @@ async def _run_info_tick(logger: JsonlLogger) -> None:
             row_factory=dict_row,
         ) as conn:
             result = await materialize_info_fixtures_from_env(conn)
+            search_result = await process_world_search_sense_requests(conn)
     except Exception as exc:
         logger.log("info_tick_failed", process="info", error=type(exc).__name__)
         _console_event("info", "info_tick_failed", error=type(exc).__name__)
         return
+    if search_result.requests_claimed:
+        logger.log(
+            "world_search_sense_processed",
+            process="info",
+            requests_claimed=search_result.requests_claimed,
+            requests_done=search_result.requests_done,
+            requests_failed=search_result.requests_failed,
+            items_upserted=search_result.items_upserted,
+        )
+        _console_event(
+            "info",
+            "world_search_processed",
+            claimed=search_result.requests_claimed,
+            done=search_result.requests_done,
+            failed=search_result.requests_failed,
+            items=search_result.items_upserted,
+        )
     logger.log(
         "info_fixtures_materialized",
         process="info",

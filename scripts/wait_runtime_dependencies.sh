@@ -3,7 +3,18 @@ set -u
 
 TIMEOUT_SEC="${TOMOKO_RUNTIME_WAIT_TIMEOUT_SEC:-600}"
 INTERVAL_SEC="${TOMOKO_RUNTIME_WAIT_INTERVAL_SEC:-2}"
-LLM_READY_URLS="${TOMOKO_V2_LLM_READY_URLS:-http://127.0.0.1:8081/v1/models http://127.0.0.1:8082/v1/models}"
+REQUIRED_LLM_READY_URLS="${TOMOKO_V2_REQUIRED_LLM_READY_URLS:-}"
+OPTIONAL_LLM_READY_URLS="${TOMOKO_V2_OPTIONAL_LLM_READY_URLS:-}"
+if [ -z "$REQUIRED_LLM_READY_URLS" ]; then
+  if [ -n "${TOMOKO_V2_LLM_READY_URLS:-}" ]; then
+    REQUIRED_LLM_READY_URLS="$TOMOKO_V2_LLM_READY_URLS"
+  else
+    REQUIRED_LLM_READY_URLS="http://127.0.0.1:8082/v1/models"
+  fi
+fi
+if [ -z "$OPTIONAL_LLM_READY_URLS" ] && [ -z "${TOMOKO_V2_LLM_READY_URLS:-}" ]; then
+  OPTIONAL_LLM_READY_URLS="http://127.0.0.1:8081/v1/models"
+fi
 VOICEVOX_READY_URL="${TOMOKO_V2_VOICEVOX_READY_URL:-http://127.0.0.1:50122/version}"
 STT_REQUIRED="${TOMOKO_V2_STT_REQUIRED:-0}"
 OCR_REQUIRED="${TOMOKO_V2_OCR_REQUIRED:-0}"
@@ -37,9 +48,26 @@ wait_url() {
   return 1
 }
 
+probe_optional_url() {
+  local name="$1"
+  local url="$2"
+
+  echo "[optional-check] ${name}: ${url}"
+  if is_ready "$url"; then
+    echo "[optional-ready] ${name}: ${url}"
+    return 0
+  fi
+  echo "[optional-missing] ${name}: ${url}"
+  return 0
+}
+
 failed=0
-for url in $LLM_READY_URLS; do
+for url in $REQUIRED_LLM_READY_URLS; do
   wait_url "llm" "$url" || failed=1
+done
+
+for url in $OPTIONAL_LLM_READY_URLS; do
+  probe_optional_url "llm" "$url"
 done
 
 wait_url "voicevox" "$VOICEVOX_READY_URL" || failed=1

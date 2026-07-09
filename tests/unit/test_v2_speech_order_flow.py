@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from uuid import uuid4
 
@@ -127,11 +128,11 @@ async def test_tomoko_conversation_core_turns_final_stt_into_speech_order() -> N
 
 
 @pytest.mark.asyncio
-async def test_tomoko_conversation_core_emits_first_sentence_without_waiting_for_rest() -> None:
+async def test_tomoko_conversation_core_speaks_first_sentence_and_queues_continuation() -> None:
     class ChunkedChatBackend:
         def __init__(self) -> None:
             self.yielded = 0
-            self.chunks = ["最初の", "一文。二文目", "三文目"]
+            self.chunks = ["最初の", "一文。二文目。", "三文目。"]
 
         async def stream(self, _request: PromptRequest):
             for chunk in self.chunks:
@@ -149,7 +150,7 @@ async def test_tomoko_conversation_core_emits_first_sentence_without_waiting_for
 
     result = await core.handle_observation(
         PartialTranscriptObservation(
-            text="トモコ、短く返事して",
+            text="トモコ、今日の話を聞かせて",
             is_final=True,
             stability=1.0,
             audio_started_at=now,
@@ -161,6 +162,213 @@ async def test_tomoko_conversation_core_emits_first_sentence_without_waiting_for
     assert result.speech_order is not None
     assert result.speech_order.text == "最初の一文。"
     assert result.model_events[-1].text == "最初の一文。"
+    assert not result.followup_orders
+    assert core._continuation_task is not None
+    await asyncio.wait_for(core._continuation_task, timeout=1.0)
+    orders, pending = core.poll_followup_orders()
+    assert not pending
+    assert len(orders) == 1
+    assert orders[0].text == "二文目。三文目。"
+    assert orders[0].mode == SpeechOrderMode.APPEND_AFTER_CURRENT
+    assert orders[0].reason == "reply continuation queued after first sentence"
+    again, pending_again = core.poll_followup_orders()
+    assert not again and not pending_again
+
+
+@pytest.mark.asyncio
+async def test_tomoko_conversation_core_keeps_partial_reply_to_first_sentence() -> None:
+    class ChunkedChatBackend:
+        def __init__(self) -> None:
+            self.yielded = 0
+            self.chunks = ["最初の", "一文。二文目。", "三文目。"]
+
+        async def stream(self, _request: PromptRequest):
+            for chunk in self.chunks:
+                self.yielded += 1
+                yield chunk
+
+    now = utc_now()
+    chat = ChunkedChatBackend()
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=FixedSaturationJudge(0.95),
+        scheduler=SpeechScheduler(),
+        chat_backend=chat,
+    )
+
+    result = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="その今の予定を教えて",
+            is_final=False,
+            stability=0.85,
+            audio_started_at=now,
+            audio_ended_at=now,
+            p_yielding=0.92,
+        )
+    )
+
+    assert chat.yielded == 2
+    assert result.speech_order is not None
+    assert result.speech_order.text == "最初の一文。"
+    assert result.model_events[-1].text == "最初の一文。"
+    assert not result.followup_orders
+    orders, pending = core.poll_followup_orders()
+    assert not orders and not pending
+
+
+@pytest.mark.asyncio
+async def test_tomoko_conversation_core_kicks_screenshot_sense_and_appends_followup() -> None:
+    now = utc_now()
+    executed: list[str] = []
+
+    async def fake_sense_executor(record) -> dict[str, object]:
+        executed.append(record.kind)
+        return {
+            "present": True,
+            "activity_label": "coding_or_terminal",
+            "summary": "エディタで conversation.py を開いて作業中",
+        }
+
+    chat = CountingChatBackend(["コード書いてるみたいだね、conversation.pyを開いてるよ。"])
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=SemanticSaturationJudge(),
+        scheduler=SpeechScheduler(),
+        chat_backend=chat,
+        sense_executor=fake_sense_executor,
+    )
+
+    result = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="トモコ、今の画面で何してるか教えて",
+            is_final=True,
+            stability=1.0,
+            audio_started_at=now,
+            audio_ended_at=now,
+        )
+    )
+
+    assert result.speech_order is not None
+    assert result.speech_order.text == "ちょっと画面見てみるね。"
+    assert result.speech_order.reason == "screenshot sense kicked for user context"
+    assert chat.calls == 0
+
+    assert core._sense_task is not None
+    await asyncio.wait_for(core._sense_task, timeout=1.0)
+    assert executed == ["screenshot"]
+    orders, pending = core.poll_followup_orders()
+    assert not pending
+    assert len(orders) == 1
+    assert orders[0].mode == SpeechOrderMode.APPEND_AFTER_CURRENT
+    assert orders[0].reason == "sense result follow-up after screenshot"
+    assert "conversation.py" in orders[0].text
+    assert chat.calls == 1
+    assert core.user_status is not None
+    assert core.user_status.source == "sense_screenshot"
+
+
+@pytest.mark.asyncio
+async def test_tomoko_conversation_core_kicks_world_search_sense_and_appends_followup() -> None:
+    now = utc_now()
+    kinds: list[str] = []
+
+    async def fake_sense_executor(record) -> dict[str, object]:
+        kinds.append(record.kind)
+        return {"texts": ["明日の天気は雨のち晴れ、最高気温は28度。"]}
+
+    chat = CountingChatBackend(["明日は雨のち晴れで28度まで上がるみたいだよ。"])
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=SemanticSaturationJudge(),
+        scheduler=SpeechScheduler(),
+        chat_backend=chat,
+        sense_executor=fake_sense_executor,
+    )
+
+    result = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="トモコ、明日の天気を調べて",
+            is_final=True,
+            stability=1.0,
+            audio_started_at=now,
+            audio_ended_at=now,
+        )
+    )
+
+    assert result.speech_order is not None
+    assert result.speech_order.text == "ちょっと調べてみるね。"
+    assert result.speech_order.reason == "world search sense kicked for user request"
+
+    assert core._sense_task is not None
+    await asyncio.wait_for(core._sense_task, timeout=1.0)
+    assert kinds == ["world_search"]
+    orders, pending = core.poll_followup_orders()
+    assert not pending
+    assert len(orders) == 1
+    assert orders[0].reason == "sense result follow-up after world search"
+    assert "28度" in orders[0].text
+
+
+@pytest.mark.asyncio
+async def test_tomoko_conversation_core_apologizes_when_world_search_returns_nothing() -> None:
+    now = utc_now()
+
+    async def failing_sense_executor(record) -> None:
+        return None
+
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=SemanticSaturationJudge(),
+        scheduler=SpeechScheduler(),
+        chat_backend=CountingChatBackend(["呼ばれない。"]),
+        sense_executor=failing_sense_executor,
+    )
+
+    result = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="トモコ、明日の天気を調べて",
+            is_final=True,
+            stability=1.0,
+            audio_started_at=now,
+            audio_ended_at=now,
+        )
+    )
+
+    assert result.speech_order is not None
+    assert result.speech_order.text == "ちょっと調べてみるね。"
+    assert core._sense_task is not None
+    await asyncio.wait_for(core._sense_task, timeout=1.0)
+    orders, pending = core.poll_followup_orders()
+    assert not pending
+    assert len(orders) == 1
+    assert orders[0].text == "ごめん、うまく調べられなかったよ。"
+    assert orders[0].reason == "world search sense returned no result"
+
+
+@pytest.mark.asyncio
+async def test_tomoko_conversation_core_skips_sense_kick_without_executor() -> None:
+    now = utc_now()
+    chat = CountingChatBackend(["普通に答えるよ。"])
+    core = TomokoConversationCore(
+        session_model=SessionBoundaryModel(),
+        saturation_judge=SemanticSaturationJudge(),
+        scheduler=SpeechScheduler(),
+        chat_backend=chat,
+    )
+
+    result = await core.handle_observation(
+        PartialTranscriptObservation(
+            text="トモコ、今の画面で何してるか教えて",
+            is_final=True,
+            stability=1.0,
+            audio_started_at=now,
+            audio_ended_at=now,
+        )
+    )
+
+    assert result.speech_order is not None
+    assert result.speech_order.text == "普通に答えるよ。"
+    assert chat.calls == 1
 
 
 @pytest.mark.asyncio

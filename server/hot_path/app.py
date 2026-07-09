@@ -13,10 +13,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from server.audio.stt import (
-    AppleSpeechStreamingBackend,
     ScriptedStreamingSttBackend,
     StaticStreamingSttBackend,
     StreamingSttEvent,
+    create_default_stt_backend,
 )
 from server.audio.vad import VADProcessor
 from server.hot_path.audio_conversation import (
@@ -39,7 +39,7 @@ from server.hot_path.model_executor import (
     create_default_real_prompt_executor,
 )
 from server.hot_path.protocol import encode_server_event, parse_browser_message
-from server.hot_path.speech_executor import SpeechOrderExecutor
+from server.hot_path.speech_executor import SpeechOrderExecutor, prompt_request_for_order
 from server.hot_path.turn_materials import (
     InternalTurnMaterialClient,
     TurnMaterialAggregator,
@@ -61,6 +61,7 @@ from server.tomoko.main import TomokoProcessCore
 from server.tomoko.prompt import PromptBuilderV2, prompt_cache_shape
 from server.tomoko.scheduler import SpeechScheduler
 from server.tomoko.semantic import SemanticSaturationJudge
+from server.tomoko.sense import create_fake_sense_executor_from_env
 from server.tomoko.session import SessionBoundaryModel
 
 app = FastAPI(title="Tomoko v2 hot-path-process")
@@ -427,16 +428,100 @@ async def _send_audio_result_queue(
     result_queue: asyncio.Queue[HotPathConversationResult],
     conversation: HotPathAudioConversation | HotPathDbSplitConversation,
 ) -> None:
-    while True:
-        result = await result_queue.get()
+    followup_poller: asyncio.Task[None] | None = None
+    try:
+        while True:
+            result = await result_queue.get()
+            try:
+                await _send_audio_conversation_result(
+                    websocket,
+                    result,
+                    getattr(conversation, "speech_executor", None),
+                )
+                if (
+                    _should_poll_reply_followups(result)
+                    and _conversation_has_pending_followups(conversation)
+                    and (followup_poller is None or followup_poller.done())
+                ):
+                    followup_poller = asyncio.create_task(
+                        _drain_reply_followup_orders(conversation, result_queue)
+                    )
+            finally:
+                result_queue.task_done()
+    finally:
+        if followup_poller is not None:
+            followup_poller.cancel()
+
+
+def _should_poll_reply_followups(result: HotPathConversationResult) -> bool:
+    if result.speech_order is not None and result.speech_order.mode.value == "stop":
+        return False
+    # 返信が partial 先行で final が reconcile(suppress)された場合でも、
+    # カレンダー通知などの pending followup が積まれるため final 観測なら poll する
+    return any(observation.is_final for observation in result.observations)
+
+
+def _conversation_has_pending_followups(
+    conversation: HotPathAudioConversation | HotPathDbSplitConversation,
+) -> bool:
+    core = getattr(conversation, "conversation_core", None)
+    probe = getattr(core, "has_pending_followup_work", None)
+    if probe is None:
+        return False
+    try:
+        return bool(probe())
+    except Exception:
+        return False
+
+
+async def _drain_reply_followup_orders(
+    conversation: HotPathAudioConversation | HotPathDbSplitConversation,
+    result_queue: asyncio.Queue[HotPathConversationResult],
+    *,
+    poll_interval_sec: float = 0.4,
+    max_polls: int = 350,
+) -> None:
+    core = getattr(conversation, "conversation_core", None)
+    poll = getattr(core, "poll_followup_orders", None)
+    if poll is None:
+        return
+    for _ in range(max_polls):
+        await asyncio.sleep(poll_interval_sec)
         try:
-            await _send_audio_conversation_result(
-                websocket,
-                result,
-                getattr(conversation, "speech_executor", None),
+            polled = poll()
+            if asyncio.iscoroutine(polled):
+                polled = await polled
+            orders, pending = polled
+        except Exception as exc:
+            _console_event(
+                "reply_followup_poll_failed",
+                error=type(exc).__name__,
+                message=str(exc),
             )
-        finally:
-            result_queue.task_done()
+            return
+        if orders:
+            _console_event(
+                "reply_followup_orders",
+                order_count=len(orders),
+                pending=pending,
+            )
+            await result_queue.put(_followup_orders_result(orders))
+        if not pending:
+            return
+
+
+def _followup_orders_result(orders: list[SpeechOrder]) -> HotPathConversationResult:
+    return HotPathConversationResult(
+        observations=[],
+        durable_utterance=None,
+        context_snapshot=None,
+        prompt_request=prompt_request_for_order(orders[0]),
+        execution_result=PromptExecutionResult(),
+        scheduler_output=None,
+        speech_order=orders[0],
+        followup_orders=orders[1:],
+        deferred_tts_orders=list(orders),
+    )
 
 
 async def _send_audio_conversation_result(
@@ -846,7 +931,7 @@ def _audio_conversation() -> HotPathAudioConversation | HotPathDbSplitConversati
                 vad=VADProcessor(),
                 stt_backend=_fake_stt_backend()
                 if _fake_runtime_enabled()
-                else AppleSpeechStreamingBackend(),
+                else create_default_stt_backend(),
                 speech_executor=SpeechOrderExecutor(tts_backend, protect_inflight_replace=True),
             )
         elif _ws_split_enabled():
@@ -857,7 +942,7 @@ def _audio_conversation() -> HotPathAudioConversation | HotPathDbSplitConversati
                 vad=VADProcessor(),
                 stt_backend=_fake_stt_backend()
                 if _fake_runtime_enabled()
-                else AppleSpeechStreamingBackend(),
+                else create_default_stt_backend(),
                 conversation_core=create_remote_ws_conversation_core(),
                 speech_executor=SpeechOrderExecutor(tts_backend, protect_inflight_replace=True),
                 defer_tts_to_sender=True,
@@ -877,6 +962,7 @@ def _audio_conversation() -> HotPathAudioConversation | HotPathDbSplitConversati
                     chat_backend=chat_backend,
                     tomoko_core=TomokoProcessCore(SessionBoundaryModel()),
                     prompt_builder=PromptBuilderV2(),
+                    sense_executor=create_fake_sense_executor_from_env(),
                 ),
                 speech_executor=SpeechOrderExecutor(tts_backend, protect_inflight_replace=True),
                 defer_tts_to_sender=True,
@@ -885,6 +971,9 @@ def _audio_conversation() -> HotPathAudioConversation | HotPathDbSplitConversati
             conversation = create_default_audio_conversation(_prompt_executor())
             conversation.defer_tts_to_sender = True
         app.state.audio_conversation = conversation
+        stt_warm_up = getattr(getattr(conversation, "stt_backend", None), "warm_up", None)
+        if stt_warm_up is not None:
+            asyncio.create_task(stt_warm_up())
     return conversation
 
 

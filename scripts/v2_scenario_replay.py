@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import math
 import os
@@ -79,6 +80,7 @@ class Scenario:
     fake_user_status: dict[str, Any] | None = None
     fake_candidates: list[dict[str, Any]] | None = None
     fake_world_info: list[dict[str, Any]] | None = None
+    fake_sense: dict[str, Any] | None = None
     steps: list[ScenarioStep] = field(default_factory=list)
     expect: ScenarioExpect = field(default_factory=ScenarioExpect)
 
@@ -145,6 +147,7 @@ def load_scenario(path: Path) -> Scenario:
         fake_user_status=payload.get("fake_user_status"),
         fake_candidates=payload.get("fake_candidates"),
         fake_world_info=payload.get("fake_world_info"),
+        fake_sense=payload.get("fake_sense"),
         steps=steps,
         expect=expect,
     )
@@ -487,10 +490,17 @@ class TimelineRecorder:
         self.timeline.append(entry)
 
     def events_after(self, event_type: str, after_elapsed_ms: float) -> list[dict[str, Any]]:
+        # "speech_order:stop" のように ":<mode>" を付けると payload.mode でも絞り込む
+        wanted_type, _, wanted_mode = event_type.partition(":")
         return [
             entry
             for entry in self.timeline
-            if entry["type"] == event_type and entry["elapsed_ms"] >= after_elapsed_ms
+            if entry["type"] == wanted_type
+            and entry["elapsed_ms"] >= after_elapsed_ms
+            and (
+                not wanted_mode
+                or entry.get("payload", {}).get("mode") == wanted_mode
+            )
         ]
 
 
@@ -768,6 +778,11 @@ class FakeRuntimeProcesses:
                 self.scenario.fake_world_info,
                 ensure_ascii=False,
             )
+        if self.scenario.fake_sense:
+            env["TOMOKO_V2_FAKE_SENSE"] = json.dumps(
+                self.scenario.fake_sense,
+                ensure_ascii=False,
+            )
         Path("logs").mkdir(exist_ok=True)
         tomoko = subprocess.Popen(
             [
@@ -818,6 +833,37 @@ class FakeRuntimeProcesses:
                 process.kill()
 
 
+def _scenario_deadline_sec(scenario: Scenario) -> float:
+    # ステップ待機の合計 + 音声再生/セットアップ余裕。ハングしても suite を止めない。
+    return 120.0 + sum(step.wait_timeout_sec for step in scenario.steps)
+
+
+def _run_scenario_with_deadline(scenario: Scenario, **kwargs: Any) -> dict[str, Any]:
+    deadline = _scenario_deadline_sec(scenario)
+
+    async def _guarded() -> dict[str, Any]:
+        task = asyncio.ensure_future(run_scenario(scenario, **kwargs))
+        done, pending = await asyncio.wait({task}, timeout=deadline)
+        if pending:
+            print(
+                f"[scenario:{scenario.name}] WATCHDOG timeout after {deadline:.0f}s; "
+                "dumping task stacks",
+                file=sys.stderr,
+                flush=True,
+            )
+            for stuck in asyncio.all_tasks():
+                stuck.print_stack(limit=12, file=sys.stderr)
+            task.cancel()
+            with contextlib.suppress(BaseException):
+                await task
+            raise RuntimeError(
+                f"scenario {scenario.name} timed out after {deadline:.0f}s"
+            )
+        return task.result()
+
+    return asyncio.run(_guarded())
+
+
 def run_one(
     scenario_path: Path,
     *,
@@ -837,26 +883,22 @@ def run_one(
 
     if runtime_mode == "fake":
         with FakeRuntimeProcesses(scenario) as processes:
-            artifact = asyncio.run(
-                run_scenario(
-                    scenario,
-                    runtime_mode="fake",
-                    url=processes.url,
-                    voice=voice,
-                    output_dir=output_dir,
-                    stamp=stamp,
-                )
-            )
-    else:
-        artifact = asyncio.run(
-            run_scenario(
+            artifact = _run_scenario_with_deadline(
                 scenario,
-                runtime_mode="real",
-                url=url,
+                runtime_mode="fake",
+                url=processes.url,
                 voice=voice,
                 output_dir=output_dir,
                 stamp=stamp,
             )
+    else:
+        artifact = _run_scenario_with_deadline(
+            scenario,
+            runtime_mode="real",
+            url=url,
+            voice=voice,
+            output_dir=output_dir,
+            stamp=stamp,
         )
 
     assertions = evaluate_expectations(scenario.expect, artifact)
@@ -902,13 +944,18 @@ def main() -> None:
 
     all_passed = True
     for path in paths:
-        passed, _ = run_one(
-            path,
-            runtime_arg=args.runtime,
-            url=args.url,
-            voice=args.voice,
-            output_dir=Path(args.output_dir),
-        )
+        try:
+            passed, _ = run_one(
+                path,
+                runtime_arg=args.runtime,
+                url=args.url,
+                voice=args.voice,
+                output_dir=Path(args.output_dir),
+            )
+        except Exception as exc:
+            # 1 シナリオのハング/クラッシュで suite 全体を止めない
+            print(f"[scenario:{path.stem}] FAIL (exception: {exc})", flush=True)
+            passed = False
         all_passed = all_passed and passed
     raise SystemExit(0 if all_passed else 1)
 

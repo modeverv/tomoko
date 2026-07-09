@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import zlib
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -30,11 +31,25 @@ def summarize_session(session_id: UUID, utterances: list[str]) -> SessionSummary
     )
 
 
-def embed_text(text: str, dimensions: int = 8) -> tuple[float, ...]:
+def embed_text(text: str, dimensions: int = 64) -> tuple[float, ...]:
+    """文字 bigram のハッシュバケット埋め込み。
+
+    軽量な字面類似(トピック語の重なり)用で、意味埋め込みではない。
+    本物の埋め込みモデルへの置き換えは別タスク(260704.md 参照)。
+    """
     buckets = [0.0 for _ in range(dimensions)]
-    for index, char in enumerate(text):
-        buckets[index % dimensions] += (ord(char) % 97) / 97.0
-    norm = sum(abs(item) for item in buckets) or 1.0
+    compact = "".join(text.split())
+    if not compact:
+        return tuple(buckets)
+    grams = (
+        [compact[i : i + 2] for i in range(len(compact) - 1)]
+        if len(compact) > 1
+        else [compact]
+    )
+    for gram in grams:
+        # プロセス間で安定なハッシュ(str の hash() はシードが揺れる)
+        buckets[zlib.crc32(gram.encode("utf-8")) % dimensions] += 1.0
+    norm = sum(item * item for item in buckets) ** 0.5 or 1.0
     return tuple(item / norm for item in buckets)
 
 

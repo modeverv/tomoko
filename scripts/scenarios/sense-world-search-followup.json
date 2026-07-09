@@ -1,0 +1,28 @@
+{
+  "name": "sense-world-search-followup",
+  "description": "User asks Tomoko to look something up; Tomoko acks, kicks a world_search sense, then appends a follow-up using the search result (260704 plan step 5).",
+  "runtime": "any",
+  "fake_transcript": "トモコ、明日は朝から外に出る用事があって、洗濯物を外に干したままにするかどうかずっと迷ってるんだよね、傘を持って出るべきかどうかも知りたいし、明日の天気がどうなりそうか調べて教えてくれる",
+  "fake_sense": {
+    "texts": ["明日は雨のち晴れ、最高気温は28度"]
+  },
+  "steps": [
+    {
+      "say": "トモコ、明日は朝から外に出る用事があって、洗濯物を外に干したままにするかどうかずっと迷ってるんだよね、傘を持って出るべきかどうかも知りたいし、明日の天気がどうなりそうか調べて教えてくれる",
+      "wait_for": "speech_order:append_after_current",
+      "wait_timeout_sec": 150.0
+    }
+  ],
+  "expect": {
+    "min_events": {
+      "transcript": 1,
+      "scheduler_decision": 1,
+      "speech_order": 2,
+      "binary_audio": 2
+    },
+    "forbid_events": ["prompt_error"],
+    "speech_order_modes_includes": ["replace_current", "append_after_current"],
+    "speech_order_text_contains": "調べてみるね",
+    "speech_order_reason_contains": "world search"
+  }
+}

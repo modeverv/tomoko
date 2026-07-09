@@ -1,0 +1,31 @@
+{
+  "name": "sense-screenshot-followup",
+  "description": "User asks what is on screen; Tomoko acks immediately, kicks a screenshot sense, then appends a follow-up using the sense result (260704 plan step 2).",
+  "runtime": "any",
+  "fake_transcript": "トモコ、ちょっとお願いがあるんだけど、さっきから同じ作業をだらだら続けてて、集中できてるのか自分でもよくわからなくなってきちゃったんだよね、だからいま私の画面がどうなってるか様子を見て、何をしてるところなのか教えて",
+  "fake_sense": {
+    "present": true,
+    "activity_label": "coding_or_terminal",
+    "summary": "エディタで conversation.py を開いて作業中",
+    "confidence": 0.9
+  },
+  "steps": [
+    {
+      "say": "トモコ、ちょっとお願いがあるんだけど、さっきから同じ作業をだらだら続けてて、集中できてるのか自分でもよくわからなくなってきちゃったんだよね、だからいま私の画面がどうなってるか様子を見て、何をしてるところなのか教えて",
+      "wait_for": "speech_order:append_after_current",
+      "wait_timeout_sec": 90.0
+    }
+  ],
+  "expect": {
+    "min_events": {
+      "transcript": 1,
+      "scheduler_decision": 1,
+      "speech_order": 2,
+      "binary_audio": 2
+    },
+    "forbid_events": ["prompt_error"],
+    "speech_order_modes_includes": ["replace_current", "append_after_current"],
+    "speech_order_text_contains": "画面見てみるね",
+    "speech_order_reason_contains": "sense"
+  }
+}

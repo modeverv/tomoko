@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess
+import threading
 from datetime import UTC, datetime, timedelta
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from uuid import UUID
 
@@ -29,6 +32,23 @@ from server.user_status.ocr_runtime import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+class _ReadyHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"{}")
+
+    def log_message(self, format: str, *args: object) -> None:
+        return None
+
+
+def _start_ready_server() -> tuple[ThreadingHTTPServer, int]:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _ReadyHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, int(server.server_address[1])
 
 
 def test_notify_payload_is_id_only_and_channel_limited(
@@ -218,9 +238,35 @@ def test_readiness_diff_marks_snapshot_and_transitions() -> None:
     ]
 
 
+def test_readiness_snapshot_splits_required_and_optional_llms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "TOMOKO_V2_REQUIRED_LLM_READY_URLS",
+        "http://required.test/v1/models",
+    )
+    monkeypatch.setenv(
+        "TOMOKO_V2_OPTIONAL_LLM_READY_URLS",
+        "http://optional.test/v1/models",
+    )
+    monkeypatch.setenv("TOMOKO_V2_VOICEVOX_READY_URL", "http://voicevox.test/version")
+    monkeypatch.setattr(runtime, "_database_ready", lambda: True)
+    monkeypatch.setattr(runtime, "_http_ready", lambda url: url == "http://required.test/v1/models")
+    monkeypatch.setattr(runtime, "apple_speech_runtime_available", lambda: {"available": False})
+    monkeypatch.setattr(runtime, "whisperkit_runtime_available", lambda: {"available": False})
+    monkeypatch.setattr(runtime, "ocr_runtime_available", lambda: {"available": False})
+
+    snapshot = runtime.readiness_snapshot()
+
+    assert snapshot["llm"] == {"http://required.test/v1/models": True}
+    assert snapshot["optional_llm"] == {"http://optional.test/v1/models": False}
+    assert snapshot["voicevox"] == {"http://voicevox.test/version": False}
+
+
 def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     makefile = Path("Makefile").read_text(encoding="utf-8")
     run_llm = Path("scripts/run_llm.sh").read_text(encoding="utf-8")
+    run_dflash = Path("scripts/run_dflash_server.sh").read_text(encoding="utf-8")
     assert "v2-runtime tmux-runtime:" in makefile
     assert "HOST ?= 0.0.0.0" in makefile
     assert "TOMOKO_INTERNAL_WS_BIND_HOST ?= 0.0.0.0" in makefile
@@ -229,12 +275,23 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     assert 'DFLASH_HOST="$(DFLASH_HOST)"' in makefile
     assert "VOICEVOX_HOST ?= 0.0.0.0" in makefile
     assert 'HOST="$(VOICEVOX_HOST)"' in makefile
-    assert "--host " in run_llm
+    assert "--host " in run_dflash
     assert "${DFLASH_HOST}" in run_llm
+    assert "scripts/run_dflash_server.sh" in run_llm
+    assert "respawn-window" in run_llm
+    assert "DFLASH_31B_START_RETRIES" in run_llm
     assert "llm-run:" in makefile
     assert "voicevox-run:" in makefile
     assert "v2-runtime-ready:" in makefile
     assert "TOMOKO_V2_DISTILLED_SATURATION_MODEL ?=" in makefile
+    assert "TOMOKO_V2_REQUIRED_LLM_READY_URLS ?=" in makefile
+    assert "TOMOKO_V2_OPTIONAL_LLM_READY_URLS ?=" in makefile
+    assert 'TOMOKO_V2_REQUIRED_LLM_READY_URLS="$(TOMOKO_V2_REQUIRED_LLM_READY_URLS)"' in (
+        makefile
+    )
+    assert 'TOMOKO_V2_OPTIONAL_LLM_READY_URLS="$(TOMOKO_V2_OPTIONAL_LLM_READY_URLS)"' in (
+        makefile
+    )
     assert "TOMOKO_V2_SEMANTIC_LLM=1" not in makefile
     assert "semantic-e2b" not in makefile
     assert "TOMOKO_V2_MAAI_BACKCHANNEL ?= 1" in makefile
@@ -276,6 +333,63 @@ def test_makefile_exposes_v2_runtime_targets_in_order() -> None:
     assert 'TOMOKO_V2_MAAI_BACKCHANNEL="$(TOMOKO_V2_MAAI_BACKCHANNEL)"' in makefile
     assert "tmux send-keys -t $(TMUX_SESSION):hot-path C-c" in makefile
     assert "v2-report-latest:" in makefile
+
+
+def test_wait_runtime_dependencies_does_not_block_on_optional_llm() -> None:
+    server, port = _start_ready_server()
+    try:
+        env = {
+            **os.environ,
+            "TOMOKO_RUNTIME_WAIT_TIMEOUT_SEC": "2",
+            "TOMOKO_RUNTIME_WAIT_INTERVAL_SEC": "1",
+            "TOMOKO_V2_REQUIRED_LLM_READY_URLS": f"http://127.0.0.1:{port}/v1/models",
+            "TOMOKO_V2_OPTIONAL_LLM_READY_URLS": "http://127.0.0.1:9/v1/models",
+            "TOMOKO_V2_VOICEVOX_READY_URL": f"http://127.0.0.1:{port}/version",
+        }
+        result = subprocess.run(
+            ["bash", "scripts/wait_runtime_dependencies.sh"],
+            check=False,
+            capture_output=True,
+            env=env,
+            text=True,
+            timeout=10,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert result.returncode == 0
+    assert "[ready] llm:" in result.stdout
+    assert "[optional-missing] llm:" in result.stdout
+    assert "[ready] voicevox:" in result.stdout
+
+
+def test_dflash_server_launcher_skips_start_when_ready(tmp_path: Path) -> None:
+    server, port = _start_ready_server()
+    try:
+        env = {
+            **os.environ,
+            "DFLASH_MODEL": "fake-model",
+            "DFLASH_PORT": str(port),
+            "DFLASH_READY_URL": f"http://127.0.0.1:{port}/v1/models",
+            "DFLASH_LOG_FILE": str(tmp_path / "dflash.log"),
+            "DFLASH_BIN": "/bin/false",
+            "DFLASH_KEEPALIVE_IF_READY": "0",
+        }
+        result = subprocess.run(
+            ["bash", "scripts/run_dflash_server.sh"],
+            check=False,
+            capture_output=True,
+            env=env,
+            text=True,
+            timeout=10,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert result.returncode == 0
+    assert "[ready] dflash already serving" in result.stdout
 
 
 def test_internal_ws_port_guard_allows_free_port() -> None:

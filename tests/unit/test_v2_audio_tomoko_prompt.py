@@ -68,7 +68,12 @@ from server.tomoko.context import ContextSnapshotBuilderV2
 from server.tomoko.conversation import TomokoConversationCore
 from server.tomoko.floor import SpeechDecisionModel
 from server.tomoko.main import TomokoProcessCore, normalize_stt_block_text
-from server.tomoko.prompt import PromptBuilderV2, prompt_cache_shape
+from server.tomoko.prompt import (
+    DEFAULT_SYSTEM_HEADER,
+    MAIN_REPLY_INSTRUCTION,
+    PromptBuilderV2,
+    prompt_cache_shape,
+)
 from server.tomoko.scheduler import SpeechScheduler
 from server.tomoko.session import SessionBoundaryModel
 
@@ -228,6 +233,7 @@ async def test_apple_speech_backend_streams_partial_and_suppresses_duplicates() 
         command="/bin/echo",
         stream_min_audio_ms=200,
         stream_interval_ms=100,
+        stream_sidecar=False,
     )
     texts = iter(["途中", "途中", "続き"])
 
@@ -776,9 +782,9 @@ def test_prompt_builder_orders_stable_current_volatile_and_skips_calendar_for_cl
         candidates=[],
     )
     prompt = PromptBuilderV2().build_main_reply(snapshot, "いま何時?")
-    assert "SYSTEM:\nTomoko v2: natural local voice conversation." in prompt.prompt_text
+    assert f"SYSTEM:\n{DEFAULT_SYSTEM_HEADER}" in prompt.prompt_text
     assert "SESSION_TRANSCRIPT:\nuser: raw text\nuser: いま何時?" in prompt.prompt_text
-    assert "INSTRUCTION:\n次のtomoko発話だけ返す。" in prompt.prompt_text
+    assert f"INSTRUCTION:\n{MAIN_REPLY_INSTRUCTION}" in prompt.prompt_text
     assert prompt.prompt_text.endswith(
         "SESSION_TRANSCRIPT:\nuser: raw text\nuser: いま何時?\n"
         "RUNTIME_CONTEXT:\nsummary[clock]=test"
@@ -859,8 +865,7 @@ def test_prompt_builder_keeps_partial_instruction_same_as_final() -> None:
         concise=True,
     )
 
-    assert "INSTRUCTION:\n次のtomoko発話だけ返す。" in partial_prompt.prompt_text
-    assert "短く一文で返す" not in partial_prompt.prompt_text
+    assert f"INSTRUCTION:\n{MAIN_REPLY_INSTRUCTION}" in partial_prompt.prompt_text
     assert prompt_cache_shape(partial_prompt.prompt_text)["instruction_hash"] == (
         prompt_cache_shape(final_prompt.prompt_text)["instruction_hash"]
     )
@@ -895,9 +900,7 @@ def test_prompt_builder_keeps_volatile_recall_after_transcript_for_cache_prefix(
 
     prompt = PromptBuilderV2().build_main_reply(snapshot, "天気どう?")
 
-    assert "SYSTEM:\nTomoko v2: natural local voice conversation.\nVOLATILE_RECALL" not in (
-        prompt.prompt_text
-    )
+    assert f"SYSTEM:\n{DEFAULT_SYSTEM_HEADER}\nVOLATILE_RECALL" not in prompt.prompt_text
     assert (
         "SESSION_TRANSCRIPT:\n"
         "user: こんにちは\n"
@@ -937,14 +940,8 @@ def test_prompt_builder_keeps_runtime_context_out_of_stable_system_prefix() -> N
 
     prompt = PromptBuilderV2().build_main_reply(snapshot, "今どう見えてる?")
 
-    assert prompt.prompt_text.startswith(
-        "SYSTEM:\n"
-        "Tomoko v2: natural local voice conversation.\n"
-        "INSTRUCTION:\n"
-    )
-    assert "SYSTEM:\nTomoko v2: natural local voice conversation.\nsummary=" not in (
-        prompt.prompt_text
-    )
+    assert prompt.prompt_text.startswith(f"SYSTEM:\n{DEFAULT_SYSTEM_HEADER}\nINSTRUCTION:\n")
+    assert f"SYSTEM:\n{DEFAULT_SYSTEM_HEADER}\nsummary=" not in prompt.prompt_text
     assert (
         "SESSION_TRANSCRIPT:\n"
         "user: こんにちは\n"

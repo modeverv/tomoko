@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from dataclasses import dataclass, field
 from time import monotonic
+from typing import Any
 from uuid import uuid4
 
 import psycopg
@@ -35,11 +37,21 @@ from server.tomoko.db_bridge import (
     insert_stt_observation_sql,
     insert_utterance_sql,
     load_active_candidates,
+    load_recent_session_summaries,
 )
 from server.tomoko.main import TomokoProcessCore
 from server.tomoko.prompt import PromptBuilderV2
+from server.tomoko.recall import rank_summaries_by_relevance
 from server.tomoko.scheduler import SpeechScheduler
 from server.tomoko.semantic import SemanticSaturationJudge, create_default_saturation_judge
+from server.tomoko.sense import (
+    SENSE_STATUS_DONE,
+    SENSE_STATUS_FAILED,
+    SenseRequestRecord,
+    create_fake_sense_executor_from_env,
+    insert_sense_request_sql,
+    load_sense_request,
+)
 from server.tomoko.session import SessionBoundaryModel
 from server.tomoko.turn_state import TurnMaterialState
 
@@ -116,6 +128,11 @@ async def hot_path_realtime(websocket: WebSocket) -> None:
                         silence_ms=latest_materials.silence_ms,
                     )
                 await _refresh_db_candidates_if_enabled(conversation_core)
+                if observation.is_final:
+                    await _refresh_recall_summaries_if_enabled(
+                        conversation_core,
+                        query_text=observation.text,
+                    )
                 result = await conversation_core.handle_observation(observation)
                 await _persist_result_if_enabled(result)
                 _console_event(
@@ -139,6 +156,7 @@ async def hot_path_realtime(websocket: WebSocket) -> None:
                         "score_breakdown": result.scheduler_output.score_breakdown,
                         "p_yielding": observation.p_yielding,
                         "order_count": order_count,
+                        "followups_pending": conversation_core.has_pending_followup_work(),
                     }
                 )
                 if result.speech_order is not None:
@@ -246,6 +264,26 @@ async def hot_path_realtime(websocket: WebSocket) -> None:
                     order_count=order_count,
                 )
                 continue
+            if event_type == "poll_orders":
+                orders, pending = conversation_core.poll_followup_orders()
+                await websocket.send_json(
+                    {
+                        "type": "poll_orders_ack",
+                        "order_count": len(orders),
+                        "pending": pending,
+                    }
+                )
+                for order in orders:
+                    await websocket.send_json(
+                        {"type": "speech_order", **order.to_dict()}
+                    )
+                if orders:
+                    _console_event(
+                        "poll_orders",
+                        order_count=len(orders),
+                        pending=pending,
+                    )
+                continue
             if event_type == "playback_state":
                 playback_active = bool(payload.get("playback_active", False))
                 conversation_core.update_playback_state(playback_active)
@@ -352,6 +390,35 @@ async def _execute(conn: psycopg.AsyncConnection[object], command: SqlCommand) -
     await conn.execute(command.query, command.params)
 
 
+async def _refresh_recall_summaries_if_enabled(
+    core: TomokoConversationCore,
+    *,
+    query_text: str,
+) -> None:
+    if os.environ.get("TOMOKO_V2_DB_RECALL", "1") == "0":
+        return
+    if os.environ.get("TOMOKO_V2_FAKE_RUNTIME") == "1":
+        return
+    try:
+        async with await psycopg.AsyncConnection.connect(
+            os.environ.get("TOMOKO_DATABASE_URL", default_dsn()),
+            autocommit=True,
+            row_factory=dict_row,
+        ) as conn:
+            summaries = await load_recent_session_summaries(conn, limit=32)
+    except Exception as exc:
+        _console_event("recall_refresh_failed", error=type(exc).__name__)
+        return
+    ranked = rank_summaries_by_relevance(summaries, query_text, top_k=3)
+    core.update_summary_records(ranked)
+    if ranked:
+        _console_event(
+            "recall_summaries",
+            query=query_text[:40],
+            keywords=[summary.keyword for summary in ranked],
+        )
+
+
 async def _refresh_db_candidates_if_enabled(core: TomokoConversationCore) -> None:
     cache = _db_candidate_cache()
     if cache is None:
@@ -384,6 +451,56 @@ def _db_candidates_enabled() -> bool:
     return os.environ.get("TOMOKO_V2_DB_CANDIDATES", "0") != "0"
 
 
+def _sense_executor():
+    if os.environ.get("TOMOKO_V2_FAKE_RUNTIME") == "1":
+        return create_fake_sense_executor_from_env()
+
+    async def db_sense_executor(record: SenseRequestRecord) -> dict[str, Any] | None:
+        dsn = os.environ.get("TOMOKO_DATABASE_URL", default_dsn())
+        if record.kind == "world_search":
+            # Perplexity 経由の検索は数十秒かかる
+            timeout_sec = float(
+                os.environ.get("TOMOKO_V2_WORLD_SEARCH_SENSE_TIMEOUT_SEC", "120")
+            )
+        else:
+            timeout_sec = float(os.environ.get("TOMOKO_V2_SENSE_TIMEOUT_SEC", "20"))
+        async with await psycopg.AsyncConnection.connect(
+            dsn,
+            autocommit=True,
+            row_factory=dict_row,
+        ) as conn:
+            command = insert_sense_request_sql(record)
+            await conn.execute(command.query, command.params)
+            _console_event(
+                "sense_request_inserted",
+                request_id=str(record.id),
+                kind=record.kind,
+            )
+            deadline = monotonic() + timeout_sec
+            while monotonic() < deadline:
+                await asyncio.sleep(0.5)
+                loaded = await load_sense_request(conn, record.id)
+                if loaded is None:
+                    return None
+                if loaded.status == SENSE_STATUS_DONE:
+                    return loaded.result
+                if loaded.status == SENSE_STATUS_FAILED:
+                    return None
+        _console_event("sense_request_timeout", request_id=str(record.id))
+        return None
+
+    return db_sense_executor
+
+
+def _supported_sense_kinds() -> frozenset[str] | None:
+    if os.environ.get("TOMOKO_V2_FAKE_RUNTIME") == "1":
+        return None
+    kinds = {"screenshot", "camera_presence"}
+    if os.environ.get("TOMOKO_V2_WORLD_SEARCH_CMD"):
+        kinds.add("world_search")
+    return frozenset(kinds)
+
+
 def _conversation_core() -> TomokoConversationCore:
     core = getattr(app.state, "conversation_core", None)
     if core is None:
@@ -409,6 +526,8 @@ def _conversation_core() -> TomokoConversationCore:
                 _fake_personality_materials() or PersonalityMaterials()
             ),
             candidate_provider=_fake_candidate_provider(),
+            sense_executor=_sense_executor(),
+            sense_kinds=_supported_sense_kinds(),
         )
         fake_user_status = _fake_user_status_observation()
         if fake_user_status is not None:

@@ -11,7 +11,7 @@ from uuid import UUID
 import psycopg
 from psycopg.rows import dict_row
 
-from server.audio.stt import AppleSpeechStreamingBackend, StreamingSttEvent, observation_events
+from server.audio.stt import StreamingSttEvent, create_default_stt_backend, observation_events
 from server.audio.vad import VADProcessor
 from server.hot_path.audio_conversation import (
     HotPathConversationResult,
@@ -290,7 +290,7 @@ def create_default_db_split_conversation(
     return HotPathDbSplitConversation(
         dsn=dsn,
         vad=VADProcessor(),
-        stt_backend=AppleSpeechStreamingBackend(),
+        stt_backend=create_default_stt_backend(),
         speech_executor=SpeechOrderExecutor(tts_backend),
     )
 

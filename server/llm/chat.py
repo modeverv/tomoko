@@ -72,6 +72,7 @@ def create_default_real_chat_backend() -> OpenAICompatibleChatBackend:
         url=os.environ.get("TOMOKO_V2_LLM_URL", "http://127.0.0.1:8082"),
         model=os.environ.get("TOMOKO_V2_LLM_MODEL", "gemma-4-26b-a4b-it-mlx"),
         max_tokens=int(os.environ.get("TOMOKO_V2_LLM_MAX_TOKENS", "180")),
+        temperature=float(os.environ.get("TOMOKO_V2_LLM_TEMPERATURE", "0.6")),
         chat_template_kwargs={"enable_thinking": False},
     )
 

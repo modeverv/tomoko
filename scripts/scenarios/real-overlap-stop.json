@@ -1,12 +1,12 @@
 {
   "name": "real-overlap-stop",
-  "description": "Real runtime: user overlaps Tomoko's reply with a stop intent; playback stops (PLAN S9 live).",
+  "description": "Real runtime: user talks at length (~125 chars), then overlaps Tomoko's reply with a stop intent; playback stops (PLAN S9 live).",
   "runtime": "real",
   "steps": [
     {
-      "say": "トモコ、今日一日の過ごし方についてゆっくり長めに話して聞かせて",
+      "say": "トモコ、今日は仕事の合間に少しだけ散歩に出てみたんだけど、外の空気が思ったより気持ちよくて、公園の木陰でしばらくぼんやりしてたんだよね、こういう時間って案外大事なんだなって思ったから、トモコは一日のなかでどんな時間の使い方が好きなのか、ゆっくり長めに話して聞かせて",
       "wait_for": "tts_result",
-      "wait_timeout_sec": 60.0,
+      "wait_timeout_sec": 90.0,
       "expect": {
         "min_events": {"speech_order": 1}
       }
@@ -14,8 +14,8 @@
     {
       "say": "もういいよ、ストップ",
       "overlap_during_playback": true,
-      "wait_for": "speech_order",
-      "wait_timeout_sec": 60.0,
+      "wait_for": "speech_order:stop",
+      "wait_timeout_sec": 90.0,
       "expect": {
         "min_events": {"speech_order": 1},
         "speech_order_modes_includes": ["stop"]

@@ -374,8 +374,8 @@ def test_summary_process_builds_keyword_conclusion_and_embedding() -> None:
     assert summary.session_id == session_id
     assert summary.keyword == "予定"
     assert "会議" in summary.conclusion
-    assert len(summary.embedding) == 8
-    assert sum(summary.embedding) == pytest.approx(1.0)
+    assert len(summary.embedding) == 64
+    assert sum(value * value for value in summary.embedding) == pytest.approx(1.0)
 
 
 def test_prompt_lifecycle_cancels_by_policy_and_is_idempotent() -> None:

@@ -1,21 +1,21 @@
 {
   "name": "real-overlap-replace",
-  "description": "Real runtime: user overlaps Tomoko's reply with a new request; playback switches without stale audio (PLAN S9 live).",
+  "description": "Real runtime: user talks at length (~135 chars, realistic partial stream + maai backchannel window), then overlaps Tomoko's reply with a new request; playback switches without stale audio (PLAN S9 live).",
   "runtime": "real",
   "steps": [
     {
-      "say": "トモコ、今日一日の過ごし方についてゆっくり長めに話して聞かせて",
+      "say": "トモコ、ちょっと聞いてほしいんだけど、今日は朝からずっと資料作りに追われてて、昼ごはんもコンビニのおにぎりを急いで食べただけで、夕方になってようやく一段落ついたんだよね、それでね、そういう日の夜の過ごし方というか、トモコならこのあとどう過ごすのか、ゆっくり長めに話して聞かせて",
       "wait_for": "tts_result",
-      "wait_timeout_sec": 60.0,
+      "wait_timeout_sec": 90.0,
       "expect": {
         "min_events": {"speech_order": 1}
       }
     },
     {
-      "say": "やっぱりそれはいいから明日の天気がどうなるかだけ教えて",
+      "say": "あ、ごめんごめん、やっぱりその話はいいから、明日の天気がどうなるかだけ簡単に教えて",
       "overlap_during_playback": true,
       "wait_for": "prompt_complete",
-      "wait_timeout_sec": 60.0,
+      "wait_timeout_sec": 90.0,
       "expect": {
         "min_events": {"speech_order": 1, "binary_audio": 1},
         "speech_order_modes_includes": ["replace_current"]

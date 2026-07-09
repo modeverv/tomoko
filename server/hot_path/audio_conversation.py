@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import UUID
 
-from server.audio.stt import AppleSpeechStreamingBackend, StreamingSttEvent, observation_events
+from server.audio.stt import StreamingSttEvent, create_default_stt_backend, observation_events
 from server.audio.vad import VADProcessor
 from server.hot_path.model_executor import PromptExecutionResult, PromptExecutor
 from server.hot_path.speech_executor import SpeechOrderExecutor
@@ -478,7 +478,7 @@ def create_default_audio_conversation(prompt_executor: PromptExecutor) -> HotPat
     tts_backend = prompt_executor._tts_backend
     return HotPathAudioConversation(
         vad=VADProcessor(),
-        stt_backend=AppleSpeechStreamingBackend(),
+        stt_backend=create_default_stt_backend(),
         conversation_core=TomokoConversationCore(
             session_model=SessionBoundaryModel(),
             saturation_judge=_default_saturation_judge(),

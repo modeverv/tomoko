@@ -1,7 +1,9 @@
 [runtime]
 database_url_env = "TOMOKO_DATABASE_URL"
 jsonl_log = "logs/v2-runtime.jsonl"
-llm_ready_urls = ["http://127.0.0.1:8081/v1/models", "http://127.0.0.1:8082/v1/models"]
+required_llm_ready_urls = ["http://127.0.0.1:8082/v1/models"]
+optional_llm_ready_urls = ["http://127.0.0.1:8081/v1/models"]
+llm_ready_urls = ["http://127.0.0.1:8082/v1/models", "http://127.0.0.1:8081/v1/models"]
 voicevox_ready_url = "http://127.0.0.1:50122/version"
 
 [vad]
@@ -14,6 +16,17 @@ pre_roll_ms = 500
 min_silence_ms = 150
 delta_silence_ms = 650
 yielding_threshold = 0.90
+
+[stt]
+backend = "whisperkit"
+
+[stt.whisperkit]
+command = "whisperkit-cli"
+model = "large-v3-v20240930_turbo"
+language = "ja"
+audio_encoder_compute_units = "cpuAndNeuralEngine"
+text_decoder_compute_units = "cpuAndNeuralEngine"
+partial_mode = "stream-simulated"
 
 [stt.apple_speech]
 command = ".cache/tomoko/AppleSpeechSTT.app/Contents/MacOS/apple-speech-stt"

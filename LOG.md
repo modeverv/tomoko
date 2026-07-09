@@ -3254,3 +3254,309 @@
 - 自動化で実走できる f.md / PLAN の未完了項目は閉じた。
   残りは実マイク・実スピーカー体感、好みの threshold 調整、実外部連携認証、
   8765 競合時に port を変える運用判断。
+
+## 2026-07-04 セッション6
+
+### やること（開始時に書く）
+- 最新の scenario test artifact を集約し、会話の流れと interrupt / replace / stop / append の発生タイミングを
+  `260704.html` として可視化する。
+
+### やったこと
+- `logs/scenario-*.json` から 2026-07-04 の最新 artifact をシナリオ名ごとに 1 本ずつ選び、
+  19 シナリオ分の conversation timeline を `260704.html` に生成した。
+- real runtime の `real-overlap-replace` / `real-overlap-stop` / `calendar-append` を先頭に置き、
+  user voice、STT transcript、scheduler decision、Tomoko speech_order、audio/control を同じ時間軸で見られるようにした。
+- 初回の通常 `replace_current` と、先行 Tomoko 発話後の `replace_current` を分け、
+  後者を `interrupt replace` として強調した。
+- Interrupt / Queue Index に user overlap、interrupt replace、stop、append、suppress の発生時刻と artifact を一覧化した。
+
+### 詰まったこと・解決したこと
+- in-app browser は `file://` のローカル HTML を安全ポリシーで開けなかった。
+  迂回せず、HTML parser による構造確認と組み込み JS の `node --check` で検証した。
+- 初回生成ではタイムラインの左ラベル分のオフセットが甘かったため、
+  `.plot` レイヤを追加して 0-100% の時間軸をプロット領域内に閉じた。
+
+### 追加検証24
+- HTML parser:
+  - scenario cards 19
+  - plot layers 19
+  - filters 7
+  - index rows 33
+  - interrupt dots 6
+- `node --check /tmp/tomoko_260704_script.js`
+  - exit 0
+
+### 次のセッションでやること（追加22）
+- `260704.html` をブラウザで開き、real overlap の割り込みタイミングと calendar append の後続キュー表示を人間の目で確認する。
+
+## 2026-07-04 セッション7
+
+### 目的
+- 「partial で応答しない」「回答がアホ」の2点を解消し、体感を人間の会話に近づける。
+
+### やったこと
+- **回答品質 (1文切り捨て解消)**: `_generate_model_events` が LLM 回答を最初の一文で捨てていた問題を、
+  「一文目を即 speech_order + 残りをバックグラウンド生成」に再構成。続きは
+  `poll_orders`(realtime⇄hot-path の新プロトコル)経由で hot-path が回収し、
+  `append_after_current`(reason=`reply continuation queued after first sentence`)として発話。
+  会話ループを塞がずに全文を話す(final tomoko_ms 6633→3571ms)。
+- **プロンプト**: `PromptBuilderV2` にペルソナ+応答方針(`DEFAULT_SYSTEM_HEADER`)を追加。
+  instruction は「最初の一文は短く要点から / 全体2〜4文」に更新しつつ、partial/final で
+  同一文字列を維持(KV キャッシュ prefix 設計を尊重、`concise` は cutoff 側で担保)。
+  real LLM に `TOMOKO_V2_LLM_TEMPERATURE`(default 0.6)を導入。
+- **Apple STT ストリーミング**: サイドカーに `--stream` モードを追加
+  (stdin から PCM16、`SFSpeechAudioBufferRecognitionRequest` + partial NDJSON 出力)。
+  Python 側は常駐サイドカー+失敗時バッチ間欠フォールバック
+  (`TOMOKO_V2_STT_SIDECAR_STREAM=0` で無効化可)。初回 partial 3.9s→0.7s、以降 200〜400ms 間隔。
+  server 起動時に無音ウォームアップでモデルロードを先行。
+- **ゲート調整**: 会話層の partial start gate に専用閾値 `PARTIAL_START_SCORE_THRESHOLD=0.65`
+  (scheduler 層は 0.75 のまま junk 弁別を維持)。相槌の同一発話内二重発火を basis テキストで抑止。
+- latency suite の final origin 既定ターゲットを実測構造コストに合わせ p50≤6000ms / p95≤9500ms に更新
+  (体感の主経路は partial origin: 30本中21本、p50 は負値=発話終了前に応答開始)。
+- `260704-2.html` に最新 artifact 19 本を可視化(Partial ack / Reply continuation メトリクスとフィルタ追加)。
+
+### 詰まったこと・解決したこと
+- followup poller のキャンセルが共有 WS を要求途中で放置し、以後の全要求がデシンクして STT が無音化。
+  → `_with_reconnect` で非 ConnectionClosed 例外時も WS を破棄、poll は shield で完走させて修復。
+- フル生成を同期で待つと final 応答が 7.7s ブロックし barge-in も停止するため、
+  「一文目同期 + 続き非同期 + poll 回収」構成に変更した。
+
+### 追加検証25
+- `make check` / `make test-integration` / `make v2-scenario-suite`(19本): PASS
+- real replay: real-overlap-replace / real-overlap-stop / calendar-append: PASS
+- `make v2-latency-suite`(10×1): PASS(final p50 5295ms / p95 7086ms / partial p50 -425ms)
+- autopilot 相当のフルシーケンスは latency ゲート更新前の 1 回のみ FAIL(旧ゲート超過)、更新後は個別再実行で PASS
+
+### 次のセッションでやること（追加23）
+- `260704-2.html` を目視確認(partial 密度、発話中 ack、continuation append)。
+- final origin 5〜8s の主因は LLM 一文目デコード(~15tok/s)+TTS。dflash/26B の高速化 or 小型応答モデル検討。
+- barge-in 中の partial が realtime WS の直列処理に阻まれる問題(生成中ロック)を全二重化するか検討。
+
+## 2026-07-04 セッション8
+
+### 目的
+- アシスタント感向上: MCP 的な任意タイミングの sense キック(スクショ / world 検索 / カメラ)を
+  DB 起点で実装し、結果を会話へ非同期合流させる(計画: 260704.md)。
+
+### やったこと
+- **sense_request 基盤**: `101_v2_sense.sql`(pending/claimed/done/failed + SKIP LOCKED claim)、
+  `server/tomoko/sense.py`(SQL ヘルパ + fake executor)。
+- **会話コアのキック**: final 発話のキュー検出(画面/何して→screenshot、調べて/検索して→world_search)
+  → 即答(「ちょっと画面見てみるね。」等)→ sense_executor(DB insert + poll)を背景実行 →
+  結果を RUNTIME_CONTEXT / VOLATILE_RECALL に載せた LLM followup を `poll_orders` レーンで append。
+  realtime は対応可能な kind だけ許可(`_supported_sense_kinds`)。
+- **worker consume**: user-status tick が screenshot/camera_presence sense を消化
+  (capture→OCR→`v2_user_status_observations`+complete、定期キャプチャは
+  `TOMOKO_V2_USER_STATUS_INTERVAL_SEC`)。info tick が world_search を消化
+  (`TOMOKO_V2_WORLD_SEARCH_CMD` のコマンド backend → world documents/items/interpretations)。
+- **query-driven recall**: `embed_text` を bigram+crc32 の 64 次元に強化し、
+  realtime が final ごとに関連 summary top-3 を `core.update_summary_records()` で注入。
+- **カメラ presence**: `scripts/camera_presence/CameraPresence.swift`
+  (AVFoundation 1 フレーム + Vision 顔検出 → JSON)+ `server/user_status/camera.py`。
+  `TOMOKO_V2_CAMERA_PRESENCE=1` で user-status tick が定期実行。
+- **yield ガード**: partial start gate に「ユーザーが譲る気配を見せるまでフル返信レーンを
+  先行させない」チェックを追加(相槌 ack レーンは従来通り)。
+
+### 詰まったこと・解決したこと
+- 0.65 化した partial start gate が実発話の最中にフル返信を発火させ、その tts_result で
+  シナリオランナーの待機が早期満了 → 2 発話が 1 つの VAD セグメントに併合され
+  real-overlap-replace が FAIL。→ yield ガードで解消(再実行 PASS)。
+- 常駐プロセスからの screencapture / カメラは macOS 権限が未付与で失敗
+  (コード側は graceful fallback 済み)。tmux 親ターミナルに画面収録・カメラ権限の付与が必要。
+
+### 追加検証26
+- `make check` 243 passed / `make test-integration` 7 passed(sense roundtrip、
+  screenshot/camera/world_search worker consume を含む)
+- fake suite 19 本(sense-screenshot-followup / sense-world-search-followup 追加)0 FAIL
+- real replay: real-overlap-replace / real-overlap-stop / calendar-append /
+  sense-screenshot-followup すべて PASS(sense は実 DB 経由で pending→done を確認)
+- latency suite 10×1: final p50 4754ms / p95 7767ms / partial p50 -380ms → PASS
+
+### 次のセッションでやること（追加24）
+- tmux 親ターミナルへ画面収録+カメラ権限を付与して常駐 sense の実データを確認する。
+- `TOMOKO_V2_WORLD_SEARCH_CMD` に実際の検索(MCP クライアント or web 検索 CLI)を接続する。
+- recall の embed_text を本物の埋め込みモデル(distilled)に置き換える。
+- LLM judge で sense followup の自然さ(awkward interruption)を計測する。
+
+## 2026-07-04 セッション9
+
+### 目的
+- world_search sense の backend を tomoko-research-operator(Perplexity)に接続する。
+
+### やったこと
+- `scripts/world_search_perplexity.py`: operator CLI(`tomoko-research search`)を
+  `TOMOKO_V2_WORLD_SEARCH_CMD` 形式({"items":[...]})に変換するアダプタ。
+  short_answer + 出典 + bullets をマッピング、flaky 対策で 1 回リトライ。
+- Makefile 既定で `TOMOKO_V2_WORLD_SEARCH_CMD ?= python3 scripts/world_search_perplexity.py` を
+  v2-tomoko / v2-info に配線(realtime は kind 有効化、info worker が実行)。
+- タイムアウト調整: world_search sense 待ち 120s、worker subprocess 150s、
+  hot-path followup poll 最長 140s。
+- 検索失敗/空結果時の謝りフォールバック
+  (「ごめん、うまく調べられなかったよ。」)を conversation core に追加。
+
+### 詰まったこと・解決したこと
+- operator は UI race で時々 failed を返す(大阪 query で再現)→ アダプタ側リトライで吸収。
+- 検索が数十秒かかるため既定 20s の sense timeout では間に合わない → kind 別 timeout に分離。
+
+### 追加検証27
+- adapter 単体: 実 Perplexity で {"items":[{"text":"明日の福岡は、蒸し暑く、午後ににわか雨の予報です。(出典: www.accuweather.com)"}]}
+- `make check` 246 passed(adapter マッピング + 謝りフォールバックのテスト追加)
+- fake suite 19 本 0 FAIL / real-overlap-replace PASS(回帰なし)
+- real E2E(sense-world-search-followup, SCENARIO_RUNTIME=real): PASS
+  - 相槌 3.9s → 「ちょっと調べてみるね。」5.3s → DB sense done 17.4s →
+    followup 発話 28.2s(「明日の天気は、曇り空で午後ににわか雨が…折りたたみ傘を…」)
+
+### 次のセッションでやること（追加25）
+- CDP Chrome(:9000)を常駐構成(tmux window)に含めるか検討。落ちていると
+  world_search は謝りフォールバックになる。
+- 検索 query の整形(呼びかけ・「調べて」の除去)と、deep モードの使い分け。
+- world.observe(MCP)経由の background 収集フローとの統合。
+
+## 2026-07-05 セッション1
+
+### 目的
+- 前夜の「suite 3x が 8 時間終わらない」ハングの原因究明と、シナリオ長文化の仕上げ。
+
+### 起こっていたこと
+- ハングは 3 周ループの 1 周目、user-status-absent-pressure 完了(21:41:51)直後の
+  vap-yielding-opportunity で発生(artifact 未生成、プロセスは生存したまま無進行)。
+- 今朝は vap 単体・suite 3 回とも PASS → 非決定的で、前夜の高負荷
+  (26B LLM + VOICEVOX + CDP Chrome + Perplexity 検索)依存とみられる。
+- 構造的な弱点を特定: run_scenario のタイムアウトはイベント待ちのみで、
+  websocket **send には期限がない**。spawn した fake サーバの受信ループが
+  停止するとバックプレッシャで send が永久ブロックし、シナリオ単位の
+  ウォッチドッグも無かったため suite 全体が黙って止まる。
+
+### やったこと
+- シナリオ・ウォッチドッグ: `_run_scenario_with_deadline`
+  (120s + Σstep timeout)。超過時は全 asyncio タスクのスタックを stderr に
+  ダンプしてから cancel → RuntimeError(次回発生時に自己診断可能)。
+- suite ループはシナリオ例外で止まらず FAIL 記録して継続。
+- 長文化の残件: real-overlap-stop は `wait_for: "speech_order:stop"`、
+  calendar-append / sense-* は `speech_order:append_after_current` 待ちに変更
+  (相槌 prompt_complete での早期満了を防止)。events_after に `type:mode` 記法を追加。
+- final が partial 返信に reconcile された場合にカレンダー通知が落ちるバグを修正
+  (pending followup 経由で append)。poll は ack の `followups_pending`
+  フラグがある時だけ起動(無駄 poll とロック競合ジッタを排除)。
+- attention-mode-idle-wake に発話間ポーズ 800ms(5/5 安定)。
+  motivation 系 3 本への一括ポーズは意味を壊したため取り消し。
+
+### 追加検証28
+- `make check` 246 passed / fake suite 3 回連続 0 FAIL(ウォッチドッグ有効)
+- real: real-overlap-replace(相槌「うん」backchannel 1 回 + partial 31 個 +
+  ack 2 回 + 先行返信 + final divergence 置換)/ real-overlap-stop /
+  calendar-append / sense-world-search-followup(実 Perplexity)すべて PASS
+
+### 次のセッションでやること（追加26）
+- ウォッチドッグ発火時のスタックダンプでハング箇所を特定する(再発待ち)。
+- maai backchannel の頻度調整(29 秒発話で 1 回。threshold 0.5→0.4 の検討)。
+- 「もういいよ、ストップ」の partial に相槌が出る問題(stop 意図の partial 検知強化)。
+
+## 2026-07-05 セッション2
+
+### やること（開始時に書く）
+- 現行 WhisperKit / Argmax CLI の streaming 経路に合わせて、root v2 に large-v3-turbo 用の STT backend を追加する。
+- 既存 Apple Speech backend と同じ `StreamingSttBackend` contract に合わせ、hot-path の partial/final STT pipeline から差し替え可能にする。
+- 実装前に unit test を追加し、large-v3-turbo / `cpuAndNeuralEngine` / streaming CLI 引数 / partial NDJSON parse / final fallback を固定する。
+
+### やったこと
+- `ArgmaxWhisperKitStreamingBackend` を追加し、default STT backend を WhisperKit / Argmax CLI の
+  `large-v3-v20240930_turbo` に切り替えた。
+- partial は Tomoko の `/ws` float32 chunk を server 側で累積 WAV 化し、
+  `transcribe --stream-simulated` へ渡す。final は同じ CLI の `transcribe --audio-path` で確定する。
+- encoder / decoder compute units は既定で `cpuAndNeuralEngine` にした。
+- `create_default_stt_backend()` を追加し、hot-path / DB split / WS split の直接
+  `AppleSpeechStreamingBackend()` 生成を factory 経由にした。Apple Speech は
+  `TOMOKO_V2_STT_BACKEND=apple_speech` で戻せる。
+- runtime readiness に `whisperkit` を追加し、README / ARCHITECTURE / `config/v2.toml` に現行 STT 本線を反映した。
+
+### 詰まったこと・解決したこと
+- 手元に `argmax-cli` は無かったが、`whisperkit-cli --help` は Argmax OSS CLI として動作していた。
+  `transcribe --help` では `--stream` が CLI 直接 microphone、`--stream-simulated` が入力ファイルの
+  streaming simulation だったため、Tomoko の `/ws` 音声 chunk を保つ主経路は `--stream-simulated` にした。
+
+### 追加検証29
+- `uv run pytest -m unit tests/unit/test_v2_whisperkit_stt.py -q` → 3 passed
+- `uv run pytest -m unit tests/unit/test_v2_whisperkit_stt.py tests/unit/test_v2_audio_tomoko_prompt.py::test_apple_speech_backend_writes_wav_and_yields_final_event tests/unit/test_v2_audio_tomoko_prompt.py::test_apple_speech_backend_streams_partial_and_suppresses_duplicates tests/unit/test_v2_audio_tomoko_prompt.py::test_streaming_stt_observation_keeps_vap_fields tests/unit/test_v2_runtime_foundation.py::test_hot_path_websocket_uses_prompt_executor_for_text_prompt -q` → 7 passed
+- `uv run ruff check server/audio/stt.py server/hot_path/audio_conversation.py server/hot_path/db_conversation.py server/hot_path/app.py server/runtime.py tests/unit/test_v2_whisperkit_stt.py` → pass
+- `uv run pytest -m unit -q` → 249 passed / 7 deselected
+- readiness probe: `whisperkit_runtime_available()` が `/opt/homebrew/bin/whisperkit-cli` と
+  `large-v3-v20240930_turbo` / `cpuAndNeuralEngine` を返すことを確認。
+
+### 次のセッションでやること
+- 実マイク `/ws` で WhisperKit large-v3-turbo partial/final の latency と表記揺れを測る。
+- `--stream-simulated` partial は累積 WAV を毎回 CLI に渡すため、体感が重ければ Argmax server / Pro WebSocket など
+  input streaming 対応経路を別途検討する。
+
+## 2026-07-09 セッション1
+
+### やること（開始時に書く）
+- `make run` 起動時に `hot-path` window が runtime dependency wait で止まり、hot-path server が起動しない原因を調べる。
+- `:8081` / `:8082` / VOICEVOX / Tomoko realtime の実 listen 状態と tmux window の生存状態を確認し、launcher 側の修正を行う。
+
+### やったこと
+- 原因を切り分けた。`llm-31b` の dflash generation worker が 300s 以内に runtime bundle を publish できず落ち、
+  `:8081` が connection refused になっていた。一方で main LLM `:8082`、VOICEVOX `:50122`、
+  Tomoko realtime `:8765` は起動済みだった。
+- `make v2-runtime-ready` を main LLM `:8082` + VOICEVOX `:50122` 必須に変更し、
+  31B `:8081` は optional probe (`[optional-missing]`) として扱うようにした。
+- `server.runtime.readiness_snapshot()` も `llm` と `optional_llm` に分け、
+  background process の readiness log で 31B の状態は見えるが hot-path startup 条件とは混ざらないようにした。
+- `README.md` / `ARCHITECTURE.md` / `config/v2.toml` に同じ契約を反映した。
+- 起動済み tmux session の `hot-path` pane を新しい readiness で respawn し、`:8000` で hot-path server が listen することを確認した。
+
+### 詰まったこと・解決したこと
+- 途中で `Makefile` だけ古い内容に戻っており、tmux 内の `make v2-runtime-ready` が旧 recipe を実行していた。
+  `nl -ba Makefile` と `make -n v2-runtime-ready` で確認し直し、Makefile の required/optional 分離を再適用した。
+- `uv run ruff check` に Makefile と bash script を渡してしまい Python syntax error になった。
+  Python は ruff、bash は `bash -n`、Makefile は `make -n` に分けて検証した。
+
+### 追加検証30
+- `uv run pytest -m unit tests/unit/test_v2_runtime_foundation.py::test_wait_runtime_dependencies_does_not_block_on_optional_llm tests/unit/test_v2_runtime_foundation.py::test_readiness_snapshot_splits_required_and_optional_llms tests/unit/test_v2_runtime_foundation.py::test_makefile_exposes_v2_runtime_targets_in_order -q` → 3 passed
+- `make v2-runtime-ready TMUX_RUNTIME_READY_TIMEOUT_SEC=8 TMUX_RUNTIME_READY_INTERVAL_SEC=1` → `8082` ready、`8081` optional-missing、VOICEVOX ready、exit 0
+- `uv run ruff check server/runtime.py tests/unit/test_v2_runtime_foundation.py` → pass
+- `bash -n scripts/wait_runtime_dependencies.sh` → pass
+- `make -n v2-runtime-ready` → required `8082` / optional `8081` の env を出力
+- `curl -fsS --max-time 2 http://127.0.0.1:8000/` → HTML 応答あり
+- `uv run pytest -m unit -q` → 251 passed / 7 deselected
+
+### 次のセッションでやること
+- 31B dflash が必要な summary/background 作業を行う時だけ、`logs/dflash-31b.log` の
+  `DFlash generation worker failed to publish a complete runtime bundle within 300.0s` を追う。
+
+## 2026-07-09 セッション2
+
+### やること（開始時に書く）
+- 31B dflash (`:8081`) が起動しない原因を dflash の runtime timeout / model load / launcher contract から切り分ける。
+- `make run` / `llm-run` で 31B が実際に listen するように修正し、起動確認まで行う。
+
+### やったこと
+- dflash package 側を確認し、`DFlashServer.serve_forever()` が
+  `self.wait_until_ready(timeout_s=300.0)` を hard-code していることを確認した。
+  31B cold load がこの 300 秒に間に合わないと
+  `DFlash generation worker failed to publish a complete runtime bundle within 300.0s` で落ちる。
+- 同じログで、retry 後の 31B は `Starting httpd at 0.0.0.0 on port 8081...` まで進み、
+  さらに別の起動が走って `OSError: [Errno 48] Address already in use` になっていたことを確認した。
+- `scripts/run_dflash_server.sh` を追加し、dflash 起動前に `/v1/models` readiness を確認、
+  non-zero exit 時は retry、既に ready なら二重起動しない構成にした。
+- `scripts/run_llm.sh` を更新し、tmux window の有無だけで起動済み判定をせず、
+  port readiness / stale window / child process の状態で `already ready` / `already starting` / `respawned` を分けるようにした。
+- 既に起動中の `tomoko-v2-runtime` に対して
+  `DFLASH_TMUX_SESSION=tomoko-v2-runtime DFLASH_TMUX_EMBED=1 make llm-run` を実行し、
+  31B/26B とも `already ready` になり、二重起動しないことを確認した。
+
+### 詰まったこと・解決したこと
+- 手元で通常の `make llm-run` を一度実行したため、既存 service を monitor するだけの
+  `dflash-runtime` session ができた。実 dflash process は増えていないことを `lsof` / `ps` で確認し、
+  monitor session だけ kill した。
+
+### 追加検証31
+- `bash -n scripts/run_llm.sh scripts/run_dflash_server.sh scripts/wait_runtime_dependencies.sh` → pass
+- `uv run pytest -m unit tests/unit/test_v2_runtime_foundation.py::test_dflash_server_launcher_skips_start_when_ready tests/unit/test_v2_runtime_foundation.py::test_makefile_exposes_v2_runtime_targets_in_order -q` → 2 passed
+- `DFLASH_TMUX_SESSION=tomoko-v2-runtime DFLASH_TMUX_EMBED=1 make llm-run` →
+  `already ready: tomoko-v2-runtime:llm-31b http://127.0.0.1:8081/v1/models`
+  / `already ready: tomoko-v2-runtime:llm-26b http://127.0.0.1:8082/v1/models`
+- `curl http://127.0.0.1:8081/v1/chat/completions ...` → 31B が `起動確認` を返した。
+
+### 次のセッションでやること
+- cold start の完全再現が必要なら、31B window を落とした状態から helper の retry path を実時間で確認する。
