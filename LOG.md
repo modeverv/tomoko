@@ -3591,3 +3591,32 @@
 
 ### 次のセッションでやること
 - 実ブラウザ上で複数の実デバイスを接続した状態の耳チェックが必要なら、録音入力と再生出力を別々に切り替えて実機確認する。
+
+## 2026-08-12 セッション1
+
+### やること（開始時に書く）
+- OpenAI の GPT-Live 継続的音声対話アーキテクチャ記事を、現行 tomoko の設計・実装・進行中 Phase と比較分析する。
+- tomoko に導入できる概念、導入しない概念、段階的な検証 PLAN を `openai.md` にまとめる。
+
+### やったこと
+- OpenAI 公式記事「6 か月で構築した、応答性の高い音声 AI 向けリアルタイムシステム」を読み、記事の事実、現行 Tomoko のコード分析、Tomoko 向け提案を分離して `openai.md` に記録した。
+- 現行の `/ws`、partial/final lane、TurnMaterials、二段 gate、internal WS、speech order/TTS、prompt cache instrumentation、summary と記事の概念を対応付けた。
+- 最優先 gap として、LLM 中の制御直列化、emission 時の古い Materials、voice-derived STOP/REPLACE の TTS 中 preemption 未証明、実 playback 観測不足、backpressure、feedback/content の latency 混同を整理した。
+- 提案 PLAN を O0a/O0b、O1a/O1b/O1c、O2-O7 に分け、各 Phase の先行テスト、完了条件、decision gate、導入しない項目を記載した。
+- OpenAI 記事にない数値や因果を外挿せず、Go/WebRTC/WARP、VAD 撤去、native speech-to-speech は測定または要件が成立した場合だけの研究項目とした。
+
+### 詰まったこと・解決したこと
+- 既存 overlap scenario は最初の `tts_result` 後に次発話を開始し、runner も履歴上の binary audio で overlap 判定できるため、in-flight TTS preemption の証拠にはならないと整理した。O0 では非 gating probe として現状を記録し、O1a 開始時に red test へ昇格する順序にした。
+- O0 で client playback latency を測る一方、当初案では playback telemetry が O2 にあったため依存が逆だった。観測専用 telemetry を O0a に移し、O2 はその観測を server-side floor 判断へ使う Phase に直した。
+- 並行化で `TomokoConversationCore` の状態機械が分散しないよう、single-owner arbiter と cancellable child job を分けた。canonical persistence は cancellable best-effort job ではなく durable/idempotent retry とした。
+- 検証 script の初回実行で zsh の予約配列 `path` を loop 変数に使い、その process 内の `PATH` を上書きした。副作用は一時 shell 内だけで、task 固有変数 `tomoko_ref` に直して再実行した。
+
+### 検証
+- `openai.md` の Markdown fence、公式 source link、参照した repository path、list format を機械確認 → pass
+- `git diff --check -- openai.md LOG.md` → pass
+- 文書追加と LOG 追記のみで、実装・設定は変更していないため test suite は未実行
+- 既存の `pyproject.toml`、`uv.lock`、`audio_000.wav` には触れていない
+
+### 次のセッションでやること
+- 提案を採用する場合は、まず O0a だけを既存 `PLAN.md` に追記し、response taxonomy、generation owner、playback/milestone telemetry の test を先に作る。
+- O0b の現既定 WhisperKit baseline と preemption probe 後に、800 ms をどの milestone に適用するか、stop budget、paired regression budget を人間が確定する。
