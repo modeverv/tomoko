@@ -15,6 +15,7 @@ from server.shared.models import (
     CandidateLifecycle,
     CandidateRecord,
     PartialTranscriptObservation,
+    ResponseKind,
     SpeechOrder,
     SpeechOrderMode,
     TurnMaterials,
@@ -276,6 +277,7 @@ def test_playback_state_inactive_clears_core_current_speech_order() -> None:
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason="test current speech",
         priority=60,
+        response_kind=ResponseKind.CONTENT,
     )
     core.current_speech_score = 0.9
     tomoko_realtime_app.state.turn_material_state = state
@@ -304,6 +306,7 @@ def test_tomoko_internal_ws_can_reset_conversation_state() -> None:
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason="test current speech",
         priority=60,
+        response_kind=ResponseKind.CONTENT,
     )
     tomoko_realtime_app.state.turn_material_state = state
     tomoko_realtime_app.state.conversation_core = core

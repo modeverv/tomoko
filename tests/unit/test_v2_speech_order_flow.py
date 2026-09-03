@@ -20,6 +20,7 @@ from server.shared.models import (
     PersonalityMaterials,
     PromptRequest,
     PromptScope,
+    ResponseKind,
     SemanticSaturationResult,
     SpeechOrder,
     SpeechOrderMode,
@@ -251,6 +252,7 @@ async def test_tomoko_conversation_core_kicks_screenshot_sense_and_appends_follo
     assert result.speech_order is not None
     assert result.speech_order.text == "ちょっと画面見てみるね。"
     assert result.speech_order.reason == "screenshot sense kicked for user context"
+    assert result.speech_order.response_kind == ResponseKind.ACKNOWLEDGEMENT
     assert chat.calls == 0
 
     assert core._sense_task is not None
@@ -261,6 +263,7 @@ async def test_tomoko_conversation_core_kicks_screenshot_sense_and_appends_follo
     assert len(orders) == 1
     assert orders[0].mode == SpeechOrderMode.APPEND_AFTER_CURRENT
     assert orders[0].reason == "sense result follow-up after screenshot"
+    assert orders[0].response_kind == ResponseKind.FOLLOWUP
     assert "conversation.py" in orders[0].text
     assert chat.calls == 1
     assert core.user_status is not None
@@ -731,6 +734,7 @@ async def test_tomoko_conversation_core_emits_short_motivation_interjection_befo
     assert partial.speech_order is not None
     assert partial.speech_order.text == "いや、それってさ。"
     assert partial.speech_order.mode == SpeechOrderMode.REPLACE_CURRENT
+    assert partial.speech_order.response_kind == ResponseKind.ACKNOWLEDGEMENT
     assert partial.scheduler_output.reason == (
         "motivation interjection before complete request"
     )
@@ -842,6 +846,7 @@ async def test_tomoko_conversation_core_acknowledges_near_threshold_incomplete_p
     assert partial.speech_order is not None
     assert partial.speech_order.text == "うん、聞いてるよ。"
     assert partial.speech_order.mode == SpeechOrderMode.REPLACE_CURRENT
+    assert partial.speech_order.response_kind == ResponseKind.ACKNOWLEDGEMENT
     assert partial.prompt_request is not None
     assert partial.scheduler_output.reason == (
         "partial acknowledgement before complete request"
@@ -1160,6 +1165,7 @@ async def test_tomoko_conversation_core_reconciles_final_after_partial_order() -
     )
 
     assert first_partial.speech_order is not None
+    assert first_partial.speech_order.response_kind == ResponseKind.CONTENT
     assert partial.speech_order is None
     assert partial.scheduler_output.reason == "partial reconciled with active partial reply"
     assert final.durable_utterance is not None
@@ -1294,6 +1300,7 @@ async def test_tomoko_conversation_core_replaces_conflicting_final_after_partial
     assert final.speech_order is not None
     assert final.speech_order.mode == SpeechOrderMode.REPLACE_CURRENT
     assert final.speech_order.text == "ごめん、言い直すね。"
+    assert final.speech_order.response_kind == ResponseKind.CORRECTION
     assert final.scheduler_output.reason == (
         "final diverged from active partial reply; replacing"
     )
@@ -1800,6 +1807,7 @@ async def test_speech_order_executor_replace_append_stop_and_generation_guard() 
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason="unit",
         priority=50,
+        response_kind=ResponseKind.CONTENT,
     )
     replaced = await executor.execute(first)
     assert [chunk.chunk for chunk in replaced.audio_chunks] == [
@@ -1818,6 +1826,7 @@ async def test_speech_order_executor_replace_append_stop_and_generation_guard() 
         mode=SpeechOrderMode.APPEND_AFTER_CURRENT,
         reason="calendar",
         priority=70,
+        response_kind=ResponseKind.CONTENT,
     )
     queued = await executor.execute(appended_order)
     assert queued.audio_chunks == []
@@ -1842,6 +1851,7 @@ async def test_speech_order_executor_streams_chunks_before_returning() -> None:
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason="unit",
         priority=50,
+        response_kind=ResponseKind.CONTENT,
     )
     streamed: list[bytes] = []
 
@@ -1873,6 +1883,7 @@ async def test_speech_order_executor_splits_multi_sentence_text_for_tts() -> Non
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason="unit",
         priority=50,
+        response_kind=ResponseKind.CONTENT,
     )
     streamed: list[bytes] = []
 
@@ -1904,6 +1915,7 @@ async def test_speech_order_executor_splits_long_clause_at_reading_pause_for_tts
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason="unit",
         priority=50,
+        response_kind=ResponseKind.CONTENT,
     )
     streamed: list[bytes] = []
 
@@ -1927,12 +1939,14 @@ async def test_speech_order_executor_stop_playback_clears_queue_and_generation()
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason="unit",
         priority=50,
+        response_kind=ResponseKind.CONTENT,
     )
     queued = SpeechOrder(
         text="次に話す",
         mode=SpeechOrderMode.APPEND_AFTER_CURRENT,
         reason="unit",
         priority=40,
+        response_kind=ResponseKind.CONTENT,
     )
     executor.begin_external_playback(current, score=0.6)
     executor.append_queue.append(queued)
@@ -1957,6 +1971,7 @@ async def test_speech_order_executor_can_protect_inflight_replace_audio() -> Non
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason="partial",
         priority=100,
+        response_kind=ResponseKind.CONTENT,
     )
     executor.begin_external_playback(current, score=1.0)
 
@@ -1965,6 +1980,7 @@ async def test_speech_order_executor_can_protect_inflight_replace_audio() -> Non
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason="final",
         priority=100,
+        response_kind=ResponseKind.CONTENT,
     )
     result = await executor.execute(final_replace)
 

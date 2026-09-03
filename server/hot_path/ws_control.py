@@ -39,6 +39,7 @@ def stop_order_from_cancel_event(
         mode=SpeechOrderMode.STOP,
         reason=str(event.get("reason", "cancel_order")),
         priority=100,
+        response_kind=None,
         trace_id=trace_id,
     )
     raw_order_id = event.get("order_id")

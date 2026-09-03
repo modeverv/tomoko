@@ -1410,3 +1410,35 @@ stale window は respawn し、既に ready な port は再起動しない。
 
 これは物理 I/O のブラウザ機能であり、Tomoko の発話判断・`/ws` protocol・server-side state machine には入れない。
 `setSinkId()` 非対応ブラウザでは既定出力のまま fail-open し、会話処理は止めない。
+## 2026-09-03 セッション1 SpeechAnalyzer probe 確定した判断
+
+### Apple Speech fallback は SpeechAnalyzer を使い、既定は WhisperKit のままにする
+`scripts/apple_speech_stt/AppleSpeechSTT.swift` は macOS 26 の
+`SpeechAnalyzer` / `SpeechTranscriber` / `AssetInventory` へ移行した。
+`TOMOKO_V2_STT_BACKEND` の既定 `whisperkit` は変更しない。
+
+macOS 26.6.1 / Xcode 26.6 の実音声 probe では、約3.8秒の日本語音声に対して
+first partial 1,077.1ms、final 3,986.2ms、file transcription 468.2msだった。
+`AnalysisContext` に「トモコ」を渡しても「智子」になったため、
+固有語精度は WhisperKit との比較項目として残す。
+
+### 追補: Apple API間の速度判断にはpaired warm計測を使う
+上記のfile transcription 468.2msはcold単発probeであり、旧APIより遅いという
+比較根拠にはしない。Kyoko生成の同一5音声を、warmup除外・AB/BA交互順で
+各API 50回ずつ測ったpaired benchmarkでは、`SpeechAnalyzer` は平均202.1ms、
+旧 `SFSpeechRecognizer` は平均215.6msだった。新APIは平均13.5ms（6.3%）短く、
+44/50組で速かったため、file final処理は「小幅に改善」と判断する。
+
+新APIは5/5文を末尾まで返し、旧APIは2/5文で末尾欠落した。ただし
+「トモコ」→「智子」は両方で発生した。WhisperKitは今回65秒timeoutしたため、
+Apple API間の判断に限定し、既定backendをWhisperKitから変更する根拠にはしない。
+
+### 追補2: faster-whisper small はv1で動くが現環境の低遅延候補にはしない
+同一のKyoko生成5音声をresident `faster-whisper small`（CPU
+`int8_float32`）で50回測るとmean 1,968.3ms / p95 2,102.6msだった。
+`SpeechAnalyzer`の同一corpus mean 202.1msに対して9.74倍かかったため、
+現Macで低レイテンシfallbackとしてv2へ配線する理由はない。
+
+精度も「歯医者」を全回「会社」と誤認識し、正規化CER 5.66%で、
+`SpeechAnalyzer`の3.77%を上回った。一方「トモコ」はinitial promptにより
+「ともこ」と出せた。v1 wrapperの動作は確認済みだが、v2 factoryは変更しない。

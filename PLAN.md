@@ -775,3 +775,34 @@ LLM-as-judge は自動 gate ではなく、直近シナリオ transcript を 31B
 - [x] `make v2-llm-judge` が exit 0。
       最新は `logs/scenario-calendar-append-20260704-044302.json` を judge し、
       `logs/llm-judge.jsonl` に naturalness 1.0、duplicate/missed/awkward 0 を保存。
+
+## Phase S23: SpeechAnalyzer fallback comparison probe
+
+既定の WhisperKit STT は維持し、`apple_speech` fallback sidecar を
+`SFSpeechRecognizer` から macOS 26 の `SpeechAnalyzer` / `SpeechTranscriber`
+へ移行して比較可能にする。
+
+### 実装手順
+
+- [x] Swift sidecar が `SpeechAnalyzer` / `SpeechTranscriber` を使うことを unit contract test で先に固定する。
+- [x] `AssetInventory` で必要な locale asset を確認・導入する。
+- [x] file transcription と stdin streaming の既存 JSON/JSONL contract を維持する。
+- [x] `AnalysisContext` に既存 contextual strings を渡す。
+- [x] Swift compile、focused/full unit、実音声 probe を実行する。
+- [x] 実測結果を `_docs/latency.md` に追記する。
+
+### 完了条件
+
+- [x] 既定 `TOMOKO_V2_STT_BACKEND=whisperkit` は変わらない。
+- [x] Apple Speech sidecar が macOS 26.6.1 / Xcode 26.6 で compile できる。
+- [x] 日本語の実音声から final transcript が得られる。
+- [x] `pytest -m unit` と `git diff --check` が通る。
+
+### 追加検証: paired benchmark
+
+- [x] Kyoko生成の同一5音声を旧新Apple APIへ各10回入力する。
+- [x] warmupを除外し、AB/BA交互順で実行順を補正する。
+- [x] mean / p50 / p95 / paired差 / 転記再現性を記録する。
+- [x] WhisperKitが65秒timeoutした事実を数値比較と分離して記録する。
+- [x] 同一`say` corpusで`faster-whisper small`を50回測定し、Apple APIと比較する。
+- [x] v1 `FasterWhisperSTT` wrapperの実動作をsmoke確認する。

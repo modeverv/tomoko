@@ -1,0 +1,55 @@
+{
+  "date": "2026-09-03",
+  "environment": {
+    "os": "macOS 26.6.1",
+    "xcode": "26.6",
+    "voice": "Kyoko",
+    "locale": "ja-JP",
+    "on_device": true
+  },
+  "method": {
+    "cases": 5,
+    "runs_per_case_per_backend": 10,
+    "paired_samples": 50,
+    "warmup_excluded": true,
+    "execution_order": "AB/BA alternating by case and run",
+    "audio_duration_seconds": [3.797868, 3.216508, 3.722041, 4.527120, 3.814331],
+    "contextual_strings": ["トモコ", "会議", "音声認識"]
+  },
+  "results_ms": {
+    "sfspeechrecognizer": {
+      "mean": 215.6269,
+      "p50": 212.3197,
+      "p95": 239.6780,
+      "standard_deviation": 16.2669
+    },
+    "speechanalyzer": {
+      "mean": 202.0962,
+      "p50": 202.6582,
+      "p95": 209.9378,
+      "standard_deviation": 6.1738
+    },
+    "paired_delta_speechanalyzer_minus_legacy": {
+      "mean": -13.5306,
+      "p50": -10.4027,
+      "approximate_95_percent_ci": [-17.4323, -9.6290],
+      "relative_mean_percent": -6.2750,
+      "speechanalyzer_wins": 44,
+      "legacy_wins": 6
+    }
+  },
+  "case_mean_ms": [
+    {"case": 1, "legacy": 212.2520, "analyzer": 200.4693},
+    {"case": 2, "legacy": 193.7792, "analyzer": 193.8463},
+    {"case": 3, "legacy": 205.5441, "analyzer": 204.0120},
+    {"case": 4, "legacy": 227.1404, "analyzer": 210.2335},
+    {"case": 5, "legacy": 239.4186, "analyzer": 201.9200}
+  ],
+  "recognition_notes": {
+    "stable_outputs": "Each backend produced one identical output per case across all ten runs.",
+    "legacy_complete_sentence_endings": "3/5",
+    "analyzer_complete_sentence_endings": "5/5",
+    "proper_noun": "Both backends recognized spoken トモコ as 智子 despite contextual strings.",
+    "whisperkit": "Excluded: the installed WhisperKit backend did not return within 65 seconds."
+  }
+}

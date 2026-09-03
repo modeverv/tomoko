@@ -14,6 +14,7 @@ from server.shared.models import (
     ContextSnapshot,
     ConversationHistoryItem,
     PartialTranscriptObservation,
+    ResponseKind,
     SemanticSaturationResult,
     SessionSummary,
     SpeechDecision,
@@ -162,6 +163,7 @@ def test_speech_order_and_scheduler_dtos_round_trip_with_slots() -> None:
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason="reply pressure crossed threshold",
         priority=80,
+        response_kind=ResponseKind.CONTENT,
     )
     scheduler_input = SpeechSchedulerInput(
         final_stt_text="トモコ、今いい?",

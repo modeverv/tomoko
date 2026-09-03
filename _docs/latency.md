@@ -219,3 +219,61 @@ M1 Phase 0 creates this log before the first measured audio path exists.
 | 2026-07-04 | Tomoko v2 Step 9 autopilot full latency pass | `make autopilot` on running real runtime (`LATENCY_SUITE_COUNT=10`, `LATENCY_SUITE_REPEATS=3`) | target passed: runs_no_audio 0; final-origin p50 1342.6ms / p95 1358.7ms; partial-origin p50 -141.4ms | First full autopilot run exposed two live gaps: Apple Speech partial variants (`お勧めの昼ご飯`, `の話を`) did not trigger safe acknowledgement, and ambient AttentionMode suppressed request-like final text normalized as `今日やるべきことを3つ挙げて`. Added regression unit tests, expanded partial acknowledgement topic cues for lunch/recommendation/story/explanation/task-list variants, and added request cues for `やるべき` / `挙げて` / `3つ` without adding broad `話` to final ambient recovery. The passing full suite wrote `logs/latency-suite-20260704-042438.json` / `.md`; `logs/autopilot-20260704-042721.json` records the full gate (`make check`, integration, fake scenario suite, real overlap replace/stop, full latency) as `passed: true`. |
 | 2026-07-04 | Tomoko v2 Step 9 autopilot with real calendar append | `make autopilot` on running real runtime after adding real scenario fixture reset/injection | target passed: runs_no_audio 0; final-origin p50 1339.7ms / p95 1343.2ms; partial-origin p50 -163.8ms | Added real runtime calendar append to the autopilot real checks. Real scenario fixtures now go through `/ws` `latency_control`: reset conversation first, then inject temporary calendar items via internal WS `scenario_fixture`, so prior `_notified_calendar_keys` cannot suppress the append. The final passing gate wrote `logs/autopilot-20260704-044545.json`: `make check` 236 passed / 3 deselected, integration 3 passed / 236 deselected, fake scenario suite PASS, real overlap replace/stop PASS, real calendar append PASS (`logs/scenario-calendar-append-20260704-044302.json`), and full latency PASS (`logs/latency-suite-20260704-044312.json` / `.md`). |
 | 2026-07-09 | Tomoko v2 browser device selector delivery smoke | `make server` temporary hot-path static server on `:8000`; `curl` HTML/JS checks | first-audio latency not remeasured | Added separate recording input and playback output device selectors in the browser UI. This does not change `/ws`, STT, LLM, or TTS server timing. Delivery was checked by serving `client/index.html` and `client/main.js` from `http://127.0.0.1:8000/` and confirming `audio-input`, `audio-output`, `playback-output`, `setSinkId`, and `createMediaStreamDestination` were present. A real browser/hardware listening check remains the useful validation for device routing latency. |
+## 2026-09-03 SpeechAnalyzer fallback probe
+
+- Environment: macOS 26.6.1, Xcode 26.6, Apple Speech `SpeechAnalyzer` /
+  `SpeechTranscriber`, locale `ja-JP`.
+- Input: macOS `say -v Kyoko` generated
+  「トモコ、今日の予定を一言で教えてください。」, 16 kHz mono PCM.
+- File transcription: 468.2 ms, final
+  「智子、今日の予定を一言で教えてください。」.
+- Simulated realtime streaming (3,200 bytes / 100 ms): first partial 1,077.1 ms,
+  final 3,986.2 ms. The final arrived immediately after the approximately
+  3.8-second input completed.
+- Fast pipe input: first partial 439.0 ms, final 478.8 ms. This measures
+  processing throughput rather than user-perceived realtime latency.
+- Existing `AnalysisContext` terms were supplied, but synthesized 「トモコ」
+  was still recognized as 「智子」. Proper-noun accuracy remains a comparison
+  item against WhisperKit.
+
+## 2026-09-03 SpeechAnalyzer / SFSpeechRecognizer paired file benchmark
+
+- Input: five Japanese utterances generated once with `say -v Kyoko` (3.22–4.53
+  seconds). Each exact audio file was passed to both on-device backends ten times.
+  One warmup per backend was excluded, and AB/BA execution order was alternated.
+- `SFSpeechRecognizer`: mean 215.6 ms, p50 212.3 ms, p95 239.7 ms, standard
+  deviation 16.3 ms (`n=50`).
+- `SpeechAnalyzer`: mean 202.1 ms, p50 202.7 ms, p95 209.9 ms, standard
+  deviation 6.2 ms (`n=50`).
+- Paired result: `SpeechAnalyzer` was 13.5 ms / 6.3% faster on average, won
+  44/50 pairs, and had an approximate paired mean 95% interval of 9.6–17.4 ms
+  faster. Per-case mean deltas were -11.8, +0.1, -1.5, -16.9, and -37.5 ms.
+- Both backends were deterministic across ten runs. `SpeechAnalyzer` returned
+  complete sentence endings for 5/5 inputs; legacy `SFSpeechRecognizer` stopped
+  short on 2/5 inputs. Both rendered spoken 「トモコ」 as 「智子」.
+- This supersedes the earlier unpaired 468.2 ms cold file probe for API-to-API
+  comparison. It does not supersede the simulated-realtime first-partial result.
+- Summary artifact:
+  `_docs/benchmarks/speech-analyzer-paired-20260903.json`.
+- WhisperKit was not included: its installed backend timed out without a result
+  after 65 seconds, so no valid paired sample was available.
+
+## 2026-09-03 faster-whisper small comparison on the same `say` corpus
+
+- Backend: `faster-whisper` 1.2.1, model `small`, CPU `int8_float32`, language
+  `ja`, initial prompt 「ともこ」. The model stayed resident for all samples.
+- Input: the same five Kyoko-generated AIFF files used by the Apple API paired
+  benchmark. One warmup was excluded; each file was measured ten times (`n=50`).
+- Model initialization: 694.9 ms. Transcription mean 1,968.3 ms, p50 1,983.6 ms,
+  p95 2,102.6 ms, standard deviation 101.3 ms.
+- Compared with the earlier `SpeechAnalyzer` mean 202.1 ms on the same files,
+  faster-whisper small took 9.74x as long (+1,766.2 ms average). This comparison
+  reused the corpus but was run after, rather than interleaved with, the Apple run.
+- All ten outputs per case were identical. Four of five sentences preserved the
+  intended content, while 「歯医者」 was consistently recognized as 「会社」.
+  「トモコ」 was rendered as 「ともこ」, improving name form versus Apple 「智子」.
+- Normalized character error rate was 5.66% after removing spaces/punctuation and
+  normalizing `10` to 「十」. The same calculation gives `SpeechAnalyzer` 3.77%.
+- The actual v1 `FasterWhisperSTT.transcribe` wrapper also completed successfully.
+- Summary artifact:
+  `_docs/benchmarks/faster-whisper-small-say-20260903.json`.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 import wave
 from collections.abc import AsyncIterator
@@ -56,6 +57,7 @@ from server.shared.models import (
     PartialTranscriptObservation,
     PromptRequest,
     PromptScope,
+    ResponseKind,
     SemanticSaturationResult,
     SessionSummary,
     SpeechDecisionKind,
@@ -84,6 +86,22 @@ def test_apple_speech_default_contextual_strings_include_latency_request_terms()
     assert "会議" in DEFAULT_CONTEXTUAL_STRINGS
     assert "予定" in DEFAULT_CONTEXTUAL_STRINGS
     assert "今週" in DEFAULT_CONTEXTUAL_STRINGS
+
+
+def test_apple_speech_sidecar_uses_speech_analyzer_contract() -> None:
+    source = stt_module.DEFAULT_SOURCE.read_text(encoding="utf-8")
+
+    assert "SpeechAnalyzer" in source
+    assert "SpeechTranscriber" in source
+    assert "AssetInventory" in source
+    assert "AnalysisContext" in source
+    assert "SFSpeechRecognizer" not in source
+
+
+def test_apple_speech_sidecar_compiles_async_main_as_library() -> None:
+    compile_source = inspect.getsource(AppleSpeechStreamingBackend._ensure_command)
+
+    assert '"-parse-as-library"' in compile_source
 
 
 class FixedSaturationJudge:
@@ -602,6 +620,7 @@ async def test_audio_result_streams_deferred_tts_chunks_before_tts_result() -> N
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason="unit",
         priority=50,
+        response_kind=ResponseKind.CONTENT,
     )
     result = HotPathConversationResult(
         observations=[],

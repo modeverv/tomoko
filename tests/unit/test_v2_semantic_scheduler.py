@@ -21,6 +21,7 @@ from server.shared.models import (
     PreparedSpeechCandidate,
     PromptRequest,
     PromptScope,
+    ResponseKind,
     SessionSummary,
     SpeechEmissionDecision,
     SpeechEmissionGateInput,
@@ -461,6 +462,7 @@ def test_speech_emission_gate_uses_materials_and_pressure_for_barge_in_risk() ->
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason="current",
         priority=50,
+        response_kind=ResponseKind.CONTENT,
     )
     gate = SpeechEmissionGate()
 
@@ -600,6 +602,7 @@ def test_speech_scheduler_appends_calendar_while_speaking() -> None:
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason="current",
         priority=50,
+        response_kind=ResponseKind.CONTENT,
     )
     output = SpeechScheduler().decide(
         SpeechSchedulerInput(
@@ -642,6 +645,7 @@ def test_speech_scheduler_replaces_when_new_score_beats_current_margin() -> None
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason="old",
         priority=40,
+        response_kind=ResponseKind.CONTENT,
     )
     output = SpeechScheduler(
         thresholds=SpeechSchedulerThresholds(replace_margin=0.2)
@@ -681,6 +685,7 @@ def test_speech_order_db_bridge_uses_row_body_and_id_only_notify() -> None:
         mode=SpeechOrderMode.REPLACE_CURRENT,
         reason=output.reason,
         priority=80,
+        response_kind=ResponseKind.CONTENT,
         scheduler_decision_id=output.id,
     )
 

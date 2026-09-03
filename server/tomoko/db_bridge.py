@@ -15,6 +15,7 @@ from server.shared.models import (
     PartialTranscriptObservation,
     PromptRequest,
     PromptScope,
+    ResponseKind,
     SemanticSaturationResult,
     SessionSummary,
     SpeechOrder,
@@ -740,14 +741,24 @@ async def load_active_candidates(conn: Any, *, limit: int = 8) -> list[Candidate
 
 
 def speech_order_from_row(row: dict[str, Any]) -> SpeechOrder:
+    mode = SpeechOrderMode(str(row["mode"]))
+    if row.get("response_kind") is not None:
+        response_kind = ResponseKind(str(row["response_kind"]))
+    else:
+        response_kind = None if mode == SpeechOrderMode.STOP else ResponseKind.CONTENT
     return SpeechOrder(
         id=row["id"],
         scheduler_decision_id=row.get("scheduler_decision_id"),
         text=str(row["text"]),
-        mode=SpeechOrderMode(str(row["mode"])),
+        mode=mode,
         reason=str(row["reason"]),
         priority=int(row["priority"]),
+        response_kind=response_kind,
         supersedes_order_id=row.get("supersedes_order_id"),
+        # decision_generation_id has no DB column yet (schema change is out of
+        # scope for this Task); read it defensively so a future column is
+        # picked up without another code change, and absence stays None.
+        decision_generation_id=row.get("decision_generation_id"),
         trace_id=row["trace_id"],
         created_at=row["created_at"],
     )

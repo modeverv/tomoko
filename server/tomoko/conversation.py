@@ -26,6 +26,7 @@ from server.shared.models import (
     PreparedSpeechCandidate,
     PromptRequest,
     PromptScope,
+    ResponseKind,
     SemanticSaturationResult,
     SessionSummary,
     SpeechEmissionDecision,
@@ -266,6 +267,17 @@ class TomokoConversationCore:
     sense_executor: Callable[[SenseRequestRecord], object] | None = None
     sense_kinds: frozenset[str] | None = None
     _sense_task: asyncio.Task[None] | None = None
+    # decision_generation is owned by this TomokoConversationCore instance
+    # (never a module-level counter). It is bumped once per top-level decision
+    # cycle (handle_observation / handle_initiative_tick) and stamped onto
+    # every SpeechOrder created during that cycle as decision_generation_id.
+    # hot-path's playback_generation_id (SpeechOrderExecutionResult) is a
+    # separate, hot-path-owned counter; this instance never assigns it.
+    _decision_generation: int = 0
+
+    def _bump_decision_generation(self) -> int:
+        self._decision_generation += 1
+        return self._decision_generation
 
     def update_turn_materials(self, materials: TurnMaterials) -> None:
         self.turn_materials = materials
@@ -328,6 +340,7 @@ class TomokoConversationCore:
         }
 
     async def handle_initiative_tick(self) -> TomokoConversationResult:
+        self._bump_decision_generation()
         now = utc_now()
         observation = PartialTranscriptObservation(
             text="",
@@ -490,7 +503,9 @@ class TomokoConversationCore:
             mode=_order_mode_for_action(scheduler_output.action),
             reason=scheduler_output.reason,
             priority=_priority_for_output(scheduler_output),
+            response_kind=ResponseKind.CONTENT,
             scheduler_decision_id=scheduler_output.id,
+            decision_generation_id=self._decision_generation,
             trace_id=observation.trace_id,
         )
         self.current_speech_order = order
@@ -523,6 +538,7 @@ class TomokoConversationCore:
         session_id_override: UUID | None = None,
         prior_session_history: list[ConversationHistoryItem] | None = None,
     ) -> TomokoConversationResult:
+        self._bump_decision_generation()
         text = observation.text.strip()
         core = self.tomoko_core or TomokoProcessCore(self.session_model)
         durable = (
@@ -847,7 +863,9 @@ class TomokoConversationCore:
                 mode=SpeechOrderMode.STOP,
                 reason=scheduler_output.reason,
                 priority=100,
+                response_kind=None,
                 scheduler_decision_id=scheduler_output.id,
+                decision_generation_id=self._decision_generation,
                 trace_id=observation.trace_id,
             )
             self.current_speech_order = None
@@ -983,7 +1001,9 @@ class TomokoConversationCore:
             mode=_order_mode_for_action(scheduler_output.action),
             reason=scheduler_output.reason,
             priority=_priority_for_output(scheduler_output),
+            response_kind=ResponseKind.CORRECTION if divergent_final else ResponseKind.CONTENT,
             scheduler_decision_id=scheduler_output.id,
+            decision_generation_id=self._decision_generation,
             trace_id=observation.trace_id,
         )
         self._cancel_reply_continuation()
@@ -1090,6 +1110,8 @@ class TomokoConversationCore:
             mode=SpeechOrderMode.APPEND_AFTER_CURRENT,
             reason=f"calendar pressure appended notice after reply (urgency={urgency:.2f})",
             priority=max(0, min(100, int(50 + urgency * 40))),
+            response_kind=ResponseKind.CONTENT,
+            decision_generation_id=self._decision_generation,
             trace_id=trace_id,
         )
         _console_event(
@@ -1308,7 +1330,9 @@ class TomokoConversationCore:
             mode=SpeechOrderMode.APPEND_AFTER_CURRENT,
             reason=REPLY_CONTINUATION_REASON,
             priority=priority,
+            response_kind=ResponseKind.CONTENT,
             scheduler_decision_id=decision_id,
+            decision_generation_id=self._decision_generation,
             trace_id=trace_id,
         )
         self._pending_followup_orders.append(order)
@@ -1325,6 +1349,8 @@ class TomokoConversationCore:
             mode=SpeechOrderMode.APPEND_AFTER_CURRENT,
             reason=SENSE_WORLD_SEARCH_FAILED_REASON,
             priority=50,
+            response_kind=ResponseKind.FOLLOWUP,
+            decision_generation_id=self._decision_generation,
             trace_id=record.trace_id,
         )
         self._pending_followup_orders.append(order)
@@ -1392,6 +1418,7 @@ class TomokoConversationCore:
             reason=SENSE_KICK_REASONS[sense_kind],
             prior_session_history=prior_session_history,
             breakdown_key="sense_kick",
+            response_kind=ResponseKind.ACKNOWLEDGEMENT,
         )
         _console_event(
             "sense_request_kicked",
@@ -1493,6 +1520,8 @@ class TomokoConversationCore:
             mode=SpeechOrderMode.APPEND_AFTER_CURRENT,
             reason=SENSE_FOLLOWUP_REASONS.get(record.kind, "sense result follow-up"),
             priority=60,
+            response_kind=ResponseKind.FOLLOWUP,
+            decision_generation_id=self._decision_generation,
             trace_id=record.trace_id,
         )
         self._pending_followup_orders.append(order)
@@ -1608,7 +1637,9 @@ class TomokoConversationCore:
             mode=SpeechOrderMode.REPLACE_CURRENT,
             reason=PARTIAL_ACK_REASON,
             priority=35,
+            response_kind=ResponseKind.ACKNOWLEDGEMENT,
             scheduler_decision_id=scheduler_output.id,
+            decision_generation_id=self._decision_generation,
             trace_id=observation.trace_id,
         )
         request = PromptRequest(
@@ -1690,7 +1721,9 @@ class TomokoConversationCore:
             mode=SpeechOrderMode.REPLACE_CURRENT,
             reason=MOTIVATION_INTERJECTION_REASON,
             priority=45,
+            response_kind=ResponseKind.ACKNOWLEDGEMENT,
             scheduler_decision_id=scheduler_output.id,
+            decision_generation_id=self._decision_generation,
             trace_id=observation.trace_id,
         )
         request = PromptRequest(
@@ -1742,6 +1775,7 @@ class TomokoConversationCore:
         reason: str,
         prior_session_history: list[ConversationHistoryItem] | None,
         breakdown_key: str = "direct_clock",
+        response_kind: ResponseKind = ResponseKind.CONTENT,
     ) -> TomokoConversationResult:
         scheduler_output.reason = reason
         scheduler_output.score_breakdown = {
@@ -1753,7 +1787,9 @@ class TomokoConversationCore:
             mode=_order_mode_for_action(scheduler_output.action),
             reason=reason,
             priority=_priority_for_output(scheduler_output),
+            response_kind=response_kind,
             scheduler_decision_id=scheduler_output.id,
+            decision_generation_id=self._decision_generation,
             trace_id=observation.trace_id,
         )
         request = PromptRequest(

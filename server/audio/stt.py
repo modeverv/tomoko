@@ -342,6 +342,7 @@ class AppleSpeechStreamingBackend:
         subprocess.run(
             [
                 "swiftc",
+                "-parse-as-library",
                 "-O",
                 str(self.source_path),
                 "-Xlinker",

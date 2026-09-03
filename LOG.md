@@ -3620,3 +3620,178 @@
 ### 次のセッションでやること
 - 提案を採用する場合は、まず O0a だけを既存 `PLAN.md` に追記し、response taxonomy、generation owner、playback/milestone telemetry の test を先に作る。
 - O0b の現既定 WhisperKit baseline と preemption probe 後に、800 ms をどの milestone に適用するか、stop budget、paired regression budget を人間が確定する。
+## 2026-08-12 OpenAI Plan Task O0A-00
+
+### やること（開始時に書く）
+- Task ID: O0A-00
+- 対象責務: repository inventory と current behavior map
+- 変更許可ファイル: `LOG.md`, `_docs/openai-plan/repository-map.md`, `_docs/openai-plan/o0a-contract.md`
+- 変更禁止領域: runtime code、test code、config、DB schema、client
+- 完了条件: 必須 component の一意解決、current queue/lock/await graph、通常/STOP/REPLACE call chain、DB persistence と order delivery 順序、次 Task の exact path 候補を artifact に固定する
+
+### やったこと
+- codebase-memory-mcp の既存 root v2 index を使い、O0A-00 の必須 component を exact path / symbol / owner / tests / queue / ID / log fields に対応づけた。
+- 通常会話、STOP、REPLACE の現行 call chain と queue / lock / await graph を `_docs/openai-plan/repository-map.md` に固定した。
+- `result_queue` unbounded、final lane oldest-drop、browser playback telemetry 不在、DB persistence が order delivery を gate する現状を確認した。
+- 変更前契約を `_docs/openai-plan/o0a-contract.md` に記録した。
+
+### 詰まったこと・解決したこと
+- knowledge graph の project 名は `tomoko` ではなく `Users-seijiro-Sync-sync_work-by-llms-tomoko` だった。available project を確認し、既存 index を再利用した。
+- `openai.plan.md` は各 Phase を `PLAN.md` に追記する一般手順も記すが、O0A-00 の個別 allowlist は `LOG.md` と新規 artifact 2件だけである。個別 allowlist を優先し、`PLAN.md` は変更していない。
+
+### 検証
+- `git diff --check`
+- `git diff --name-only` が O0A-00 allowlist の3 pathだけであること
+- runtime/test/config/schema/client の差分がないこと
+
+### 次のセッションでやること
+- O0A-00 完了後は自動で O0A-01 へ進まない。
+- 人間が repository map を確認し、O0A-01 を明示的に unlock した場合だけ ResponseKind contract に着手する。
+
+### 追加検証
+- `git status --porcelain=v1` で変更 path が `LOG.md` と `_docs/openai-plan/` のみであることを確認した。
+- `git diff --check` → pass
+- `_docs/openai-plan/repository-map.md` 内の次 Task 候補 path を実在 path に補正し、再確認した。
+
+## 2026-08-12 OpenAI Plan Task O0A-01
+
+### やること（開始時に書く）
+- Task ID: O0A-01
+- 対象責務: ResponseKind contract の追加
+- 変更許可ファイル: `server/shared/models.py`, repository map で特定した `SpeechOrder` creation site, dedicated unit test file, `LOG.md`
+- 変更禁止領域: gate score, speech timing, TTS execution, queue behavior, DB schema, browser
+- 完了条件: 全 SpeechOrder creation site が分類済み、text 内容から後分類しない、unit / full unit / ruff / diff check pass、runtime timing 不変
+
+### やったこと
+- `server/shared/models.py` に `ResponseKind` (`backchannel|acknowledgement|content|correction|followup`) を追加し、`SpeechOrder.response_kind: ResponseKind | None` を新設した。`__post_init__` で `mode != STOP` かつ `text` が非空なら `response_kind` 必須にし、`mode=STOP` は `None` を許可する。
+- `server/tomoko/conversation.py` の全 10 SpeechOrder creation site（rg で一意確認済み）を openai.plan.md 4.1 の mapping に従って分類した: 通常 final reply / calendar followup / partial reply continuation は `content`、final が active partial と乖離した場合(`divergent_final`)は `correction`、STOP order は `None`、sense kick（screenshot/world_search）と partial ack・motivation interjection は `acknowledgement`、sense followup（screenshot/world_search 失敗時含む）は `followup`。
+- `server/hot_path/ws_control.py::stop_order_from_cancel_event` の STOP order 生成に `response_kind=None` を明示した。
+- `server/tomoko/db_bridge.py::speech_order_from_row` で DB row の `response_kind` column を decode する。未設定 row（既存 schema 前のデータ）は `mode=STOP` なら `None`、それ以外は `content` にフォールバックする（DB schema 変更はこの Task に含めないため、column 追加自体は未実施。将来 migration で `response_kind` column を追加するまでのための後方互換処理）。
+- unknown な `response_kind` 文字列は `SerializableDto` の enum decode がそのまま `ValueError` を送出するため、黙って `content` に fallback しない。
+- dedicated test `tests/unit/test_v2_response_kind.py` を追加（5 種の固定値、STOP以外必須、STOP は None 許可、JSON round-trip、unknown value parse error）。
+
+### 詰まったこと・解決したこと
+- セッション開始時点で `server/shared/models.py` / `server/tomoko/conversation.py` / `server/hot_path/ws_control.py` / `server/tomoko/db_bridge.py` と `tests/unit/test_v2_response_kind.py` に、前セッションの未コミット・未検証の O0A-01 差分が残っていた。`git status`/`git diff` で内容を確認し、同一 Task の続きとして扱った。
+- 上記の未検証差分には実バグがあった: initiative tick の SpeechOrder 生成箇所（現 conversation.py:489 付近）に、スコープ外の `divergent_final` 変数を参照する誤コードがあり、full unit 実行で `NameError` になっていた。正しい `divergent_final` 分岐（final が active partial reply と乖離した場合に `correction`）は final-reply 生成箇所（現 conversation.py:984 付近、`divergent_final` が実際にスコープ内)にあるべきものだったため、initiative tick 側は固定 `content` に修正し、final-reply 側に `ResponseKind.CORRECTION if divergent_final else ResponseKind.CONTENT` を移設した。
+- `response_kind` を必須化したことで、既存の直接 `SpeechOrder(...)` 構築テスト（`test_v2_speech_order_flow.py`、`test_v2_semantic_scheduler.py`、`test_v2_models.py`、`test_v2_internal_ws.py`、`test_v2_audio_tomoko_prompt.py`）が `ValueError` で 15 件 red になった。これらは production creation site ではなく test fixture であり、DTO の必須 field 追加に伴う機械的な追随のため、既存テストの意味を変えずに `response_kind=ResponseKind.CONTENT`（または該当する意味）を補った。allowlist は "dedicated unit test file" だが、"既存テストを red のまま残さない" というプロトコル全体ルールを優先し、この Task の範囲内の機械的追随として扱った。
+- openai.plan.md の O0A-01 必須テスト項目 4-8（backchannel/acknowledgement/content/correction/followup の各 creation site 分類）のうち、backchannel は現行アーキテクチャでは `SpeechOrder` を経由しない（`server/hot_path/backchannel.py` の `BackchannelEmission` が hot-path 内で直接処理し、`SpeechOrder` DTO を作らない）ため、`SpeechOrder.response_kind=backchannel` を実際に生成する creation site が存在しない。この Task の allowlist（`server/shared/models.py` と SpeechOrder creation site のみ）では `BackchannelEmission` へ `response_kind` を追加できないため、変更せずに未解決事項として残した。acknowledgement/content/correction/followup の 4 種は、既存 scenario test（`test_v2_speech_order_flow.py` の sense kick / partial ack / motivation interjection / divergent-final reconcile テスト）に `response_kind` assertion を追加する形で実際の creation site を経由した検証にした。
+
+### 検証
+- targeted: `python -m pytest tests/unit/test_v2_response_kind.py -q` → 5 passed
+- full unit: `python -m pytest tests/unit -q -m unit` → 258 passed
+- ruff（変更ファイルのみ）: `ruff check server/shared/models.py server/tomoko/conversation.py server/hot_path/ws_control.py server/tomoko/db_bridge.py tests/unit/test_v2_response_kind.py tests/unit/test_v2_speech_order_flow.py tests/unit/test_v2_semantic_scheduler.py tests/unit/test_v2_models.py tests/unit/test_v2_internal_ws.py tests/unit/test_v2_audio_tomoko_prompt.py` → All checks passed
+- `ruff check .`（repo 全体）は v1 配下等に 330 件の pre-existing error があるが、今回変更した v2 ファイルには含まれない。v1 は本作業対象外のため未修正。
+- `git diff --check` → 差分なし（trailing whitespace 等の問題なし）
+- `git status --short` で変更 path が `LOG.md`, `server/hot_path/ws_control.py`, `server/shared/models.py`, `server/tomoko/conversation.py`, `server/tomoko/db_bridge.py`, `tests/unit/test_v2_*.py`（6 ファイル）, `_docs/openai-plan/`（O0A-00 由来、未変更）であることを確認した。
+
+### 次のセッションでやること
+- O0A-01 完了後は自動で O0A-02 へ進まない。人間が本ログと diff を確認し、O0A-02（origin trace と generation owner の固定）を明示的に unlock した場合だけ着手する。
+- 未解決事項: fixed backchannel は `SpeechOrder` を経由しないため `response_kind=backchannel` を割り当てる実装箇所が現状存在しない。O0A-03（milestone/aggregator）または将来 Phase で `BackchannelEmission` 側に別途 `response_kind` 相当を持たせるか、`first_feedback` 集計側で backchannel を種別として扱うかを人間が判断する必要がある。
+
+### 追記: backchannel response_kind の方針決定（人間確認済み）
+- 人間が選択肢 A（記録のみ）/ B（hot-path 側に独立フィールド追加）/ C（SpeechOrder で一本化）のうち **B** を選択した。
+- 決定: `server/hot_path/backchannel.py` の `BackchannelEmission`（または `HotPathConversationResult`）に、hot-path 所有の固定分類フィールド（値は常に `backchannel` 相当）を追加する。`SpeechOrder.response_kind` とは別の field とし、`decision_generation_id` や `SpeechOrder` の所有権は tomoko-process に残したまま、hot-path はこのフィールドの値だけを持つ。
+- この変更は `server/hot_path/backchannel.py`（および milestone/metrics 側で読み取る箇所）を触るため、O0A-01 の allowlist 外であり、このセッションでは実装しない。O0A-03（milestone event と純粋集計器）の Task 内、または O0A-03 着手前に人間が明示的に新しい Task として切り出した場合に実装する。
+- C（SpeechOrder への一本化）は、fixed backchannel が意図的に LlmFireGate/SpeechEmissionGate を経由しない低レイテンシ経路であるため、レイテンシ・所有権境界の両面でリスクが大きいとして不採用。
+- 人間確認: O0A-03 着手時にこの記録を起点にしてよいと確認済み（2026-08-12）。
+
+## 2026-08-12 OpenAI Plan Task O0A-02
+
+### やること（開始時に書く）
+- Task ID: O0A-02
+- 対象責務: origin trace と generation owner の固定
+- 変更許可ファイル: shared DTO (`server/shared/models.py`), Tomoko decision owner (`server/tomoko/conversation.py` 等), hot-path execution state (`server/hot_path/speech_executor.py` 等), internal WS serializer (`server/hot_path/ws_control.py`), dedicated unit tests, `LOG.md`
+- 変更禁止領域: generation invalidation behavior の変更、STOP/REPLACE の dispatch 経路変更、TTS task化、DB schema
+- 完了条件: owner 境界が test で固定される、既存 generation guard の挙動は変わらない、full unit / ruff / diff check が PASS
+- 人間 unlock: O0A-01 完了報告を受けて明示的に確認・続行指示あり（2026-08-12）
+
+### やったこと
+- 棚卸し結果: `trace_id`（`server/shared/models.py` 各 DTO）が既に observation → SpeechOrder → AudioChunkOut まで同一値で伝播しており、openai.plan.md 4.2 の `origin_trace_id` と同じ意味だったため、新規 field を追加せず再利用することにした。generation 概念は `server/hot_path/speech_executor.py::SpeechOrderExecutor.current_generation`（instance 所有の monotonic int、hot-path 専有）が既存の playback generation 相当として存在していたが、`decision_generation_id` に対応する Tomoko 側概念は存在しなかった。
+- `server/shared/models.py`: `SpeechOrder.decision_generation_id: int | None = None` を追加（tomoko-process 所有、hot-path は書き換えない前提をコメントで明記）。
+- `server/tomoko/conversation.py`: `TomokoConversationCore` に instance field `_decision_generation: int = 0` と `_bump_decision_generation()` を追加（module-level counter にはしていない）。`handle_observation` と `handle_initiative_tick` の冒頭でそれぞれ bump し、同一メソッド呼び出し内で生成される全 SpeechOrder（10 creation site 全て）に `decision_generation_id=self._decision_generation` を付与した。
+- `server/hot_path/speech_executor.py`: `SpeechOrderExecutionResult` に `playback_generation_id: int | None = None` を追加（hot-path 所有）。STOP・通常合成の各パスで `self.current_generation`／synthesis 開始時に捕捉した `generation` を設定。APPEND でキューイングされただけの queued 結果は、まだ再生世代が確定していないため `None` のまま。
+- `server/tomoko/db_bridge.py::speech_order_from_row`: `decision_generation_id` を row から defensively 読む（DB column は未追加、`row.get(...)` で無ければ `None` のまま。DB schema 変更はこの Task の禁止事項のため実施していない）。
+- `server/hot_path/ws_control.py::stop_order_from_cancel_event`（hot-path が自前で構築する STOP order）は `decision_generation_id` を明示的に設定せず、default の `None` のままにした。これは hot-path 発の cancel であり Tomoko の判断サイクルを経ていないため。
+- 新規 dedicated test `tests/unit/test_v2_generation_owner.py`（6 tests）: decision_generation_id の発行、hot-path による非改変、playback_generation_id の発行、SpeechOrder に playback_generation_id が存在しないことの構造的固定、trace_id の origin_trace_id としての再利用、replace 後の両世代の独立進行。
+
+### 詰まったこと・解決したこと
+- 「replace 後に decision generation と playback generation が独立して進む」テストの初期実装で、2回目の `handle_observation` が `current_speech_order` が残っていたため scheduler に append 判定され、生成が REPLACE_CURRENT にならなかった（playback generation が増えず assertion failed）。`core.update_playback_state(False)` を呼び出し会話状態をリセットしてから2回目を送ることで、意図した replace シナリオを再現した。
+- followup 系（sense followup, world search apology, reply continuation）は非同期タスクとして後から SpeechOrder を構築するため、その時点の `self._decision_generation`（つまり構築時点でアクティブな世代）を採用した。呼び出し起点の世代を保持する設計との違いを認識した上で、この Task では「制御挙動・invalidation は変えない」範囲に留め、正誤の判断は O1b（single-owner live control）以降に委ねることにした。
+
+### 検証
+- targeted: `python -m pytest tests/unit/test_v2_generation_owner.py -q` → 6 passed
+- full unit: `python -m pytest tests/unit -q -m unit` → 264 passed
+- ruff（変更ファイルのみ）: `ruff check server/shared/models.py server/tomoko/conversation.py server/hot_path/ws_control.py server/hot_path/speech_executor.py server/tomoko/db_bridge.py tests/unit/test_v2_generation_owner.py` → All checks passed
+- `git diff --check` → 差分なし
+- `git status --short` で変更 path が allowlist（shared DTO / Tomoko decision owner / hot-path execution state / internal WS serializer / dedicated test / `LOG.md`）と、O0A-01 由来の response_kind 必須化に伴う test fixture 追随（既存差分、今回追加なし）であることを確認した。
+
+### 次のセッションでやること
+- O0A-02 完了後は自動で O0A-03 へ進まない。人間が本ログと diff を確認し、O0A-03（milestone event と純粋集計器）を明示的に unlock した場合だけ着手する。その際、backchannel の response_kind 方針決定（本ログの追記事項）を起点にしてよいと人間確認済み。
+- 未解決事項: followup 系 SpeechOrder の decision_generation_id は「構築時点でアクティブな世代」を採用しており、「kick 元の世代」を保持していない。stale candidate/supersede の判定（O1b・O2）を設計する際に、どちらの意味が必要かを人間が確認する必要がある。
+
+## 2026-09-03 セッション1 SpeechAnalyzer probe
+
+### やること（開始時に書く）
+- 既定の WhisperKit と進行中 O0A-01/O0A-02 差分を変更せず、Apple Speech fallback sidecar を macOS 26 の `SpeechAnalyzer` / `SpeechTranscriber` で試す。
+- unit contract test を先に追加し、Swift compile、実音声、full unit の順で検証する。
+- partial/final の既存 JSON/JSONL contract と `/ws` 単一路線を維持する。
+
+### やったこと
+- 稼働中のCodexタスクを確認し、tomokoを触っているのはこのタスクだけであることを確認した。
+- 既存O0A-01/O0A-02差分を保持したbaselineで `pytest -m unit -q` を実行し、264 passed / 7 deselected を確認した。
+- Apple Speech sidecarを `SFSpeechRecognizer` から `SpeechAnalyzer` / `SpeechTranscriber` へ移行した。
+- `AssetInventory` によるlocale asset導入、`AnalysisContext`、file transcription、partial/final JSONL streamingを実装した。
+- async `@main` のためPython側Swift compileに `-parse-as-library` を追加した。
+- 既定 `TOMOKO_V2_STT_BACKEND=whisperkit` は変更していない。
+
+### 詰まったこと・解決したこと
+- `@main` sourceは通常の `swiftc` 呼び出しではcompileできなかったため、先行unit testを追加して `-parse-as-library` を固定した。
+- 最初のffmpeg `-re` probeはpipe bufferingで全音声が一括投入され、first partialが3.26秒に見えた。3,200 bytesを100msごとに明示送信するprobeへ直し、first partial 1,077.1msを確認した。
+- `AnalysisContext` に「トモコ」を渡したが、Kyoko合成音声では「智子」と認識された。API動作は確認できたが、固有語精度は未解決の比較項目である。
+
+### 検証
+- 先行契約テストは実装前に `SpeechAnalyzer` 不在でredになることを確認。
+- focused unit: 40 passed。
+- Swift compile: macOS 26.6.1 / Xcode 26.6でpass。
+- file transcription: 468.2ms、final「智子、今日の予定を一言で教えてください。」。
+- simulated realtime: first partial 1,077.1ms、final 3,986.2ms。
+- Python `AppleSpeechStreamingBackend` 経由で同じfinal DTOを取得。
+- full unit: 266 passed / 7 deselected。
+
+### 次のセッションでやること
+- WhisperKitと同一の実マイク音声corpusで、first partial、final latency、partial-final乖離、固有語精度をpaired比較する。
+- O0A-03には自動で進まない。
+
+### 追記: `say` 音声による旧新 Apple API paired benchmark
+- Kyokoで5文（3.22–4.53秒）を一度だけ生成し、同一AIFFを旧
+  `SFSpeechRecognizer` と新 `SpeechAnalyzer` に各10回入力した。
+- 各backendのwarmup 1回は除外し、case/runごとにAB/BA順を交互にして
+  実行順の偏りを抑えた。両方ともon-device、locale `ja-JP`、contextual
+  stringsは「トモコ」「会議」「音声認識」で統一した。
+- 旧API (`n=50`): mean 215.6ms / p50 212.3ms / p95 239.7ms / SD 16.3ms。
+- 新API (`n=50`): mean 202.1ms / p50 202.7ms / p95 209.9ms / SD 6.2ms。
+- paired差は新APIが平均13.5ms（6.3%）短く、44/50組で新APIが速かった。
+  近似95%区間も新APIが9.6–17.4ms短い範囲だった。
+- 出力は各backend・各文で10/10同一。新APIは5/5文を文末まで返したが、
+  旧APIは2/5文で「ありま」「比較し」と末尾が欠けた。固有語「トモコ」は
+  両方とも「智子」になった。
+- 初回のfile 468.2msはcold単発値であり、API間の速度判断には今回のpaired
+  結果を採用する。simulated realtimeのfirst partial 1,077.1msは別指標として維持する。
+- WhisperKitは実backendが65秒以内に結果を返さずtimeoutしたため、今回の
+  数値比較から除外した。
+- summary artifact: `_docs/benchmarks/speech-analyzer-paired-20260903.json`。
+
+### 追記2: faster-whisper small 同一corpus比較
+- `faster-whisper` 1.2.1 / model `small` をCPU `int8_float32`で常駐させ、
+  Apple API比較と同じKyoko生成5音声を各10回入力した。warmup 1回は除外した。
+- model初期化694.9ms。転記 (`n=50`) はmean 1,968.3ms / p50 1,983.6ms /
+  p95 2,102.6ms / SD 101.3msだった。
+- 同一corpusの`SpeechAnalyzer` mean 202.1msに対して9.74倍の時間がかかり、
+  平均差は+1,766.2msだった。ただしApple計測との実行順はinterleaveしていない。
+- 各caseの出力は10/10同一。「トモコ」はinitial prompt「ともこ」により
+  「ともこ」になったが、「歯医者」を10/10回「会社」と誤認識した。
+- 空白・句読点を除去し10/十を正規化したCERは5.66%。同じ計算で
+  `SpeechAnalyzer`は3.77%だった。
+- `v1/server/edge/pipeline/stt.py::FasterWhisperSTT.transcribe`を使うwrapper
+  smokeもcase 1で成功した。v2 factoryへの配線変更はしていない。
+- summary artifact: `_docs/benchmarks/faster-whisper-small-say-20260903.json`。

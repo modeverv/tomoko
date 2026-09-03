@@ -25,6 +25,11 @@ class SpeechOrderExecutionResult:
     queued: bool = False
     stopped: bool = False
     discarded_chunks: int = 0
+    # playback_generation_id is owned by hot-path: it identifies which
+    # SpeechOrderExecutor playback generation accepted/executed this order.
+    # tomoko-process never assigns this; it is distinct from the order's own
+    # decision_generation_id, which hot-path must not modify.
+    playback_generation_id: int | None = None
 
 
 @dataclass(slots=True)
@@ -53,7 +58,11 @@ class SpeechOrderExecutor:
         )
         if order.mode == SpeechOrderMode.STOP:
             self.stop_playback(reason=f"speech_order:{order.id}")
-            return SpeechOrderExecutionResult(order=order, stopped=True)
+            return SpeechOrderExecutionResult(
+                order=order,
+                stopped=True,
+                playback_generation_id=self.current_generation,
+            )
 
         if order.mode == SpeechOrderMode.APPEND_AFTER_CURRENT and self.current_order is not None:
             self.append_queue.append(order)
@@ -142,6 +151,7 @@ class SpeechOrderExecutor:
             order=order,
             audio_chunks=chunks,
             discarded_chunks=discarded,
+            playback_generation_id=generation,
         )
 
 

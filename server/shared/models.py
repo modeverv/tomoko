@@ -166,6 +166,14 @@ class StopArbitration(StrEnum):
     ALLOW_ONE_MORE = "allow_one_more"
 
 
+class ResponseKind(StrEnum):
+    BACKCHANNEL = "backchannel"
+    ACKNOWLEDGEMENT = "acknowledgement"
+    CONTENT = "content"
+    CORRECTION = "correction"
+    FOLLOWUP = "followup"
+
+
 class SpeechOrderMode(StrEnum):
     REPLACE_CURRENT = "replace_current"
     APPEND_AFTER_CURRENT = "append_after_current"
@@ -273,11 +281,22 @@ class SpeechOrder(SerializableDto):
     mode: SpeechOrderMode
     reason: str
     priority: int
+    response_kind: ResponseKind | None = None
     id: UUID = field(default_factory=new_id)
     supersedes_order_id: UUID | None = None
     scheduler_decision_id: UUID | None = None
+    # decision_generation_id is owned by tomoko-process: it identifies which
+    # Tomoko decision cycle produced this order. hot-path must treat it as
+    # opaque and never assign or overwrite it. It is a distinct concept from
+    # hot-path's own playback_generation_id (see SpeechOrderExecutionResult),
+    # which tracks TTS/audio execution generations and is never set here.
+    decision_generation_id: int | None = None
     trace_id: UUID = field(default_factory=new_id)
     created_at: datetime = field(default_factory=utc_now)
+
+    def __post_init__(self) -> None:
+        if self.mode != SpeechOrderMode.STOP and self.text and self.response_kind is None:
+            raise ValueError("response_kind is required for non-stop speech orders")
 
 
 @dataclass(slots=True)

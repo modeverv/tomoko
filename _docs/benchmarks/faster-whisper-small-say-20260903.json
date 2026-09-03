@@ -1,0 +1,47 @@
+{
+  "date": "2026-09-03",
+  "backend": "faster-whisper",
+  "version": "1.2.1",
+  "model": "small",
+  "device": "cpu",
+  "compute_type": "int8_float32",
+  "language": "ja",
+  "initial_prompt": "ともこ",
+  "model_init_ms": 694.8814,
+  "method": {
+    "audio_corpus": "Same five Kyoko say-generated AIFF files as the Apple API benchmark",
+    "runs_per_case": 10,
+    "samples": 50,
+    "warmup_excluded": true,
+    "model_lifetime": "One resident model for all measured runs"
+  },
+  "results_ms": {
+    "mean": 1968.2775,
+    "p50": 1983.6499,
+    "p95": 2102.6240,
+    "standard_deviation": 101.2759,
+    "min": 1742.6401,
+    "max": 2211.7304,
+    "case_means": [1874.2396, 1896.1980, 2018.4754, 2081.2160, 1971.2587]
+  },
+  "comparison": {
+    "speech_analyzer_mean_ms": 202.0962,
+    "faster_whisper_over_speech_analyzer_ratio": 9.7393,
+    "additional_mean_ms": 1766.1813
+  },
+  "outputs": [
+    "ともこ 今日の予定を一言で教えてください",
+    "明日の午前10時に、会社の予約があります。",
+    "会議が終わったらコーヒー豆を買うのを思い出させて",
+    "音声認識の応答速度と文字起こし、精度を比較します",
+    "今日は、いい天気なので、少し散歩に行きたいです。"
+  ],
+  "recognition_notes": {
+    "stable_outputs": "Each case produced one identical output across all ten runs.",
+    "semantic_error": "歯医者 was recognized as 会社 in all ten runs.",
+    "proper_noun": "トモコ was rendered as ともこ with initial_prompt=ともこ.",
+    "normalized_cer": 0.0566,
+    "cer_normalization": "Spaces and punctuation removed; 10 normalized to 十."
+  },
+  "wrapper_smoke": "v1 FasterWhisperSTT.transcribe completed successfully on case 1."
+}
