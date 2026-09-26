@@ -1,0 +1,75 @@
+{
+  "teacher": "gemma",
+  "model": "/Users/seijiro/Sync/sync_work/by-llms/tomoko/v1/loras/lora/fused_model",
+  "reasoning": "disabled",
+  "input_sha256": "b18a8bda8f7ced352b8e8384ddb8c3b25f29a70cfbdf9114da6b642c853656cc",
+  "seed": 20260927,
+  "prompt_id_scheme": "batch-local decimal ids mapped by explicit lookup",
+  "label_count": 240,
+  "batch_size": 20,
+  "batches": [
+    {
+      "batch_id": 0,
+      "count": 20,
+      "elapsed_ms": 9342.881082997337
+    },
+    {
+      "batch_id": 1,
+      "count": 20,
+      "elapsed_ms": 10872.06891599999
+    },
+    {
+      "batch_id": 2,
+      "count": 20,
+      "elapsed_ms": 9470.454667000013
+    },
+    {
+      "batch_id": 3,
+      "count": 20,
+      "elapsed_ms": 9017.56395800112
+    },
+    {
+      "batch_id": 4,
+      "count": 20,
+      "elapsed_ms": 9431.040874998871
+    },
+    {
+      "batch_id": 5,
+      "count": 20,
+      "elapsed_ms": 9180.822915997851
+    },
+    {
+      "batch_id": 6,
+      "count": 20,
+      "elapsed_ms": 8786.518416000035
+    },
+    {
+      "batch_id": 7,
+      "count": 20,
+      "elapsed_ms": 11121.034625000902
+    },
+    {
+      "batch_id": 8,
+      "count": 20,
+      "elapsed_ms": 9791.289292003057
+    },
+    {
+      "batch_id": 9,
+      "count": 20,
+      "elapsed_ms": 13243.57979100023
+    },
+    {
+      "batch_id": 10,
+      "count": 20,
+      "elapsed_ms": 13757.380250001006
+    },
+    {
+      "batch_id": 11,
+      "count": 20,
+      "elapsed_ms": 15263.499458000297
+    }
+  ],
+  "label_total_ms": 129278.13424700071,
+  "wall_total_ms": 129302.28716700003,
+  "timing_definition": "elapsed_ms per label is amortized batch cost, not item latency"
+}

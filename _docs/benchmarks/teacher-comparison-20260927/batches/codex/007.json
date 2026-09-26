@@ -1,0 +1,32 @@
+{
+  "batch_id": 7,
+  "prompt": "入力された日本語の途中/最終発話について、会話相手が今返し始めてよい度合いを 0.0 から 1.0 で判定してください。\n\n高い値:\n- 質問、依頼、確認、呼びかけ、返答待ちが明確\n- 文が完結している、または途中でも相手が短く返せる\n- 「聞こえますか」「いますか」「どうですか」「お願い」「教えて」など\n\n低い値:\n- 「えっと」「あの」「ただ」「でも」「というか」など、まだ続きそう\n- 文の途中で、相手が返すと割り込みになりそう\n- 意味が取れない短すぎる断片\n\n例:\nTEXT=えっと\nSATURATION=0.10\nTEXT=今日の予定を教えて\nSATURATION=0.95\nTEXT=ただ、やっぱり\nSATURATION=0.20\nTEXT=今の返事ちゃんと聞こえてる\nSATURATION=0.85\nTEXT=あのさ、昨日の\nSATURATION=0.25\n\n\n以下の各入力を独立した発話として判定してください。入力同士は会話ではなく、前後関係もありません。提示されていない履歴や続きを推測しないでください。\nツール、ファイル、ネットワーク、検索は使わず、この入力だけを採点してください。\n出力は {\"labels\":[{\"id\":\"入力のid\",\"score\":0.0}]} 形式のJSONのみ。各idを正確に一度ずつ出力し、説明やMarkdownは出力しないでください。\nINPUTS=[{\"id\":\"ud08732e4e0\",\"text\":\"海沿いを歩くのは好きなんだけど、おすすめの道はある\"},{\"id\":\"u89ce5367f0\",\"text\":\"電気がまぶしいので、できれば奥の\"},{\"id\":\"u3882fafc76\",\"text\":\"予約は木曜じゃなくて金曜に直してほしい\"},{\"id\":\"u0454979e96\",\"text\":\"長い階段を上るのはつらいから、エレベーターのある入口が知りたい\"},{\"id\":\"u63b15a3e55\",\"text\":\"今年の梅雨は長かったけれど、夏はどうなるかな\"},{\"id\":\"u6e8e40653c\",\"text\":\"この写真をはがきサイズで印刷したい\"},{\"id\":\"ub43bf8b79e\",\"text\":\"公園の桜が昨日の雨でほとんど散ってしまった\"},{\"id\":\"u48fd322750\",\"text\":\"動画は止められたけど、続きから再生するにはどこを押すの\"},{\"id\":\"uf794421b86\",\"text\":\"ピアノの練習は一時間、ううん、本当は\"},{\"id\":\"u7384ad71fd\",\"text\":\"走った距離は十キロじゃなくて五キロです\"},{\"id\":\"u3086bfc74f\",\"text\":\"駅の改札を出たら右と\"},{\"id\":\"u90b66cdfed\",\"text\":\"久しぶりに学生時代の友達に会えてうれしかった\"},{\"id\":\"u9a8fa06dae\",\"text\":\"使い終わった乾電池の捨\"},{\"id\":\"uc28a904292\",\"text\":\"パンを焼いてみたいけど、使える道具が\"},{\"id\":\"u24b36947a1\",\"text\":\"お風呂のお湯をため始める時刻を\"},{\"id\":\"u245827cc90\",\"text\":\"昨日は早く寝たのに朝からぼんやりするなあ\"},{\"id\":\"u32d29a36fc\",\"text\":\"ノートパソコンの電源が急に落ちちゃった\"},{\"id\":\"u7411650d41\",\"text\":\"バス停から美術館までの距離が\"},{\"id\":\"ubf57777c1d\",\"text\":\"値段は安いんだけれど、重さのほうが\"},{\"id\":\"u61390842d5\",\"text\":\"説明書の字が小さすぎて、特に注意事項の\"}]",
+  "command": [
+    "codex",
+    "exec",
+    "--ignore-user-config",
+    "--ephemeral",
+    "--skip-git-repo-check",
+    "-C",
+    "/var/folders/l2/fl54zpqn0h52frtq4vglk4c80000gn/T/tomoko-teacher-bniru2do",
+    "-m",
+    "gpt-6-astra",
+    "-c",
+    "model_reasoning_effort=\"medium\"",
+    "--json",
+    "--output-schema",
+    "/var/folders/l2/fl54zpqn0h52frtq4vglk4c80000gn/T/tomoko-teacher-bniru2do/schema.json",
+    "-"
+  ],
+  "stdout": "{\"type\":\"thread.started\",\"thread_id\":\"01a0de5b-43ba-73d0-b0cd-9f76f414ffaf\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"{\\\"labels\\\":[{\\\"id\\\":\\\"ud08732e4e0\\\",\\\"score\\\":0.95},{\\\"id\\\":\\\"u89ce5367f0\\\",\\\"score\\\":0.15},{\\\"id\\\":\\\"u3882fafc76\\\",\\\"score\\\":0.97},{\\\"id\\\":\\\"u0454979e96\\\",\\\"score\\\":0.95},{\\\"id\\\":\\\"u63b15a3e55\\\",\\\"score\\\":0.88},{\\\"id\\\":\\\"u6e8e40653c\\\",\\\"score\\\":0.85},{\\\"id\\\":\\\"ub43bf8b79e\\\",\\\"score\\\":0.8},{\\\"id\\\":\\\"u48fd322750\\\",\\\"score\\\":0.98},{\\\"id\\\":\\\"uf794421b86\\\",\\\"score\\\":0.15},{\\\"id\\\":\\\"u7384ad71fd\\\",\\\"score\\\":0.9},{\\\"id\\\":\\\"u3086bfc74f\\\",\\\"score\\\":0.12},{\\\"id\\\":\\\"u90b66cdfed\\\",\\\"score\\\":0.85},{\\\"id\\\":\\\"u9a8fa06dae\\\",\\\"score\\\":0.05},{\\\"id\\\":\\\"uc28a904292\\\",\\\"score\\\":0.2},{\\\"id\\\":\\\"u24b36947a1\\\",\\\"score\\\":0.12},{\\\"id\\\":\\\"u245827cc90\\\",\\\"score\\\":0.8},{\\\"id\\\":\\\"u32d29a36fc\\\",\\\"score\\\":0.85},{\\\"id\\\":\\\"u7411650d41\\\",\\\"score\\\":0.15},{\\\"id\\\":\\\"ubf57777c1d\\\",\\\"score\\\":0.2},{\\\"id\\\":\\\"u61390842d5\\\",\\\"score\\\":0.1}]}\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":15058,\"cached_input_tokens\":0,\"cache_write_input_tokens\":0,\"output_tokens\":323,\"reasoning_output_tokens\":0}}\n",
+  "stderr": "2026-09-26T15:35:18.215241Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-09-26T15:35:18.219881Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-09-26T15:35:18.223517Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-09-26T15:35:18.227005Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-09-26T15:35:18.230318Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-09-26T15:35:18.233580Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n",
+  "returncode": 0,
+  "usage": {
+    "input_tokens": 15058,
+    "cached_input_tokens": 0,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 323,
+    "reasoning_output_tokens": 0
+  },
+  "elapsed_ms": 13475.633500002004
+}

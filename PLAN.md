@@ -806,3 +806,14 @@ LLM-as-judge は自動 gate ではなく、直近シナリオ transcript を 31B
 - [x] WhisperKitが65秒timeoutした事実を数値比較と分離して記録する。
 - [x] 同一`say` corpusで`faster-whisper small`を50回測定し、Apple APIと比較する。
 - [x] v1 `FasterWhisperSTT` wrapperの実動作をsmoke確認する。
+
+## 2026-09-27 追加検証: Gemma / Codex 意味飽和度教師比較
+
+既存 Phase の runtime 採用判断を変更するものではない。過去の教師一致率を
+人間による会話品質の正解率とは扱わず、独立した人工例で教師交換の効果を測る。
+
+- [x] 人工日本語のみを使い、発話 group 単位で train / eval を分離する。
+- [x] Gemma と Codex に同一の判定基準と入力を与え、raw 出力・失敗・時間を保存する。
+- [x] 同一条件の hash-ridge 学生を作り、教師比較と学生比較を分けて評価する。
+- [x] reference が AI 作成で人間未確認であること、実会話評価ではないことを明示する。
+- [x] unit / ruff / diff check を通し、結果と推論・学習時間を記録する。

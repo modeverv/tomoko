@@ -1,0 +1,33 @@
+{
+  "started_at": "2026-09-26T15:30:55.314206+00:00",
+  "git_head": "5feb0d72cf23ec4e177cf4b96c1404fe676154c0",
+  "platform": "macOS-26.7-arm64-arm-64bit",
+  "machine": "arm64",
+  "cpu": "Apple M4 Max",
+  "memory_bytes": 137438953472,
+  "gemma": {
+    "model_path": "/Users/seijiro/Sync/sync_work/by-llms/tomoko/v1/loras/lora/fused_model",
+    "base_model": "mlx-community/gemma-4-26b-a4b-it-4bit",
+    "config_sha256": "2c76e8153cd1c522b757cddab8bcd5b61257924ee867a659f0777e96db6729cd",
+    "weights_index_sha256": "bc1712e4cba06ac09150cf1765cb249088d594dbb62a27669d27503f2f5fe8a1",
+    "server": "mlx_lm.server",
+    "note": "Existing locally fused runtime weights; not a fresh download of the base teacher checkpoint; no DFlash draft used."
+  },
+  "codex": {
+    "model": "gpt-6-astra",
+    "reasoning_effort": "medium",
+    "cli_version": "codex-cli 0.154.0",
+    "settings_origin": "current user configured model and reasoning; other user config disabled for isolated scoring"
+  },
+  "versions": {
+    "mlx": "0.31.2",
+    "mlx-lm": "0.31.3",
+    "numpy": "2.4.6",
+    "httpx": "0.28.1"
+  },
+  "scope": "synthetic pilot, no private transcripts, no runtime deployment",
+  "reference": "Codex-authored predeclared synthetic expectation; NOT human gold; same-family bias possible",
+  "student": "existing HashRidgeSaturationModel; all is_final=True matching finalish runtime; teacher text only",
+  "teacher_batch_size": 20,
+  "threshold": 0.75
+}

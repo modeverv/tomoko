@@ -1,0 +1,61 @@
+{
+  "all_12_prompts_identical": true,
+  "all_12_id_mappings_identical": true,
+  "reference_unchanged": true,
+  "batches": [
+    {
+      "batch_id": 0,
+      "prompt_sha256": "02f0b17c5298a11054d721bf9e2e5b85b514f6a0823a1eeb5b3d62865ba97057"
+    },
+    {
+      "batch_id": 1,
+      "prompt_sha256": "01180c2c141ebc6b2e684b8015123fd5bd91a836022d43bbb4542412cb5a782a"
+    },
+    {
+      "batch_id": 2,
+      "prompt_sha256": "48627ef1716cf0243d7705d6844e1c621c4d45cd0ae065e931cea826b1994a26"
+    },
+    {
+      "batch_id": 3,
+      "prompt_sha256": "c184d90d55fbc98150b2410c72c33d17ee3a1403cef56f9d094b17ad89d194a5"
+    },
+    {
+      "batch_id": 4,
+      "prompt_sha256": "77d31120117c78d0242b1b8c1a5ae31a94ffd4c84767954e35205d22fb88e2a3"
+    },
+    {
+      "batch_id": 5,
+      "prompt_sha256": "43fe98cb3fc5f306fd4debaf498c00c92ef4d44791ab6ea0fe8a65606c54a6e8"
+    },
+    {
+      "batch_id": 6,
+      "prompt_sha256": "88d9da6f5855e670f600085d037d83bd5fa32a5c39232a5eb6ef62e9fc221f5c"
+    },
+    {
+      "batch_id": 7,
+      "prompt_sha256": "58cad3c86afb644fdc4da8475dc3ce14aff71d7f704ad133f8a7f27b6770efb7"
+    },
+    {
+      "batch_id": 8,
+      "prompt_sha256": "522d16248360c85f6685e9107af5ea57d895ce5b6e580787f6e3195b97440e4b"
+    },
+    {
+      "batch_id": 9,
+      "prompt_sha256": "f12a900af6b93b8371665df42b5cf21ee7505fb02ca0e1a04e7b6f49f8b0cac5"
+    },
+    {
+      "batch_id": 10,
+      "prompt_sha256": "9af538cfbeb6a3d30123944daba480cd7e3da7907012b5db070f081634d84283"
+    },
+    {
+      "batch_id": 11,
+      "prompt_sha256": "69aa59d614ffe39850d8f90560a8b7da8c88c9ccb7a5e2bfeff4f6a33c07fe07"
+    }
+  ],
+  "sources": {
+    "make-model/collect_teacher_comparison.py": "44dfa28a6fb866d99900411cde919a4fc35e9ee5ca56464292d2dfd3023b6ae4",
+    "make-model/compare_teacher_students.py": "29939e867345c233014d957b02c8d4b3cddc81b245ff500482781a36ff577217",
+    "server/tomoko/semantic.py": "a39bea378c2b52e39c530daeb7754b53f3dc4e6c4e54d5afe21b8e1ffe2d78f3",
+    "make-model/make_model/model.py": "4667c6fb552423cc9a9e0236b40b34f2c0957312d1505ba92f2c0065a756c40e"
+  }
+}

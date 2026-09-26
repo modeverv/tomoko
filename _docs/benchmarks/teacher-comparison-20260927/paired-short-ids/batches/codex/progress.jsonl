@@ -1,0 +1,12 @@
+{"batch_id": 0, "count": 20, "elapsed_ms": 10623.43979200159, "teacher": "codex", "labels_completed": 20}
+{"batch_id": 1, "count": 20, "elapsed_ms": 10772.321917000227, "teacher": "codex", "labels_completed": 40}
+{"batch_id": 2, "count": 20, "elapsed_ms": 14126.558457999636, "teacher": "codex", "labels_completed": 60}
+{"batch_id": 3, "count": 20, "elapsed_ms": 12099.488457999541, "teacher": "codex", "labels_completed": 80}
+{"batch_id": 4, "count": 20, "elapsed_ms": 11522.66008299921, "teacher": "codex", "labels_completed": 100}
+{"batch_id": 5, "count": 20, "elapsed_ms": 12639.415416000702, "teacher": "codex", "labels_completed": 120}
+{"batch_id": 6, "count": 20, "elapsed_ms": 12895.968083998014, "teacher": "codex", "labels_completed": 140}
+{"batch_id": 7, "count": 20, "elapsed_ms": 10226.991791998444, "teacher": "codex", "labels_completed": 160}
+{"batch_id": 8, "count": 20, "elapsed_ms": 10339.69900000011, "teacher": "codex", "labels_completed": 180}
+{"batch_id": 9, "count": 20, "elapsed_ms": 10721.572166999977, "teacher": "codex", "labels_completed": 200}
+{"batch_id": 10, "count": 20, "elapsed_ms": 10481.73549999774, "teacher": "codex", "labels_completed": 220}
+{"batch_id": 11, "count": 20, "elapsed_ms": 10368.417750003573, "teacher": "codex", "labels_completed": 240}

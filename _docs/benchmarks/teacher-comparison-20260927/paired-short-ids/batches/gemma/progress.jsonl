@@ -1,0 +1,12 @@
+{"batch_id": 0, "count": 20, "elapsed_ms": 9342.881082997337, "teacher": "gemma", "labels_completed": 20}
+{"batch_id": 1, "count": 20, "elapsed_ms": 10872.06891599999, "teacher": "gemma", "labels_completed": 40}
+{"batch_id": 2, "count": 20, "elapsed_ms": 9470.454667000013, "teacher": "gemma", "labels_completed": 60}
+{"batch_id": 3, "count": 20, "elapsed_ms": 9017.56395800112, "teacher": "gemma", "labels_completed": 80}
+{"batch_id": 4, "count": 20, "elapsed_ms": 9431.040874998871, "teacher": "gemma", "labels_completed": 100}
+{"batch_id": 5, "count": 20, "elapsed_ms": 9180.822915997851, "teacher": "gemma", "labels_completed": 120}
+{"batch_id": 6, "count": 20, "elapsed_ms": 8786.518416000035, "teacher": "gemma", "labels_completed": 140}
+{"batch_id": 7, "count": 20, "elapsed_ms": 11121.034625000902, "teacher": "gemma", "labels_completed": 160}
+{"batch_id": 8, "count": 20, "elapsed_ms": 9791.289292003057, "teacher": "gemma", "labels_completed": 180}
+{"batch_id": 9, "count": 20, "elapsed_ms": 13243.57979100023, "teacher": "gemma", "labels_completed": 200}
+{"batch_id": 10, "count": 20, "elapsed_ms": 13757.380250001006, "teacher": "gemma", "labels_completed": 220}
+{"batch_id": 11, "count": 20, "elapsed_ms": 15263.499458000297, "teacher": "gemma", "labels_completed": 240}

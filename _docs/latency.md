@@ -277,3 +277,24 @@ M1 Phase 0 creates this log before the first measured audio path exists.
 - The actual v1 `FasterWhisperSTT.transcribe` wrapper also completed successfully.
 - Summary artifact:
   `_docs/benchmarks/faster-whisper-small-say-20260903.json`.
+
+## 2026-09-27 Gemma / Codex offline teacher comparison
+
+Apple M4 Max / 128 GiB。新規人工日本語240件、同一20件batchの教師採点。
+Gemmaは既存fused26B/A4B 4bit + mlx_lm.server、CodexはCLI0.154.0/gpt-6-astra/medium。
+
+| 指標 | Gemma教師系 | Codex教師系 |
+|---|---:|---:|
+| 採点240件 wall |129.302 s|136.843 s|
+| 学習用160件 batch合計 |77.222 s|94.907 s|
+| Ridge2048/λ1 fit中央値（各3回交互）|48.943 ms|48.830 ms|
+| Ridge8192/λ0.01 fit中央値（各3回交互）|2.211 s|2.028 s|
+| 8192学生 resident predict平均（warmup100、1000回）|0.2266 ms|0.2257 ms|
+| 同 p95 |0.2603 ms|0.2603 ms|
+
+採点はCLI/HTTP込みのバッチworkflow時間で、オンラインの単発応答や音声E2Eではない。
+両教師を並行収集しており、1試行のため普遍的な速度差とは扱わない。
+Gemma cold warmup4.667秒および最初の長ID形式失敗14.977秒は別記録。
+学生fitは同一サイズの行列計算で、今回の分散から教師交換による時間短縮は主張しない。
+判定の詳細は `_docs/benchmarks/teacher-comparison-20260927/REPORT.md`。
+runtimeの変更はないため音声E2Eは再測定していない。

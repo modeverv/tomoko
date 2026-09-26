@@ -1,0 +1,37 @@
+{
+  "counts": {
+    "train": {
+      "items": 160,
+      "groups": 80,
+      "ready": 78,
+      "incomplete": 78,
+      "ambiguous": 4
+    },
+    "eval": {
+      "items": 80,
+      "groups": 40,
+      "ready": 38,
+      "incomplete": 38,
+      "ambiguous": 4
+    }
+  },
+  "unique_texts": 240,
+  "unique_ids": 240,
+  "situation_count": 120,
+  "items_per_group": 2,
+  "train_eval_group_overlap": 0,
+  "runtime_example_exact_overlap": 0,
+  "shuffle_seed": 20260927,
+  "sha256": {
+    "inputs.jsonl": "b18a8bda8f7ced352b8e8384ddb8c3b25f29a70cfbdf9114da6b642c853656cc",
+    "reference.jsonl": "c656c92e7cf3b21b1a472ec4dcaf4885d10d9995234826ba16017ee9e65b56f4"
+  },
+  "reference_author": "Codex subagent, predeclared before teacher predictions",
+  "human_validated": false,
+  "pre_teacher_ambiguity_review": {
+    "reviewers": "corpus author and root agent",
+    "modified_inputs": 12,
+    "reason": "Avoid treating dangling wa/no-wa topic endings as necessarily incomplete; they can be elliptical questions. All edits preceded teacher calls.",
+    "human_reviewed": false
+  }
+}

@@ -3795,3 +3795,36 @@
 - `v1/server/edge/pipeline/stt.py::FasterWhisperSTT.transcribe`を使うwrapper
   smokeもcase 1で成功した。v2 factoryへの配線変更はしていない。
 - summary artifact: `_docs/benchmarks/faster-whisper-small-say-20260903.json`。
+
+## 2026-09-27 セッション1 Gemma / Codex 教師比較
+
+### やること（開始時に書く）
+- ユーザー依頼により、人工日本語だけを使い Gemma と Codex の意味飽和度ラベル、所要時間、同一 hash-ridge 学生の評価を比較する。
+- runtime / 既定モデルを変更せず、make-model のオフライン比較として実施する。O0A-03 には着手しない。
+- 同じ入力と判定定義、学習条件を用い、学習と評価の発話群を分離する。人間による正解ラベルがない場合は暫定評価と明記する。
+- サブエージェントで既存パイプラインと評価方法を点検し、成果を _docs/benchmarks/ に保存する。
+
+### やったこと
+- 別の Codex エージェントが人工日本語 240 件を作成し、160 train / 80 eval を場面 group で分離。教師出力を見る前に省略疑問の曖昧さを点検し、corpus と参照期待値を固定した。
+- Gemma 4 26B A4B の既存 fused weights を一時的な loopback MLX server で実行し、Codex CLI の gpt-6-astra / medium と同じ20件バッチ promptで比較。実会話・私的ログ・JDDは使用していない。
+- 先行テストを追加し、ID・数値検証、参照情報の非送信、学習/評価漏洩防止を実装。Gemmaの長ID1文字欠落を検出したため、失敗試行を保存して両者を短IDに揃えて全件再実行した。
+- 既存 HashRidgeSaturationModel を同一160件の各教師ラベルで学習。2048/λ1と、採点前に固定した8192/λ0.01を各3回交互順で測定。runtimeモデルは変更していない。
+- 結果: AI作成の参照期待値76件に対し教師 Gemma72/76、Codex76/76。学生2048は両者45/76、8192は61/76対62/76（3件改善・2件悪化）。人間の正解精度ではない。
+- 240件採点は129.302秒対136.843秒、学習用160件部分は77.222秒対94.907秒。8192学生fit中央値2.211秒対2.028秒、常駐予測平均0.2266ms対0.2257ms。fitは同じ計算量で変動範囲が重なり、短縮とは判断しない。
+- _docs/benchmarks/teacher-comparison-20260927/REPORT.md に結果・条件・制限・再現方法を記録。raw応答、prompt、usage、label、モデル、集計も同ディレクトリに保存。
+- 別エージェントが両教師240件のraw→ID→label対応、prompt一致、集計を点検し問題なし。比較用Gemmaサーバーは停止済み。
+
+### 検証
+- 既存baseline: 266 passed / 7 deselected。
+- 先行テストred確認後、最終full unit: 299 passed / 7 deselected。
+- 変更Python4ファイルruff PASS、git diff --check PASS。
+- 全12バッチのprompt/ID対応表一致と固定corpus SHA一致を確認。
+
+### 詰まったこと・解決したこと
+- 最初のfull unitはサブエージェントが先に作成したテストと、未作成の実装ファイルの間で収集エラーになった。既存baselineを新規テスト除外で確認し、実装後のfull unitは全299件pass。
+- 長いhex IDのコピー誤りは採点値を推測して修正せず、両教師の入力形式を同じ短IDに変更し再収集。元試行は比較結果と分離して保存。
+
+### 次のセッションでやること
+- 自動で教師・runtimeモデルを切り替えない。まず教師で差が出た4例等を人間が確認する。
+- 学生改善を進める場合は、文字特徴・データ量・較正の影響を別実験で分離する。今回の評価データを調整に使った場合は新しい未見評価セットが必要。
+- O0A-03には着手していない。
