@@ -1,0 +1,18 @@
+{
+  "timestamp": "2026-09-26T16:10:00.990136+00:00",
+  "sha256": {
+    "_docs/benchmarks/teacher-comparison-20260927/paired-short-ids/corpus/inputs.jsonl": "b18a8bda8f7ced352b8e8384ddb8c3b25f29a70cfbdf9114da6b642c853656cc",
+    "_docs/benchmarks/teacher-comparison-20260927/paired-short-ids/corpus/reference.jsonl": "c656c92e7cf3b21b1a472ec4dcaf4885d10d9995234826ba16017ee9e65b56f4",
+    "_docs/benchmarks/feature-learning-20260927/train-additions/corpus/inputs.jsonl": "a235a8f0d92ee6ea97b1fdc07bde4f74232336cd06e2ad08cd4d31516fd97e9c",
+    "_docs/benchmarks/feature-learning-20260927/train-additions/corpus/reference.jsonl": "f51f8f06d7d3bda636311e9118705be6c0c4488cd17a8737d141dfacf405da9c",
+    "_docs/benchmarks/feature-learning-20260927/blind/corpus/inputs.jsonl": "71148c4245db7e2eac7719a0f7a011bca8bf1e9ef03315172c631f4f7a11575d",
+    "_docs/benchmarks/feature-learning-20260927/blind/corpus/reference.jsonl": "5086e27de28fe259f4ab00ca68b1de838d96a9a6e75528a613a9d8dc2d679644"
+  },
+  "overlap": {
+    "normalized_cross_split_duplicates": [],
+    "near_cross_split_pair_count": 0,
+    "near_cross_split_pairs": [],
+    "near_filter": "1-4gram Jaccard>=0.4 then SequenceMatcher>=0.82; not semantic dedup"
+  },
+  "new_teacher_or_student_outputs_seen": false
+}

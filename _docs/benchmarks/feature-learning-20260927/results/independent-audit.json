@@ -1,0 +1,391 @@
+{
+  "status": "passed",
+  "scope": "Independent arithmetic and artifact checks; reviewer also authored runner, separate code review was performed by another agent.",
+  "checks": {
+    "source_hashes_match": true,
+    "all_8960_saved_predictions_recomputed": true,
+    "teacher_scores_match_label_files": true,
+    "training_ids_match_fixed_conditions": true,
+    "no_development_or_blind_ids_in_fit": true,
+    "char_only_numeric_weights_zero": true,
+    "binary_category_and_pair_counts_match": true,
+    "dev_thresholds_recomputed_from_dev_only": true,
+    "three_fit_and_1000_predict_samples_per_condition": true,
+    "old_baseline_max_weight_difference": 0.0,
+    "old_baseline_bias_difference": 0.0,
+    "train_reference_counts_match": true
+  },
+  "conditions": {
+    "baseline": {
+      "train_teacher": {
+        "count": 160,
+        "mae": 0.006363957005442746,
+        "binary_agreement": 1
+      },
+      "max_artifact_prediction_difference": 0.0,
+      "development": {
+        "n": 76,
+        "correct": 62,
+        "false_start": 0,
+        "false_wait": 14,
+        "accuracy": 0.8157894736842105,
+        "balanced_accuracy": 0.8157894736842105
+      },
+      "blind": {
+        "n": 223,
+        "correct": 160,
+        "false_start": 7,
+        "false_wait": 56,
+        "accuracy": 0.7174887892376681,
+        "balanced_accuracy": 0.7259104092813407
+      },
+      "dev_selected_threshold": 0.61,
+      "calibrated_blind": {
+        "n": 223,
+        "correct": 173,
+        "false_start": 18,
+        "false_wait": 32,
+        "accuracy": 0.7757847533632287,
+        "balanced_accuracy": 0.7779568159845311
+      }
+    },
+    "targeted80": {
+      "train_teacher": {
+        "count": 240,
+        "mae": 0.006618020382725714,
+        "binary_agreement": 1
+      },
+      "max_artifact_prediction_difference": 0.0,
+      "development": {
+        "n": 76,
+        "correct": 60,
+        "false_start": 0,
+        "false_wait": 16,
+        "accuracy": 0.7894736842105263,
+        "balanced_accuracy": 0.7894736842105263
+      },
+      "blind": {
+        "n": 223,
+        "correct": 156,
+        "false_start": 7,
+        "false_wait": 60,
+        "accuracy": 0.6995515695067265,
+        "balanced_accuracy": 0.7086690299709958
+      },
+      "dev_selected_threshold": 0.55,
+      "calibrated_blind": {
+        "n": 223,
+        "correct": 167,
+        "false_start": 23,
+        "false_wait": 33,
+        "accuracy": 0.7488789237668162,
+        "balanced_accuracy": 0.7502819851756365
+      }
+    },
+    "targeted160": {
+      "train_teacher": {
+        "count": 320,
+        "mae": 0.00698158165286758,
+        "binary_agreement": 1
+      },
+      "max_artifact_prediction_difference": 0.0,
+      "development": {
+        "n": 76,
+        "correct": 57,
+        "false_start": 0,
+        "false_wait": 19,
+        "accuracy": 0.75,
+        "balanced_accuracy": 0.75
+      },
+      "blind": {
+        "n": 223,
+        "correct": 158,
+        "false_start": 6,
+        "false_wait": 59,
+        "accuracy": 0.7085201793721974,
+        "balanced_accuracy": 0.7176522719948437
+      },
+      "dev_selected_threshold": 0.52,
+      "calibrated_blind": {
+        "n": 223,
+        "correct": 166,
+        "false_start": 23,
+        "false_wait": 34,
+        "accuracy": 0.7443946188340808,
+        "balanced_accuracy": 0.7459716403480503
+      }
+    },
+    "targeted320": {
+      "train_teacher": {
+        "count": 480,
+        "mae": 0.007482917736765042,
+        "binary_agreement": 1
+      },
+      "max_artifact_prediction_difference": 0.0,
+      "development": {
+        "n": 76,
+        "correct": 56,
+        "false_start": 0,
+        "false_wait": 20,
+        "accuracy": 0.7368421052631579,
+        "balanced_accuracy": 0.736842105263158
+      },
+      "blind": {
+        "n": 223,
+        "correct": 156,
+        "false_start": 5,
+        "false_wait": 62,
+        "accuracy": 0.6995515695067265,
+        "balanced_accuracy": 0.7093941347083468
+      },
+      "dev_selected_threshold": 0.45,
+      "calibrated_blind": {
+        "n": 223,
+        "correct": 160,
+        "false_start": 30,
+        "false_wait": 33,
+        "accuracy": 0.7174887892376681,
+        "balanced_accuracy": 0.7175717048018047
+      }
+    },
+    "general320": {
+      "train_teacher": {
+        "count": 480,
+        "mae": 0.0067995381339465595,
+        "binary_agreement": 0.9979166666666667
+      },
+      "max_artifact_prediction_difference": 0.0,
+      "development": {
+        "n": 76,
+        "correct": 60,
+        "false_start": 2,
+        "false_wait": 14,
+        "accuracy": 0.7894736842105263,
+        "balanced_accuracy": 0.7894736842105263
+      },
+      "blind": {
+        "n": 223,
+        "correct": 160,
+        "false_start": 14,
+        "false_wait": 49,
+        "accuracy": 0.7174887892376681,
+        "balanced_accuracy": 0.7233725427006124
+      },
+      "dev_selected_threshold": 0.62,
+      "calibrated_blind": {
+        "n": 223,
+        "correct": 162,
+        "false_start": 23,
+        "false_wait": 38,
+        "accuracy": 0.726457399103139,
+        "balanced_accuracy": 0.7287302610377054
+      }
+    },
+    "combined640": {
+      "train_teacher": {
+        "count": 800,
+        "mae": 0.007899077212208132,
+        "binary_agreement": 0.99875
+      },
+      "max_artifact_prediction_difference": 0.0,
+      "development": {
+        "n": 76,
+        "correct": 54,
+        "false_start": 0,
+        "false_wait": 22,
+        "accuracy": 0.7105263157894737,
+        "balanced_accuracy": 0.7105263157894737
+      },
+      "blind": {
+        "n": 223,
+        "correct": 158,
+        "false_start": 8,
+        "false_wait": 57,
+        "accuracy": 0.7085201793721974,
+        "balanced_accuracy": 0.7169271672574928
+      },
+      "dev_selected_threshold": 0.46,
+      "calibrated_blind": {
+        "n": 223,
+        "correct": 163,
+        "false_start": 28,
+        "false_wait": 32,
+        "accuracy": 0.7309417040358744,
+        "balanced_accuracy": 0.7312278440219143
+      }
+    },
+    "baseline_char_only": {
+      "train_teacher": {
+        "count": 160,
+        "mae": 0.0071773743963200205,
+        "binary_agreement": 1
+      },
+      "max_artifact_prediction_difference": 0.0,
+      "development": {
+        "n": 76,
+        "correct": 50,
+        "false_start": 2,
+        "false_wait": 24,
+        "accuracy": 0.6578947368421053,
+        "balanced_accuracy": 0.6578947368421053
+      },
+      "blind": {
+        "n": 223,
+        "correct": 154,
+        "false_start": 7,
+        "false_wait": 62,
+        "accuracy": 0.6905829596412556,
+        "balanced_accuracy": 0.7000483403158234
+      },
+      "dev_selected_threshold": 0.64,
+      "calibrated_blind": {
+        "n": 223,
+        "correct": 165,
+        "false_start": 16,
+        "false_wait": 42,
+        "accuracy": 0.7399103139013453,
+        "balanced_accuracy": 0.7441991621011924
+      }
+    },
+    "combined640_char_only": {
+      "train_teacher": {
+        "count": 800,
+        "mae": 0.009833314575745256,
+        "binary_agreement": 0.99875
+      },
+      "max_artifact_prediction_difference": 0.0,
+      "development": {
+        "n": 76,
+        "correct": 57,
+        "false_start": 2,
+        "false_wait": 17,
+        "accuracy": 0.75,
+        "balanced_accuracy": 0.75
+      },
+      "blind": {
+        "n": 223,
+        "correct": 170,
+        "false_start": 9,
+        "false_wait": 44,
+        "accuracy": 0.7623318385650224,
+        "balanced_accuracy": 0.7682887528198518
+      },
+      "dev_selected_threshold": 0.58,
+      "calibrated_blind": {
+        "n": 223,
+        "correct": 169,
+        "false_start": 24,
+        "false_wait": 30,
+        "accuracy": 0.757847533632287,
+        "balanced_accuracy": 0.7585401224621334
+      }
+    }
+  },
+  "paired_changes": {
+    "general320_vs_baseline": {
+      "improved": 13,
+      "regressed": 13,
+      "net": 0
+    },
+    "combined640_vs_baseline": {
+      "improved": 10,
+      "regressed": 12,
+      "net": -2
+    },
+    "baseline_char_only_vs_baseline": {
+      "improved": 6,
+      "regressed": 12,
+      "net": -6
+    },
+    "combined640_char_only_vs_baseline": {
+      "improved": 19,
+      "regressed": 9,
+      "net": 10
+    },
+    "targeted80_vs_baseline": {
+      "improved": 7,
+      "regressed": 11,
+      "net": -4
+    },
+    "targeted160_vs_baseline": {
+      "improved": 10,
+      "regressed": 12,
+      "net": -2
+    },
+    "targeted320_vs_baseline": {
+      "improved": 10,
+      "regressed": 14,
+      "net": -4
+    }
+  },
+  "feature_observations": {
+    "baseline": {
+      "bias": 0.03217465441803217,
+      "numeric_weights": [
+        1.673364139648065,
+        0.1455194163251808,
+        3.792273229975764e-18,
+        0.0,
+        0.08793564684833538
+      ],
+      "numeric_nonzero_in_train": [
+        160,
+        5,
+        160,
+        0,
+        1
+      ],
+      "train_mean_chars_by_teacher": {
+        "True": 21.123456790123456,
+        "False": 16.772151898734176
+      },
+      "blind_mean_chars_by_reference": {
+        "True": 22.060344827586206,
+        "False": 21.542056074766354
+      }
+    },
+    "combined640": {
+      "bias": -0.37106077111571606,
+      "numeric_weights": [
+        3.143832532093315,
+        0.06513068282056081,
+        1.0162698699285894e-13,
+        0.0,
+        0.10943418516127927
+      ],
+      "numeric_nonzero_in_train": [
+        800,
+        33,
+        800,
+        0,
+        1
+      ],
+      "train_mean_chars_by_teacher": {
+        "True": 28.423940149625935,
+        "False": 19.75438596491228
+      },
+      "blind_mean_chars_by_reference": {
+        "True": 22.060344827586206,
+        "False": 21.542056074766354
+      }
+    }
+  },
+  "code_review": {
+    "fit_inputs": "teacher_labels explicitly projects id/text/teacher_score; reference readiness is only read for metrics, not fitting. Arm/order metadata selects predeclared groups.",
+    "full_fit": "Existing fit_hash_ridge_model used unchanged.",
+    "ablation_fit": "Same normal equations and normalized hashed features with last five columns zero.",
+    "limitations": [
+      "AI-authored synthetic references are not human gold.",
+      "Near-perfect training fit does not establish general semantic understanding or an intrinsic representation ceiling.",
+      "Five-feature joint ablation cannot isolate length causally; feature coefficients are conditional on correlated character features.",
+      "Char-only added-data fixed-threshold accuracy increases while pair ranking decreases; improvement is not uniformly stronger pair discrimination.",
+      "Char-only uses existing full feature computation with numeric weights zero; not optimized char-only intrinsic latency.",
+      "Surface ngram capacity, learning distribution, score calibration and threshold choice remain separate possible causes."
+    ]
+  },
+  "code_sha256": {
+    "make-model/probe_feature_learning.py": "95c3d895429b6c38f5627552e30e66bcf39b86186d214479f86ce735a09bf4f8",
+    "make-model/feature_learning_support.py": "1496dc4e5d8828f38cff59ca82c30fd6d6e2db98d5624784d4ad8b53ffbad565",
+    "make-model/make_model/model.py": "4667c6fb552423cc9a9e0236b40b34f2c0957312d1505ba92f2c0065a756c40e"
+  }
+}

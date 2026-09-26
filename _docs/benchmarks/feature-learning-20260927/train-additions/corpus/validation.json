@@ -1,0 +1,828 @@
+{
+  "status": "passed",
+  "rows": 640,
+  "groups": 320,
+  "arm_rows": {
+    "targeted": 320,
+    "general": 320
+  },
+  "label_balance": {
+    "true": 320,
+    "false": 320
+  },
+  "fixed_is_final": true,
+  "split": "train",
+  "exact_duplicates_internal": 0,
+  "exact_duplicates_old240": 0,
+  "normalized_duplicates_old240": 0,
+  "nested_subsets": {
+    "targeted": {
+      "80": {
+        "rows": 80,
+        "groups": 40,
+        "ready": 40,
+        "wait": 40,
+        "categories": {
+          "adversative_question": 10,
+          "concessive_statement": 10,
+          "conditional_completion": 10,
+          "reason_request": 10,
+          "contrast_choice": 10,
+          "discourse_completion": 10,
+          "embedded_completion": 10,
+          "indirect_completion": 10
+        }
+      },
+      "160": {
+        "rows": 160,
+        "groups": 80,
+        "ready": 80,
+        "wait": 80,
+        "categories": {
+          "adversative_question": 20,
+          "concessive_statement": 20,
+          "conditional_completion": 20,
+          "reason_request": 20,
+          "contrast_choice": 20,
+          "discourse_completion": 20,
+          "embedded_completion": 20,
+          "indirect_completion": 20
+        }
+      },
+      "320": {
+        "rows": 320,
+        "groups": 160,
+        "ready": 160,
+        "wait": 160,
+        "categories": {
+          "adversative_question": 40,
+          "concessive_statement": 40,
+          "conditional_completion": 40,
+          "reason_request": 40,
+          "contrast_choice": 40,
+          "discourse_completion": 40,
+          "embedded_completion": 40,
+          "indirect_completion": 40
+        }
+      }
+    },
+    "general": {
+      "80": {
+        "rows": 80,
+        "groups": 40,
+        "ready": 40,
+        "wait": 40,
+        "categories": {
+          "direct_question": 10,
+          "explicit_instruction": 10,
+          "complete_observation": 10,
+          "plans_and_preferences": 10,
+          "list_closure": 10,
+          "self_correction": 10,
+          "time_quantity": 10,
+          "social_and_resolved_reference": 10
+        }
+      },
+      "160": {
+        "rows": 160,
+        "groups": 80,
+        "ready": 80,
+        "wait": 80,
+        "categories": {
+          "direct_question": 20,
+          "explicit_instruction": 20,
+          "complete_observation": 20,
+          "plans_and_preferences": 20,
+          "list_closure": 20,
+          "self_correction": 20,
+          "time_quantity": 20,
+          "social_and_resolved_reference": 20
+        }
+      },
+      "320": {
+        "rows": 320,
+        "groups": 160,
+        "ready": 160,
+        "wait": 160,
+        "categories": {
+          "direct_question": 40,
+          "explicit_instruction": 40,
+          "complete_observation": 40,
+          "plans_and_preferences": 40,
+          "list_closure": 40,
+          "self_correction": 40,
+          "time_quantity": 40,
+          "social_and_resolved_reference": 40
+        }
+      }
+    }
+  },
+  "cross_group_char_trigram_similarity": {
+    "threshold": 0.55,
+    "flagged_pairs": 0,
+    "max_vs_old": [
+      0.18032786885245902,
+      [
+        "ua46443da746b",
+        "u3d878d810f",
+        "案内係を初めて引き受けるので、迷った来場者への声の掛け方を練習させてもらえるとありがたい",
+        "説明書の注意事項が小さすぎるので、読み上げてもらえるとありがたい"
+      ]
+    ],
+    "max_across_new_groups": [
+      0.23684210526315788,
+      [
+        "u3d5a30f9fea2",
+        "uce1fb5be709c",
+        "虹の色が見る場所によって違って見える理由は何ですか",
+        "染色した糸の色が照明によって違って見える現象の名前を"
+      ]
+    ],
+    "within_pair_contrasts_excluded": true,
+    "limitation": "Lexical screen is not proof of semantic independence; each group was individually authored with a distinct scenario, not slot-filled noun replacements."
+  },
+  "inputs_sha256": "a235a8f0d92ee6ea97b1fdc07bde4f74232336cd06e2ad08cd4d31516fd97e9c",
+  "reference_sha256": "f51f8f06d7d3bda636311e9118705be6c0c4488cd17a8737d141dfacf405da9c",
+  "old240_inputs_sha256": "b18a8bda8f7ced352b8e8384ddb8c3b25f29a70cfbdf9114da6b642c853656cc",
+  "blind_data_accessed": false,
+  "real_conversations_used": false,
+  "jdd_used": false,
+  "reference_status": "AI-authored expectations, not human gold; independent Codex labeling pending",
+  "revision_history": [
+    {
+      "revision": "initial-pre-labeling",
+      "inputs_sha256": "0099395cdccb38766ecdcf80c8352443a676bada619f82bcbcd0616b558d506c",
+      "reference_sha256": "3497430881c3ba2a756fdff638ce78ef8824a74b0925f4249741e09597269978"
+    },
+    {
+      "revision": "final-pre-labeling",
+      "changed_wait_prefixes": {
+        "虹の色が見る場所によって違って見える": "虹の色が見る場所によって",
+        "切り花の茎を水中で切ると長持ちする": "切り花の茎を水中で切ると",
+        "鉄棒の逆上がりで体を近づけると回りやすい": "鉄棒の逆上がりで体を近づけると",
+        "町内の放送が聞き取れなかったとき、内容を確認できる": "町内の放送が聞き取れなかったとき、内容を"
+      },
+      "reason": "Remove prefixes that could already be interpreted as complete statements; no model labeling had started.",
+      "inputs_sha256": "1ba21794aea96ca5b129adab417971ba79cdf336798da9f7452472c63bcc5b3c",
+      "reference_sha256": "c04a6b4b8e0235639268dd9b5e24caaa20241d33f912df2314fc7cf75cb4740f"
+    },
+    {
+      "revision": "reviewed-pre-labeling",
+      "previous_inputs_sha256": "1ba21794aea96ca5b129adab417971ba79cdf336798da9f7452472c63bcc5b3c",
+      "previous_reference_sha256": "c04a6b4b8e0235639268dd9b5e24caaa20241d33f912df2314fc7cf75cb4740f",
+      "reason": "Review all 320 wait examples for complete elliptical questions and already-closed lists; replace ambiguous boundaries with earlier open phrases. No teacher calls started.",
+      "changed_count": 96,
+      "changes": [
+        {
+          "arm": "targeted",
+          "group_rank": 9,
+          "old_text": "配信の音は届いているんだけど、映像だけ止まるのは",
+          "new_text": "配信の音は届いているんだけど、映像の"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 19,
+          "old_text": "お祝いの札を連名にするなら、名前は",
+          "new_text": "お祝いの札を連名にするなら、名前を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 33,
+          "old_text": "俳句を作ってみたけど、季語が二つ入るのは",
+          "new_text": "俳句を作ってみたけど、季語を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 37,
+          "old_text": "方位磁石と星の位置を比べたら、曇り始めた夜に頼れるのは",
+          "new_text": "方位磁石と星の位置を比べたら、曇り始めた夜の"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 53,
+          "old_text": "石窯と鉄板で焼いたピザでは、底がぱりっと仕上がるのは",
+          "new_text": "石窯と鉄板で焼いたピザでは、底の"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 61,
+          "old_text": "選挙公報を音声で読むなら候補者ごとと政策項目ごとでは、比較しやすいのは",
+          "new_text": "選挙公報を音声で読むなら候補者ごとと政策項目ごとでは、比較する項"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 120,
+          "old_text": "巡回バスの時刻表が複雑なので、一日に何本あるのかだけ",
+          "new_text": "巡回バスの時刻表が複雑なので、一日の"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 126,
+          "old_text": "雨戸を閉めておいた。おかげで、夜中の強風でもガラスは",
+          "new_text": "雨戸を閉めておいた。おかげで、夜中の強風でもガラスの"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 133,
+          "old_text": "座布団を厚くする案と椅子へ替える案では、立ち上がりやすくなるのは",
+          "new_text": "座布団を厚くする案と椅子へ替える案では、立ち上がるときの"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 142,
+          "old_text": "試合は引き分けだった。それでも、終盤に追いついた展開には",
+          "new_text": "試合は引き分けだった。それでも、終盤に追いついた展開を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 149,
+          "old_text": "粒の粗い塩と細かい塩を同じ量使う場合、早く溶けるのは",
+          "new_text": "粒の粗い塩と細かい塩を同じ量使う場合、溶ける速さを"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 158,
+          "old_text": "物干し場の工事は延期だそうだ。ところが、資材だけは",
+          "new_text": "物干し場の工事は延期だそうだ。ところが、資材の"
+        },
+        {
+          "arm": "general",
+          "group_rank": 13,
+          "old_text": "展示する作品は版画、彫刻、布の作品の",
+          "new_text": "展示する作品は版画と彫刻と"
+        },
+        {
+          "arm": "general",
+          "group_rank": 14,
+          "old_text": "集合時間を八時と伝えましたが、正しくは",
+          "new_text": "集合時間を八時と伝えましたが、八時からさらに"
+        },
+        {
+          "arm": "general",
+          "group_rank": 21,
+          "old_text": "受付で渡すものは番号札と会場図の",
+          "new_text": "受付で渡すものは番号札と"
+        },
+        {
+          "arm": "general",
+          "group_rank": 23,
+          "old_text": "一枚の紙を四等分して五枚分使うと切れ端は",
+          "new_text": "一枚の紙を四等分して五枚分使うと、切れ端を"
+        },
+        {
+          "arm": "general",
+          "group_rank": 37,
+          "old_text": "屋外練習に必要なのは帽子、飲み物、タオルの",
+          "new_text": "屋外練習に必要なのは帽子と飲み物と"
+        },
+        {
+          "arm": "general",
+          "group_rank": 38,
+          "old_text": "コートの忘れ物は黒、言い間違えた、色は",
+          "new_text": "コートの忘れ物は黒、言い間違えた、濃い色のな"
+        },
+        {
+          "arm": "general",
+          "group_rank": 45,
+          "old_text": "この企画の対象は小学生から高校生までの",
+          "new_text": "この企画の対象は小学生から"
+        },
+        {
+          "arm": "general",
+          "group_rank": 53,
+          "old_text": "会報で紹介するのは新会員、活動予定、募集事項の",
+          "new_text": "会報で紹介するのは新会員と活動予定と"
+        },
+        {
+          "arm": "general",
+          "group_rank": 61,
+          "old_text": "火を使わずに食べられるのは果物、チーズ、缶詰の",
+          "new_text": "火を使わずに食べられるものが果物とチーズと"
+        },
+        {
+          "arm": "general",
+          "group_rank": 67,
+          "old_text": "壊れていた街灯が夕方には",
+          "new_text": "壊れていた街灯を夕方に見に行くと"
+        },
+        {
+          "arm": "general",
+          "group_rank": 69,
+          "old_text": "飾り付けの色は白、銀、淡い紫の",
+          "new_text": "飾り付けの色は白と銀と"
+        },
+        {
+          "arm": "general",
+          "group_rank": 72,
+          "old_text": "長旅の後でお疲れだと思いますから、まずは",
+          "new_text": "長旅の後でお疲れだと思いますから、まずはゆっくり休"
+        },
+        {
+          "arm": "general",
+          "group_rank": 77,
+          "old_text": "処理が済んだのは申請番号七番、八番、十番の",
+          "new_text": "処理が済んだのは申請番号七番と八番と"
+        },
+        {
+          "arm": "general",
+          "group_rank": 78,
+          "old_text": "収録は午前中と書いたけれど、開始は",
+          "new_text": "収録は午前中と書いたけれど、開始する時刻を"
+        },
+        {
+          "arm": "general",
+          "group_rank": 85,
+          "old_text": "本日の体験は土こね、成形、絵付けまでの",
+          "new_text": "本日の体験は土こねから成形を経て"
+        },
+        {
+          "arm": "general",
+          "group_rank": 86,
+          "old_text": "注文した冊数は十二冊ではありません、正確には",
+          "new_text": "注文した冊数は十二冊ではありません、十の位と一の位を"
+        },
+        {
+          "arm": "general",
+          "group_rank": 93,
+          "old_text": "連絡に使うのは掲示板と回覧板の",
+          "new_text": "連絡に使うのは掲示板と"
+        },
+        {
+          "arm": "general",
+          "group_rank": 101,
+          "old_text": "録音した音は踏切、せせらぎ、落ち葉を踏む音の",
+          "new_text": "録音した音は踏切とせせらぎと"
+        },
+        {
+          "arm": "general",
+          "group_rank": 109,
+          "old_text": "演目は独唱、二重奏、全員での合唱の",
+          "new_text": "演目は独唱から二重奏に続いて"
+        },
+        {
+          "arm": "general",
+          "group_rank": 117,
+          "old_text": "揃えた工具は六角レンチと小さなペンチの",
+          "new_text": "揃えた工具は六角レンチと"
+        },
+        {
+          "arm": "general",
+          "group_rank": 118,
+          "old_text": "作業の担当を逆に伝えました、組み立ては",
+          "new_text": "作業の担当を逆に伝えました、組み立てを"
+        },
+        {
+          "arm": "general",
+          "group_rank": 125,
+          "old_text": "休憩時間に出す飲み物は水、麦茶、りんごジュースの",
+          "new_text": "休憩時間に出す飲み物は水と麦茶と"
+        },
+        {
+          "arm": "general",
+          "group_rank": 126,
+          "old_text": "横向きの封筒を用意したけど、今回は",
+          "new_text": "横向きの封筒を用意したけど、今回は縦の"
+        },
+        {
+          "arm": "general",
+          "group_rank": 127,
+          "old_text": "会場の定員二百人に対して申込者は",
+          "new_text": "会場の定員二百人に対して申込者を数えると"
+        },
+        {
+          "arm": "general",
+          "group_rank": 133,
+          "old_text": "持ち寄り会の担当は主食、おかず、果物の",
+          "new_text": "持ち寄り会の担当は主食とおかずと"
+        },
+        {
+          "arm": "general",
+          "group_rank": 141,
+          "old_text": "広場に植わっているのは銀杏、欅、百日紅の",
+          "new_text": "広場に植わっているのは銀杏と欅と"
+        },
+        {
+          "arm": "general",
+          "group_rank": 142,
+          "old_text": "手続きを月末までにと言いましたが、締め切りは",
+          "new_text": "手続きを月末までにと言いましたが、月の中ほどに締め切るため"
+        },
+        {
+          "arm": "general",
+          "group_rank": 149,
+          "old_text": "会場で使える電源は舞台脇と受付裏の",
+          "new_text": "会場で使える電源は舞台脇と"
+        },
+        {
+          "arm": "general",
+          "group_rank": 151,
+          "old_text": "開店時の列は五人ほどだったのが十分後には",
+          "new_text": "開店時の列は五人ほどだったのが十分後になって"
+        },
+        {
+          "arm": "general",
+          "group_rank": 157,
+          "old_text": "試した結び方は本結び、もやい結び、巻き結びの",
+          "new_text": "試した結び方は本結びともやい結びと"
+        },
+        {
+          "arm": "general",
+          "group_rank": 158,
+          "old_text": "番号を読み違えたので訂正します、末尾の数字は",
+          "new_text": "番号を読み違えたので訂正します、末尾の数字を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 3,
+          "old_text": "折りたたみ杖を機内に持ち込むなら、預け入れの手続きは",
+          "new_text": "折りたたみ杖を機内に持ち込むなら、預け入れの"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 5,
+          "old_text": "屋上の緑化なら土を薄く敷く方法と鉢を並べる方法では、手入れが楽なのは",
+          "new_text": "屋上の緑化なら土を薄く敷く方法と鉢を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 7,
+          "old_text": "駅弁の包み紙に描かれている家紋が何を表すのか",
+          "new_text": "駅弁の包み紙に描かれている家紋が何を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 11,
+          "old_text": "無線機を屋外で使う場合、アンテナの向きは",
+          "new_text": "無線機を屋外で使う場合、アンテナの"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 13,
+          "old_text": "寝袋を選ぶなら暖かさと収納の小ささのうち、最初に優先すべきなのは",
+          "new_text": "寝袋を選ぶなら暖かさと収納の小ささのうち、最初に"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 21,
+          "old_text": "物語を朗読するとき声色を変えるのと間を変えるのでは、人物を聞き分けやすいのは",
+          "new_text": "物語を朗読するとき声色を変えるのと間を変えるのでは、人物を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 23,
+          "old_text": "蓄音機の回転数を変えると音の高さまで変わる理由は",
+          "new_text": "蓄音機の回転数を変えると音の"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 31,
+          "old_text": "石垣の隙間を埋めないほうが崩れにくいと聞いたのは",
+          "new_text": "石垣の隙間を埋めないほうが崩れにくいと聞いたのは水を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 35,
+          "old_text": "浄水器をしばらく使わなかった場合、最初の水は",
+          "new_text": "浄水器をしばらく使わなかった場合、最初の"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 45,
+          "old_text": "合唱の立ち位置は背の順と声域別なら、音を合わせやすい配置は",
+          "new_text": "合唱の立ち位置は背の順と声域別なら、音を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 46,
+          "old_text": "展示の説明文は短くした。ただし、作者の名前と制作年は",
+          "new_text": "展示の説明文は短くした。ただし、作者の"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 51,
+          "old_text": "竹林の落ち葉を堆肥にするなら、細かく砕く工程は",
+          "new_text": "竹林の落ち葉を堆肥にするなら、細かく"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 58,
+          "old_text": "日食の時間に雲が広がったとはいえ、欠け始めの輪郭は",
+          "new_text": "日食の時間に雲が広がったとはいえ、欠け始めの"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 63,
+          "old_text": "琵琶湖の水が海水にならないのは出口があるからなのかと",
+          "new_text": "琵琶湖の水が海水にならないのは出口が"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 66,
+          "old_text": "合宿の部屋は狭かった一方で、食堂の居心地は",
+          "new_text": "合宿の部屋は狭かった一方で、食堂の"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 69,
+          "old_text": "温室の換気を天窓と側面窓に分けると、熱を逃がす働きが大きいのは",
+          "new_text": "温室の換気を天窓と側面窓に分けると、熱を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 71,
+          "old_text": "舞踊の扇を開く音までそろえるためにどんな練習をするのか",
+          "new_text": "舞踊の扇を開く音までそろえるためにどんな練習を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 82,
+          "old_text": "音を小さくしたつもりが、低音だけは",
+          "new_text": "音を小さくしたつもりが、低音だけは隣の"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 85,
+          "old_text": "細い縞と大きな格子を組み合わせるなら、背景に回す柄は",
+          "new_text": "細い縞と大きな格子を組み合わせるなら、背景に"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 86,
+          "old_text": "発酵の温度管理は分かった。では、表面に白い膜が出た場合は",
+          "new_text": "発酵の温度管理は分かった。では、表面に白い膜が"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 90,
+          "old_text": "収穫量は去年を下回ったけれど、一粒ごとの甘さは",
+          "new_text": "収穫量は去年を下回ったけれど、一粒ごとの"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 97,
+          "old_text": "手織り機を借りたんですが、経糸の張り具合は",
+          "new_text": "手織り機を借りたんですが、経糸の"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 101,
+          "old_text": "展示品の解説を音声と点字で用意するなら、両方を併設する利点は",
+          "new_text": "展示品の解説を音声と点字で用意するなら、両方を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 105,
+          "old_text": "外国語の歌を練習しているけど、巻き舌が苦手なときは",
+          "new_text": "外国語の歌を練習しているけど、巻き舌が"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 106,
+          "old_text": "祖父の将棋盤を磨いてみたところ、傷だと思っていた線は",
+          "new_text": "祖父の将棋盤を磨いてみたところ、傷だと"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 109,
+          "old_text": "紙の索引と全文検索を比べて、言葉を正確に覚えていないときは",
+          "new_text": "紙の索引と全文検索を比べて、言葉を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 111,
+          "old_text": "樽の板を接着せずに液体が漏れないようにできる仕組みは",
+          "new_text": "樽の板を接着せずに液体が"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 117,
+          "old_text": "蒸した栗とゆでた栗のうち、渋皮を傷つけずに取り出しやすいのは",
+          "new_text": "蒸した栗とゆでた栗のうち、渋皮を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 125,
+          "old_text": "刺しゅう糸を明るさ順と色相順に並べるなら、グラデーションを探すときには",
+          "new_text": "刺しゅう糸を明るさ順と色相順に並べるなら、グラデーションを"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 134,
+          "old_text": "展示台は軽くなった。その代わり、重い作品を載せるときは",
+          "new_text": "展示台は軽くなった。その代わり、重い作品を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 135,
+          "old_text": "土偶の模様が服を表しているという説にはどんな根拠があるか",
+          "new_text": "土偶の模様が服を表しているという説に"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 141,
+          "old_text": "道案内を距離で伝えるか目印で伝えるかなら、初めて来る人には",
+          "new_text": "道案内を距離で伝えるか目印で伝えるかなら、初めて来る"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 151,
+          "old_text": "水門を閉じると上流の水位にどれだけ影響するのかは",
+          "new_text": "水門を閉じると上流の"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 153,
+          "old_text": "古道の標識は読めるんだけれど、現在地を地図に合わせるには",
+          "new_text": "古道の標識は読めるんだけれど、現在地を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 157,
+          "old_text": "講演を生で聞くのと録画で見るのでは、後から内容を確かめやすいのは",
+          "new_text": "講演を生で聞くのと録画で見るのでは、後から内容を"
+        },
+        {
+          "arm": "targeted",
+          "group_rank": 159,
+          "old_text": "鳴き砂が湿ると音を出さなくなるのは粒の動きが変わるからなのか",
+          "new_text": "鳴き砂が湿ると音を出さなくなるのは粒の"
+        },
+        {
+          "arm": "general",
+          "group_rank": 15,
+          "old_text": "発車まで残り五分あるので売店に寄る時間は",
+          "new_text": "発車まで残り五分あるので売店に"
+        },
+        {
+          "arm": "general",
+          "group_rank": 17,
+          "old_text": "あくびをすると涙が出る仕組みは",
+          "new_text": "あくびをすると涙が"
+        },
+        {
+          "arm": "general",
+          "group_rank": 25,
+          "old_text": "水泳の背泳ぎで進行方向を確かめるには",
+          "new_text": "水泳の背泳ぎで進行方向を"
+        },
+        {
+          "arm": "general",
+          "group_rank": 33,
+          "old_text": "公衆電話から国際電話をかける方法は",
+          "new_text": "公衆電話から国際電話を"
+        },
+        {
+          "arm": "general",
+          "group_rank": 41,
+          "old_text": "動物園のフラミンゴが片足で立つのには",
+          "new_text": "動物園のフラミンゴが片足で"
+        },
+        {
+          "arm": "general",
+          "group_rank": 47,
+          "old_text": "一辺が三メートルの正方形の周囲は",
+          "new_text": "一辺が三メートルの正方形の"
+        },
+        {
+          "arm": "general",
+          "group_rank": 49,
+          "old_text": "横断歩道の白い部分が滑りやすいのは",
+          "new_text": "横断歩道の白い部分が"
+        },
+        {
+          "arm": "general",
+          "group_rank": 57,
+          "old_text": "流れ星が同じ方向から飛んでくるように見えるのは",
+          "new_text": "流れ星が同じ方向から"
+        },
+        {
+          "arm": "general",
+          "group_rank": 81,
+          "old_text": "鳩が首を前後に動かしながら歩くのは",
+          "new_text": "鳩が首を前後に動かしながら"
+        },
+        {
+          "arm": "general",
+          "group_rank": 89,
+          "old_text": "地球儀の軸が斜めになっている角度は",
+          "new_text": "地球儀の軸が斜めに"
+        },
+        {
+          "arm": "general",
+          "group_rank": 95,
+          "old_text": "十五秒の映像を繰り返して三分間流すには",
+          "new_text": "十五秒の映像を繰り返して三分間"
+        },
+        {
+          "arm": "general",
+          "group_rank": 113,
+          "old_text": "大きな貨物船が細い水路で方向を変えるときは",
+          "new_text": "大きな貨物船が細い水路で方向を"
+        },
+        {
+          "arm": "general",
+          "group_rank": 121,
+          "old_text": "皿を伏せて重ねる保管方法には",
+          "new_text": "皿を伏せて"
+        },
+        {
+          "arm": "general",
+          "group_rank": 129,
+          "old_text": "秋の夜に虫の鳴き声が大きく聞こえるのは",
+          "new_text": "秋の夜に虫の"
+        },
+        {
+          "arm": "general",
+          "group_rank": 137,
+          "old_text": "郵便ポストの投入口が二つある場合の使い分けは",
+          "new_text": "郵便ポストの投入口が二つ"
+        },
+        {
+          "arm": "general",
+          "group_rank": 145,
+          "old_text": "英語の日時表記で午前と午後を表す略語は",
+          "new_text": "英語の日時表記で"
+        },
+        {
+          "arm": "general",
+          "group_rank": 150,
+          "old_text": "片付ける棚を間違えていました、空けてほしいのは",
+          "new_text": "片付ける棚を間違えていました、空けてほしい"
+        }
+      ],
+      "inputs_sha256": "53c17cdfe6ae69c8b90541f268cc51e72318f4d0589b044a4a3119f16a44cd1c",
+      "reference_sha256": "14cf3915d81cef5db5ece8b435dd2e322c3262bba0d8d8e0ab0285a7d7de7c15"
+    },
+    {
+      "revision": "final-freeze-pre-labeling",
+      "previous_inputs_sha256": "53c17cdfe6ae69c8b90541f268cc51e72318f4d0589b044a4a3119f16a44cd1c",
+      "previous_reference_sha256": "14cf3915d81cef5db5ece8b435dd2e322c3262bba0d8d8e0ab0285a7d7de7c15",
+      "changed_count": 6,
+      "changes": [
+        {
+          "group_rank": 16,
+          "old_text": "長い間お借りしていた双六をきれいに拭いて",
+          "new_text": "長い間お借りしていた双六をきれいに"
+        },
+        {
+          "group_rank": 94,
+          "old_text": "赤の線を切ると言いましたが、そこは訂正して",
+          "new_text": "赤の線を切ると言いましたが、正しく伝えたいのは青の"
+        },
+        {
+          "group_rank": 104,
+          "old_text": "待ち合わせに遅れるので先に入場して",
+          "new_text": "待ち合わせに遅れるので入場の順番を"
+        },
+        {
+          "group_rank": 121,
+          "old_text": "皿を伏せて",
+          "new_text": "皿を伏せた状態で保管する方法の"
+        },
+        {
+          "group_rank": 150,
+          "old_text": "片付ける棚を間違えていました、空けてほしい",
+          "new_text": "片付ける棚を間違えていました、空ける段を"
+        },
+        {
+          "group_rank": 154,
+          "old_text": "次の音声案内を一文ずつ区切って",
+          "new_text": "次の音声案内を一文ずつの区"
+        }
+      ],
+      "reason": "Final review removes prefixes already interpretable as complete imperatives. Independent teacher labels remain the training targets; these references are provisional AI expectations.",
+      "inputs_sha256": "a235a8f0d92ee6ea97b1fdc07bde4f74232336cd06e2ad08cd4d31516fd97e9c",
+      "reference_sha256": "f51f8f06d7d3bda636311e9118705be6c0c4488cd17a8737d141dfacf405da9c"
+    }
+  ],
+  "weakness_analysis": {
+    "source": "teacher-comparison-20260927/paired-short-ids/predictions.jsonl",
+    "student": "runtime_config/codex",
+    "threshold": 0.75,
+    "ambiguous_reference_excluded": true,
+    "error_count": 14,
+    "error_split_counts": {
+      "eval": 14
+    },
+    "error_category_counts": {
+      "statement": 1,
+      "trailing_conjunction": 2,
+      "question_after_conjunction": 2,
+      "missing_argument": 3,
+      "unfinished_list": 4,
+      "indirect_request": 1,
+      "mid_word": 1
+    },
+    "all_errors_false_negatives": true,
+    "old_eval_now_development_only": true
+  },
+  "manual_review": {
+    "wait_rows_reviewed": 320,
+    "revision_events": 4,
+    "revised_rows": 104,
+    "reference_not_gold": true,
+    "remaining_limitation": "Speech prosody and conversational context are absent. Independent teacher scoring may disagree with these AI-authored expectations; training must use the teacher scores, not these booleans.",
+    "revision_operations": 106
+  },
+  "final_freeze": true
+}

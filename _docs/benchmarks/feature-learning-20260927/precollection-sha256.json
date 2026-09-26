@@ -1,0 +1,7 @@
+{
+  "_docs/benchmarks/feature-learning-20260927/PROTOCOL.md": "abd784e9275fbc8591dd2bf859f6e1a85f9f013e3367c9dda0063d4822173deb",
+  "_docs/benchmarks/feature-learning-20260927/blind/corpus/inputs.jsonl": "71148c4245db7e2eac7719a0f7a011bca8bf1e9ef03315172c631f4f7a11575d",
+  "_docs/benchmarks/feature-learning-20260927/blind/corpus/reference.jsonl": "53ffca28694d19f3d034f7b19de01215f08da75930a2cf5e4f6b7c9a088cc7e8",
+  "make-model/make_model/model.py": "4667c6fb552423cc9a9e0236b40b34f2c0957312d1505ba92f2c0065a756c40e",
+  "make-model/collect_teacher_comparison.py": "44dfa28a6fb866d99900411cde919a4fc35e9ee5ca56464292d2dfd3023b6ae4"
+}

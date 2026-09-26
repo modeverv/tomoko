@@ -298,3 +298,19 @@ Gemma cold warmup4.667秒および最初の長ID形式失敗14.977秒は別記�
 学生fitは同一サイズの行列計算で、今回の分散から教師交換による時間短縮は主張しない。
 判定の詳細は `_docs/benchmarks/teacher-comparison-20260927/REPORT.md`。
 runtimeの変更はないため音声E2Eは再測定していない。
+
+## 2026-09-27 苦手例追加と現行文字特徴のオフライン比較
+
+Apple M4 Max / 128 GiB、人工640追加例のCodex教師採点346.403秒(20件×32batch)。
+モデル作成や言語点検に要した時間は教師採点時間に含めない。
+
+| 条件 | fit中央値(各3回交互順) | resident mean | p95 |
+|---|---:|---:|---:|
+|baseline|2.215 s|0.2280 ms|0.2575 ms|
+|targeted320|2.239 s|0.2284 ms|0.2577 ms|
+|general320|2.292 s|0.2279 ms|0.2587 ms|
+|combined640|2.307 s|0.2272 ms|0.2558 ms|
+|combined640_char_only|2.409 s|0.2284 ms|0.2575 ms|
+
+warmup100、同一240文巡回1000回、全件is_final=True。char-onlyも同一predict実装を使うため、5補助特徴の計算自体は省略されず、専用最適化版の速度ではない。
+runtime変更なし、音声E2Eは再計測していない。学習内一致と未知例判定を分離し、詳細は_docs/benchmarks/feature-learning-20260927/REPORT.mdへ記録。

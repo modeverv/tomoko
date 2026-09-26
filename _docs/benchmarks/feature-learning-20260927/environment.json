@@ -1,0 +1,26 @@
+{
+  "started_at": "2026-09-26T15:56:28.935512+00:00",
+  "git_head": "1ed5130a4b5141518648bbe36782067f6ad23511",
+  "platform": "macOS-26.7-arm64-arm-64bit",
+  "python": "3.11.15",
+  "base_root": "_docs/benchmarks/teacher-comparison-20260927/paired-short-ids",
+  "scope": "synthetic offline only; no private conversations or JDD; no runtime deployment",
+  "protocol_sha256": "abd784e9275fbc8591dd2bf859f6e1a85f9f013e3367c9dda0063d4822173deb",
+  "experiment_python": "3.11.15 (main, May 10 2026, 19:23:07) [Clang 22.1.3 ]",
+  "executable": "/Users/seijiro/Sync/sync_work/by-llms/tomoko/.venv/bin/python",
+  "numpy": "2.4.6",
+  "cpu": "Apple M4 Max",
+  "memory_bytes": 137438953472,
+  "codex_cli": "codex-cli 0.154.0",
+  "teacher": "gpt-6-astra",
+  "reasoning": "medium",
+  "source_sha256": {
+    "make-model/probe_feature_learning.py": "95c3d895429b6c38f5627552e30e66bcf39b86186d214479f86ce735a09bf4f8",
+    "make-model/feature_learning_support.py": "1496dc4e5d8828f38cff59ca82c30fd6d6e2db98d5624784d4ad8b53ffbad565",
+    "make-model/analyze_feature_learning.py": "c9cbfdefae808668bf411c0f8cdb1d639ad4c0f37fea9226f67d534b766bebc1",
+    "make-model/make_model/model.py": "4667c6fb552423cc9a9e0236b40b34f2c0957312d1505ba92f2c0065a756c40e",
+    "make-model/collect_teacher_comparison.py": "44dfa28a6fb866d99900411cde919a4fc35e9ee5ca56464292d2dfd3023b6ae4"
+  },
+  "post_result_diagnostics_sha256": "e4e87b85a1bae0eb64f6fd488b09055dac880518f69839351d17f784d97bce51",
+  "post_result_diagnostics_change": "Added descriptive length profile and numeric coefficients after seeing fixed-condition results; no model/data/hyperparameter changes."
+}

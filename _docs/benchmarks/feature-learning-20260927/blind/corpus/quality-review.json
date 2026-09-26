@@ -1,0 +1,115 @@
+{
+  "version": 2,
+  "reviewed_at": "2026-09-26T16:06:45.345181+00:00",
+  "reason": "Pre-collection reference-quality review: topic endings and wh fragments can form elliptical questions. Conservative null annotations replace unsupported wait assertions.",
+  "authorized_by": "Parent task explicitly approved this routine quality correction before collection.",
+  "timing": "Before teacher scoring, student fitting, or inspection of any model outputs for this experiment.",
+  "teacher_outputs_seen": false,
+  "student_outputs_seen": false,
+  "new_training_set_seen": false,
+  "inputs_modified": false,
+  "inputs_sha256": "71148c4245db7e2eac7719a0f7a011bca8bf1e9ef03315172c631f4f7a11575d",
+  "old_reference_sha256": "53ffca28694d19f3d034f7b19de01215f08da75930a2cf5e4f6b7c9a088cc7e8",
+  "new_reference_sha256": "5086e27de28fe259f4ab00ca68b1de838d96a9a6e75528a613a9d8dc2d679644",
+  "changes": [
+    {
+      "id": "u61da1fdd49f4",
+      "group_id": "blind-g003",
+      "category": "conjunction",
+      "old_ready": false,
+      "new_ready": null,
+      "old_reason": "主節、対象、条件または訂正内容の続きが明示されており、ここでは待つという事前期待。",
+      "reason": "末尾の「受け取るには」は手順を尋ねる省略疑問として成立する。続きを述べる途中とも読め、テキストだけでwaitと断定しない。"
+    },
+    {
+      "id": "uaf2e07f0a413",
+      "group_id": "blind-g007",
+      "category": "conjunction",
+      "old_ready": false,
+      "new_ready": null,
+      "old_reason": "主節、対象、条件または訂正内容の続きが明示されており、ここでは待つという事前期待。",
+      "reason": "「〜の点では」は比較対象について相手の見解を求める省略疑問になりうる。自己説明の続きか質問かをテキストだけで確定しない。"
+    },
+    {
+      "id": "u35769fc99ecc",
+      "group_id": "blind-g046",
+      "category": "negation_quotation",
+      "old_ready": false,
+      "new_ready": null,
+      "old_reason": "主節、対象、条件または訂正内容の続きが明示されており、ここでは待つという事前期待。",
+      "reason": "「入れたものは」は対象を尋ねる疑問としても、対象を述べる前置きとしても成立する。切断位置からwaitを決めない。"
+    },
+    {
+      "id": "u974fe46d1c96",
+      "group_id": "blind-g053",
+      "category": "negation_quotation",
+      "old_ready": false,
+      "new_ready": null,
+      "old_reason": "主節、対象、条件または訂正内容の続きが明示されており、ここでは待つという事前期待。",
+      "reason": "「ほかに考えられるのは」は理由の候補を求める省略疑問として自然に成立する。続きを予告する説明との区別に抑揚が必要。"
+    },
+    {
+      "id": "u24054b6a073f",
+      "group_id": "blind-g067",
+      "category": "repair_list",
+      "old_ready": false,
+      "new_ready": null,
+      "old_reason": "主節、対象、条件または訂正内容の続きが明示されており、ここでは待つという事前期待。",
+      "reason": "「その次は」は列挙の続きを相手に尋ねる発話にも、自分で次項を述べる途中にもなる。明確なwait参照にしない。"
+    },
+    {
+      "id": "u3c639c12c4c6",
+      "group_id": "blind-g077",
+      "category": "statement_fragment",
+      "old_ready": false,
+      "new_ready": null,
+      "old_reason": "主節、対象、条件または訂正内容の続きが明示されており、ここでは待つという事前期待。",
+      "reason": "背景説明に続く「船は」は船がどうなったかを尋ねる省略疑問として読める。報告の途中との区別がテキストだけでは確定しない。"
+    },
+    {
+      "id": "ube756b513a74",
+      "group_id": "blind-g092",
+      "category": "nested_context",
+      "old_ready": false,
+      "new_ready": null,
+      "old_reason": "主節、対象、条件または訂正内容の続きが明示されており、ここでは待つという事前期待。",
+      "reason": "「誰に」で人物・相談相手を尋ねる疑問として終わる解釈が可能。述語が続く途中とも読めるので参照を保留する。"
+    },
+    {
+      "id": "u630d632556f6",
+      "group_id": "blind-g102",
+      "category": "nested_context",
+      "old_ready": false,
+      "new_ready": null,
+      "old_reason": "主節、対象、条件または訂正内容の続きが明示されており、ここでは待つという事前期待。",
+      "reason": "「使わない間は」は不使用時の扱いを尋ねる省略疑問になりうる。主節の続きを待つ必要があると断定しない。"
+    },
+    {
+      "id": "u6fac20615c57",
+      "group_id": "blind-g103",
+      "category": "nested_context",
+      "old_ready": false,
+      "new_ready": null,
+      "old_reason": "主節、対象、条件または訂正内容の続きが明示されており、ここでは待つという事前期待。",
+      "reason": "「誰から」で情報源を尋ねる省略疑問として成立する可能性がある。後続を述べる予定かどうかをテキストだけで確定しない。"
+    }
+  ],
+  "old_counts": {
+    "ready": 116,
+    "wait": 116,
+    "ambiguous": 8
+  },
+  "new_counts": {
+    "total": 240,
+    "groups": 120,
+    "ready": 116,
+    "wait": 107,
+    "ambiguous": 17
+  },
+  "binary_evaluated_items": 223,
+  "comparable_ready_wait_pairs": 107,
+  "binary_bootstrap_groups": 116,
+  "reporting": "Report accuracy and balanced_accuracy; the binary classes are now 116 ready and 107 wait. Pair ranking uses 107 groups; group bootstrap of item accuracy includes 116 groups with at least one unambiguous item.",
+  "review_trigger": "Parent shared two short training fragments as examples of the general elliptical-question annotation pitfall after the blind inputs/reference v1 were frozen. Reviewer did not read the new training files or any new model outputs.",
+  "training_fragments_communicated_during_quality_review": true
+}

@@ -1,0 +1,6 @@
+{
+  "normalized_cross_split_duplicates": [],
+  "near_cross_split_pair_count": 0,
+  "near_cross_split_pairs": [],
+  "near_filter": "1-4gram Jaccard>=0.4 then SequenceMatcher>=0.82; not semantic dedup"
+}

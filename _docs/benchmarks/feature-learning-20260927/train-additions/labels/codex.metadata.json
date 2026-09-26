@@ -1,0 +1,175 @@
+{
+  "teacher": "codex",
+  "model": "gpt-6-astra",
+  "reasoning": "medium",
+  "input_sha256": "a235a8f0d92ee6ea97b1fdc07bde4f74232336cd06e2ad08cd4d31516fd97e9c",
+  "seed": 20260927,
+  "prompt_id_scheme": "batch-local decimal ids mapped by explicit lookup",
+  "label_count": 640,
+  "batch_size": 20,
+  "batches": [
+    {
+      "batch_id": 0,
+      "count": 20,
+      "elapsed_ms": 11044.994249998126
+    },
+    {
+      "batch_id": 1,
+      "count": 20,
+      "elapsed_ms": 12133.523124997737
+    },
+    {
+      "batch_id": 2,
+      "count": 20,
+      "elapsed_ms": 10651.238749996992
+    },
+    {
+      "batch_id": 3,
+      "count": 20,
+      "elapsed_ms": 12608.972957998049
+    },
+    {
+      "batch_id": 4,
+      "count": 20,
+      "elapsed_ms": 10810.261667000304
+    },
+    {
+      "batch_id": 5,
+      "count": 20,
+      "elapsed_ms": 10653.508208000858
+    },
+    {
+      "batch_id": 6,
+      "count": 20,
+      "elapsed_ms": 10075.755500001833
+    },
+    {
+      "batch_id": 7,
+      "count": 20,
+      "elapsed_ms": 10063.794666006288
+    },
+    {
+      "batch_id": 8,
+      "count": 20,
+      "elapsed_ms": 10018.98295799765
+    },
+    {
+      "batch_id": 9,
+      "count": 20,
+      "elapsed_ms": 11873.36887499987
+    },
+    {
+      "batch_id": 10,
+      "count": 20,
+      "elapsed_ms": 10569.894374995783
+    },
+    {
+      "batch_id": 11,
+      "count": 20,
+      "elapsed_ms": 10427.823250000074
+    },
+    {
+      "batch_id": 12,
+      "count": 20,
+      "elapsed_ms": 10175.558583003294
+    },
+    {
+      "batch_id": 13,
+      "count": 20,
+      "elapsed_ms": 11032.887250003114
+    },
+    {
+      "batch_id": 14,
+      "count": 20,
+      "elapsed_ms": 10066.169290999824
+    },
+    {
+      "batch_id": 15,
+      "count": 20,
+      "elapsed_ms": 10553.265417001967
+    },
+    {
+      "batch_id": 16,
+      "count": 20,
+      "elapsed_ms": 10299.606207998295
+    },
+    {
+      "batch_id": 17,
+      "count": 20,
+      "elapsed_ms": 10048.972041004163
+    },
+    {
+      "batch_id": 18,
+      "count": 20,
+      "elapsed_ms": 11131.759083000361
+    },
+    {
+      "batch_id": 19,
+      "count": 20,
+      "elapsed_ms": 10494.668833001924
+    },
+    {
+      "batch_id": 20,
+      "count": 20,
+      "elapsed_ms": 10320.294584002113
+    },
+    {
+      "batch_id": 21,
+      "count": 20,
+      "elapsed_ms": 10159.314167001867
+    },
+    {
+      "batch_id": 22,
+      "count": 20,
+      "elapsed_ms": 10925.638000000617
+    },
+    {
+      "batch_id": 23,
+      "count": 20,
+      "elapsed_ms": 10056.092500002705
+    },
+    {
+      "batch_id": 24,
+      "count": 20,
+      "elapsed_ms": 9978.479707999213
+    },
+    {
+      "batch_id": 25,
+      "count": 20,
+      "elapsed_ms": 11550.72608300543
+    },
+    {
+      "batch_id": 26,
+      "count": 20,
+      "elapsed_ms": 13594.359875001828
+    },
+    {
+      "batch_id": 27,
+      "count": 20,
+      "elapsed_ms": 10901.9302089946
+    },
+    {
+      "batch_id": 28,
+      "count": 20,
+      "elapsed_ms": 12124.421959000756
+    },
+    {
+      "batch_id": 29,
+      "count": 20,
+      "elapsed_ms": 11110.480249997636
+    },
+    {
+      "batch_id": 30,
+      "count": 20,
+      "elapsed_ms": 10966.584042005707
+    },
+    {
+      "batch_id": 31,
+      "count": 20,
+      "elapsed_ms": 9951.689500005159
+    }
+  ],
+  "label_total_ms": 346375.01616502414,
+  "wall_total_ms": 346402.5222910059,
+  "timing_definition": "elapsed_ms per label is amortized batch cost, not item latency"
+}

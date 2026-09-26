@@ -1,0 +1,41 @@
+{
+  "counts": {
+    "total": 240,
+    "groups": 120,
+    "ready": 116,
+    "wait": 107,
+    "ambiguous": 17
+  },
+  "categories": {
+    "negation_quotation": 30,
+    "nested_context": 30,
+    "colloquial_fragment": 22,
+    "statement_fragment": 30,
+    "elliptical_question": 30,
+    "repair_list": 30,
+    "request_situation": 30,
+    "conjunction": 30,
+    "context_ambiguous": 8
+  },
+  "unique_ids": 240,
+  "unique_texts": 240,
+  "items_per_group": 2,
+  "split": "eval",
+  "previous_corpus_exact_overlap": 0,
+  "new_training_corpus_overlap": "not inspected; parent checks separately",
+  "shuffle_seed": 2026092702,
+  "sha256": {
+    "inputs.jsonl": "71148c4245db7e2eac7719a0f7a011bca8bf1e9ef03315172c631f4f7a11575d",
+    "reference.jsonl": "5086e27de28fe259f4ab00ca68b1de838d96a9a6e75528a613a9d8dc2d679644"
+  },
+  "author": "Codex independent data subagent",
+  "teacher_outputs_seen": false,
+  "student_outputs_seen": false,
+  "new_training_set_seen": false,
+  "human_validated": false,
+  "reference_version": 2,
+  "reference_quality_review": "quality-review.json",
+  "binary_evaluated_items": 223,
+  "comparable_ready_wait_pairs": 107,
+  "binary_bootstrap_groups": 116
+}
