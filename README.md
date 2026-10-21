@@ -1,103 +1,29 @@
-# Tomoko v2
+# Tomoko — 再構築用の記録
 
-Tomoko v2 is a rebuild of the local voice conversation runtime based on the
-lessons preserved in `v1/`. The v2 runtime keeps the browser thin, keeps
-PostgreSQL as the source of truth, and separates hot audio/model execution from
-the process that owns personality, floor control, and session boundaries.
+ローカル推論で動く、記憶と人格を持つ音声対話システム。
+2026-10-21 に、次の作り直しに備えて既存の実装を世代別に保管した。
 
-## Process Map
+- **[これまでに得られた知見](_docs/knowlaedge.md)** — v1・v2 の設計、実測、失敗、未解決事項、再利用候補。最初に読む。
+- **[v1](v1/README.md)** — 最初の実装と、その当時の設計・作業記録。
+- **[v2](v2/README.md)** — 今回まで root にあった実装・テスト・モデル学習実験・資料。
+- **[作業記録](v2/LOG.md)** — 今回の移動・検証結果も末尾に記録。
 
-- `hot-path-process`: owns `/ws`, microphone audio, VAD/STT observations, model
-  execution, TTS chunks, and browser delivery. It does not decide whether Tomoko
-  should speak.
-- `tomoko-process`: owns durable utterances, conversation sessions, prompt
-  requests, floor state, and deterministic speech decisions.
-- `think-process`: turns summaries, world information, calendar facts, and user
-  status into candidate records.
-- `info-aquire-process`: imports calendar and world information into v2 DB
-  tables.
-- `user-status-aquire-process`: captures screen/OCR/OS metadata and writes
-  structured observations.
-- `summary-process`: creates index-like summaries and embeddings outside the hot
-  path.
-- `evaluation-process`: records latency and quality evidence for later reports.
+新しい runtime はまだ実装していない。古い README・PLAN の「root」は、
+その文書が属する世代のディレクトリとして読む。
 
-## Running
+## 保管した v2 の確認
 
 ```bash
-make check
-make db-up
-make tmux-runtime
-make v2-report-latest
-make tmux-stop
+cd v2
+.venv/bin/python -m pytest -m unit -q
 ```
 
-`make tmux-runtime` is the v2 equivalent of the v1 runtime launcher. It starts
-dflash LLM windows, the sibling VOICEVOX streaming runtime, the hot-path server,
-and the separated v2 background processes. The short aliases from v1 are kept:
+このコマンドは同じ Mac に保管した既存環境での確認用。
+新規 checkout では `cd v2 && uv sync --frozen` で環境を作る。
+移動した既存 `.venv/bin/pytest` などは旧絶対パスを含むため、
+そのまま実行せず `python -m pytest` を使う。詳細は知見集の保管手順を参照。
 
-```bash
-make run    # alias for make tmux-runtime
-make a      # attach tmux
-make stop   # stop dflash and the tmux runtime
-```
-
-Useful focused runtime commands:
-
-```bash
-make llm-run
-make llm-stop
-make voicevox-run
-make v2-runtime-ready
-make v2-ocr-smoke
-make v2-llm-tts-smoke
-make v2-conversation-smoke
-make v2-scheduler-conversation-smoke
-make v2-scheduler-say-latency-smoke
-make v2-five-turn-smoke
-make v2-scheduler-report
-```
-
-The default main LLM path follows the v1 measured route: dflash on
-`127.0.0.1:8082` with `v1/loras/lora/fused_model` and
-`z-lab/gemma-4-26B-A4B-it-DFlash`. Summary/background LLM defaults to the 31B
-dflash route on `127.0.0.1:8081`. VOICEVOX defaults to the sibling
-`async-voicevox` streaming command and `127.0.0.1:50122`. Tomoko's VOICEVOX
-speech speed defaults to `TOMOKO_V2_VOICEVOX_SPEED=1.5`.
-
-`make v2-runtime-ready` treats the main 26B LLM and VOICEVOX as required for
-hot-path startup. The 31B summary/background route is probed as optional, so a
-slow or failed 31B load is visible in the logs but does not prevent `/ws` from
-coming up.
-`make llm-run` still starts both dflash routes. The launcher checks the actual
-`/v1/models` readiness before starting a tmux window, respawns stale windows,
-and retries dflash startup so a slow 31B cold load does not permanently leave
-`:8081` down.
-
-STT defaults to WhisperKit / Argmax CLI with `large-v3-v20240930_turbo`,
-`cpuAndNeuralEngine` for both encoder and decoder, and `transcribe
---stream-simulated` for partials from Tomoko's `/ws` audio chunks. Apple Speech
-remains available via `TOMOKO_V2_STT_BACKEND=apple_speech`. OCR prefers the root Vision.framework sidecar from
-`scripts/vision_ocr/` and falls back to `tesseract`. `make v2-conversation-smoke`
-starts a local hot-path server plus the tomoko heartbeat process with fake
-runtime providers, then sends float32 audio bytes over `/ws` to verify the
-VAD pre-roll -> STT -> tomoko adoption -> prompt -> binary WAV response path.
-`make v2-db-split-smoke` starts hot-path and tomoko-process separately with fake
-runtime providers and verifies the DB `LISTEN/NOTIFY` path:
-hot-path STT observation insert -> `v2_stt_observation` -> tomoko scheduler /
-speech-order insert -> `v2_speech_order` -> hot-path TTS/audio event insert.
-
-`v1/` is reference-only. When a v1 implementation detail is needed, move the
-smallest required idea or file into the v2 root explicitly and keep the new v2
-contract in root docs/tests.
-
-## Development Rules
-
-- `/ws` remains the only browser communication endpoint.
-- The browser only sends microphone audio, plays audio chunks, and renders JSON
-  events.
-- Cross-layer values use DTOs from `server/shared/models.py`; audio hot loops are
-  the explicit exception.
-- `LISTEN/NOTIFY` payloads are UUID strings only.
-- Deterministic models own floor control; LLMs do not decide whether Tomoko may
-  speak.
+`v2/v1 -> ../v1` は、v2 が参照していた v1 の学習済みモデルへの互換リンク。
+モデル、実会話ログ、ローカル実験環境、秘密を含み得る設定は、従来どおり Git 管理外。
+Docker の DB volume や外部のモデルキャッシュは、この移動による複製・削除をしていない。
+過去 runtime の再起動時には Compose project 名・volume とローカル環境を確認する。

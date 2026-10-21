@@ -1467,3 +1467,15 @@ AI作成の参照、38組の関連評価例、固定閾値0.75、小規模デー
 - 学習内教師一致99.8〜100%。文字Ridgeに学習内適合能力はあるが、未知例への汎化/較正が課題。新trainの教師ready/wait平均長さ28.42/19.75字に対し、新規評価22.06/21.54字。長さ係数が1.67→3.14へ増えた。5特徴同時除去のため長さだけの原因断定は不可。
 - 省略疑問/依頼として成立する切断文をwaitにしない。採点前の言語点検と曖昧例除外が必要で、結果を見て期待値を合わせない。今回の評価も以後は未見扱いしない。
 - 追加640採点346.403秒、fit約1.8〜2.4秒、常駐推論約0.228ms。詳細は_docs/benchmarks/feature-learning-20260927/REPORT.md。
+
+## 2026-10-21 確定した判断: 現行 v2 を履歴として保管する
+
+従来の「v2 は root に実装する」という配置判断は、今回のユーザー依頼により以後の配置には適用しない。現行の実装・資料・ローカル成果物を root の `v2/` に移し、既存 `v1/` は変更しない。再構築の知見は root の `_docs/knowlaedge.md` に集約する。新 runtime の設計や次の Phase の採用はこの作業では決定しない。
+
+移動前の `make-model` と launcher は `v1/loras/...` に依存しているため、保管後の `v2/v1 -> ../v1` の相対シンボリックリンクで元の参照を維持する。これはv1の複製ではない。Git履歴・rootの作業指示とignoreは維持する。Docker volumeと外部モデルキャッシュはファイル移動対象ではなく、旧Compose project名と移動済みvenvの絶対shebangは再実行時に確認が必要。
+
+### 2026-10-21 知見抽出時の実装照合で確認した残課題
+
+- SpeechOrderExecutor は runtime factory で protect_inflight_replace=True。current_order がある間の REPLACE は generation を進めず queued=True を返し、この分岐では後続orderをqueueへ保存もしない。APPEND の list は append/clear を確認できるが自動pop/drainがない。受領やqueued返却を後続再生・即時preemptionの保証としない。
+- summary/embedding は同一DTOのUUIDによる再INSERTには冪等だが、summarize_sessionは新UUIDを生成し、session_id UNIQUEはない。別workerによる同時生成まで一意とみなさない。
+- これらは新しい改修の採用ではなく現行sourceの制限の記録であり、コードは変更しない。root `_docs/knowlaedge.md` に詳細と出典をまとめた。

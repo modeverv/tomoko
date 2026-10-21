@@ -3860,3 +3860,40 @@
 - 先行テストred→green、最終full unit: 312 passed / 7 deselected。
 - 変更Python5ファイルruff PASS、git diff --check PASS。
 - 教師raw640対応/全8960学生予測/事前固定データSHA/元baseline再現を独立点検済み。
+
+## 2026-10-21 セッション1 v1/v2 知見抽出と現行プロジェクトの保管
+
+### やること（開始時に書く）
+- ユーザー依頼により、既存v1と現行実装の設計・実測・失敗・残課題を詳細に抽出し、再構築用の `_docs/knowlaedge.md` にまとめる。新機能Phaseには進まない。
+- 現行実装・資料・ローカル成果物を既存v1の隣のv2へ移動する。v1およびGit履歴を保ち、機密・ignored成果物を新規追跡しない。
+- 移動前後のファイル保存、参照先、unitテストを確認し、実測の再実行と過去記録の引用を区別する。
+
+### やったこと
+- v1のMEMORY/LOG/PLAN/ARCHITECTURE/config/source、現行v2の同資料、8月設計レビュー、音声実測、9月教師比較・特徴学習、10月ローカル比較を抽出した。root `_docs/knowlaedge.md` に21節・約1,300行の知見集を作成し、実装/履歴実測/提案/未解決を区別した。
+- 現行top-level44項目をv2へrename。既存v1は保持し、v2/v1 -> ../v1で既存のモデル参照を維持した。.gitはrootのまま。rootにはREADME入口、既存AGENTS本文+配置追記、既存ignore+ローカル比較除外、知見集を置いた。
+- ignored/untrackedのvenv・モデル・ログ・録音・比較環境を削除せず移動した。比較資料はGitへ新規追加していない。Docker volume・外部モデルcache・外部runtimeは変更していない。
+- codebase-memory-mcpのindexを移動後のv1/v2配置へ更新した。
+
+### 詰まったこと・解決したこと
+- 追記型資料のため古い既定値と最終configが食い違った。日付と実装を照合して併記し、古い正式採用宣言を現行仕様と誤認しないようにした。
+- 独立レビューで、runtimeのinflight REPLACE保護分岐はqueuedを返すだけでorderを保存しないこと、append listに自動drainがないこと、summaryの冪等性は同一ID INSERTのみであることを確認した。改修せず知見・MEMORYへ記録した。
+- 教師比較の学習内一致率は全条件で約99.8〜100%（general320は479/480）と補正した。
+- 移動済みvenvのconsole scriptには旧絶対shebangが残る。検証はv2/.venv/bin/python -m pytestで行い、環境再作成とCompose project名/volume確認の注意を知見とREADMEに残した。
+
+### 検証
+- 移動前 `.venv/bin/python -m pytest -m unit -q`: 312 passed / 7 deselected、2.52秒。
+- 移動後 `cd v2 && .venv/bin/python -m pytest -m unit -q`: 312 passed / 7 deselected、2.07秒。
+- 移動前の追跡795件のSHA-256照合: 今回追記したLOG/MEMORY/PLAN/latency以外に内容差分なし。v1の追跡399件すべて一致。追記4文書は旧HEADの全文をprefixとして保持することも確認。
+- ignored/untrackedを含む50,852エントリの移動先存在・inode一致: 欠落0、変更0。
+- 知見集のMarkdownリンク282件を確認、ローカル参照の欠落0。独立担当間で主要数値・実装状態を相互点検した。
+- private seed、calendar URL、venv、モデル、実ログ、ローカル比較のignoreを確認。
+- 実音声E2E・DB integration・perfの再実行はしていない。処理コード/設定は保存したままであり、この作業で自然会話品質や低遅延目標を新たに達成したとはしない。
+
+### 次のセッションでやること
+- root `_docs/knowlaedge.md` を起点に、ユーザーの新しい依頼で再構築の最小構成と完了条件を決める。O0A-03等の旧計画を自動再開しない。
+- v1/v2を再起動する場合は世代のcwd、venv entry point、外部モデルとruntime、Docker project/volumeを再確認する。
+
+### 最終確認
+- v1の設定・cancel・playback telemetryを別担当が照合。v1のplayback_startedも予定時刻timer通知でありハードウェア可聴開始の直接測定ではないことを補足した。
+- 最終知見集は1,313行・21節。出典の存在、目次anchor、コードブロック、`git diff --cached --check` を確認。
+- staging後の全旧追跡795件の内容照合に合格。新たな追跡数はroot入口/管理用コピー/知見集/互換linkを含む800件。v1差分は0。

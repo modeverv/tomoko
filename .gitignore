@@ -54,3 +54,6 @@ make-model/artifacts/*
 
 v1/informations/archived
 v1/informations/failed
+
+# Local comparison environment/results were untracked before the v2 archive.
+/v2/comparisons/
