@@ -1,0 +1,599 @@
+{
+ "meta": {
+  "ok": 20,
+  "runs_total": 20,
+  "runs": [
+   {
+    "round": 0,
+    "prompt": "今日はちょっと疲れたよ。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 36.600625,
+    "total_ms": 203.555375,
+    "text": "あら、お疲れ様。ゆっくり休んだらどうかな？",
+    "chunks": 13,
+    "usage": {
+     "completion_tokens": 14,
+     "prompt_tokens": 50,
+     "total_tokens": 64,
+     "prompt_tokens_details": {
+      "cached_tokens": 45
+     }
+    }
+   },
+   {
+    "round": 0,
+    "prompt": "おはよう。よく眠れた？",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 50.003125,
+    "total_ms": 252.741084,
+    "text": "おはよう！うん、すごくよく眠れたよ。そっちはどう？😊",
+    "chunks": 16,
+    "usage": {
+     "completion_tokens": 17,
+     "prompt_tokens": 50,
+     "total_tokens": 67,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 0,
+    "prompt": "晩ごはん何にしようかな。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 53.288083,
+    "total_ms": 266.812667,
+    "text": "うーん、何かさっぱりしたものがいいんじゃない？和食とかどうかな？",
+    "chunks": 17,
+    "usage": {
+     "completion_tokens": 18,
+     "prompt_tokens": 51,
+     "total_tokens": 69,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 0,
+    "prompt": "さっき散歩してきたんだ。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 97.968167,
+    "total_ms": 216.191709,
+    "text": "あら、楽しかった？どこかいいところがあった？",
+    "chunks": 11,
+    "usage": {
+     "completion_tokens": 12,
+     "prompt_tokens": 51,
+     "total_tokens": 63,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 0,
+    "prompt": "最近ギターの練習が楽しいんだよね。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 56.525875,
+    "total_ms": 262.9875,
+    "text": "え、そうなんだ！どんな曲を弾くのが楽しいの？",
+    "chunks": 14,
+    "usage": {
+     "completion_tokens": 15,
+     "prompt_tokens": 53,
+     "total_tokens": 68,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 1,
+    "prompt": "今日はちょっと疲れたよ。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 74.174042,
+    "total_ms": 332.222167,
+    "text": "あら、そう？ゆっくり休んだらどうかな。温かい飲み物でも飲んでね。",
+    "chunks": 20,
+    "usage": {
+     "completion_tokens": 21,
+     "prompt_tokens": 50,
+     "total_tokens": 71,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 1,
+    "prompt": "おはよう。よく眠れた？",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 114.865459,
+    "total_ms": 796.335375,
+    "text": "今日のユーザーは「おはよう。よく眠れた？」と尋ねてきた。\n私は「Tomoko」というキャラクターで、ユーザーと音声で雑談する設定。\n返答は「話し言葉で、一文か二文で短く答える」必要がある。",
+    "chunks": 57,
+    "usage": {
+     "completion_tokens": 60,
+     "prompt_tokens": 50,
+     "total_tokens": 110,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 1,
+    "prompt": "晩ごはん何にしようかな。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 119.307292,
+    "total_ms": 251.820083,
+    "text": "うーん、何かさっぱりしたものがいいんじゃないかな？和食はどう？",
+    "chunks": 16,
+    "usage": {
+     "completion_tokens": 17,
+     "prompt_tokens": 51,
+     "total_tokens": 68,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 1,
+    "prompt": "さっき散歩してきたんだ。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 54.576667,
+    "total_ms": 222.451875,
+    "text": "え、そうなんだ！どんなところを散歩してきたの？",
+    "chunks": 13,
+    "usage": {
+     "completion_tokens": 14,
+     "prompt_tokens": 51,
+     "total_tokens": 65,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 1,
+    "prompt": "最近ギターの練習が楽しいんだよね。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 51.258166,
+    "total_ms": 226.876916,
+    "text": "へぇ、そうなんだ！どんな曲を弾くのが好き？",
+    "chunks": 14,
+    "usage": {
+     "completion_tokens": 15,
+     "prompt_tokens": 53,
+     "total_tokens": 68,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 2,
+    "prompt": "今日はちょっと疲れたよ。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 56.908792,
+    "total_ms": 215.124792,
+    "text": "あら、お疲れ様。ゆっくり休んだらどうかな？",
+    "chunks": 13,
+    "usage": {
+     "completion_tokens": 14,
+     "prompt_tokens": 50,
+     "total_tokens": 64,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 2,
+    "prompt": "おはよう。よく眠れた？",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 82.444792,
+    "total_ms": 238.937417,
+    "text": "おはよう！うん、ぐっすり眠れたよ😊 あなたは？",
+    "chunks": 15,
+    "usage": {
+     "completion_tokens": 16,
+     "prompt_tokens": 50,
+     "total_tokens": 66,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 2,
+    "prompt": "晩ごはん何にしようかな。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 53.254584,
+    "total_ms": 184.934084,
+    "text": "うーん、何食べたい気分？🤔",
+    "chunks": 9,
+    "usage": {
+     "completion_tokens": 10,
+     "prompt_tokens": 51,
+     "total_tokens": 61,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 2,
+    "prompt": "さっき散歩してきたんだ。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 69.060125,
+    "total_ms": 201.42,
+    "text": "へえ、どこかいいところに行ったの？",
+    "chunks": 10,
+    "usage": {
+     "completion_tokens": 11,
+     "prompt_tokens": 51,
+     "total_tokens": 62,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 2,
+    "prompt": "最近ギターの練習が楽しいんだよね。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 50.661458,
+    "total_ms": 239.934208,
+    "text": "へえ、そうなんだ！どんな曲を弾くのが楽しいの？",
+    "chunks": 15,
+    "usage": {
+     "completion_tokens": 16,
+     "prompt_tokens": 53,
+     "total_tokens": 69,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 3,
+    "prompt": "今日はちょっと疲れたよ。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 49.702709,
+    "total_ms": 192.794875,
+    "text": "あら、お疲れ様。ゆっくりしてね。🍵",
+    "chunks": 11,
+    "usage": {
+     "completion_tokens": 12,
+     "prompt_tokens": 50,
+     "total_tokens": 62,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 3,
+    "prompt": "おはよう。よく眠れた？",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 95.69625,
+    "total_ms": 826.936792,
+    "text": "今日の天気は晴れ、ユーザーはおはようの挨拶と「よく眠れた？」という質問をしてきた。\n私はTomokoとして、親しみやすく、かつ自然な話し言葉で応答する必要がある。\n質問には「はい」と答えつつ、相手の調子を",
+    "chunks": 57,
+    "usage": {
+     "completion_tokens": 60,
+     "prompt_tokens": 50,
+     "total_tokens": 110,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 3,
+    "prompt": "晩ごはん何にしようかな。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 70.520583,
+    "total_ms": 189.41925,
+    "text": "うーん、何食べたい気分？😊",
+    "chunks": 9,
+    "usage": {
+     "completion_tokens": 10,
+     "prompt_tokens": 51,
+     "total_tokens": 61,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 3,
+    "prompt": "さっき散歩してきたんだ。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 52.108083,
+    "total_ms": 216.429375,
+    "text": "へえ、楽しかった？どこを散歩したの？",
+    "chunks": 13,
+    "usage": {
+     "completion_tokens": 14,
+     "prompt_tokens": 51,
+     "total_tokens": 65,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   },
+   {
+    "round": 3,
+    "prompt": "最近ギターの練習が楽しいんだよね。",
+    "ok": true,
+    "thinking_detected": false,
+    "ttft_ms": 50.651542,
+    "total_ms": 251.149458,
+    "text": "へぇ、そうなんだ！どの曲を弾くのが一番楽しいの？",
+    "chunks": 16,
+    "usage": {
+     "completion_tokens": 17,
+     "prompt_tokens": 53,
+     "total_tokens": 70,
+     "prompt_tokens_details": {
+      "cached_tokens": 35
+     }
+    }
+   }
+  ],
+  "model": "gemma-4-e4b",
+  "server": "llamacpp-sshtunnel",
+  "endpoint": "/v1/chat/completions",
+  "max_tokens": 60,
+  "system_prompt": true,
+  "host": "127.0.0.1:18090",
+  "warmup_runs_excluded": 1
+ },
+ "series": [
+  {
+   "name": "tcp_connect",
+   "start_point": "connect() start",
+   "end_point": "TCP established",
+   "conditions": {
+    "host": "127.0.0.1:18090"
+   },
+   "started_at": "2026-11-10T09:16:18.507+09:00",
+   "finished_at": "2026-11-10T09:16:24.802+09:00",
+   "host": {
+    "machine": "arm64",
+    "platform": "macOS-27.0.1-arm64-arm-64bit"
+   },
+   "attempts": 20,
+   "failures": 0,
+   "failure_reasons": {},
+   "summary": {
+    "count": 20,
+    "threshold_ms": null,
+    "mean_ms": 0.95468545,
+    "min_ms": 0.262666,
+    "p50_ms": 0.479042,
+    "p95_ms": 2.15,
+    "p99_ms": 8.194459,
+    "max_ms": 8.194459,
+    "stdev_ms": 1.7562590569875767
+   },
+   "extra": {},
+   "samples_ms": [
+    8.194459,
+    0.496542,
+    0.351709,
+    0.40175,
+    0.505041,
+    0.363209,
+    0.592,
+    0.412375,
+    0.281166,
+    0.572584,
+    0.497625,
+    2.15,
+    1.221125,
+    0.4885,
+    0.733083,
+    0.374083,
+    0.409042,
+    0.307708,
+    0.479042,
+    0.262666
+   ]
+  },
+  {
+   "name": "ttft",
+   "start_point": "request sent",
+   "end_point": "first non-empty text chunk",
+   "conditions": {
+    "model": "gemma-4-e4b",
+    "server": "llamacpp-sshtunnel",
+    "endpoint": "/v1/chat/completions",
+    "max_tokens": 60,
+    "system_prompt": true,
+    "host": "127.0.0.1:18090",
+    "warmup_runs_excluded": 1
+   },
+   "started_at": "2026-11-10T09:16:18.504+09:00",
+   "finished_at": "2026-11-10T09:16:24.988+09:00",
+   "host": {
+    "machine": "arm64",
+    "platform": "macOS-27.0.1-arm64-arm-64bit"
+   },
+   "attempts": 20,
+   "failures": 0,
+   "failure_reasons": {},
+   "summary": {
+    "count": 20,
+    "threshold_ms": null,
+    "mean_ms": 66.97882095,
+    "min_ms": 36.600625,
+    "p50_ms": 54.576667,
+    "p95_ms": 114.865459,
+    "p99_ms": 119.307292,
+    "max_ms": 119.307292,
+    "stdev_ms": 23.36791989557966
+   },
+   "extra": {},
+   "samples_ms": [
+    36.600625,
+    50.003125,
+    53.288083,
+    97.968167,
+    56.525875,
+    74.174042,
+    114.865459,
+    119.307292,
+    54.576667,
+    51.258166,
+    56.908792,
+    82.444792,
+    53.254584,
+    69.060125,
+    50.661458,
+    49.702709,
+    95.69625,
+    70.520583,
+    52.108083,
+    50.651542
+   ]
+  },
+  {
+   "name": "total",
+   "start_point": "request sent",
+   "end_point": "stream end",
+   "conditions": {
+    "model": "gemma-4-e4b",
+    "server": "llamacpp-sshtunnel",
+    "endpoint": "/v1/chat/completions",
+    "max_tokens": 60,
+    "system_prompt": true,
+    "host": "127.0.0.1:18090",
+    "warmup_runs_excluded": 1
+   },
+   "started_at": "2026-11-10T09:16:18.507+09:00",
+   "finished_at": "2026-11-10T09:16:24.988+09:00",
+   "host": {
+    "machine": "arm64",
+    "platform": "macOS-27.0.1-arm64-arm-64bit"
+   },
+   "attempts": 20,
+   "failures": 0,
+   "failure_reasons": {},
+   "summary": {
+    "count": 20,
+    "threshold_ms": null,
+    "mean_ms": 289.4537501,
+    "min_ms": 184.934084,
+    "p50_ms": 226.876916,
+    "p95_ms": 796.335375,
+    "p99_ms": 826.936792,
+    "max_ms": 826.936792,
+    "stdev_ms": 181.82222382219072
+   },
+   "extra": {},
+   "samples_ms": [
+    203.555375,
+    252.741084,
+    266.812667,
+    216.191709,
+    262.9875,
+    332.222167,
+    796.335375,
+    251.820083,
+    222.451875,
+    226.876916,
+    215.124792,
+    238.937417,
+    184.934084,
+    201.42,
+    239.934208,
+    192.794875,
+    826.936792,
+    189.41925,
+    216.429375,
+    251.149458
+   ]
+  },
+  {
+   "name": "chunks_per_s",
+   "start_point": "first chunk",
+   "end_point": "stream end (value is chunks/s, not ms)",
+   "conditions": {
+    "model": "gemma-4-e4b",
+    "server": "llamacpp-sshtunnel",
+    "endpoint": "/v1/chat/completions",
+    "max_tokens": 60,
+    "system_prompt": true,
+    "host": "127.0.0.1:18090",
+    "warmup_runs_excluded": 1
+   },
+   "started_at": "2026-11-10T09:16:18.507+09:00",
+   "finished_at": "2026-11-10T09:16:24.988+09:00",
+   "host": {
+    "machine": "arm64",
+    "platform": "macOS-27.0.1-arm64-arm-64bit"
+   },
+   "attempts": 20,
+   "failures": 0,
+   "failure_reasons": {},
+   "summary": {
+    "count": 20,
+    "threshold_ms": null,
+    "mean_ms": 75.62355543914485,
+    "min_ms": 60.75357212018575,
+    "p50_ms": 73.96733021525814,
+    "p95_ms": 89.4610848274799,
+    "p99_ms": 113.19661963802423,
+    "max_ms": 113.19661963802423,
+    "stdev_ms": 11.051166570264401
+   },
+   "extra": {},
+   "samples_ms": [
+    71.87576274409683,
+    73.98713133932655,
+    74.93282366024889,
+    84.58552189207796,
+    62.96569640968387,
+    73.62967663493001,
+    82.17530764777003,
+    113.19661963802423,
+    71.48166869285429,
+    74.02398661874088,
+    75.84567932446782,
+    89.4610848274799,
+    60.75357212018575,
+    67.99643774217829,
+    73.96733021525814,
+    69.88502780788153,
+    76.58218709651358,
+    67.2841857848583,
+    73.0276633900858,
+    74.81374519623436
+   ]
+  }
+ ]
+}

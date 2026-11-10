@@ -1,0 +1,326 @@
+{
+ "model": "mlx-community/whisper-large-v3-turbo",
+ "source": "_docs/v0/data/moshi-force-q4-20261110T090027.json",
+ "rows": [
+  {
+   "mode": "a",
+   "index": 1,
+   "target": "ほんとだね、空がすごく青くて気持ちいいよ。",
+   "asr": "本当だねすごくやおくね気持ちいいてよすごこう",
+   "cer_vs_target_substring": 0.6842105263157895,
+   "cer_vs_text_stream": 0.6842105263157895
+  },
+  {
+   "mode": "a",
+   "index": 2,
+   "target": "うん、昨日新しいパン屋さんを見つけたんだ。",
+   "asr": "こんにちは大塩くん知事をくんのみ新しい島ハーサンに見つけたんだ",
+   "cer_vs_target_substring": 0.47368421052631576,
+   "cer_vs_text_stream": 0.6666666666666666
+  },
+  {
+   "mode": "a",
+   "index": 3,
+   "target": "寒いから、あったかいお鍋なんてどうかな。",
+   "asr": "ご視聴ありがとうございました",
+   "cer_vs_target_substring": 0.9444444444444444,
+   "cer_vs_text_stream": 0.95
+  },
+  {
+   "mode": "a",
+   "index": 4,
+   "target": "まだ決めてないけど、公園を散歩したいな。",
+   "asr": "あなたはまだ決めたのでかっこいいです英的",
+   "cer_vs_target_substring": 0.7777777777777778,
+   "cer_vs_text_stream": 0.8936170212765957
+  },
+  {
+   "mode": "a",
+   "index": 5,
+   "target": "それは眠いよね、今日は早めに寝ようね。",
+   "asr": "こんにちはレミニューね今日は早めに会いようねシェンナビアンス様にアニー",
+   "cer_vs_target_substring": 0.9411764705882353,
+   "cer_vs_text_stream": 0.9090909090909091
+  },
+  {
+   "mode": "a",
+   "index": 6,
+   "target": "最近読んだ推理小説がすごく面白かったよ。",
+   "asr": "愛の最近読んだ反国幕がすごく面白かったよ愛のくじび",
+   "cer_vs_target_substring": 0.47368421052631576,
+   "cer_vs_text_stream": 0.5789473684210527
+  },
+  {
+   "mode": "a",
+   "index": 7,
+   "target": "毎日続けてるのがえらいよ、きっと上達してるって。",
+   "asr": "ああ いや 全然です ああんまりなんか連絡しないや そうです 落としていくだと",
+   "cer_vs_target_substring": 0.9090909090909091,
+   "cer_vs_text_stream": 0.6818181818181818
+  },
+  {
+   "mode": "a",
+   "index": 8,
+   "target": "明日は晴れて、少し暖かくなるみたいだよ。",
+   "asr": "こんにちはああ、あれは何やしおわらさあしかつわたいよああ、あれやしよ",
+   "cer_vs_target_substring": 0.8888888888888888,
+   "cer_vs_text_stream": 0.8620689655172413
+  },
+  {
+   "mode": "a",
+   "index": 9,
+   "target": "私はコーヒーかな、朝に飲むのが好きなんだ。",
+   "asr": "おーじゃあコーヒーかなコーチャーに飲むのが好きなんだそんならにこれ",
+   "cer_vs_target_substring": 0.7058823529411765,
+   "cer_vs_text_stream": 0.8235294117647058
+  },
+  {
+   "mode": "a",
+   "index": 10,
+   "target": "ほんとに寒いね、風邪ひかないように気をつけてね。",
+   "asr": "はー...はー...はー...はー...はー...はー...はー...はー...はー...はー...はー... Anwes... if I was on a... a to- a- a- a------------------ご視聴ありがとうございました",
+   "cer_vs_target_substring": 0.9545454545454546,
+   "cer_vs_text_stream": 2.7083333333333335
+  },
+  {
+   "mode": "b",
+   "index": 1,
+   "target": "ほんとだね、空がすごく青くて気持ちいいよ。",
+   "asr": "こんにちは そうね今度ね愛がすごくハワケです 気持ちいいよ",
+   "cer_vs_target_substring": 0.5263157894736842,
+   "cer_vs_text_stream": 0.38461538461538464
+  },
+  {
+   "mode": "b",
+   "index": 2,
+   "target": "うん、昨日新しいパン屋さんを見つけたんだ。",
+   "asr": "こんにちはえっとまいそうじょんばいそうじょんがろうではんたしがエプリンでアイリーでするよみな",
+   "cer_vs_target_substring": 0.8947368421052632,
+   "cer_vs_text_stream": 1.2222222222222223
+  },
+  {
+   "mode": "b",
+   "index": 3,
+   "target": "寒いから、あったかいお鍋なんてどうかな。",
+   "asr": "何しようかなサンデーから食ハーッと会おこらにこんなに",
+   "cer_vs_target_substring": 0.8333333333333334,
+   "cer_vs_text_stream": 0.84
+  },
+  {
+   "mode": "b",
+   "index": 4,
+   "target": "まだ決めてないけど、公園を散歩したいな。",
+   "asr": "一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一人一",
+   "cer_vs_target_substring": 1.0,
+   "cer_vs_text_stream": 4.46
+  },
+  {
+   "mode": "b",
+   "index": 5,
+   "target": "それは眠いよね、今日は早めに寝ようね。",
+   "asr": "こんにちはえ、そんな部類多いよねそう、やにーはいっ",
+   "cer_vs_target_substring": 0.7647058823529411,
+   "cer_vs_text_stream": 0.5384615384615384
+  },
+  {
+   "mode": "b",
+   "index": 6,
+   "target": "最近読んだ推理小説がすごく面白かったよ。",
+   "asr": "えぇ、そっくら最近はほんの集落がすごく面白かったよ。",
+   "cer_vs_target_substring": 0.3684210526315789,
+   "cer_vs_text_stream": 0.5
+  },
+  {
+   "mode": "b",
+   "index": 7,
+   "target": "毎日続けてるのがえらいよ、きっと上達してるって。",
+   "asr": "ああ、いや、全然です。あんまりマクならないんで、ちょっと前にかけてるの。えらいよ。きっとほべつでもるって。",
+   "cer_vs_target_substring": 0.4090909090909091,
+   "cer_vs_text_stream": 0.48
+  },
+  {
+   "mode": "b",
+   "index": 8,
+   "target": "明日は晴れて、少し暖かくなるみたいだよ。",
+   "asr": "こんにちはお天気をせらせたおそわりによくなりげたさせるみたいなのかあれなんだこれの意味やでこれなん",
+   "cer_vs_target_substring": 0.9444444444444444,
+   "cer_vs_text_stream": 1.1515151515151516
+  },
+  {
+   "mode": "b",
+   "index": 9,
+   "target": "私はコーヒーかな、朝に飲むのが好きなんだ。",
+   "asr": "あん",
+   "cer_vs_target_substring": 0.9411764705882353,
+   "cer_vs_text_stream": 1.0
+  },
+  {
+   "mode": "b",
+   "index": 10,
+   "target": "ほんとに寒いね、風邪ひかないように気をつけてね。",
+   "asr": "うん本当は本当に趣味でサッカーする上に行かないように気をつけてね",
+   "cer_vs_target_substring": 0.4090909090909091,
+   "cer_vs_text_stream": 0.6551724137931034
+  },
+  {
+   "mode": "c",
+   "index": 1,
+   "target": "ほんとだね、空がすごく青くて気持ちいいよ。",
+   "asr": "おみがー いいうにいくべもー",
+   "cer_vs_target_substring": 0.9473684210526315,
+   "cer_vs_text_stream": 0.9473684210526315
+  },
+  {
+   "mode": "c",
+   "index": 2,
+   "target": "うん、昨日新しいパン屋さんを見つけたんだ。",
+   "asr": " Premier",
+   "cer_vs_target_substring": 1.0,
+   "cer_vs_text_stream": 1.0
+  },
+  {
+   "mode": "c",
+   "index": 3,
+   "target": "寒いから、あったかいお鍋なんてどうかな。",
+   "asr": "はい",
+   "cer_vs_target_substring": 0.9444444444444444,
+   "cer_vs_text_stream": 0.95
+  },
+  {
+   "mode": "c",
+   "index": 4,
+   "target": "まだ決めてないけど、公園を散歩したいな。",
+   "asr": " families or so you",
+   "cer_vs_target_substring": 1.0,
+   "cer_vs_text_stream": 1.0
+  },
+  {
+   "mode": "c",
+   "index": 5,
+   "target": "それは眠いよね、今日は早めに寝ようね。",
+   "asr": "こんにちはよたんにえ",
+   "cer_vs_target_substring": 0.8823529411764706,
+   "cer_vs_text_stream": 0.6818181818181818
+  },
+  {
+   "mode": "c",
+   "index": 6,
+   "target": "最近読んだ推理小説がすごく面白かったよ。",
+   "asr": "ご視聴ありがとうございました",
+   "cer_vs_target_substring": 0.8947368421052632,
+   "cer_vs_text_stream": 0.8947368421052632
+  },
+  {
+   "mode": "c",
+   "index": 7,
+   "target": "毎日続けてるのがえらいよ、きっと上達してるって。",
+   "asr": "あやりや全然ですあんまりまかまくにつりいいいい",
+   "cer_vs_target_substring": 0.9545454545454546,
+   "cer_vs_text_stream": 0.7045454545454546
+  },
+  {
+   "mode": "c",
+   "index": 8,
+   "target": "明日は晴れて、少し暖かくなるみたいだよ。",
+   "asr": "こんにちは秋大塚で",
+   "cer_vs_target_substring": 1.0,
+   "cer_vs_text_stream": 0.8275862068965517
+  },
+  {
+   "mode": "c",
+   "index": 9,
+   "target": "私はコーヒーかな、朝に飲むのが好きなんだ。",
+   "asr": "アイフィンでモリーアイフィンで欲しいさ",
+   "cer_vs_target_substring": 1.0,
+   "cer_vs_text_stream": 1.0588235294117647
+  },
+  {
+   "mode": "c",
+   "index": 10,
+   "target": "ほんとに寒いね、風邪ひかないように気をつけてね。",
+   "asr": "おもさんうんけん",
+   "cer_vs_target_substring": 0.9090909090909091,
+   "cer_vs_text_stream": 0.875
+  },
+  {
+   "mode": "none",
+   "index": 1,
+   "target": "ほんとだね、空がすごく青くて気持ちいいよ。",
+   "asr": "こんにちは そうですね はい今日はお天気良ければお休みの日は放映で熟唱したいですね",
+   "cer_vs_target_substring": null,
+   "cer_vs_text_stream": 0.32
+  },
+  {
+   "mode": "none",
+   "index": 2,
+   "target": "うん、昨日新しいパン屋さんを見つけたんだ。",
+   "asr": "こんにちはめったお酒よく飲んでるよほんと結構飲んでる",
+   "cer_vs_target_substring": null,
+   "cer_vs_text_stream": 0.16666666666666666
+  },
+  {
+   "mode": "none",
+   "index": 3,
+   "target": "寒いから、あったかいお鍋なんてどうかな。",
+   "asr": "何しようかなぁまだマヨン選択だねうーん",
+   "cer_vs_target_substring": null,
+   "cer_vs_text_stream": 0.42857142857142855
+  },
+  {
+   "mode": "none",
+   "index": 4,
+   "target": "まだ決めてないけど、公園を散歩したいな。",
+   "asr": "はい、今回はご旅行で行くということですけど、旅行ですか、何ですか?",
+   "cer_vs_target_substring": null,
+   "cer_vs_text_stream": 0.582089552238806
+  },
+  {
+   "mode": "none",
+   "index": 5,
+   "target": "それは眠いよね、今日は早めに寝ようね。",
+   "asr": "こんにちはえ、そんな感じで寄っちゃったんですかよろっかしですかよろっかししたらああなるんですね",
+   "cer_vs_target_substring": null,
+   "cer_vs_text_stream": 0.2
+  },
+  {
+   "mode": "none",
+   "index": 6,
+   "target": "最近読んだ推理小説がすごく面白かったよ。",
+   "asr": "そうですね結構いろんな本を読むんですけどやっぱりおすすめの本はあってらっしゃる特性ですね",
+   "cer_vs_target_substring": null,
+   "cer_vs_text_stream": 0.23255813953488372
+  },
+  {
+   "mode": "none",
+   "index": 7,
+   "target": "毎日続けてるのがえらいよ、きっと上達してるって。",
+   "asr": "いやいや全然です あんまりマクならないんでなんでなんでなんでしょうねいやもうと思えば",
+   "cer_vs_target_substring": null,
+   "cer_vs_text_stream": 0.28
+  },
+  {
+   "mode": "none",
+   "index": 8,
+   "target": "明日は晴れて、少し暖かくなるみたいだよ。",
+   "asr": "こんにちはお天気おすすめのアプリあるよ",
+   "cer_vs_target_substring": null,
+   "cer_vs_text_stream": 0.36666666666666664
+  },
+  {
+   "mode": "none",
+   "index": 9,
+   "target": "私はコーヒーかな、朝に飲むのが好きなんだ。",
+   "asr": "あん",
+   "cer_vs_target_substring": null,
+   "cer_vs_text_stream": 1.0
+  },
+  {
+   "mode": "none",
+   "index": 10,
+   "target": "ほんとに寒いね、風邪ひかないように気をつけてね。",
+   "asr": "うん、ほんとだね寒いの苦手だけどこの辺だと結構寒くなるよね",
+   "cer_vs_target_substring": null,
+   "cer_vs_text_stream": 0.06666666666666667
+  }
+ ]
+}

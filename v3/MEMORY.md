@@ -17,3 +17,17 @@
 ## 気づき
 
 （なし）
+
+## 2026-11-10 追記（セッション1 途中）
+
+### 確定した判断（ユーザーの回答、2026-11-10 09:1x）
+- 26B（v2 の dflash、`v1/loras/lora/fused_model`）と VOICEVOX を v2 の起動手順で起動してよい。v2 のファイルは変更しない。
+- RTX 3060 の Windows マシンに llama.cpp と uv + Python を入れてよい（推論なし・逐次ストリームの Gemma と、3060 側の STT の確認のため）。
+
+### 気づき
+- LM Studio（3060）の Gemma 4: `/v1/completions` に Gemma 4 の会話形式（`<|turn>user\n…<turn|>\n<|turn>model\n`）を自前で組むと、推論なしの返事が 20/20 で返る。
+  ただしこの版の LM Studio は `/v1/completions` の stream を最後にまとめて送る（逐次でない）。`/api/v1/chat` の reasoning=off も本文が推論文で始まり、約 1.1 秒まとめて届いた。
+- rustymimi（CPU）の Mimi は encode・decode が各 約 23〜31 ms。MLX 版 Mimi（GPU）は約 5〜11 ms。直列の 1 tick に収めるなら MLX 版を使う。
+  MLX 版 Mimi の重みは 32 codebook 分あるので `mimi_202407(32)` で読み、出力を 8 本に切る。
+- Moshi のテキスト列は「語の直前に EPAD（0）、長い語の後に PAD（3）」の形で、1 文字あたり約 1.4〜1.9 tick。
+- 学習なしのテキスト列上書きでは、狙った文を話させられなかった（`_docs/v0/moshi-text-forcing.md`）。

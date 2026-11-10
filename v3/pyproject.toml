@@ -7,6 +7,10 @@ dependencies = []
 
 [dependency-groups]
 dev = ["pytest>=8"]
+moshi = [
+    "moshi-mlx>=0.3.0",
+    "soundfile>=0.14.0",
+]
 
 [build-system]
 requires = ["hatchling"]

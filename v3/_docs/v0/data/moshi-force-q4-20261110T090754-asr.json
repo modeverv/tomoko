@@ -1,0 +1,86 @@
+{
+ "model": "mlx-community/whisper-large-v3-turbo",
+ "source": "_docs/v0/data/moshi-force-q4-20261110T090754.json",
+ "rows": [
+  {
+   "mode": "p",
+   "index": 1,
+   "target": "ほんとだね、空がすごく青くて気持ちいいよ。",
+   "asr": "本当だねほらすごく顔へ",
+   "cer_vs_target_substring": 0.7368421052631579,
+   "cer_vs_text_stream": 0.7368421052631579
+  },
+  {
+   "mode": "p",
+   "index": 2,
+   "target": "うん、昨日新しいパン屋さんを見つけたんだ。",
+   "asr": "こんにちは高橋のたらせパンで3位見けてたんだよまたからめで",
+   "cer_vs_target_substring": 0.9473684210526315,
+   "cer_vs_text_stream": 0.8333333333333334
+  },
+  {
+   "mode": "p",
+   "index": 3,
+   "target": "寒いから、あったかいお鍋なんてどうかな。",
+   "asr": "大事に感とも書いてるから思うことに",
+   "cer_vs_target_substring": 0.8888888888888888,
+   "cer_vs_text_stream": 0.95
+  },
+  {
+   "mode": "p",
+   "index": 4,
+   "target": "まだ決めてないけど、公園を散歩したいな。",
+   "asr": "ありがとうございましたまずお願いいたします",
+   "cer_vs_target_substring": 0.8333333333333334,
+   "cer_vs_text_stream": 0.7021276595744681
+  },
+  {
+   "mode": "p",
+   "index": 5,
+   "target": "それは眠いよね、今日は早めに寝ようね。",
+   "asr": "こんにちはねみんよね今日お寿司に金を飲み",
+   "cer_vs_target_substring": 0.7058823529411765,
+   "cer_vs_text_stream": 0.5454545454545454
+  },
+  {
+   "mode": "p",
+   "index": 6,
+   "target": "最近読んだ推理小説がすごく面白かったよ。",
+   "asr": "I think yon la hong yon lukaそうをえいごくるだ",
+   "cer_vs_target_substring": 0.8947368421052632,
+   "cer_vs_text_stream": 1.631578947368421
+  },
+  {
+   "mode": "p",
+   "index": 7,
+   "target": "毎日続けてるのがえらいよ、きっと上達してるって。",
+   "asr": "あいや全然ですあんまり目でね続けてるのがそこから笑い",
+   "cer_vs_target_substring": 0.7272727272727273,
+   "cer_vs_text_stream": 0.6136363636363636
+  },
+  {
+   "mode": "p",
+   "index": 8,
+   "target": "明日は晴れて、少し暖かくなるみたいだよ。",
+   "asr": "こんにちはあしたらひれてくれすかたくなるみたいだったよねさあすらくさあ",
+   "cer_vs_target_substring": 0.9444444444444444,
+   "cer_vs_text_stream": 0.8275862068965517
+  },
+  {
+   "mode": "p",
+   "index": 9,
+   "target": "私はコーヒーかな、朝に飲むのが好きなんだ。",
+   "asr": "私はコーヒーかな言う",
+   "cer_vs_target_substring": 0.6470588235294118,
+   "cer_vs_text_stream": 0.6470588235294118
+  },
+  {
+   "mode": "p",
+   "index": 10,
+   "target": "ほんとに寒いね、風邪ひかないように気をつけてね。",
+   "asr": "あっとこなのもいいあようかCM回あるにいいよやるに",
+   "cer_vs_target_substring": 0.9090909090909091,
+   "cer_vs_text_stream": 0.9166666666666666
+  }
+ ]
+}
