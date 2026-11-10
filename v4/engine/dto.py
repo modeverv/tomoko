@@ -22,7 +22,7 @@ class Utterance:
 
 @dataclass(frozen=True)
 class VadEvent:
-    kind: str  # "start" か "end"
+    kind: str  # "start"、"sustained"（声が続いた）、"end"、"drop"（短すぎて捨てた）
     at_s: float
     utterance: Utterance | None = None
 
@@ -39,12 +39,15 @@ class EngineConfig:
     tts_voice: str = "jf_alpha"  # Kokoro の声
     voicevox_url: str = "http://127.0.0.1:50021"
     voicevox_speaker: int = 8  # 春日部つむぎ（ノーマル）
+    voicevox_streaming: bool = False  # 逐次に返す口（/streaming_synthesis）を使う
     tts_pre_silence_s: float | None = None  # 声の頭の無音。None はエンジンの値のまま
     first_cut_min_chars: int | None = None  # 最初の句を読点で切る。None は切らない
     vad_threshold: float = 0.5
     vad_silence_s: float = 0.4  # この長さの無音で、言い終わりとする
     vad_preroll_s: float = 0.5  # 発話の頭が欠けないように、手前を残す
     vad_min_voiced_s: float = 0.2  # これより短い音は発話にしない
+    barge_in: bool = False  # ユーザーが話し始めたら、返事を止める
+    barge_in_voiced_s: float = 0.5  # 声がこの長さ続いたら、割り込みとみなす。これより短い声は相づちとして聞き流す
     send_chunk_s: float = 0.2  # 声を送る断片の長さ
     trace_dir: Path = field(default_factory=lambda: Path("work/traces"))
     system_prompt: str = (
@@ -69,6 +72,8 @@ class EngineConfig:
                     values[f.name] = int(raw) if raw.lstrip("-").isdigit() else float(raw)
                 except ValueError:
                     values[f.name] = raw
+            elif kind is bool:
+                values[f.name] = raw.lower() in ("1", "true", "yes", "on")
             else:
                 values[f.name] = kind(raw)
         return cls(**values)

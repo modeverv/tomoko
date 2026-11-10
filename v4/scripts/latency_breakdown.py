@@ -42,7 +42,9 @@ def breakdown(run: dict, result: dict, trace: list[dict]) -> dict | None:
 
     stt0, stt1 = first("stt_start"), first("stt_final")
     llm0, llm1 = first("llm_start"), first("llm_first_token")
-    tts0, tts1 = first("tts_start", phrase=0), first("tts_done", phrase=0)
+    tts0 = first("tts_start", phrase=0)
+    # 逐次合成では、最初の断片が届いた時刻までを TTS の区間とする
+    tts1 = first("tts_first_audio", phrase=0) or first("tts_done", phrase=0)
     if not all((stt0, stt1, llm0, llm1, tts0, tts1)):
         return None
     arrived = next((e["t"] for e in run["events"]

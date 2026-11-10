@@ -22,6 +22,7 @@ engine = [
     "mlx-whisper>=0.4",
     "kokoro-mlx>=0.1",
     "misaki[ja]>=0.9",
+    "maai>=0.2.27",
 ]
 # 中身の採点: 書き起こしと採点役
 content = ["mlx-whisper>=0.4", "anthropic>=0.80"]

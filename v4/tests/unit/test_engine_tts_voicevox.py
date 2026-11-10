@@ -92,3 +92,37 @@ def test_config_reads_overrides_from_the_environment(monkeypatch):
     assert (cfg.tts, cfg.first_cut_min_chars, cfg.tts_pre_silence_s, cfg.vad_silence_s) == ("kokoro", 4, 0.0, 0.3)
     assert str(cfg.trace_dir) == "work/traces/x"
     assert EngineConfig().first_cut_min_chars is None
+
+
+async def test_voicevox_stream_yields_audio_as_it_arrives_even_when_cut_mid_sample():
+    audio = np.linspace(-0.5, 0.5, 2400, dtype=np.float32)
+    body, seen = wav_bytes(audio), []
+
+    async def parts():
+        # 頭の途中、16 bit の途中で切れた断片を混ぜる
+        for a, b in ((0, 30), (30, 101), (101, 2000), (2000, len(body))):
+            yield body[a:b]
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.path, dict(request.url.params)))
+        if request.url.path == "/audio_query":
+            return httpx.Response(200, json={"speedScale": 1.0})
+        return httpx.Response(200, content=parts())
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        tts = VoicevoxTts(client, "http://vv", speaker=8, segment_s=0.3)
+        pieces = [p async for p in tts.stream("こんにちは。")]
+    assert seen[1] == ("/streaming_synthesis", {"speaker": "8", "segment_length": "0.3"})
+    assert len(pieces) == 3  # 頭だけの断片からは、音は出ない
+    assert np.allclose(np.concatenate(pieces), audio, atol=1e-3)
+
+
+async def test_voicevox_stream_refuses_a_format_it_would_play_wrong():
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/audio_query":
+            return httpx.Response(200, json={})
+        return httpx.Response(200, content=wav_bytes(np.zeros(100, dtype=np.float32), rate=48_000))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        with pytest.raises(ValueError):
+            [p async for p in VoicevoxTts(client, "http://vv", speaker=8).stream("あ。")]

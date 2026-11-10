@@ -45,6 +45,7 @@ class Models:
         self.http = httpx.AsyncClient(timeout=60)
         self.transcribe = None  # 音 → 文字
         self.synthesize = None  # 句 → 声。TTS ごとに呼び方が違うので、ここでそろえる
+        self.synthesize_stream = None  # 句 → 声の断片。逐次に返せる TTS だけ
 
     def load(self) -> None:
         if self.cfg.stt == "mlx":
@@ -65,6 +66,8 @@ class Models:
                              pre_silence_s=self.cfg.tts_pre_silence_s)
             await vv.warm()
             self.synthesize = vv.synthesize
+            if self.cfg.voicevox_streaming:
+                self.synthesize_stream = vv.stream
         if self.cfg.stt == "whispercpp":
             remote = WhisperCppStt(self.http, self.cfg.stt_url)
             await remote.warm()
@@ -106,12 +109,12 @@ async def ws(socket: WebSocket) -> None:
         await socket.send_text(json.dumps(obj, ensure_ascii=False))
 
     vad = VadSensor(silero_prob(), cfg.vad_threshold, cfg.vad_silence_s, cfg.vad_preroll_s,
-                    cfg.vad_min_voiced_s)
+                    cfg.vad_min_voiced_s, sustain_s=cfg.barge_in_voiced_s)
     session = BaselineSession(
         cfg, vad, trace,
         transcribe=models.transcribe,
         reply=lambda messages: stream_reply(models.http, cfg, messages),
-        synthesize=models.synthesize,
+        synthesize=models.synthesize, synthesize_stream=models.synthesize_stream,
         send_audio=send_audio, send_json=send_json,
     )
     try:
