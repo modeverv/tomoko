@@ -83,7 +83,7 @@ class BaselineSession:
         phrases: asyncio.Queue[str | None] = asyncio.Queue()
 
         async def think() -> str:
-            splitter, full, first = PhraseSplitter(), "", True
+            splitter, full, first = PhraseSplitter(self._cfg.first_cut_min_chars), "", True
             tr.event("llm_start", turn=turn)
             try:
                 async for delta in self._reply(list(self._history)):

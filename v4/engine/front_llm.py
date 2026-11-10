@@ -11,23 +11,32 @@ import httpx
 from engine.dto import EngineConfig
 
 _ENDS = "。！？!?\n"
+_COMMAS = "、，,"
 
 
 class PhraseSplitter:
-    """届いた文字を、文の切れ目で句にする。短い断片を TTS に渡すと余計な音が出る（v1 の経験）。"""
+    """届いた文字を、文の切れ目で句にする。短い断片を TTS に渡すと余計な音が出る（v1 の経験）。
 
-    def __init__(self) -> None:
+    first_cut_min_chars を与えると、返事の最初の句だけ、最初の読点でも切る（声を早く出すため）。
+    読点までの文字数がこの数に満たないときは切らない。
+    """
+
+    def __init__(self, first_cut_min_chars: int | None = None) -> None:
         self._buf = ""
+        self._first_cut = first_cut_min_chars
 
     def feed(self, delta: str) -> list[str]:
         self._buf += delta
         out: list[str] = []
         start = 0
         for i, ch in enumerate(self._buf):
-            if ch in _ENDS:
+            early = (self._first_cut is not None and ch in _COMMAS
+                     and i + 1 - start >= self._first_cut)
+            if ch in _ENDS or early:
                 phrase = self._buf[start : i + 1].strip()
                 if phrase.strip(_ENDS):
                     out.append(phrase)
+                    self._first_cut = None  # 最初の句が出たら、あとは文の切れ目だけ
                 start = i + 1
         self._buf = self._buf[start:]
         return out

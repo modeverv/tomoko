@@ -27,8 +27,9 @@ from engine.baseline import BaselineSession
 from engine.dto import EngineConfig
 from engine.front_llm import stream_reply
 from engine.sensors.stt import WhisperStt
+from engine.sensors.stt_remote import WhisperCppStt
 from engine.sensors.vad import VadSensor, silero_prob
-from engine.speaker.tts_kokoro import KokoroTts
+from engine.speaker.tts_voicevox import VoicevoxTts
 from engine.trace import Trace
 
 _HEADER = struct.Struct("<II")
@@ -42,14 +43,36 @@ class Models:
         self.cfg = cfg
         self.mlx = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mlx")
         self.http = httpx.AsyncClient(timeout=60)
-        self.stt: WhisperStt | None = None
-        self.tts: KokoroTts | None = None
+        self.transcribe = None  # 音 → 文字
+        self.synthesize = None  # 句 → 声。TTS ごとに呼び方が違うので、ここでそろえる
 
     def load(self) -> None:
-        self.stt = WhisperStt(self.cfg.stt_model)
-        self.tts = KokoroTts(self.cfg.tts_voice)
-        self.stt.warm()
-        self.tts.warm()
+        if self.cfg.stt == "mlx":
+            stt = WhisperStt(self.cfg.stt_model)
+            stt.warm()
+            self.transcribe = lambda audio: self.run(stt.transcribe, audio)
+        if self.cfg.tts == "kokoro":
+            from engine.speaker.tts_kokoro import KokoroTts
+
+            kokoro = KokoroTts(self.cfg.tts_voice)
+            kokoro.warm()
+            self.synthesize = lambda phrase: self.run(kokoro.synthesize, phrase)
+
+    async def start(self) -> None:
+        await self.run(self.load)
+        if self.cfg.tts == "voicevox":
+            vv = VoicevoxTts(self.http, self.cfg.voicevox_url, self.cfg.voicevox_speaker,
+                             pre_silence_s=self.cfg.tts_pre_silence_s)
+            await vv.warm()
+            self.synthesize = vv.synthesize
+        if self.cfg.stt == "whispercpp":
+            remote = WhisperCppStt(self.http, self.cfg.stt_url)
+            await remote.warm()
+            self.transcribe = remote.transcribe
+        if self.transcribe is None:
+            raise ValueError(f"知らない STT: {self.cfg.stt}")
+        if self.synthesize is None:
+            raise ValueError(f"知らない TTS: {self.cfg.tts}")
 
     async def run(self, fn, *args):
         return await asyncio.get_running_loop().run_in_executor(self.mlx, fn, *args)
@@ -57,8 +80,8 @@ class Models:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    models = Models(EngineConfig())
-    await models.run(models.load)
+    models = Models(EngineConfig.from_env())
+    await models.start()
     app.state.models = models
     yield
     await models.http.aclose()
@@ -74,6 +97,7 @@ async def ws(socket: WebSocket) -> None:
     cfg = models.cfg
     name = f"{time.strftime('%Y%m%dT%H%M%S')}-{next(_ids):04d}.jsonl"
     trace = Trace(cfg.trace_dir / name)
+    trace.event("config", **{k: str(v) for k, v in vars(cfg).items() if k != "system_prompt"})
 
     async def send_audio(generation: int, seq: int, samples: np.ndarray) -> None:
         await socket.send_bytes(_HEADER.pack(generation, seq) + samples.astype("<f4").tobytes())
@@ -85,9 +109,9 @@ async def ws(socket: WebSocket) -> None:
                     cfg.vad_min_voiced_s)
     session = BaselineSession(
         cfg, vad, trace,
-        transcribe=lambda audio: models.run(models.stt.transcribe, audio),
+        transcribe=models.transcribe,
         reply=lambda messages: stream_reply(models.http, cfg, messages),
-        synthesize=lambda phrase: models.run(models.tts.synthesize, phrase),
+        synthesize=models.synthesize,
         send_audio=send_audio, send_json=send_json,
     )
     try:
