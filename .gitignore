@@ -57,3 +57,8 @@ v1/informations/failed
 
 # Local comparison environment/results were untracked before the v2 archive.
 /v2/comparisons/
+
+# Secrets. Never commit real keys.
+.env
+.env.*
+!.env.example

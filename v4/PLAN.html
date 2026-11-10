@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tomoko v4 進め方</title>
+<style>
+:root {
+  --bg: #fbfaf7; --fg: #1f2328; --muted: #5b6370; --line: #d9d6cf;
+  --card: #ffffff; --accent: #1f6f5c; --accent-bg: #e6f2ee;
+  --warn: #8a5a00; --warn-bg: #fbf1d9; --code-bg: #f0eee8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #16181c; --fg: #e6e6e3; --muted: #a0a7b1; --line: #33373e;
+    --card: #1e2126; --accent: #6cc7ae; --accent-bg: #1d332d;
+    --warn: #e6b450; --warn-bg: #3a2f14; --code-bg: #262a30;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #16181c; --fg: #e6e6e3; --muted: #a0a7b1; --line: #33373e;
+  --card: #1e2126; --accent: #6cc7ae; --accent-bg: #1d332d;
+  --warn: #e6b450; --warn-bg: #3a2f14; --code-bg: #262a30;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  line-height: 1.75; font-size: 16px;
+}
+main { max-width: 920px; margin: 0 auto; padding: 32px 16px 80px; }
+h1 { font-size: 1.7rem; margin: 0 0 4px; }
+h2 { font-size: 1.25rem; margin: 48px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--line); }
+h3 { font-size: 1.05rem; margin: 28px 0 8px; }
+p { margin: 10px 0; }
+.meta { color: var(--muted); font-size: 0.9rem; }
+nav { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 18px; margin: 20px 0; }
+nav ol { margin: 4px 0; padding-left: 22px; }
+a { color: var(--accent); }
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; font-family: ui-monospace, Menlo, monospace; }
+pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.55; }
+pre code { background: none; padding: 0; }
+.tablewrap { overflow-x: auto; margin: 12px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+th { background: var(--accent-bg); }
+.note { background: var(--accent-bg); border-left: 4px solid var(--accent); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 14px 0; }
+.warn { background: var(--warn-bg); border-left: 4px solid var(--warn); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 14px 0; }
+.gate { background: var(--card); border: 1px solid var(--accent); border-radius: 8px; padding: 10px 14px; margin: 12px 0; }
+.gate b { color: var(--accent); }
+ul.check { list-style: none; padding-left: 4px; }
+ul.check li { padding-left: 26px; position: relative; margin: 4px 0; }
+ul.check li::before { content: "☐"; position: absolute; left: 0; color: var(--muted); }
+ul.check li.done::before { content: "☑"; color: var(--accent); }
+.human { border-left: 4px solid var(--warn); padding-left: 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Tomoko v4 進め方</h1>
+<p class="meta">作成: 2026-11-10 / Claude Code（claude-fable-5-2）/ 構成は <a href="ARCHITECTURE.html">ARCHITECTURE.html</a></p>
+
+<div class="note">
+<b>進め方の芯:</b> 先に採点の仕組みを作る。次に、いちばん単純な構成で基準の数字を取る。そのあとは、1 か所変えるたびに同じ入力で測り、数字が良くなった変更だけを残す。
+</div>
+
+<nav>
+<b>目次</b>
+<ol>
+  <li><a href="#rules">作業の規則</a></li>
+  <li><a href="#loop">1 回の変更の回し方</a></li>
+  <li><a href="#phases">段階の一覧</a></li>
+  <li><a href="#p0">P0 足場</a></li>
+  <li><a href="#p1">P1 ベンチ</a></li>
+  <li><a href="#p2">P2 基準線</a></li>
+  <li><a href="#p3">P3 指揮者とセンサー</a></li>
+  <li><a href="#p4">P4 裏の仕事</a></li>
+  <li><a href="#p5">P5 長時間</a></li>
+  <li><a href="#p6">P6 実際に話す</a></li>
+  <li><a href="#p7">P7 公開の準備</a></li>
+  <li><a href="#human">人間がすること</a></li>
+  <li><a href="#stop">止まって相談する条件</a></li>
+  <li><a href="#start">新しいセッションの始め方</a></li>
+</ol>
+</nav>
+
+<h2 id="rules">1. 作業の規則</h2>
+
+<ul>
+  <li><b>最初に読むもの</b>: この文書、<a href="ARCHITECTURE.html">ARCHITECTURE.html</a>、リポジトリ直下の <code>AGENTS.md</code>、<code>v4/MEMORY.md</code>、<code>v4/LOG.md</code> の末尾。</li>
+  <li><b>作業場所</b>: 新しいものはすべて <code>v4/</code> の中に置く。<code>v1/</code>、<code>v2/</code>、<code>v3/</code> は読むだけにする。</li>
+  <li><b>この文書の直し方</b>: 追記だけにする。既存の記述を変えるときは、末尾に新しい節を足して、どこを改めるかを書く。チェックの状態だけは書き換えてよい。</li>
+  <li><b>記録</b>: 作業の始めと終わりに <code>v4/LOG.md</code> へ書く。判断と気づきは <code>v4/MEMORY.md</code> へ書く。どちらも追記だけ。</li>
+  <li><b>テスト</b>: 採点器と方針は、実装の前に単体試験を書く。テストが通る単位でコミットする。</li>
+  <li><b>コミット</b>: 作者名を、作業したエージェントの名前にする。メッセージには理由を書く。<code>git push --force</code> は禁止。</li>
+  <li><b>シェル</b>: コマンドの頭に <code>rtk</code> を付ける。</li>
+  <li><b>共通記録</b>: 決定、報告、問いは、Google Drive の llm に新しい org イベントとして保存する（ユーザーの全体指示）。</li>
+  <li><b>私的な情報</b>: 本人の録音と実会話の記録は、Git に入れず、クラウドに送らない。</li>
+</ul>
+
+<h2 id="loop">2. 1 回の変更の回し方</h2>
+
+<p>P3 以降は、この手順を繰り返す。</p>
+<ol>
+  <li><b>仮説を書く。</b> 「どの軸の、どの数字が、なぜ動くはずか」を <code>LOG.md</code> に 1〜2 行で書く。</li>
+  <li><b>変更は 1 か所。</b> 2 つ同時に変えない。</li>
+  <li><b>小さい組で測る。</b> 各軸 10 件ほどの組を回す。数分で終わる量にする。</li>
+  <li><b>前回と比べる。</b> <code>bench/report.py</code> が、前回との差を軸ごとに出す。</li>
+  <li><b>残すか戻すかを決める。</b> 狙った数字が良くなり、ほかの軸が悪くなっていなければ残す。それ以外は戻し、結果だけを記録に残す。</li>
+  <li><b>節目で全件を測る。</b> 段階の関門の前と、方針に規則を足したあとは、全件を回す。</li>
+</ol>
+
+<div class="warn">
+<b>数字の読み方の注意。</b> 同じ構成でも、LLM の出力と TTS の長さで結果は揺れる。P2 で同じ構成を 3 回測り、揺れの幅を先に記録する。その幅より小さい差を、改善と呼ばない。
+</div>
+
+<h2 id="phases">3. 段階の一覧</h2>
+
+<div class="tablewrap">
+<table>
+<tr><th>段階</th><th>作るもの</th><th>関門</th><th>学習</th></tr>
+<tr><td>P0 足場</td><td>ディレクトリ、記録、依存の確認</td><td>部品のライセンスの一覧ができている</td><td>なし</td></tr>
+<tr><td>P1 ベンチ</td><td>シナリオ、入力音声、実行、採点、偽のシステム</td><td>偽のシステムが期待どおりの点になる</td><td>なし</td></tr>
+<tr><td>P2 基準線</td><td>いちばん単純な通しの経路とトレース</td><td>全軸で数字が出て、揺れの幅が分かっている</td><td>なし</td></tr>
+<tr><td>P3 指揮者</td><td>tick の指揮者、MaAI、途中経過、先読み、停止</td><td>間合いの軸が基準線より良い（目標は P2 のあとに置く）</td><td>なし</td></tr>
+<tr><td>P4 裏の仕事</td><td>依頼、Web 検索、結果の差し込み、待つ間の受け答え</td><td>調べものの QA で、黙り込まずに答えられる</td><td>なし</td></tr>
+<tr><td>P5 長時間</td><td>文脈の圧縮、30 分の連続</td><td>30 分で遅れが悪化しない</td><td>なし</td></tr>
+<tr><td>P6 実際に話す</td><td>ヘッドセットでの会話、本人の録音の組、記憶と人格</td><td>ユーザーが日常で使えると判断する</td><td>任意</td></tr>
+<tr><td>P7 公開の準備</td><td>ライセンスの整理、説明、ベンチの切り出し</td><td>他人の機械で手順どおりに動く</td><td>なし</td></tr>
+</table>
+</div>
+
+<p>各段階は、関門を通るまで次へ進まない。関門を通ったら、結果を報告して止まり、ユーザーの承認を待つ。</p>
+
+<h2 id="p0">4. P0 足場</h2>
+
+<ul class="check">
+  <li class="done"><code>v4/ARCHITECTURE.html</code> と <code>v4/PLAN.html</code>（この文書）</li>
+  <li><code>v4/LOG.md</code>、<code>v4/MEMORY.md</code>、<code>v4/README.md</code>、<code>pyproject.toml</code>（uv、Python 3.11 以上、ruff、pytest）</li>
+  <li><code>.gitignore</code> に <code>v4/work/</code> を足す</li>
+  <li>部品のライセンスの一覧を <code>v4/_docs/licenses.md</code> に作る。対象は、MaAI（コードと重み）、Silero VAD、Whisper の MLX 版、Kokoro、VOICEVOX、Apple の音声、Gemma 4、Full-Duplex-Bench（参考にするだけで写さない）。モデルカードと LICENSE を実際に読み、読んだ日付と場所を書く。</li>
+  <li>v2 から持ち込む候補を挙げる。MaAI の 160 サンプルの組み直し、VAD の先読み、Apple Speech の常駐部品など。持ち込むときは、直した理由とテストを一緒に読む。</li>
+</ul>
+<div class="gate"><b>関門:</b> ライセンスの一覧ができていて、OSS の既定の構成に入れられない部品が分かっている。</div>
+
+<h2 id="p1">5. P1 ベンチ</h2>
+
+<p>エンジンより先に作る。この段階では、対話エンジンは存在しなくてよい。</p>
+
+<h3>作るもの</h3>
+<ul class="check">
+  <li><b>シナリオの型</b>（<code>bench/scenario.py</code>）: 台本、流す時刻または引き金、注釈、期待する中身。</li>
+  <li><b>入力音声の生成</b>（<code>bench/generate/</code>）: 台本を TTS で読ませ、言いよどみの無音を入れ、発話の開始と終了の時刻を注釈に書く。同じ台本と種からは同じ音声ができること。</li>
+  <li><b>再生の規則</b>（<code>bench/player.py</code>）: 届いた声の断片を時刻に置く。停止が来たら、その世代を捨てる。</li>
+  <li><b>実行</b>（<code>bench/run.py</code>）: <code>/ws</code> につなぎ、入力を実時間の速さで送り、<code>output.wav</code> と実行の記録を残す。</li>
+  <li><b>採点</b>（<code>bench/score/</code>）: T1〜T5、R1 の時刻の採点。C1〜C3 の中身の採点。</li>
+  <li><b>偽のシステム</b>（<code>bench/fakes/</code>）: 無言、おしゃべり、時計じかけ。</li>
+  <li><b>報告</b>（<code>bench/report.py</code>）: 軸ごとの表、前回との差、無音の回と前提不成立の回の件数。</li>
+</ul>
+
+<h3>シナリオの量</h3>
+<div class="tablewrap">
+<table>
+<tr><th>組</th><th>件数</th><th>使いどころ</th></tr>
+<tr><td>小</td><td>各軸 10 件ほど</td><td>変更のたび</td></tr>
+<tr><td>全</td><td>各軸 50 件ほど</td><td>関門の前</td></tr>
+<tr><td>本人</td><td>各軸 10 件ほど</td><td>P3 以降の関門で併記</td></tr>
+</table>
+</div>
+<p>台本は、最初は人が書いたものと LLM に作らせたものを混ぜる。小の組と全の組は、台本を重ねない。全の組を見ながら方針を調整しない。</p>
+
+<h3>P1 で決める定義</h3>
+<ul>
+  <li>出力にかける VAD の設定と、発話区間のまとめ方（短い切れ目をつなぐ長さ）。</li>
+  <li>短い反応と本発話の境。仮の値は有声 1.0 秒。</li>
+  <li>各軸の窓の長さ（応答を待つ秒数、割り込みと数える範囲）。</li>
+  <li>採点役の LLM と、採点の指示文。</li>
+</ul>
+<p>決めた定義は <code>v4/_docs/bench-definitions.md</code> に書き、以後は変えるたびに版を上げる。版の違う結果を比べない。</p>
+
+<div class="gate"><b>関門:</b> 3 つの偽のシステムが、期待どおりの点になる。同じ偽のシステムを 2 回測って、時刻の指標が VAD の刻み以内で一致する。</div>
+
+<div class="human"><b>人間がすること:</b> 採点役は Claude の API（2026-11-10 決定）。API の鍵を用意する。合成の入力を数件聴いて、言いよどみと割り込みが不自然すぎないかを見る。</div>
+
+<h2 id="p2">6. P2 基準線</h2>
+
+<p>いちばん単純な構成を通しで動かし、最初の数字を取る。賢い仕組みは入れない。</p>
+
+<ul class="check">
+  <li><b>通しの経路</b>: <code>/ws</code>、VAD（無音 400 ms で言い終わりとする）、STT、手前の LLM、TTS、送信。</li>
+  <li><b>トレース</b>: 入力の開始と終了、VAD の判定、STT の途中経過と確定、LLM の最初の文字と完了、TTS の最初の音と完了、送信、停止の要求と適用を、別のイベントで記録する。</li>
+  <li><b>ブラウザ</b>: マイクと再生だけのページ。ヘッドセットで実際に話せること。</li>
+  <li><b>STT の途中経過の実測</b>: 200〜300 ms おきの再認識で、遅れ、書き換わりの割合、LLM と同時に回したときの時間を取る。</li>
+  <li><b>揺れの幅</b>: 同じ構成で小の組を 3 回測り、軸ごとの幅を記録する。</li>
+  <li><b>報告</b>: <code>v4/_docs/baseline.md</code> に、全軸の数字と、遅れの内訳（どの部品に何 ms）を書く。</li>
+</ul>
+
+<div class="gate"><b>関門:</b> 全軸で数字が出ている。無音の回が 0 件ではなくても、件数が報告されている。揺れの幅が分かっている。</div>
+
+<div class="note">
+この段階の数字は悪くてよい。目的は、どの軸がどれだけ悪いかを知り、P3 の目標を置くことである。P3 の目標の数値は、基準線の報告を見てユーザーと決める。
+</div>
+
+<h2 id="p3">7. P3 指揮者とセンサー</h2>
+
+<p>ここが v4 の本体である。<a href="#loop">2 節の回し方</a>で、1 つずつ足す。順番は、効果が大きく単純なものから。</p>
+
+<div class="tablewrap">
+<table>
+<tr><th>順</th><th>足すもの</th><th>狙う軸</th></tr>
+<tr><td>1</td><td>tick の指揮者と世代。P2 の経路を、指揮者が働き手を起こす形に組み直す。振る舞いは変えない。</td><td>R1（数字が P2 と同じであること）</td></tr>
+<tr><td>2</td><td><code>STOP</code>。ユーザーが話し始めたら、LLM と TTS を取り消し、再生を止める。</td><td>T4</td></tr>
+<tr><td>3</td><td>STT の途中経過と <code>PREPARE</code>。無音を待たずに返事を作り始める。</td><td>T1 の遅れ</td></tr>
+<tr><td>4</td><td>MaAI <code>vap</code>。言い終わりの見込みで <code>SPEAK</code> を早め、言いよどみでは待つ。</td><td>T1、T2</td></tr>
+<tr><td>5</td><td>相手の相づちと割り込みの区別。短い声では止まらない。</td><td>T3</td></tr>
+<tr><td>6</td><td>MaAI <code>bc</code> による自分の相づち。</td><td>T5</td></tr>
+<tr><td>7</td><td>手前の LLM の比較（E4B と 26B）。</td><td>C1、C2、T1 の遅れ</td></tr>
+</table>
+</div>
+
+<ul class="check">
+  <li>4 の前に、MaAI <code>vap</code> の当たり具合を単独で測る。合成の入力と本人の録音の両方で、言い終わりと言いよどみを見分けられる割合を出す。</li>
+  <li>方針の規則は、足すたびに単体試験を書く。閾値には名前を付け、トレースに残す。</li>
+  <li>規則の数が 10 を超えそうになったら止まり、整理するか学習に置き換えるかをユーザーと相談する。</li>
+</ul>
+
+<div class="gate"><b>関門:</b> 間合いの軸（T1〜T4）が、P2 のあとに決めた目標に届いている。R1 は 0 件。本人の録音の組でも、同じ傾向が出ている。</div>
+
+<div class="human"><b>人間がすること:</b> 本人の録音の組を作る（台本を読む。30 分ほど）。節目ごとに 10 分ほど実際に話して、数字と体感が合っているかを伝える。相づちの頻度は、聴いて決める。</div>
+
+<h2 id="p4">8. P4 裏の仕事</h2>
+
+<ul class="check">
+  <li><b>依頼</b>: 手前の LLM が、調べものが要ると判断したときに印を出す。指揮者が裏の仕事を起こす。</li>
+  <li><b>Web 検索</b>: 検索と、結果を短くまとめる大きい LLM。v1 の調査の仕組み（tomoko-research-operator）の境界を読み、使える部分を持ち込む。</li>
+  <li><b>差し込み</b>: 結果を文脈の末尾に <code>&lt;info&gt;</code> として足す。出どころと取得した時刻を付ける。</li>
+  <li><b>待つ間</b>: 手前の LLM が先に短く受け、会話を続ける。結果が届いたら、切りの良いところで伝える。</li>
+  <li><b>決定的な側の責任</b>: 期限切れの結果を捨てる、同じ依頼を重ねない、私的な情報を検索語に入れない、失敗を知らせる。</li>
+  <li><b>割り込みとの関係</b>: 裏の仕事の最中でも、ユーザーは割り込める。話題が変わったら、届いた結果を言わない選択ができる。</li>
+</ul>
+
+<div class="gate"><b>関門:</b> C3 で、最初の受け答えが T1 と同じ速さで出る。答えが届くまでの間に、決めた秒数を超えて黙り込まない。正答率が報告されている。T1〜T4 が P3 より悪くなっていない。</div>
+
+<div class="human"><b>人間がすること:</b> 検索に使う手段を決める（どの検索サービスを使うか、費用をかけるか）。検索語に入れてはいけない情報の範囲を決める。</div>
+
+<h2 id="p5">9. P5 長時間</h2>
+
+<ul class="check">
+  <li><b>圧縮</b>: 約 5 分ごとに、古い部分を要約に置き換える。原本は残す。切り替えは依頼と依頼の間に行う。</li>
+  <li><b>30 分の連続</b>: シナリオをつなげて 30 分流し、5 分ごとに T1 の遅れと C2 の正答率を出す。</li>
+  <li><b>資源</b>: メモリの伸び、tick の締切超過、圧縮の瞬間の途切れを記録する。</li>
+</ul>
+<div class="gate"><b>関門:</b> 30 分で、T1 の遅れが最初の 5 分より悪化していない（揺れの幅を超えない）。圧縮の前に話した内容を、圧縮のあとに聞かれて答えられる。</div>
+
+<h2 id="p6">10. P6 実際に話す</h2>
+
+<ul class="check">
+  <li>ヘッドセットで日常的に使い、気になった場面をシナリオに足す。</li>
+  <li>本人の録音の組を増やす。</li>
+  <li>記憶と人格を、v1 の資産から戻す。原本と索引の区別を保つ。</li>
+  <li>任意: 貯まったトレースと注釈で、方針を小さな学習モデルに置き換える実験をする。ベンチで規則の方針と比べ、良いほうを残す。</li>
+</ul>
+<div class="gate"><b>関門:</b> ユーザーが、日常で使えると判断する。</div>
+
+<h2 id="p7">11. P7 公開の準備</h2>
+
+<ul class="check">
+  <li>既定の構成を、ライセンスの問題がない部品だけで組む。</li>
+  <li>リポジトリのライセンスを決める。</li>
+  <li>ベンチを、単独で使える形に切り出す。シナリオと生成スクリプトを同梱する。</li>
+  <li>説明を書く。何ができて、何ができないか。測り方と数字。Shizuku-Duplex のような一つのモデルではないこと。</li>
+  <li>別の機械で、手順どおりに動くことを確かめる。</li>
+</ul>
+<div class="gate"><b>関門:</b> 他人の機械で、説明の手順だけで動き、ベンチの小の組が回る。</div>
+
+<h2 id="human">12. 人間がすること</h2>
+
+<div class="tablewrap">
+<table>
+<tr><th>いつ</th><th>すること</th><th>かかる時間の目安</th></tr>
+<tr><td>P0 の前</td><td>この 2 つの文書を読み、方針に異論がないかを伝える。</td><td>30 分</td></tr>
+<tr><td>P1</td><td>採点役は Claude の API（2026-11-10 決定）。claude.ai の Settings &gt; Billing の「API credits」で Console の組織を結び付け、鍵を作って環境変数 <code>ANTHROPIC_API_KEY</code> に置く。</td><td>15 分</td></tr>
+<tr><td>P1</td><td>合成の入力を数件聴く。</td><td>10 分</td></tr>
+<tr><td>P2 のあと</td><td>基準線の報告を読み、P3 の目標の数値を一緒に決める。</td><td>30 分</td></tr>
+<tr><td>P3</td><td>本人の録音の組を作る。</td><td>30 分</td></tr>
+<tr><td>P3 以降の節目</td><td>10 分ほど実際に話し、体感を伝える。</td><td>各 10 分</td></tr>
+<tr><td>P4</td><td>検索の手段と、外に出してはいけない情報の範囲を決める。</td><td>15 分</td></tr>
+<tr><td>P7</td><td>リポジトリのライセンスと、公開する範囲を決める。</td><td>30 分</td></tr>
+<tr><td>各段階の関門</td><td>報告を読み、次へ進むかを決める。</td><td>各 15 分</td></tr>
+</table>
+</div>
+
+<h2 id="stop">13. 止まって相談する条件</h2>
+
+<ul>
+  <li>段階の関門を通ったとき。報告して、承認を待つ。</li>
+  <li>関門に 3 回続けて届かず、原因が分からないとき。</li>
+  <li>新しいソフトを入れる、費用がかかる、外のサービスにデータを送る、のどれかが必要になったとき。</li>
+  <li>この文書か ARCHITECTURE.html に書いていない境界や部品が必要になったとき。</li>
+  <li>2 つ以上の進め方があり、優劣が付かないとき。</li>
+  <li>ライセンスの条件が読み取れない部品を、既定の構成に入れたくなったとき。</li>
+  <li>方針の規則が 10 を超えそうなとき。</li>
+</ul>
+<p>相談するときは、状況、試したこと、分からないことを <code>v4/MEMORY.md</code> の「未解決の疑問」に書いてから止まる。判断を勝手に下して先へ進まない。</p>
+
+<h2 id="start">14. 新しいセッションの始め方</h2>
+
+<p>実装を別のセッションで行う場合は、次の文を渡す。</p>
+<pre><code>このリポジトリの v4/PLAN.html と v4/ARCHITECTURE.html を最後まで読んでください。
+そこに書かれた規則に従って、P0 から順に進めてください。
+各段階の関門を通ったら、結果を報告して止まり、私の承認を待ってください。</code></pre>
+
+
+<h2 id="add-20261110">追記 2026-11-10（Claude Code / Fable 5.2）: P0 と P1 の結果</h2>
+<ul>
+  <li><b>P0 は関門を通った。</b> ライセンスの一覧は <code>_docs/licenses.md</code>、持ち込む候補は <code>_docs/carry-over.md</code>。部品は同梱せず外部から呼ぶので、既定の構成に入れられない部品はない。使う人の側の条件は一覧に書いた。</li>
+  <li><b>4 節の改め</b>: <code>.gitignore</code> に <code>v4/work/</code> は足していない。直下の <code>work/</code> の行ですでに除外されている。代わりに <code>.env</code> を除外した。</li>
+  <li><b>5 節の改め</b>: 偽のシステムは 4 つにした（「礼儀正しい」を追加）。引き金に <code>after_reply</code> を足した。定義は <code>_docs/bench-definitions.md</code>（版 1）。</li>
+  <li><b>P1 の関門</b>: 偽のシステムは期待どおりの点になった。繰り返しの一致は VAD の刻み（0.032 秒）以内。ただし、遅れの誤差は +0.022〜+0.047 秒で、刻みを最大 0.015 秒超える。この条件を改めるかは、ユーザーが決める。</li>
+  <li><b>P1 で残っているもの</b>: 全の組（各軸 50 件）、C3 の台本（P4 で作る）、本人の録音の組（P3 で作る）、人による合成の入力の聴取。</li>
+</ul>
+
+<p class="meta">この文書は追記だけで直す。改める場合は、この下に日付付きの節を足す。</p>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tomoko v4 アーキテクチャ</title>
+<style>
+:root {
+  --bg: #fbfaf7; --fg: #1f2328; --muted: #5b6370; --line: #d9d6cf;
+  --card: #ffffff; --accent: #1f6f5c; --accent-bg: #e6f2ee;
+  --warn: #8a5a00; --warn-bg: #fbf1d9; --code-bg: #f0eee8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #16181c; --fg: #e6e6e3; --muted: #a0a7b1; --line: #33373e;
+    --card: #1e2126; --accent: #6cc7ae; --accent-bg: #1d332d;
+    --warn: #e6b450; --warn-bg: #3a2f14; --code-bg: #262a30;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #16181c; --fg: #e6e6e3; --muted: #a0a7b1; --line: #33373e;
+  --card: #1e2126; --accent: #6cc7ae; --accent-bg: #1d332d;
+  --warn: #e6b450; --warn-bg: #3a2f14; --code-bg: #262a30;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  line-height: 1.75; font-size: 16px;
+}
+main { max-width: 920px; margin: 0 auto; padding: 32px 16px 80px; }
+h1 { font-size: 1.7rem; margin: 0 0 4px; }
+h2 { font-size: 1.25rem; margin: 48px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--line); }
+h3 { font-size: 1.05rem; margin: 28px 0 8px; }
+p { margin: 10px 0; }
+.meta { color: var(--muted); font-size: 0.9rem; }
+nav { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 18px; margin: 20px 0; }
+nav ol { margin: 4px 0; padding-left: 22px; }
+a { color: var(--accent); }
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; font-family: ui-monospace, Menlo, monospace; }
+pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.55; }
+pre code { background: none; padding: 0; }
+.tablewrap { overflow-x: auto; margin: 12px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+th { background: var(--accent-bg); }
+.note { background: var(--accent-bg); border-left: 4px solid var(--accent); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 14px 0; }
+.warn { background: var(--warn-bg); border-left: 4px solid var(--warn); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 14px 0; }
+.tag { display: inline-block; font-size: 0.75rem; padding: 0 7px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); margin-left: 4px; white-space: nowrap; }
+.diagram { display: grid; gap: 10px; margin: 16px 0; }
+.lane { border: 1px solid var(--line); border-radius: 8px; background: var(--card); padding: 10px 12px; }
+.lane > b { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
+.boxes { display: flex; flex-wrap: wrap; gap: 8px; }
+.box { border: 1px solid var(--accent); border-radius: 6px; padding: 6px 10px; font-size: 0.9rem; background: var(--accent-bg); }
+.box small { display: block; color: var(--muted); font-size: 0.78rem; }
+.owner { border-width: 2px; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Tomoko v4 アーキテクチャ</h1>
+<p class="meta">作成: 2026-11-10 / Claude Code（claude-fable-5-2）/ 進め方は <a href="PLAN.html">PLAN.html</a></p>
+
+<div class="note">
+<b>一文で言うと:</b> 耳（STT）、間合い（MaAI）、頭（LLM）、口（TTS）は既製の部品のまま使い、「いつ黙り、いつ話し、いつ止まるか」を決める指揮者だけを新しく作る。作る前に採点の仕組みを作り、変更のたびに同じ入力で測る。
+</div>
+
+<nav>
+<b>目次</b>
+<ol>
+  <li><a href="#why">なぜこの形にするか</a></li>
+  <li><a href="#decided">決まっていることと、仮の値</a></li>
+  <li><a href="#overview">全体の構成</a></li>
+  <li><a href="#engine">対話エンジン</a></li>
+  <li><a href="#bench">ベンチ（採点の仕組み）</a></li>
+  <li><a href="#axes">評価軸</a></li>
+  <li><a href="#layout">ディレクトリ</a></li>
+  <li><a href="#inherit">v1・v2 から引き継ぐ規則</a></li>
+  <li><a href="#unknown">未確認のこと</a></li>
+</ol>
+</nav>
+
+<h2 id="why">1. なぜこの形にするか</h2>
+
+<p>v3 では日本語 Moshi 系を土台にしようとしたが、次の 2 点で行き詰まった。</p>
+<ul>
+  <li><b>賢さが足りない。</b> Shizuku AI のブログの表でも、J-Moshi と LLM-jp-Moshi は QA 正答率が 1% 前後だった。</li>
+  <li><b>外から文を与えても話せない。</b> v3 の実験で、学習なしのテキスト上書きは文として崩れた（<code>v3/_docs/v0/moshi-text-forcing.md</code>）。</li>
+</ul>
+
+<p>Shizuku-Duplex と同じ作り（音声を直接聞いて直接話す一つのモデル）は、学習の規模が個人の範囲を超える。手本の SALM-Duplex は A100 を 32 枚、NemotronLabs VoiceChat は GPU を 64 枚使っている。費用の大半は、LLM に耳と口を覚えさせる部分にある。</p>
+
+<p>一方、間合いの判断そのものは軽い。相づちと発話終了の見込みは MaAI が音声から直接出す。v2 が未完だったのは、次の 2 点である。</p>
+<ul>
+  <li>材料の合成が手書きの式で、閾値と例外が増え続けた。</li>
+  <li>通しの数字を外部の基準で測ったことがなく、実会話での検証前に終わった。</li>
+</ul>
+
+<p>v4 はこの 2 点だけを直す。部品は既製品を使い、指揮者を小さく作り直し、採点を先に用意する。</p>
+
+<h2 id="decided">2. 決まっていることと、仮の値</h2>
+
+<h3>ユーザーが決めたこと</h3>
+<div class="tablewrap">
+<table>
+<tr><th>項目</th><th>内容</th></tr>
+<tr><td>方針</td><td>v2 の延長で作り直す。v4 として始める。</td></tr>
+<tr><td>評価</td><td>Full-Duplex-Bench を参考に、評価軸と採点を自前で書く。</td></tr>
+<tr><td>推論</td><td>すべてローカルで動かす。</td></tr>
+<tr><td>公開</td><td>OSS・open weight で出したい。外部の Web 検索などの機能を持たせる。</td></tr>
+<tr><td>声</td><td>何でもよい。声の調子（抑揚の聞き分け）も重視しない。</td></tr>
+<tr><td>使い方</td><td>一人用。ヘッドセットを使う。</td></tr>
+<tr><td>待ち時間</td><td>裏の処理（検索など）を待つ時間は許容する。</td></tr>
+</table>
+</div>
+
+<h3>Claude が置いた仮の値（実測で変える）</h3>
+<div class="tablewrap">
+<table>
+<tr><th>項目</th><th>仮の値</th><th>根拠</th></tr>
+<tr><td>指揮者の tick</td><td>80 ms</td><td>Shizuku-Duplex と SALM-Duplex の刻みに合わせた。部品の出力間隔を測ってから決め直す。</td></tr>
+<tr><td>STT の途中経過</td><td>200〜300 ms おきに再認識</td><td>MLX Whisper small が 1 回約 100 ms（v1 実測）。この間隔での実測はない。</td></tr>
+<tr><td>手前の LLM</td><td>Gemma 4 E4B か 26B</td><td>最初の文字まで 250〜400 ms（v1・v2 実測）。ベンチで選ぶ。</td></tr>
+<tr><td>TTS</td><td>Kokoro を最初の候補</td><td>最初の音まで 113 ms（v1 実測）。差し替え可能にする。</td></tr>
+<tr><td>短い反応と本発話の境</td><td>有声 1.0 秒</td><td>Full-Duplex-Bench の基準（1 秒かつ 3 語）から、語数を外した。</td></tr>
+<tr><td>文脈の圧縮</td><td>約 5 分ごと</td><td>Shizuku-Duplex の記述。</td></tr>
+</table>
+</div>
+
+<h2 id="overview">3. 全体の構成</h2>
+
+<p>v4 は 2 つの独立したプログラムでできている。</p>
+<ul>
+  <li><b>対話エンジン</b>: <code>/ws</code> を 1 本だけ開くサーバー。マイクの音を受け、声を返す。</li>
+  <li><b>ベンチ</b>: <code>/ws</code> につなぐクライアント。決まった入力音声を実時間で流し、返ってきた音を録って採点する。</li>
+</ul>
+
+<div class="note">
+ベンチはエンジンのコードを一切読み込まない。つながるのは <code>/ws</code> だけである。これにより、採点は「実際に聞こえた音」だけで行われ、エンジンの内部ログの都合に左右されない。ベンチを別のシステムの採点にも使える。
+</div>
+
+<div class="diagram">
+  <div class="lane"><b>外側（どちらも同じ /ws を使う）</b>
+    <div class="boxes">
+      <div class="box">ブラウザ<small>マイクと再生だけ</small></div>
+      <div class="box">ベンチ<small>入力を流し、出力を録り、採点</small></div>
+    </div>
+  </div>
+  <div class="lane"><b>入口</b>
+    <div class="boxes">
+      <div class="box">WS 受付<small>音声の受信と送信、イベント</small></div>
+    </div>
+  </div>
+  <div class="lane"><b>センサー（それぞれ自分の速さで動き、最新の値を材料に書く）</b>
+    <div class="boxes">
+      <div class="box">VAD<small>話しているか、無音の長さ</small></div>
+      <div class="box">MaAI vap<small>もうすぐ言い終わるか</small></div>
+      <div class="box">MaAI bc<small>相づちの頃合い</small></div>
+      <div class="box">STT<small>途中経過の文字と安定度</small></div>
+      <div class="box">再生の追跡<small>いま何をどこまで話したか</small></div>
+    </div>
+  </div>
+  <div class="lane"><b>中心（状態を持つのはここだけ）</b>
+    <div class="boxes">
+      <div class="box owner">指揮者<small>毎 tick、材料を読んで行動を 1 つ決める</small></div>
+      <div class="box">方針<small>材料から行動を選ぶ、差し替え可能な関数</small></div>
+      <div class="box">文脈<small>追記だけの会話記録、定期的に圧縮</small></div>
+    </div>
+  </div>
+  <div class="lane"><b>働き手（指揮者が起こし、いつでも取り消せる）</b>
+    <div class="boxes">
+      <div class="box">手前の LLM<small>返事の文を速く作る</small></div>
+      <div class="box">裏の仕事<small>大きい LLM、Web 検索、道具</small></div>
+      <div class="box">話者<small>TTS と送信、止める</small></div>
+    </div>
+  </div>
+  <div class="lane"><b>記録</b>
+    <div class="boxes">
+      <div class="box">トレース<small>全イベントを時刻付きで JSONL に書く</small></div>
+    </div>
+  </div>
+</div>
+
+<h2 id="engine">4. 対話エンジン</h2>
+
+<h3>4.1 指揮者</h3>
+
+<p>指揮者は、会話の状態を持つ唯一の場所である。tick ごとに次の順で動く。</p>
+<ol>
+  <li>センサーが書いた最新の材料を読む。</li>
+  <li>働き手から届いた結果を受け取る。世代が古いものは捨てる。</li>
+  <li>方針に材料と状態を渡し、行動を 1 つ受け取る。</li>
+  <li>行動を実行する。働き手を起こすか、取り消すか、何もしない。</li>
+  <li>材料、行動、理由をトレースに書く。</li>
+</ol>
+
+<div class="warn">
+<b>指揮者の中で LLM や TTS の完了を待たない。</b> v2 では、受信ループの中で LLM・DB・TTS を順番に待ったため、入力と割り込みが詰まった。v4 では、時間のかかる仕事はすべて別のタスクにし、指揮者は結果を受け取るだけにする。1 tick の処理は数 ms で終わる量に保つ。
+</div>
+
+<h3>4.2 行動</h3>
+
+<div class="tablewrap">
+<table>
+<tr><th>行動</th><th>意味</th><th>実行すること</th></tr>
+<tr><td><code>WAIT</code></td><td>黙って聞く</td><td>何もしない</td></tr>
+<tr><td><code>PREPARE</code></td><td>声は出さずに、返事を作り始める</td><td>途中経過の文字で手前の LLM を起こす</td></tr>
+<tr><td><code>BACKCHANNEL</code></td><td>相づちを打つ</td><td>短い音声を話者に渡す。発言権は取らない</td></tr>
+<tr><td><code>SPEAK</code></td><td>話し始める、または続ける</td><td>準備済みの文を話者に渡す</td></tr>
+<tr><td><code>STOP</code></td><td>話すのをやめる</td><td>世代を進め、LLM と TTS を取り消し、再生を止める</td></tr>
+<tr><td><code>DELEGATE</code></td><td>裏に仕事を頼む</td><td>裏の仕事を起こす。会話は続ける</td></tr>
+</table>
+</div>
+
+<p><code>PREPARE</code> と <code>SPEAK</code> を分けるのが、無音待ちをなくす要点である。MaAI が「もうすぐ言い終わる」と出した時点で返事を作り始め、言い終わりが確かになった時点で声を出す。途中経過の文字が大きく変わったら、作りかけを捨てて作り直す。</p>
+
+<h3>4.3 世代</h3>
+
+<p>古い結果が後から届いて話してしまう事故を防ぐため、番号を 2 つ持つ。</p>
+<ul>
+  <li><b>判断の世代</b>: ユーザーが話し始めたとき、<code>STOP</code> したとき、途中経過の文字が大きく変わったときに進める。LLM と裏の仕事の結果には、起こしたときの世代を付ける。届いたときに世代が違えば捨てる。</li>
+  <li><b>再生の世代</b>: <code>STOP</code> のたびに進める。話者とクライアントは、古い世代の音を再生しない。</li>
+</ul>
+<p>この 2 つを 1 つにまとめない。v2 の経験では、判断のやり直しと再生の停止は別の時刻に起きる。</p>
+
+<h3>4.4 方針</h3>
+
+<p>方針は「材料と状態を受け取り、行動と理由を返す」だけの関数である。状態を書き換えない。差し替え可能にする。</p>
+<ul>
+  <li><b>最初の方針</b>: 少数の明示的な規則で書く。閾値にはすべて名前を付け、判断のたびに使った値をトレースに残す。</li>
+  <li><b>規則を足す条件</b>: ベンチのどの項目が、どれだけ良くなるかを数字で示せるときだけ足す。v2 は cue と例外を足し続けて、会話の中心が 1,600 行級になった。</li>
+  <li><b>後の方針</b>: トレースとベンチの注釈が貯まったら、同じ入出力の小さな学習モデルに置き換えられる。これは学習の規模が小さく、手元の機材で足りる見込みである（未検証）。</li>
+</ul>
+
+<h3>4.5 材料</h3>
+
+<div class="tablewrap">
+<table>
+<tr><th>材料</th><th>出どころ</th><th>欠けたときの扱い</th></tr>
+<tr><td>ユーザーが話しているか、無音の長さ</td><td>VAD</td><td>必須。欠けたら <code>WAIT</code></td></tr>
+<tr><td>譲る見込み</td><td>MaAI <code>vap</code></td><td>欠損は 0 として扱う。「観測できないから譲った」としない（v2 の決定）</td></tr>
+<tr><td>相づちの頃合い</td><td>MaAI <code>bc_2type</code></td><td>欠けたら相づちを打たない</td></tr>
+<tr><td>途中経過の文字、前回からの変化量</td><td>STT</td><td>欠けたら <code>PREPARE</code> しない</td></tr>
+<tr><td>自分が話しているか、どこまで話したか</td><td>再生の追跡</td><td>必須</td></tr>
+<tr><td>裏の仕事の結果が届いているか</td><td>文脈</td><td>なければ何もしない</td></tr>
+</table>
+</div>
+
+<p>センサーが失敗しても会話を止めない。失敗は件数と一緒にトレースに残し、黙って消さない。</p>
+
+<h3>4.6 手前の LLM と裏の仕事</h3>
+
+<p>Shizuku-Duplex、GPT-Live、Thinking Machines の Interaction Models は、どれも「すぐ返せることは手前の小さいモデル、重いことは裏の大きいモデル」に分けている。v4 も同じ分け方にする。</p>
+
+<div class="tablewrap">
+<table>
+<tr><th></th><th>手前の LLM</th><th>裏の仕事</th></tr>
+<tr><td>役割</td><td>雑談、簡単な質問への答え、裏の結果を自分の言葉で伝える</td><td>Web 検索、道具の呼び出し、時間のかかる推論</td></tr>
+<tr><td>速さ</td><td>最初の文字まで数百 ms</td><td>数秒から数十秒</td></tr>
+<tr><td>起こし方</td><td>指揮者の <code>PREPARE</code></td><td>手前の LLM が出す依頼の印、または決定的な規則</td></tr>
+<tr><td>結果の行き先</td><td>文として話者へ</td><td>文脈の末尾に <code>&lt;info&gt;</code> として追記</td></tr>
+</table>
+</div>
+
+<p>裏の結果の扱いは、決定的な側とモデルの側で分担する。</p>
+<ul>
+  <li><b>決定的な側</b>: 何を取りに行くか、期限、重複の除去、私的な情報を外に出さないこと、失敗の通知。</li>
+  <li><b>モデルの側</b>: いつ言うか、どう言うか、言うかどうか。</li>
+</ul>
+<p>結果は文脈の末尾に足すだけにする。途中を書き換えないので、LLM の計算済みの部分（KV キャッシュ）がそのまま使える。</p>
+
+<h3>4.7 話者と再生の追跡</h3>
+
+<p>TTS は差し替え可能な部品とし、次の 3 つを満たすものを使う。</p>
+<ul>
+  <li>短い句の最初の音が速く出る。</li>
+  <li>途中で取り消せる。</li>
+  <li>どこまで再生したかが分かる。</li>
+</ul>
+<p>文は句の単位で TTS に渡す。<code>STOP</code> のあとに「実際に聞こえた範囲」を文脈に記録する。作った文の全体を、話した記録として残さない（v2 の教訓）。</p>
+
+<h3>4.8 文脈と圧縮</h3>
+<ul>
+  <li><b>原本</b>: ユーザーの発話、Tomoko が実際に話した範囲、裏の結果を、追記だけで残す。</li>
+  <li><b>LLM に見せる文脈</b>: 原本から作る。約 5 分ごとに古い部分を要約に置き換える。切り替えは、依頼と依頼の間に行う。</li>
+  <li><b>記憶と人格</b>: v1 の資産を、P6 以降で戻す。最初は入れない。</li>
+</ul>
+
+<h3>4.9 /ws の取り決め</h3>
+
+<div class="tablewrap">
+<table>
+<tr><th>向き</th><th>種類</th><th>中身</th></tr>
+<tr><td>クライアントからサーバー</td><td>バイナリ</td><td>マイクの音。16 kHz、モノラル、float32</td></tr>
+<tr><td>クライアントからサーバー</td><td>JSON</td><td>再生の報告（どの世代を、どこまで再生したか）</td></tr>
+<tr><td>サーバーからクライアント</td><td>バイナリ</td><td>声の断片。先頭に再生の世代と通し番号を付ける</td></tr>
+<tr><td>サーバーからクライアント</td><td>JSON</td><td>停止（世代を指定）、文字の表示、状態の表示</td></tr>
+</table>
+</div>
+<p>クライアントは判断をしない。届いた音を順に再生し、停止が来たらその世代の音を捨てる。ブラウザとベンチは、同じ再生の規則を実装する。</p>
+
+<h2 id="bench">5. ベンチ（採点の仕組み）</h2>
+
+<h3>5.1 考え方</h3>
+<ul>
+  <li><b>時計はベンチが持つ。</b> 入力の最初のサンプルを送った時刻を 0 とする。出力は、クライアントが再生するはずの時刻に置いて <code>output.wav</code> に録る。</li>
+  <li><b>採点に使うのは、入力の注釈と <code>output.wav</code> だけ。</b> エンジンのトレースは原因調べに使い、採点には使わない。</li>
+  <li><b>時刻は VAD で取る。</b> <code>output.wav</code> に VAD をかけ、Tomoko の発話区間を出す。書き起こしは中身の採点にだけ使う。</li>
+  <li><b>答えなかった回を分母から外さない。</b> 無音で終わった回は失敗として数える（v2 の教訓）。</li>
+  <li><b>前提が成り立たなかった回を別に数える。</b> 「Tomoko が話している最中に割り込む」項目で、Tomoko が話していなかった回は、成功にも失敗にも入れず、件数を報告する。</li>
+</ul>
+
+<h3>5.2 シナリオ</h3>
+
+<p>1 件のシナリオは、ユーザー側の台本と注釈でできている。</p>
+<pre><code>{
+  "id": "interrupt-012",
+  "axis": "T4",
+  "steps": [
+    {"say": "東京の観光地をいくつか教えて", "at": 1.0},
+    {"say": "あ、ごめん、やっぱり大阪で", "after_tomoko_speaks": 2.0}
+  ],
+  "expect": {"topic": "大阪の観光地"}
+}</code></pre>
+<ul>
+  <li><b><code>at</code></b>: 決まった時刻に流す。</li>
+  <li><b><code>after_tomoko_speaks</code></b>: Tomoko の声を検出してから、指定の秒数後に流す。割り込みと相づちの項目で、前提を確実に成り立たせるために使う。</li>
+</ul>
+<p>実際に流した時刻は、ベンチが実行ごとに記録する。採点はその記録を使う。</p>
+
+<h3>5.3 入力音声</h3>
+
+<div class="tablewrap">
+<table>
+<tr><th>種類</th><th>作り方</th><th>置き場所</th></tr>
+<tr><td>合成</td><td>台本を TTS で読ませる。話者を複数にする。言いよどみは無音の挿入で作る。</td><td>生成スクリプトと台本を Git に入れる。音声は生成物なので入れない。</td></tr>
+<tr><td>本人の録音</td><td>ユーザーが台本を読む、または自由に話す。</td><td>Git 管理外。クラウドに送らない。</td></tr>
+</table>
+</div>
+<p>合成だけでは、合成の声に合わせた調整になるおそれがある。関門の判定には、本人の録音での結果も併記する。</p>
+
+<h3>5.4 採点器の検査</h3>
+
+<p>採点器そのものが正しいかを、答えの分かっている偽のシステムで確かめる。</p>
+<div class="tablewrap">
+<table>
+<tr><th>偽のシステム</th><th>振る舞い</th><th>期待する結果</th></tr>
+<tr><td>無言</td><td>何も返さない</td><td>応答率 0、割り込み率 0、無音の回が全件</td></tr>
+<tr><td>おしゃべり</td><td>常に話し続ける</td><td>言いよどみへの割り込み率 1、停止率 0</td></tr>
+<tr><td>時計じかけ</td><td>入力終了の 0.5 秒後に 2 秒話す</td><td>遅れ 0.5 秒（誤差は VAD の刻み以内）</td></tr>
+</table>
+</div>
+
+<h2 id="axes">6. 評価軸</h2>
+
+<p>Full-Duplex-Bench の v1.0 と v1.5 の項目を参考に、日本語と一人用の使い方に合わせて定義し直した。コードは写さず、定義から書く。数値の窓はすべて仮で、P1 の中で確定する。</p>
+
+<h3>間合い</h3>
+<div class="tablewrap">
+<table>
+<tr><th>軸</th><th>場面</th><th>指標</th><th>良い方向</th></tr>
+<tr><td>T1 交替</td><td>ユーザーが言い終わる</td><td>応答率、遅れ（言い終わりから本発話の最初の音まで）、早すぎた割合（言い終わる前に本発話を始めた）</td><td>応答率は高く、遅れは短く、早すぎは低く</td></tr>
+<tr><td>T2 言いよどみ</td><td>ユーザーが文の途中で 0.5〜2 秒黙る</td><td>割り込み率（その間に本発話を始めた）</td><td>低く</td></tr>
+<tr><td>T3 相手の相づち</td><td>Tomoko が話している間に、ユーザーが「うん」と言う</td><td>中断率（2 秒以内に黙り、1 秒以上黙ったまま）</td><td>低く</td></tr>
+<tr><td>T4 割り込み</td><td>Tomoko が話している間に、ユーザーが別のことを言い始める</td><td>停止の遅れ、2 秒以内に止まった割合、その後の応答率と遅れ</td><td>停止は速く、割合は高く</td></tr>
+<tr><td>T5 自分の相づち</td><td>ユーザーが 20〜40 秒話し続ける</td><td>1 分あたりの回数、間に入った割合、発話に被った割合、連発の回数</td><td>目標を置かず、聴いて決める</td></tr>
+</table>
+</div>
+
+<h3>中身</h3>
+<div class="tablewrap">
+<table>
+<tr><th>軸</th><th>場面</th><th>指標</th></tr>
+<tr><td>C1 関連性</td><td>T1 と T4 の返事</td><td>採点役の LLM による 0〜2 点</td></tr>
+<tr><td>C2 複数ターンの QA</td><td>前の発話を踏まえた質問</td><td>正答率</td></tr>
+<tr><td>C3 調べものの QA</td><td>検索しないと答えられない質問</td><td>正答率、最初の受け答えまでの時間、答えまでの時間、待つ間に黙り込んだ最長の時間</td></tr>
+</table>
+</div>
+
+<h3>安定と不変条件</h3>
+<div class="tablewrap">
+<table>
+<tr><th>軸</th><th>確かめること</th></tr>
+<tr><td>S1 長時間</td><td>10 分と 30 分の連続で、tick の締切超過、メモリ、圧縮の切り替え時の途切れ、T1 の遅れが時間とともに悪化しないか</td></tr>
+<tr><td>R1 不変条件</td><td>停止のあとに古い音が復活しない。同じ発話に二重に答えない。古い世代の文を話さない。どれも 0 件であること</td></tr>
+</table>
+</div>
+
+<h3>参考にする数字</h3>
+<p>Shizuku AI のブログの表を、目安として置く。測り方と入力が違うので、直接は比べられない。</p>
+<div class="tablewrap">
+<table>
+<tr><th>項目</th><th>Shizuku-Duplex</th><th>J-Moshi-ext</th><th>対応する軸</th></tr>
+<tr><td>言い終わる前に話し始めた</td><td>10%</td><td>24%</td><td>T1</td></tr>
+<tr><td>言いよどみに割り込んだ</td><td>2%</td><td>36%</td><td>T2</td></tr>
+<tr><td>相手の相づちで黙った</td><td>5%</td><td>20%</td><td>T3</td></tr>
+<tr><td>割り込みで 2 秒以内に止まった</td><td>89%</td><td>73%</td><td>T4</td></tr>
+<tr><td>応答の遅れ（中央値）</td><td>0.57 秒</td><td>記載なし</td><td>T1</td></tr>
+<tr><td>複数ターンの QA</td><td>79%</td><td>1%</td><td>C2</td></tr>
+<tr><td>調べものの QA</td><td>43%</td><td>2%</td><td>C3</td></tr>
+</table>
+</div>
+
+<h2 id="layout">7. ディレクトリ</h2>
+
+<pre><code>v4/
+├── ARCHITECTURE.html      この文書
+├── PLAN.html              進め方
+├── LOG.md                 作業の記録（追記のみ）
+├── MEMORY.md              判断と気づき（追記のみ）
+├── pyproject.toml         uv で管理
+├── engine/                対話エンジン
+│   ├── dto.py             層をまたぐ型はすべてここ
+│   ├── ws.py              /ws の受付
+│   ├── conductor.py       指揮者（状態の持ち主）
+│   ├── policy.py          方針（状態を書かない関数）
+│   ├── materials.py       材料の最新値
+│   ├── sensors/           vad.py, vap.py, backchannel.py, stt.py
+│   ├── front_llm.py       手前の LLM
+│   ├── background/        worker.py, search.py
+│   ├── speaker/           tts_*.py, playback.py
+│   ├── context.py         原本と、LLM に見せる文脈
+│   └── trace.py           JSONL の記録
+├── bench/                 ベンチ（engine を読み込まない）
+│   ├── scenario.py        シナリオと注釈の型
+│   ├── generate/          台本から入力音声を作る
+│   ├── run.py             /ws につなぎ、流して録る
+│   ├── player.py          クライアントと同じ再生の規則
+│   ├── score/             timing.py, content.py, invariants.py
+│   ├── fakes/             無言、おしゃべり、時計じかけ
+│   └── report.py          結果の表と、前回との差
+├── scenarios/             台本と注釈（Git に入れる）
+├── client/                ブラウザ（マイクと再生だけ）
+├── tests/                 unit / integration / perf
+└── work/                  生成音声、録音、実行結果（Git 管理外）</code></pre>
+
+<h2 id="inherit">8. v1・v2 から引き継ぐ規則</h2>
+
+<p>リポジトリの <code>AGENTS.md</code> と <code>_docs/knowlaedge.md</code> から、v4 でも守るものを挙げる。</p>
+<div class="tablewrap">
+<table>
+<tr><th>規則</th><th>v4 での形</th></tr>
+<tr><td>WebSocket は 1 本</td><td><code>/ws</code> だけ。ベンチも同じ口を使う。</td></tr>
+<tr><td>クライアントに判断を置かない</td><td>再生と停止の規則だけ。ブラウザとベンチで同じ。</td></tr>
+<tr><td>推論の層は Web の枠組みに依存しない</td><td><code>front_llm.py</code> と <code>background/</code> は FastAPI を読み込まない。</td></tr>
+<tr><td>状態を分散させない</td><td>状態は指揮者だけが持つ。方針は関数。</td></tr>
+<tr><td>層をまたぐときは型を通す</td><td><code>dto.py</code> に集める。VAD の内側だけは生の配列のまま。</td></tr>
+<tr><td>音が出た、答えた、聞こえ終わった、を分ける</td><td>トレースで別のイベントにする。T1 の遅れは本発話で測り、相づちは別に数える。</td></tr>
+<tr><td>部品単体の速さを会話の速さとしない</td><td>速さは必ずベンチの通しで報告する。</td></tr>
+<tr><td>テストを先に書く</td><td>採点器と方針は、実装の前に単体試験を書く。</td></tr>
+<tr><td>私的な情報をクラウドに出さない</td><td>クラウドに出せるのは、合成のシナリオとその結果だけ。本人の録音と実会話は出さない。</td></tr>
+</table>
+</div>
+
+<h2 id="unknown">9. 未確認のこと</h2>
+
+<div class="tablewrap">
+<table>
+<tr><th>項目</th><th>何が分かっていないか</th><th>確かめる段階</th></tr>
+<tr><td>STT の途中経過</td><td>200〜300 ms おきの再認識で、遅れと書き換わりがどの程度か。LLM と同時に回して間に合うか。</td><td>P2</td></tr>
+<tr><td>MaAI <code>vap</code> の当たり具合</td><td>本人の声と合成の声で、言い終わりをどれだけ当てるか。v2 では信号が流れることしか確かめていない。</td><td>P3</td></tr>
+<tr><td>MaAI のライセンス</td><td>2026-11-10 確認。コードは MIT。重みは同梱せず、利用者の手元で Hugging Face から取得する。<code>vap_jp</code> は CC BY-NC-ND 4.0（非商用）、<code>vap_jp_kyoto</code> と <code>vap_bc_jp</code> は MIT、<code>vap_bc_2type_jp</code> は記載なし。README に条件を書く。商用の利用者向けに MIT のモデルへ切り替えられる設定を置く。</td><td>P0</td></tr>
+<tr><td>TTS のライセンス</td><td>2026-11-10 確認。どれも同梱せず、外部のプログラムとして呼ぶ。Kokoro の重みは Apache 2.0。VOICEVOX は音声を公開するときにクレジット表記とキャラクターごとの規約が要る。Apple の音声は個人的・非商用に限られ、録音の公開は不可。README に条件を書く。</td><td>P0</td></tr>
+<tr><td>手前の LLM の選択</td><td>E4B と 26B のどちらが、速さと中身の釣り合いが良いか。</td><td>P3</td></tr>
+<tr><td>3060 の機械の使い道</td><td>Gemma の thinking が止まらない問題が未解決。v4 では必須にしない。</td><td>必要になったとき</td></tr>
+<tr><td>採点役の LLM</td><td>2026-11-10 決定: Claude の API を使う（Max プランの API クレジット）。送るのは公開データと合成データの書き起こしだけ。モデルと指示文は P1 で決める。</td><td>P1</td></tr>
+<tr><td>合成の声への偏り</td><td>合成の入力で調整した方針が、本人の声でも通用するか。</td><td>P3 以降、毎回</td></tr>
+</table>
+</div>
+
+<p class="meta">土台の LLM の Gemma 4 は、v3 の調査（<code>v3/_docs/v0/sources.md</code>）ではモデルカード上 Apache 2.0 である。</p>
+
+</main>
+</body>
+</html>
