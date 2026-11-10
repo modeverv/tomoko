@@ -1,0 +1,17 @@
+{
+ "model": "mlx-community/whisper-small-mlx",
+ "interval_s": 0.25,
+ "llm_load": true,
+ "llm_requests_during": 30,
+ "utterances": 20,
+ "calls": 499,
+ "call_ms_p50": 412.0,
+ "call_ms_p95": 849.7,
+ "call_ms_max": 4043.8,
+ "final_call_ms_p50": 608.2,
+ "final_call_ms_p95": 1099.8,
+ "kept_up_share": 0.086,
+ "rewrite_share": 0.38,
+ "settled_before_end_s_p50": 0.0,
+ "settled_only_at_end_share": 0.6
+}

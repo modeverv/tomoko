@@ -1,0 +1,17 @@
+{
+ "model": "mlx-community/whisper-large-v3-turbo",
+ "interval_s": 0.25,
+ "llm_load": true,
+ "llm_requests_during": 32,
+ "utterances": 20,
+ "calls": 499,
+ "call_ms_p50": 855.6,
+ "call_ms_p95": 1145.9,
+ "call_ms_max": 21875.0,
+ "final_call_ms_p50": 902.9,
+ "final_call_ms_p95": 1104.9,
+ "kept_up_share": 0.0,
+ "rewrite_share": 0.334,
+ "settled_before_end_s_p50": 0.01,
+ "settled_only_at_end_share": 0.45
+}

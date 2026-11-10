@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tomoko v4</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
+  button { font-size: 1rem; padding: .5rem 1.2rem; }
+  #log p { margin: .3rem 0; }
+  .user { opacity: .7; }
+  #state { margin-left: 1rem; font-size: .9rem; opacity: .7; }
+</style>
+</head>
+<body>
+<h1>Tomoko v4</h1>
+<p>ヘッドセットを使ってください。スピーカーだと、Tomoko の声をマイクが拾います。</p>
+<p><button id="toggle">始める</button><span id="state">止まっています</span></p>
+<div id="log"></div>
+<script src="main.js"></script>
+</body>
+</html>
