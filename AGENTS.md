@@ -500,3 +500,16 @@ Codex と agy は、2026-11-13 に 1 回ずつ通して確かめた。
 - Codex: `codex exec -m gpt-6.1-sol -c 'model_reasoning_effort="max"' "<依頼>"`。ユーザーの言う「sol6.1」は `gpt-6.1-sol`。推論の段階は low / medium / high / xhigh / max / ultra で、ultra は「最大の推論に、仕事の自動の振り分けを足したもの」。「最大推論モード」は max と読む（エージェントの解釈。ultra にするかはユーザーが決める）。
 - agy: `agy --model <モデル> -p "<依頼>"`。`agy models` で出る最上位は `gemini-4-argon-high` と `claude-opus-5-5-high`。どちらを「もっとも賢い」とするかは、ユーザーが決めていない。決まるまでは `gemini-4-argon-high` を使う（エージェントの仮の選択。Claude Opus はトークン切れのときの代わりに使うので、別の系統にしておく）。
 - Claude Opus: Claude Code の Agent で model: opus、effort: max。
+
+
+## 2026-11-13 追記（3）: Claude 以外のサブエージェントを並べて使い、作業を速くする。賢さは最大
+
+ユーザーの指示（2026-11-13 未明）: 「積極的にclaude以外のcodex/dsh-tui/agyをサブエージェントを使うようにしてください。賢さはマックスで動かしてください。サブエージェントにより作業の速度アップがしたいです。」
+
+- サブエージェントには、Claude 以外の Codex、dsh-tui（DeepSeek Harness）、agy を使う。互いに独立な仕事は並べて走らせ、作業を速くする。
+- 賢さは、それぞれの最大で動かす（2026-11-13 に確かめた値）:
+  - Codex: `gpt-6.1-sol`、推論 max（上の追記と同じ）。
+  - agy: `gemini-4-argon-high`。agy の Gemini 4 Argon の推論は low / medium / high までで、high が最大（`--effort max` は「選べない」と断られる）。
+  - dsh: 外から呼ぶときは `dsh --profile headless`。モデルは DeepSeek の上位（`deepseek-v4-pro` か `deepseek-flash`）、`thinking: enabled`、`reasoningEffort: max` を `--patch` で与える。2026-11-13 の時点では、headless で呼ぶと、どのモデルでも HTTP 404 で止まり、使えていない（原因は未確認）。dsh-tui の画面は対話用で、外から仕事を振れない。
+- 上の追記（2）の「Codex も agy もトークン切れのときは Claude Opus」は、「Codex、agy、dsh のどれも使えないときは Claude Opus（effort max）」に改める。
+- Claude Code のワークフローを使うときは、外の CLI を呼んで待つだけの小さな Claude（haiku、effort low）を仲介役に置くことがある。仕事の中身は外のエージェントがする。
