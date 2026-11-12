@@ -1,5 +1,7 @@
 """シナリオ（台本）と、生成した入力の注釈の型。"""
 
+from __future__ import annotations
+
 import json
 import re
 from dataclasses import asdict, dataclass, field
@@ -99,6 +101,7 @@ class Manifest:
     scenario: Scenario
     audio: tuple[StepAudio, ...]
     private: bool = False  # 本人の録音。採点役（クラウド）に送らない
+    one_pass: bool = False  # True は無音コマンドを埋めた 1 回合成。False は従来の部品ごとの合成
 
     def save(self, directory: Path) -> None:
         directory.mkdir(parents=True, exist_ok=True)
@@ -107,12 +110,13 @@ class Manifest:
         )
 
     @staticmethod
-    def load(directory: Path) -> "Manifest":
+    def load(directory: Path) -> Manifest:
         raw = json.loads((directory / "scenario.json").read_text())
         s = raw["scenario"]
         scenario = Scenario(
             s["id"], s["axis"], tuple(Step(**x) for x in s["steps"]), s["expect"], s["voice"]
         )
         return Manifest(
-            scenario, tuple(StepAudio(**a) for a in raw["audio"]), raw.get("private", False)
+            scenario, tuple(StepAudio(**a) for a in raw["audio"]), raw.get("private", False),
+            raw.get("one_pass", False),
         )
