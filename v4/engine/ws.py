@@ -9,6 +9,8 @@
                     JSON = {"type": "stop", "generation": g} / {"type": "text", ...}
 """
 
+from __future__ import annotations
+
 import asyncio
 import itertools
 import json
@@ -26,7 +28,13 @@ from fastapi.staticfiles import StaticFiles
 from engine.baseline import BaselineSession
 from engine.dto import EngineConfig
 from engine.front_llm import stream_reply
-from engine.sensors.maai import MaaiSensor, SharedMaai, make_maai_multiple
+from engine.sensors.maai import (
+    CompositeMaai,
+    MaaiSensor,
+    SharedMaai,
+    make_maai_multiple,
+    make_maai_single,
+)
 from engine.sensors.stt import WhisperStt
 from engine.sensors.stt_remote import WhisperCppStt
 from engine.sensors.vad import VadSensor, silero_prob
@@ -48,6 +56,7 @@ class Models:
         self.synthesize = None  # 句 → 声。TTS ごとに呼び方が違うので、ここでそろえる
         self.synthesize_stream = None  # 句 → 声の断片。逐次に返せる TTS だけ
         self.maai: SharedMaai | None = None  # MaAI のモデル。接続ごとに貸し出す
+        self.maai_vap: SharedMaai | None = None  # 言い終わり用 CPC vap。Mimi とは別に貸し出す
         self.backchannel_clip: np.ndarray | None = None  # 前もって合成した相づち
 
     def load(self) -> None:
@@ -81,8 +90,14 @@ class Models:
             raise ValueError(f"知らない TTS: {self.cfg.tts}")
         if self.cfg.maai:
             modes = tuple(m.strip() for m in self.cfg.maai_modes.split(",") if m.strip())
-            self.maai = await asyncio.to_thread(
-                lambda: SharedMaai(make_maai_multiple(modes, torch_threads=self.cfg.maai_threads)))
+            if self.cfg.maai_vap_cpc:
+                modes = tuple(mode for mode in modes if mode != "vap")
+            if modes or not self.cfg.maai_vap_cpc:
+                self.maai = await asyncio.to_thread(
+                    lambda: SharedMaai(make_maai_multiple(modes, torch_threads=self.cfg.maai_threads)))
+            if self.cfg.maai_vap_cpc:
+                self.maai_vap = await asyncio.to_thread(
+                    lambda: SharedMaai(make_maai_single(torch_threads=self.cfg.maai_threads)))
         if self.cfg.backchannel:
             self.backchannel_clip = _trim(await self.synthesize(self.cfg.bc_text))
 
@@ -118,7 +133,8 @@ async def ws(socket: WebSocket) -> None:
         await socket.send_text(json.dumps(obj, ensure_ascii=False))
 
     prob = silero_prob()
-    if models.maai is not None:  # Silero を読むと torch のスレッド数が 1 に戻るので、MaAI の値に直す
+    if models.maai is not None or models.maai_vap is not None:
+        # Silero を読むと torch のスレッド数が 1 に戻るので、MaAI の値に直す
         import torch
 
         torch.set_num_threads(cfg.maai_threads)
@@ -133,11 +149,19 @@ async def ws(socket: WebSocket) -> None:
         send_audio=send_audio, send_json=send_json,
         backchannel_clip=models.backchannel_clip,
     )
+    maai = None
     if models.maai is not None:
-        session.attach_maai(MaaiSensor(
+        maai = MaaiSensor(
             models.maai.lease, frame_samples=models.maai.frame_samples,
-            user_channel=cfg.maai_user_channel, on_frame=session.on_maai,
-            loop=asyncio.get_running_loop()))
+            user_channel=0 if cfg.maai_vap_cpc else cfg.maai_user_channel,
+            on_frame=session.on_maai, loop=asyncio.get_running_loop())
+    if models.maai_vap is not None:
+        vap = MaaiSensor(
+            models.maai_vap.lease, frame_samples=1600, user_channel=0,
+            on_frame=session.on_maai, loop=asyncio.get_running_loop())
+        maai = CompositeMaai(maai, vap) if maai is not None else vap
+    if maai is not None:
+        session.attach_maai(maai)
     try:
         while True:
             message = await socket.receive()

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from engine.sensors import maai
 from engine.sensors.maai import MaaiSensor, make_maai_multiple
 
 pytestmark = pytest.mark.unit
@@ -105,3 +106,49 @@ def test_mismatched_model_frame_size_fails_before_inference():
         assert stopped == [True]
     finally:
         sensor.close()
+
+
+@pytest.mark.parametrize("overrides,expected,thread_count", [
+    ({}, {"mode": "vap", "lang": "jp", "model_type": "normal", "frame_rate": 10,
+          "context_len_sec": 5, "device": "cpu"}, 1),
+    ({"mode": "vad", "lang": "en", "model_type": "normal-ver2", "frame_rate": 12.5,
+      "context_len_sec": 20, "device": "cuda", "torch_threads": 2},
+     {"mode": "vad", "lang": "en", "model_type": "normal-ver2", "frame_rate": 12.5,
+      "context_len_sec": 20, "device": "cuda"}, 2),
+])
+def test_single_factory_uses_synchronous_maai_two_chunks_and_given_settings(
+    monkeypatch, overrides, expected, thread_count,
+):
+    # MOCK: start を持たない代役で、実 MaAI / torch を import しない。
+    settings, threads, inputs = {}, [], []
+    model = object()
+
+    def chunk():
+        value = object()
+        inputs.append(value)
+        return value
+
+    def single(**kwargs):
+        settings.update(kwargs)
+        return model
+
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(set_num_threads=threads.append))
+    monkeypatch.setitem(sys.modules, "maai", SimpleNamespace(
+        MaaiInput=SimpleNamespace(Chunk=chunk), Maai=single,
+    ))
+    assert maai.make_maai_single(**overrides) is model
+    assert len(inputs) == 2 and inputs[0] is not inputs[1]
+    assert settings.pop("audio_ch1") is inputs[0]
+    assert settings.pop("audio_ch2") is inputs[1]
+    assert settings == expected
+    assert threads == [thread_count]
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"torch_threads": 0}, {"frame_rate": 0}, {"frame_rate": float("nan")},
+    {"context_len_sec": 0},
+])
+def test_single_factory_rejects_bad_settings_before_importing_models(kwargs):
+    with pytest.raises(ValueError):
+        maai.make_maai_single(**kwargs)
+    assert "maai" not in sys.modules and "torch" not in sys.modules

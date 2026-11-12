@@ -67,6 +67,7 @@ class EngineConfig:
     # MaAI（P3: 言い終わりの判定、相づち、相づちで止まらない）。既定はすべて切。切なら MaAI を読み込まない
     maai: bool = False  # MaAI のセンサーを動かし、予測を記録する。これだけでは動きは変わらない
     maai_modes: str = "vap,bc,bc_det"  # 同じエンコーダー（Mimi、12.5 Hz、文脈 20 秒）で動かすモデル
+    maai_vap_cpc: bool = False  # vap を Mimi から除き、別の CPC（10 Hz、文脈 5 秒）で動かす
     maai_user_channel: int = 0  # MaAI の入力で、ユーザーの声を入れるチャンネル（0 = ch1、1 = ch2）
     maai_threads: int = 2  # MaAI の計算のスレッド数
     maai_stale_s: float = 0.25  # これより古い予測は、判断に使わない

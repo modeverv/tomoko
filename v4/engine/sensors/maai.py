@@ -30,7 +30,7 @@ class _MaaiModel(Protocol):
 
 
 def _to_frame(result: Mapping[str, Any], at_s: float, user_channel: int) -> MaaiFrame:
-    """MaaiMultiple 0.2.27 の mode label ごとの辞書を、この 1 か所で解釈する。"""
+    """単体の平坦辞書と Multiple の mode 別辞書を、この 1 か所で解釈する。"""
     def pair(values: Any) -> tuple[float, float] | None:
         if values is None:
             return None
@@ -38,10 +38,13 @@ def _to_frame(result: Mapping[str, Any], at_s: float, user_channel: int) -> Maai
             raise ValueError("MaAI stereo output must have two channels")
         return float(values[user_channel]), float(values[1 - user_channel])
 
-    vap = result.get("vap", {})
-    vad = pair(vap.get("vad", result.get("vad", {}).get("vad")))
-    bc = result.get("bc", {}).get("p_bc")
-    bc_det = pair(result.get("bc_det", {}).get("p_bc_det"))
+    vap = result.get("vap", result)
+    vad_values = vap.get("vad", result.get("vad"))
+    if isinstance(vad_values, Mapping):
+        vad_values = vad_values.get("vad")
+    vad = pair(vad_values)
+    bc = result.get("bc", result).get("p_bc")
+    bc_det = pair(result.get("bc_det", result).get("p_bc_det"))
     return MaaiFrame(
         at_s=at_s, p_now=pair(vap.get("p_now")), p_future=pair(vap.get("p_future")),
         p_bc=None if bc is None else float(bc),
@@ -229,6 +232,83 @@ class MaaiSensor:
                 self._closed = True
                 self._pending.clear()
             log.info("maai sensor stopped")
+
+
+class CompositeMaai:
+    """Mimi の相づち予測と CPC の vap を、1 つの MaaiSensor と同じ口で扱う。"""
+
+    def __init__(self, primary: MaaiSensor, vap: MaaiSensor) -> None:
+        self._primary, self._vap = primary, vap
+
+    def feed_mic(self, samples: np.ndarray) -> int:
+        return self._primary.feed_mic(samples) + self._vap.feed_mic(samples)
+
+    def add_tomoko_audio(self, samples_24k: np.ndarray, at_mic_s: float) -> None:
+        self._primary.add_tomoko_audio(samples_24k, at_mic_s)
+        self._vap.add_tomoko_audio(samples_24k, at_mic_s)
+
+    def stop_tomoko(self, at_mic_s: float) -> None:
+        self._primary.stop_tomoko(at_mic_s)
+        self._vap.stop_tomoko(at_mic_s)
+
+    def latest(self) -> MaaiFrame | None:
+        primary, vap = self._primary.latest(), self._vap.latest()
+        if primary is None:
+            return vap
+        if vap is None:
+            return primary
+        return MaaiFrame(
+            at_s=min(primary.at_s, vap.at_s), p_bc=primary.p_bc,
+            p_bc_det_user=primary.p_bc_det_user, p_now=vap.p_now, p_future=vap.p_future,
+            vad_user=vap.vad_user, vad_tomoko=vap.vad_tomoko,
+        )
+
+    @property
+    def dropped_frames(self) -> int:
+        return self._primary.dropped_frames + self._vap.dropped_frames
+
+    @property
+    def error(self) -> Exception | None:
+        return self._primary.error or self._vap.error
+
+    def close(self, timeout: float = 5.0) -> None:
+        """両方の終了を試し、失敗した場合は最初の例外を返す。"""
+        error = None
+        for sensor in (self._primary, self._vap):
+            try:
+                sensor.close(timeout=timeout)
+            except Exception as exc:
+                if error is None:
+                    error = exc
+                else:
+                    log.exception("maai composite secondary close failed")
+        if error is not None:
+            raise error
+
+
+def make_maai_single(
+    mode: str = "vap", *, lang: str = "jp", frame_rate: float = 10,
+    context_len_sec: int = 5, model_type: str = "normal", device: str = "cpu",
+    torch_threads: int = 1,
+) -> _MaaiModel:
+    """単体 Maai を同期専用で作る。既定は CPC vap。start() は呼ばない。
+
+    この関数内でだけ MaAI / torch と重みを読み込み、プロセス共通の torch スレッド数を設定する。
+    """
+    if not isinstance(torch_threads, int) or torch_threads < 1:
+        raise ValueError("torch_threads must be positive")
+    if not isfinite(frame_rate) or frame_rate <= 0 or context_len_sec <= 0:
+        raise ValueError("frame rate and context length must be positive")
+    import torch
+
+    torch.set_num_threads(torch_threads)
+    from maai import Maai, MaaiInput
+
+    return Maai(
+        mode=mode, lang=lang, frame_rate=frame_rate, context_len_sec=context_len_sec,
+        model_type=model_type, device=device,
+        audio_ch1=MaaiInput.Chunk(), audio_ch2=MaaiInput.Chunk(),
+    )
 
 
 def make_maai_multiple(

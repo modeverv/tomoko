@@ -201,6 +201,22 @@ def test_nested_output_uses_user_tomoko_order_and_sample_time(make_sensor, user_
     np.testing.assert_array_equal(second, np.full(1280, user_channel == 1))
 
 
+@pytest.mark.parametrize("user_channel", [0, 1])
+def test_single_cpc_flat_output_uses_user_tomoko_order_and_sample_time(make_sensor, user_channel):
+    model = FakeModel(result={"t": 999999.0, **predictions()["vap"]})
+    sensor, _ = make_sensor(model, frame_samples=1600, user_channel=user_channel)
+    sensor.feed_mic(np.ones(1600, dtype=np.float32))
+    wait_until(lambda: sensor.latest() is not None or sensor.error is not None)
+    assert sensor.error is None
+    assert sensor.latest() == MaaiFrame(
+        at_s=0.1,
+        p_now=(0.1, 0.9) if user_channel == 0 else (0.9, 0.1),
+        p_future=(0.2, 0.8) if user_channel == 0 else (0.8, 0.2),
+        vad_user=0.3 if user_channel == 0 else 0.7,
+        vad_tomoko=0.7 if user_channel == 0 else 0.3,
+    )
+
+
 def test_optional_modes_and_initial_no_output_do_not_block(make_sensor):
     model = FakeModel(skip_first=True, result={"vap": predictions()["vap"]})
     sensor, _ = make_sensor(model)
