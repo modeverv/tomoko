@@ -8,6 +8,8 @@
 #   bc はユーザーの声を ch1 に（逆向きでは p_bc がほぼ 0）。p_bc の閾値 0.4（話している最中の 90% 点 0.36 の上）。
 #   相づちはユーザーの無音 0.35 秒で（自然な息継ぎ 0.15〜0.34 秒では打たない）。
 #   Mimi の vap は言い終わりと途中の無音を分けられなかったので、相づちの判断に vap を使わない（BC_MAX_SHIFT_P=1.0）。
+#   言い終わりの判定は、CPC の vap を別のモデルで動かす（MAAI_VAP_CPC）。待つのは Tomoko の p_now が 0.2 以下のとき
+#   （T2 の言いよどみの 90% 点 0.16〜0.22、T1 の言い終わりの 10% 点 0.20〜0.29。無音 0.2〜0.4 秒）。
 #   bc_det の閾値 0.25（T4 の割り込みは最大 0.20、T3 の相づちの半分は 0.22 以上）。
 set -uo pipefail
 export INPUTS=work/inputs/small-v2
@@ -19,12 +21,12 @@ LAN="$LAN TOMOKO_VOICEVOX_URL=http://127.0.0.1:50122 TOMOKO_VOICEVOX_STREAMING=1
 LAN="$LAN TOMOKO_STT=whispercpp TOMOKO_BARGE_IN=1"
 MAAI="TOMOKO_MAAI=1 TOMOKO_MAAI_USER_CHANNEL=${USER_CH:-0} TOMOKO_MAAI_THREADS=4"
 BC="TOMOKO_BACKCHANNEL=1 TOMOKO_BC_THRESHOLD=${BC_T:-0.4} TOMOKO_BC_MAX_SHIFT_P=1.0 TOMOKO_BC_QUIET_S=0.35 TOMOKO_BC_ARM_S=0.5"
-EP="TOMOKO_MAAI_ENDPOINT=1 TOMOKO_EP_SHIFT_P=${EP_SHIFT:-0.6} TOMOKO_EP_HOLD_P=${EP_HOLD:-0.35}"
+EP="TOMOKO_MAAI_VAP_CPC=1 TOMOKO_MAAI_ENDPOINT=1 TOMOKO_EP_SHIFT_P=${EP_SHIFT:-0.6} TOMOKO_EP_HOLD_P=${EP_HOLD:-0.2}"
 GD="TOMOKO_BARGE_GUARD=1 TOMOKO_GUARD_BC_DET=${GUARD:-0.25}"
 SKIP=${SKIP:-}  # 飛ばす段（例: SKIP=3）
 step() { [ "$1" -ge "$FIRST" ] && [ "$1" -le "$LAST" ] && [[ " $SKIP " != *" $1 "* ]]; }
 step 1 && bash scripts/p3_runs.sh p3-10-v2 3 $LAN "$R_LLM"
 step 2 && bash scripts/p3_runs.sh p3-11-bc 3 $LAN "$R_LLM" $MAAI TOMOKO_MAAI_MODES=bc $BC
-step 3 && bash scripts/p3_runs.sh p3-12-ep 3 $LAN "$R_LLM" $MAAI TOMOKO_MAAI_MODES=vap,bc $BC $EP
-step 4 && bash scripts/p3_runs.sh p3-13-guard 3 $LAN "$R_LLM" $MAAI TOMOKO_MAAI_MODES=bc,bc_det $BC $GD
+step 3 && bash scripts/p3_runs.sh p3-12-ep 3 $LAN "$R_LLM" $MAAI TOMOKO_MAAI_MODES=bc $BC $EP
+step 4 && bash scripts/p3_runs.sh p3-13-guard 3 $LAN "$R_LLM" $MAAI TOMOKO_MAAI_MODES=bc,bc_det $BC $EP $GD
 echo "queue finished"
