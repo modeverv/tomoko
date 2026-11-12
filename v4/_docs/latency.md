@@ -8,7 +8,6 @@
 - 計測値と注釈: `work/one-pass-smoke-wp5xysol/annotation-timing.json`（Git 管理外）。
 - 実際の `say` では T5.json の t5-01 だけを CLI の `--one-pass` で試した。0.423 秒で失敗し、サンドボックスの `/usr/bin` の権限エラー後に無音が返った。生成時間の有効な測定値ではなく、実音声の注釈も得られていない。詳細は同ディレクトリの `result.json`。
 
-# 遅延・計測の記録
 
 ## 2026-11-13: MaAI オフライン評価器の拡張（Codex）
 

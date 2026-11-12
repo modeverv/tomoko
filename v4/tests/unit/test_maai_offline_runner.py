@@ -13,7 +13,7 @@ import pytest
 from bench.audio import write_wav
 from bench.generate.__main__ import build
 from bench.scenario import Scenario, Step
-from scripts.maai_offline import at, main, run_model, run_vap
+from scripts.maai_offline import at, main, model_settings, run_model, run_vap
 
 pytestmark = pytest.mark.unit
 
@@ -81,6 +81,32 @@ def test_stream_channels_result_axes_and_sample_clock(mode, key, expected, swapp
     for ch1, ch2 in model.seen:
         assert np.all(ch1 == (0 if swapped else 1))
         assert np.all(ch2 == (1 if swapped else 0))
+
+
+def test_bc_user_channel_can_be_flipped_to_test_the_orientation():
+    model = FakeModel()
+    run_model(model, np.ones(1600, dtype=np.float32), "bc", True)
+    ch1, ch2 = model.seen[0]
+    assert np.all(ch1 == 1) and np.all(ch2 == 0)
+
+
+@pytest.mark.parametrize(
+    "mode,encoder,expected",
+    [
+        ("vap", "cpc", ("normal", 10, 5)),
+        ("bc", "cpc", ("normal", 10, 5)),
+        ("bc_det", "cpc", ("normal-ver2", 12.5, 20)),  # bc_det の日本語の重みは Mimi だけ
+        ("vap", "mimi", ("normal-ver2", 12.5, 20)),
+        ("bc", "mimi", ("normal-ver2", 12.5, 20)),
+    ],
+)
+def test_model_settings_per_mode(mode, encoder, expected):
+    assert model_settings(mode, 10, encoder) == expected
+
+
+def test_bc_2type_has_no_mimi_weights():
+    with pytest.raises(ValueError, match="bc_2type"):
+        model_settings("bc_2type", 10, "mimi")
 
 
 def test_missing_result_is_an_error_instead_of_silently_skipping():

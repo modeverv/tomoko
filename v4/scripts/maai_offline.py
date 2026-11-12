@@ -29,25 +29,35 @@ from bench.score.maai import SCORES, evaluate, summarize
 FRAME = 160  # 旧スクリプトから公開していた入力チャンクのサンプル数
 
 
-def make_model(mode: str, lang: str, frame_rate: int) -> Any:
+def model_settings(mode: str, frame_rate: float, encoder: str = "cpc") -> tuple[str, float, int]:
+    """(model_type, frame_rate, context 秒)。bc_det の日本語の重みは Mimi（12.5 Hz、20 秒）だけにある。"""
+    if mode == "bc_det" or encoder == "mimi":
+        if mode == "bc_2type":
+            raise ValueError("bc_2type には Mimi の重みがない")
+        return "normal-ver2", 12.5, 20
+    return "normal", frame_rate, 5
+
+
+def make_model(mode: str, lang: str, frame_rate: float, encoder: str = "cpc") -> Any:
     import torch
     from maai import Maai, MaaiInput
 
     torch.set_num_threads(2)
+    model_type, rate, context = model_settings(mode, frame_rate, encoder)
     # Zero / ch2省略では mono に変わる。無音も Chunk として渡し、stereo を維持する。
     return Maai(
         mode=mode,
         lang=lang,
-        frame_rate=frame_rate,
-        context_len_sec=5,
-        model_type="normal",
+        frame_rate=rate,
+        context_len_sec=context,
+        model_type=model_type,
         audio_ch1=MaaiInput.Chunk(),
         audio_ch2=MaaiInput.Chunk(),
         device="cpu",
     )
 
 
-def run_model(model: Any, audio: np.ndarray, mode: str) -> list[dict]:
+def run_model(model: Any, audio: np.ndarray, mode: str, bc_user_ch1: bool = False) -> list[dict]:
     """live worker と同じ process を同期で1フレームずつ呼び、必ず結果を回収する。
 
     start() のキュー消去との競合、100チャンクでの破棄、stop中の推論との競合を避ける。
@@ -65,7 +75,9 @@ def run_model(model: Any, audio: np.ndarray, mode: str) -> list[dict]:
     for start in range(0, len(audio) - size + 1, size):
         user = audio[start : start + size].astype(np.float32, copy=False)
         # bc系は内部でswapするので公開入力は system,user。vap/bc_det は user,system。
-        channels = (silence, user) if mode in {"bc", "bc_2type"} else (user, silence)
+        # bc系の向きは文書とコードで食い違うので、bc_user_ch1 で逆向きも試せるようにする。
+        bc_order = (user, silence) if bc_user_ch1 else (silence, user)
+        channels = bc_order if mode in {"bc", "bc_2type"} else (user, silence)
         model.process(*channels)
         try:
             result = model.result_dict_queue.get_nowait()
@@ -143,6 +155,10 @@ def main() -> None:
     ap.add_argument("--frame-rate", type=int, default=10)
     ap.add_argument("--axes", help="軸をカンマ区切り（旧run+vapの既定: T1,T2,C2,T5）")
     ap.add_argument("--modes", default="vap", help="vap,bc,bc_2type,bc_det からカンマ区切り")
+    ap.add_argument("--encoder", choices=("cpc", "mimi"), default="cpc",
+                    help="vap と bc のエンコーダー。bc_det は常に mimi（12.5 Hz、20 秒）")
+    ap.add_argument("--bc-user-ch1", action="store_true",
+                    help="bc 系で、ユーザーの声を外の ch1 に入れる（既定は ch2）")
     args = ap.parse_args()
     modes = list(dict.fromkeys(m.strip() for m in args.modes.split(",")))
     if any(m not in SCORES for m in modes):
@@ -171,13 +187,13 @@ def main() -> None:
             timings[mode] = {"clips": 0, "frames": 0}
             continue
         start = time.perf_counter()
-        model = make_model(mode, args.lang, args.frame_rate)
+        model = make_model(mode, args.lang, args.frame_rate, args.encoder)
         loaded = time.perf_counter()
         details = []
         try:
             for clip in selected:
                 before = time.perf_counter()
-                frames = run_model(model, clip.audio, mode)
+                frames = run_model(model, clip.audio, mode, args.bc_user_ch1)
                 elapsed = time.perf_counter() - before
                 results[mode].extend(evaluate(clip, mode, frames))
                 details.append(
@@ -222,8 +238,10 @@ def main() -> None:
             "modes": modes,
             "lang": args.lang,
             "frame_rate": args.frame_rate,
-            "context_s": 5,
-            "model_type": "normal",
+            "encoder": args.encoder,
+            "per_mode": {m: dict(zip(("model_type", "frame_rate", "context_s"),
+                                     model_settings(m, args.frame_rate, args.encoder), strict=True))
+                         for m in modes},
             "torch_threads": 2,
             "maai_version": package_version,
             "system_audio": "silence",
@@ -231,8 +249,8 @@ def main() -> None:
             "trailing_silence_s": 2 if kind == "inputs" else 0,
             "channels": {
                 "vap": "user,system; score ch2",
-                "bc": "system,user; internal swap",
-                "bc_2type": "system,user; internal swap",
+                "bc": "user,system; internal swap" if args.bc_user_ch1 else "system,user; internal swap",
+                "bc_2type": "user,system; internal swap" if args.bc_user_ch1 else "system,user; internal swap",
                 "bc_det": "user,system; score ch1",
             },
         },
