@@ -258,3 +258,76 @@ def make_maai_multiple(
         model_type="normal-ver2", frame_rate=frame_rate, context_len_sec=context_len_sec,
         device=device, mimi_onnx_cpu_intra_threads=torch_threads, mimi_onnx_cpu_inter_threads=1,
     )
+
+
+def _drain(results: Queue) -> None:
+    while True:
+        try:
+            results.get_nowait()
+        except Empty:
+            return
+
+
+class SharedMaai:
+    """MaAI のモデルをプロセスに 1 つだけ持ち、接続ごとに貸し出す。
+
+    読み込みに数秒かかるので、接続のたびには作らない（ベンチは 1 件ごとにつなぎ直す）。
+    1 人用なので、同時に貸すのは 1 つだけ。貸すときと返すときに状態をリセットし、会話の文脈を混ぜない。
+    MaaiSensor の model_factory に lease を渡す。センサーが閉じると、stop で返される。
+    """
+
+    def __init__(self, model: _MaaiModel, warm_frames: int = 4, lease_timeout_s: float = 10.0) -> None:
+        self._model = model
+        self._lock = threading.Lock()
+        self._lease_timeout_s = lease_timeout_s
+        self.broken: Exception | None = None  # 推論に失敗したら、もう貸さない（中の処理が残っているかもしれない）
+        self.frame_samples = int(getattr(model, "audio_samples_per_frame", 1280))
+        silence = np.zeros(self.frame_samples, dtype=np.float32)
+        for _ in range(warm_frames):  # 最初の推論は遅いので、起動時に済ませておく
+            model.process(silence, silence)
+        model.reset_runtime_state()
+        _drain(model.result_dict_queue)
+
+    def lease(self) -> _Lease:
+        if not self._lock.acquire(timeout=self._lease_timeout_s):
+            raise TimeoutError("MaAI のモデルは別の接続が使っている")
+        if self.broken is not None:
+            self._lock.release()
+            raise RuntimeError("MaAI のモデルは推論に失敗したので、貸さない") from self.broken
+        try:
+            self._model.reset_runtime_state()
+            _drain(self._model.result_dict_queue)
+        except BaseException:
+            self._lock.release()
+            raise
+        return _Lease(self, self._lock)
+
+
+class _Lease:
+    """貸し出したモデル。stop は返すだけで、モデルそのものは止めない。"""
+
+    def __init__(self, shared: SharedMaai, lock: threading.Lock) -> None:
+        self._shared, self._model, self._lock = shared, shared._model, lock
+        model = self._model
+        self.result_dict_queue = model.result_dict_queue
+        self.audio_samples_per_frame = getattr(model, "audio_samples_per_frame", 1280)
+
+    def process(self, ch1: np.ndarray, ch2: np.ndarray) -> None:
+        try:
+            self._model.process(ch1, ch2)
+        except Exception as exc:
+            self._shared.broken = exc
+            raise
+
+    def reset_runtime_state(self) -> None:
+        self._model.reset_runtime_state()
+
+    def stop(self, wait: bool = True) -> None:
+        if self._lock is None:
+            return
+        lock, self._lock = self._lock, None
+        try:
+            self._model.reset_runtime_state()
+            _drain(self.result_dict_queue)
+        finally:
+            lock.release()
