@@ -53,3 +53,12 @@
 - 起こしたもの: tmux `v4-voicevox`（50021）、`v4-tunnel`（3060、18090/18091）、`v4-tunnel-mbp`（MBP、50122）。MBP では PR 1823 版の VOICEVOX を nohup で起こした（127.0.0.1:50122、ログ `~/tomoko-v4-logs/voicevox-pr1823.log`）。MBP の設定は変えていない。
 - 無効: p3-5（STT を 3060 に）。3060 が 20:20 ごろから応答しない。
 - 人間に頼むこと: 3060 を起こす。MaAI の手順を入れるか決める。相づちで止まる 3 件の扱いを決める。VOICEVOX の声を聴く。P3 の目標の数字を決める。
+
+## 2026-11-13 セッション2: P3 の続き（Claude Code / Opus 5.5）
+
+### やること（開始時）
+- ユーザーの決定（2026-11-13 未明）: 3060 を寝かせない。MaAI を先に進める（台本を変え、MaAI の効き目が測れるようにする）。相づちは体験にとても重要。相づちで止まる 3 件は、声の長さ以外の手がかりを 1 つずつ測る。VOICEVOX は当面 MBP2021（Wi-Fi、.36）。P3 の目標は数字ではなく変更の順番。LAN 内の計算資源は自由に使ってよい。ユーザーは就寝中で、しばらく人間の助けはない。
+- サブエージェントは Claude 以外（Codex gpt-6.1-sol max、agy gemini-4-argon-high、dsh）を並べて使う（AGENTS.md の 2026-11-13 の追記）。dsh の headless は HTTP 404 で使えていない。
+- 測る: p3-5b（STT を 3060 に、20 件 × 3）、p3-9-lan（LLM・STT は 3060、TTS は MBP の逐次合成、割り込みあり、55 件 × 3）。
+- MaAI: Codex と agy で事実を調べ、互いに確かめ、独立に設計して批判し合う（ワークフロー）。並べて、台本の声の作り方（1 回の合成で無音を入れる）を Codex、台本の新しい版 small-v2 を agy が書く。
+- 起こしたもの: tmux `v4-awake`（3060 を寝かせない）、`v4-tunnel-3060`、`v4-tunnel-mbp`、`v4-watch`（1 分ごとの見張り）、`v4-caffeinate`（この Mac を寝かせない）。手順は scripts/lan_upkeep.sh、記録は work/lan/。
