@@ -152,3 +152,29 @@
 
 ### 次のセッションでやること
 - 別担当が利用方針と EngineConfig を定めてから組み込む。遅延測定と重ならない機会に、実 MaaiMultiple の3モード・チャンネルの意味・warmup / reset・CPU 負荷を検証する。
+
+## 2026-11-13 セッション4（Codex）: CPC vap の追加
+
+### やること（開始時に書く）
+- ユーザーの実装依頼に従い、P3 の言い終わり用 CPC vap を Mimi の相づち用センサーと併用する。`make_maai_single`・`CompositeMaai`・既定 False の `maai_vap_cpc` と起動／接続の配線を追加する。`baseline.py` は変更しない。
+- MaAI / torch を読み込まない単体テストを先に書き、フレームの統合・欠測・委譲・終了の失敗・工場の引数・起動と接続の配線を確かめる。指定の tests/unit と ruff を検証する。
+- 変更はこの worktree の v4 内だけ。ネットワーク・Drive の取得／保存・uv sync・実モデルの読み込み・実推論・コミットは行わない。同じ機械で遅延測定中のため実モデルの性能は測らない。
+- 作業開始時の Git 差分はなし。現行 MEMORY.md / LOG.md / README.md / PLAN.html / ARCHITECTURE.html と過去世代の関連記録を確認した。索引ツールは承認ポリシーで拒否されたため、コードはファイルを直接参照する。
+- Codex（gpt-6.1-sol、推論 max）へ公開コード相当の静的 API 調査とレビューを並行依頼する。本人の録音・実会話・私的な記録は渡さない。
+
+### やったこと
+- 新規32件の単体テストを先に追加し、32件失敗・既存25件成功を確認してから実装した。対象は CompositeMaai の統合・欠測・古い時刻・委譲・破棄数・error・終了の多重障害、単体 factory の引数、単体 CPC の平坦出力、既定設定と環境変数、起動／接続の配線。
+- `make_maai_single`・`CompositeMaai` と既定 False の `EngineConfig.maai_vap_cpc` を追加した。起動時は CPC vap を別の SharedMaai にし、接続ごとに Mimi と合わせて渡す。両センサーの入力は ch1=ユーザー、通知は session.on_maai。baseline.py は変更していない。
+- 単体 Maai と Multiple で出力辞書の形が違う点を偽モデルで再現してから対応した。vap だけを指定した場合は、空の Multiple を作らず CPC だけをつなぐ。
+- ARCHITECTURE.html と _docs/maai-sensor.md に API・配線・欠測と終了の契約を反映した。MEMORY.md と _docs/latency.md に確認事項と未測定の範囲を追記した。
+- 独立 Codex（gpt-6.1-sol / max）の静的レビューで、要修正の指摘はなかった。
+
+### 検証結果
+- 関連4ファイル: **57 passed in 0.72s**。
+- `.venv/bin/python -m pytest -q tests/unit`: **216 passed in 2.12s**。既存の pytest-asyncio の fixture loop scope 未指定の警告あり。
+- `.venv/bin/ruff check .`: **All checks passed!**。
+- `git diff --check`: 成功。変更は v4 内だけで、LOG.md / MEMORY.md は追記のみ。
+- 実 MaAI / torch の読み込み・実推論・性能計測・ネットワーク・uv sync・コミットは行っていない。ユーザーの明示指示により Drive は未取得・未保存。
+
+### 次のセッションでやること
+- 測定中の処理に重ならない機会に、別担当が実モデル2個の同時推論時の負荷・破棄数・予測精度・E2E 遅延を検証する。今回の単体試験を実体験の改善実績にはしない。

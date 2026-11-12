@@ -109,3 +109,15 @@
 - 待機フレームを捨てた際は feed_mic の返り値と dropped_frames 累計と warning で観測する。入力時刻の欠落を検出したら encoder / KV をリセットし、欠けた音声の前後を連続した履歴にしない。
 - close 後の未実行通知は配送時に抑止する。同期 process は強制停止できないため、close の期限超過は TimeoutError。モデルの一次エラーを終了処理の二次エラーで上書きせず、両方のログを残す。
 - 25件の合成・偽モデル試験を追加し、全155件の unit と ruff が成功。独立 Codex（gpt-6.1-sol / max）の静的レビューを受け、指摘3点は先行の回帰テストで再現後に修正した。実モデルや相づちの体験品質を確認した結果ではない。
+
+## 2026-11-13（Codex）: CPC vap と Mimi の併用
+
+### 確認したこと
+- 単体 Maai の同期出力は、Multiple の mode 別ネストと違って `p_now` / `p_future` / `vad` をトップへ置く。既存 `_to_frame` へそのまま渡すと list に `.get()` して失敗する。先行の偽モデル試験で再現し、両形式に対応した。指定された MaAI 0.2.27 のコードも独立 Codex が静的確認した。
+- `maai_modes="vap"` から vap を除くと空になる。空の Multiple は既存工場が拒否するため、この場合は Mimi を作らず CPC のセンサーだけをつなぐ。
+
+### 確定した判断: 今回の実装契約
+- ユーザー指定の `maai_vap_cpc=False` を追加。True かつ `maai=True` で、Mimi の modes から vap を除き、CPC vap（normal / 10 Hz / 5秒 / 1600サンプル）を別の SharedMaai にする。両工場の torch_threads は同じ設定値にする。False は従来の構成を保つ。
+- `CompositeMaai` は主の bc / bc_det と副の vap / vad を合わせる。時刻は古い方、片方のフレームが欠けたらある側だけ、両方欠けたら None。個々の欠測を別モデルで補完しない。破棄数は合計、終了は両方を試して最初の例外を保持する。
+- CPC 有効時のユーザー入力は両方 ch1、通知は両方 session.on_maai。baseline.py は変更しない。CPC の単体 factory は Chunk を2個使い、start() を呼ばない。
+- これらはコードと偽モデル試験で確かめた実装の契約であり、実モデルの精度・CPU 負荷・会話遅延・体験品質を測った結果ではない。

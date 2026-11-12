@@ -500,6 +500,18 @@ MaAI 自身の入力 worker は起動しない。</p>
 API、チャンネルの向き、未着音声の補間と終了の規約は
 <a href="_docs/maai-sensor.md">MaAI センサーの文書</a>に記した。</p>
 
+<h2 id="maai-cpc-vap">追記 2026-11-13（Codex）: 言い終わりの CPC vap を分離</h2>
+<p>直前の追記の「基準線への接続を含まない」という範囲は、今回の接続追加には適用しない。
+<code>maai=True</code> と <code>maai_vap_cpc=True</code> のときだけ、
+相づちの Mimi（bc / bc_det、12.5 Hz、文脈20秒）とは別に、
+CPC（vap、10 Hz、文脈5秒）を <code>SharedMaai</code> で起動する。
+既定は False とし、従来のモデル構成を保つ。</p>
+<p>接続ごとの2センサーはともに ch1=ユーザー、同じマイクの時計と予定音声を使う。
+<code>CompositeMaai</code> は主の相づち予測と副の vap / vad を結合し、
+鮮度判定には古い方のフレーム時刻を使う。片方が未出力ならある側だけを返す。
+通知は両方とも <code>session.on_maai</code> に送り、判断処理と /ws の通信仕様は変えない。
+vap だけを指定した場合は CPC センサーを直接つなぐ。実モデルの速度と精度は今回未測定。</p>
+
 </main>
 </body>
 </html>
