@@ -32,6 +32,18 @@ uv run python -m bench.score work/runs/clockwork
 uv run python -m bench.report work/runs/clockwork --previous work/runs/前回
 ```
 
+`--one-pass` を付けると、`[pause N]` を `[[slnc ms]]` に置き換え、1 発話を 1 回の
+`say` で合成する。例:
+
+```sh
+.venv/bin/python -m bench.generate scenarios/small work/inputs/small-one-pass --one-pass
+```
+
+省略時の音声・注釈・キャッシュキーは従来どおり。生成した `scenario.json` の
+`one_pass` が方式を示す（古いファイルで項目がなければ `false`）。1 回合成では、実際の
+音量から注釈を作る。句点などのあとでは声の自然な間が区切りの無音に足されるので、区切りは
+台本の長さまで無音の真ん中から縮める（v1 と無音の長さをそろえ、抑揚の違いだけを比べるため）。
+
 ## 注意
 
 - `say` で作った音声は Apple の使用許諾により公開できない。Git に入れるのは台本と生成スクリプトだけ。

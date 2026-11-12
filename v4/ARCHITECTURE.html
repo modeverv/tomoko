@@ -471,6 +471,22 @@ th { background: var(--accent-bg); }
 
 <p class="meta">土台の LLM の Gemma 4 は、v3 の調査（<code>v3/_docs/v0/sources.md</code>）ではモデルカード上 Apache 2.0 である。</p>
 
+<h2 id="input-one-pass">追記 2026-11-13（Codex）: 5.3 入力音声の 1 回合成</h2>
+<p>5.3 の合成方法について、既定の「部品を別々に合成し、ゼロを挟む」方式に加え、
+<code>bench.generate --one-pass</code> を選べるようにする。<code>Step.parts()</code> の無音の秒数を
+<code>[[slnc ms]]</code> に置き換え、1 発話を 1 回の <code>say</code> で合成する。
+16 kHz、前後の無音除去、最大振幅 0.5、キャッシュの保存方法は共通にし、
+1 回合成のキャッシュキーには <code>one-pass|</code> を付ける。既定の音声・注釈・キーは変えない。</p>
+<p>1 回合成の <code>voiced</code> は振幅の絶対値が 0.005 を超える区間から作り、
+0.15 秒未満のすき間をつなぐ。<code>pauses</code> は結合前の内部無音から長い順に台本の区切りの数だけ選び、
+時刻順に戻す。先頭と末尾の無音は候補にしない。それぞれが要求長の 80% 未満、または候補不足なら、
+台本 ID・発話番号・区切り番号を含む例外にする。検証は表示用の時刻の丸め前に行う。</p>
+<p>句点や文字は取り除かないので、声が持つ自然な間は埋めた無音に加わる。
+短い明示 pause の検出と voiced の平滑化は独立しており、0.15 秒未満の pause は結合した voiced の中に入りうる。
+生成物には <code>Manifest.one_pass</code> を保存する。既定値は <code>false</code> とし、
+この項目のない古い <code>scenario.json</code> も読める。単体試験では合成関数を差し替え、
+<code>say</code> とモデルを呼ばずに検証する。</p>
+
 </main>
 </body>
 </html>

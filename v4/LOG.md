@@ -54,6 +54,45 @@
 - 無効: p3-5（STT を 3060 に）。3060 が 20:20 ごろから応答しない。
 - 人間に頼むこと: 3060 を起こす。MaAI の手順を入れるか決める。相づちで止まる 3 件の扱いを決める。VOICEVOX の声を聴く。P3 の目標の数字を決める。
 
+## 2026-11-13 セッション2: P3 の続き（Claude Code / Opus 5.5）
+
+### やること（開始時）
+- ユーザーの決定（2026-11-13 未明）: 3060 を寝かせない。MaAI を先に進める（台本を変え、MaAI の効き目が測れるようにする）。相づちは体験にとても重要。相づちで止まる 3 件は、声の長さ以外の手がかりを 1 つずつ測る。VOICEVOX は当面 MBP2021（Wi-Fi、.36）。P3 の目標は数字ではなく変更の順番。LAN 内の計算資源は自由に使ってよい。ユーザーは就寝中で、しばらく人間の助けはない。
+- サブエージェントは Claude 以外（Codex gpt-6.1-sol max、agy gemini-4-argon-high、dsh）を並べて使う（AGENTS.md の 2026-11-13 の追記）。dsh の headless は HTTP 404 で使えていない。
+- 測る: p3-5b（STT を 3060 に、20 件 × 3）、p3-9-lan（LLM・STT は 3060、TTS は MBP の逐次合成、割り込みあり、55 件 × 3）。
+- MaAI: Codex と agy で事実を調べ、互いに確かめ、独立に設計して批判し合う（ワークフロー）。並べて、台本の声の作り方（1 回の合成で無音を入れる）を Codex、台本の新しい版 small-v2 を agy が書く。
+- 起こしたもの: tmux `v4-awake`（3060 を寝かせない）、`v4-tunnel-3060`、`v4-tunnel-mbp`、`v4-watch`（1 分ごとの見張り）、`v4-caffeinate`（この Mac を寝かせない）。手順は scripts/lan_upkeep.sh、記録は work/lan/。
+
+## 2026-11-13 セッション2（Codex）: ベンチ入力の 1 回合成
+
+### やること（開始時に書く）
+- ユーザーの依頼に従い、P1 の入力生成へ `--one-pass` を追加する。P3 の MaAI 検証用に、文の途中の区切りごとに合成を切らず、`[[slnc ms]]` を埋めた 1 回の合成を選べるようにする。
+- 単体テストを先に追加し、従来の音声・注釈とキャッシュの互換性、実音声由来の注釈、区切りの長さの検証、古い Manifest の読み込みを確かめる。
+- 作業範囲は v4/。コミット、uv sync、ネットワーク、モデルの読み込みは行わない。Drive は今回のネットワーク禁止に従い未取得・未保存。
+- 開始時点の Git 差分はなし。v4 の MEMORY.md、LOG.md、README.md、PLAN.html、ARCHITECTURE.html と過去世代の関連記録を確認した。
+- 変更前の `.venv/bin/python -m pytest -q tests/unit` は `httpx` 不足で 4 ファイルの収集に失敗。依存を取得せずに利用可能なローカル環境を確認する。
+
+### やったこと
+- 先に `tests/unit/test_generate.py` にテストを追加し、17 件失敗・既存 1 件成功を確認してから実装した。端数を持つ要求長の回帰テストも、修正前の失敗を確認した。
+- `synthesize_one_pass`、共通キャッシュ処理 `_synthesize`、音量による `annotate_one_pass` を追加。`build` と CLI の `--one-pass`、`Manifest.one_pass=False` と古い JSON の読み込みを実装した。
+- 生成の単体試験は既存 1 件に 22 件を追加。埋め込み文字列・say 呼び出し回数・キャッシュ分離・出力形式・注釈・長さの下限・無音の候補不足・従来 WAV のバイト一致・CLI・古い Manifest を検証した。
+- README.md、ARCHITECTURE.html、MEMORY.md を更新し、注釈のみの軽い処理時間を `_docs/latency.md` に記録した。会話エンジンや設定・依存宣言・uv.lock は変えていない。
+- Codex（gpt-6.1-sol / max）にコードと合成データのみの読み取りレビューを依頼。要求長の下限の切り上げを修正した後、残る確定問題なしとの報告を受けた。
+
+### 詰まったこと・解決したこと
+- `httpx` と依存は、同じ機械の既存 v4 環境からこの worktree の `.venv` にコピーして補った。ネットワーク・uv sync は使っていない。
+- 実際の say は t5-01（Sandy）1 件だけ CLI で試したが、サンドボックスの `/usr/bin` の権限エラー後に無音になった。実音声の注釈は未確認。失敗記録は `work/one-pass-smoke-wp5xysol/result.json`。
+- 25.2 秒の人工波形の注釈は 1 回の計測で 1.389 ms。`work/one-pass-smoke-wp5xysol/annotation-timing.json` に境界と計測値を保存した。実音声の精度や会話の遅れの検証とは分ける。
+
+### 最終検証
+- `.venv/bin/python -m pytest -q tests/unit`: **97 passed in 0.47s**。既存の pytest-asyncio の loop scope 未指定の警告は残る。
+- `.venv/bin/ruff check .`: **All checks passed!**
+- `git diff --check`: 成功。
+- コミット・マージ・push はしていない。Google Drive は今回のネットワーク禁止に従い、未取得・未保存。
+
+### 次のセッションでやること
+- 権限が使える実行環境で t5-01 を 1 件再生成して、実音声の注釈と自然な間を確認する。MaAI の評価や測定中のエンジンは今回の作業対象外。
+
 ## 2026-11-13 セッション2（Codex）: MaAI のオフライン評価の拡張
 
 ### やること（開始時）
