@@ -82,6 +82,8 @@ def run_model(model: Any, audio: np.ndarray, mode: str, bc_user_ch1: bool = Fals
         try:
             result = model.result_dict_queue.get_nowait()
         except queue.Empty as exc:
+            if start < 2 * size:  # Mimi はリセットのあと、最初のフレームでは結果を出さない
+                continue
             raise RuntimeError(f"{mode}: {start + size} サンプル時点の結果がない") from exc
         if not model.result_dict_queue.empty():
             raise RuntimeError(f"{mode}: 1フレームに複数の結果がある")
