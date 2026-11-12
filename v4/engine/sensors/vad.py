@@ -40,6 +40,9 @@ class VadSensor:
         # 声がさらに長く続いたら "sustained_max" を 1 回出す。相づちとみなして止めずにいた声を、やはり止めるのに使う
         self._sustain_max_n = (None if sustain_max_s is None
                                else max(1, round(sustain_max_s * IN_SR / WINDOW)))
+        if (self._sustain_n is not None and self._sustain_max_n is not None
+                and self._sustain_max_n <= self._sustain_n):
+            raise ValueError("sustain_max_s は sustain_s より、窓 1 つ以上長くする")
         # 言い終わりの判定を外から変える口（P3、MaAI）。None なら無音 silence_s で言い終わり
         self._decide_end: Callable[[float], bool | None] | None = None
         self._min_quiet_n = self._max_quiet_n = self._silence_n
@@ -70,7 +73,7 @@ class VadSensor:
         """話している途中の、いまの無音の長さ。話していないときは 0。"""
         return self._quiet * WINDOW / IN_SR if self._speech is not None else 0.0
 
-    def set_end_policy(self, decide: Callable[[float], bool | None],
+    def set_end_policy(self, decide: Callable[[float], bool | None] | None,
                        min_silence_s: float, max_silence_s: float) -> None:
         """言い終わりの判定を外から変える。
 
@@ -79,6 +82,8 @@ class VadSensor:
         言い終わりは 1 発話に 1 回だけ出す（途中で切り出して、あとで取り消すことはしない）。
         """
         self._decide_end = decide
+        if decide is None:  # 外す（MaAI が壊れたときなど）。既定の silence_s に戻る
+            return
         self._min_quiet_n = max(1, round(min_silence_s * IN_SR / WINDOW))
         self._max_quiet_n = max(self._min_quiet_n, round(max_silence_s * IN_SR / WINDOW))
 

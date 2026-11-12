@@ -117,7 +117,12 @@ async def ws(socket: WebSocket) -> None:
     async def send_json(obj: dict) -> None:
         await socket.send_text(json.dumps(obj, ensure_ascii=False))
 
-    vad = VadSensor(silero_prob(), cfg.vad_threshold, cfg.vad_silence_s, cfg.vad_preroll_s,
+    prob = silero_prob()
+    if models.maai is not None:  # Silero を読むと torch のスレッド数が 1 に戻るので、MaAI の値に直す
+        import torch
+
+        torch.set_num_threads(cfg.maai_threads)
+    vad = VadSensor(prob, cfg.vad_threshold, cfg.vad_silence_s, cfg.vad_preroll_s,
                     cfg.vad_min_voiced_s, sustain_s=cfg.barge_in_voiced_s,
                     sustain_max_s=cfg.guard_max_voiced_s if cfg.barge_guard else None)
     session = BaselineSession(

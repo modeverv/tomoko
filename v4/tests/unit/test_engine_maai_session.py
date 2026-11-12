@@ -304,3 +304,35 @@ async def test_maai_hears_the_microphone_and_is_closed_with_the_session():
     rig.session.on_mic(loud(3))
     await rig.session.close()
     assert rig.maai.fed == 3 * WINDOW and rig.maai.closed
+
+
+def test_vad_refuses_a_second_cue_that_is_not_later_than_the_first():
+    with pytest.raises(ValueError):
+        vad(sustain_s=0.256, sustain_max_s=0.256)
+
+
+async def test_backchannel_needs_a_prediction_made_after_the_pause_began():
+    rig = Rig(backchannel=True, maai_stale_s=0.25)
+    rig.session.on_mic(loud(30))
+    rig.frame(p_bc=0.9)  # 機会。ただし、この予測は無音の前のもの
+    rig.session.on_mic(loud(5))
+    rig.session.on_mic(quiet(3))  # 無音に入った。無音の後の予測はまだ届いていない
+    await asyncio.sleep(0.02)
+    assert clips(rig) == []
+    rig.frame(p_bc=0.2)  # 無音の中の予測が届いた（機会はまだ有効）
+    await rig.settle(lambda: clips(rig))
+    await rig.session.close()
+
+
+async def test_a_broken_maai_is_detached_and_the_conversation_goes_on():
+    rig = Rig()
+
+    def broken(samples):
+        raise RuntimeError("MaaiSensor failed")
+
+    rig.maai.feed_mic = broken
+    rig.session.on_mic(np.concatenate([loud(10), quiet(12)]))  # 例外は外に出ない
+    await rig.settle(lambda: len([m for m in rig.messages if m.get("role") == "tomoko"]) == 1)
+    await asyncio.sleep(0.02)
+    await rig.session.close()
+    assert rig.session._maai is None and rig.maai.closed

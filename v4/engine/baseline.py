@@ -68,6 +68,7 @@ class BaselineSession:
         self._bc_armed_until = -1.0  # 相づちの機会の期限（マイクの時計）
         self._bc_armed_frame = -1.0  # 機会とみなした予測の時刻。同じ予測で期限を延ばさない
         self._bc_last = float("-inf")  # 前の相づちの時刻
+        self._bc_task: asyncio.Task | None = None
         self._guard_hold = False  # 相づちとみなして、止めずにいる
         self._worker = asyncio.create_task(self._work())
 
@@ -83,7 +84,7 @@ class BaselineSession:
     def on_mic(self, samples: np.ndarray) -> None:
         self._trace.audio_s += len(samples) / IN_SR
         if self._maai is not None:
-            dropped = self._maai.feed_mic(samples)
+            dropped = self._maai_call(self._maai.feed_mic, samples)
             if dropped:
                 self._trace.event("maai_dropped", frames=dropped)
         for ev in self._vad.feed(samples):
@@ -99,9 +100,9 @@ class BaselineSession:
             elif ev.kind == "sustained":
                 self._sustained = True
                 if self._cfg.barge_in:
-                    if self._looks_like_backchannel(ev.at_s):
+                    if (p := self._looks_like_backchannel(ev.at_s)) is not None:
                         self._guard_hold = True
-                        self._trace.event("barge_guard_hold", turn=self._turn)
+                        self._trace.event("barge_guard_hold", turn=self._turn, p_bc_det=round(p, 3))
                     else:
                         self._on_barge_in()
             elif ev.kind == "sustained_max" and self._guard_hold:
@@ -110,7 +111,7 @@ class BaselineSession:
                 self._trace.event("barge_guard_release", turn=self._turn)
                 self._on_barge_in()
         if self._maai is not None:
-            self._maybe_backchannel(self._maai.latest())
+            self._maybe_backchannel(None)
 
     def on_maai(self, frame: MaaiFrame) -> None:
         """MaAI の予測が 1 つ届いた（イベントループの上で呼ばれる）。"""
@@ -129,14 +130,32 @@ class BaselineSession:
             pass
         if self._answering is not None:
             self._answering.cancel()
-        if self._maai is not None:
-            await asyncio.to_thread(self._maai.close)
-        self._trace.close()
+        if self._bc_task is not None:
+            self._bc_task.cancel()
+        try:
+            if self._maai is not None:
+                await asyncio.to_thread(self._maai.close)
+        except Exception as e:  # noqa: BLE001  後始末の失敗で記録を閉じそこねない
+            self._trace.event("maai_close_failed", error=f"{type(e).__name__}: {e}")
+        finally:
+            self._trace.close()
 
     # ---- MaAI ----
 
+    def _maai_call(self, fn, *args):
+        """MaAI が壊れても会話は続ける。記録して、MaAI を外す（既定の動きに戻る）。"""
+        try:
+            return fn(*args)
+        except Exception as e:  # noqa: BLE001
+            self._trace.event("maai_failed", error=f"{type(e).__name__}: {e}")
+            maai, self._maai = self._maai, None
+            self._vad.set_end_policy(None, 0.0, 0.0)
+            if maai is not None:
+                asyncio.get_running_loop().run_in_executor(None, _close_quietly, maai)
+            return None
+
     def _fresh_frame(self, now: float) -> MaaiFrame | None:
-        frame = None if self._maai is None else self._maai.latest()
+        frame = None if self._maai is None else self._maai_call(self._maai.latest)
         if frame is None or now - frame.at_s > self._cfg.maai_stale_s:
             return None
         return frame
@@ -155,44 +174,47 @@ class BaselineSession:
             return False
         return None
 
-    def _looks_like_backchannel(self, now: float) -> bool:
-        """声を出している最中のユーザーの声が、相づちらしいか（bc_det）。"""
+    def _looks_like_backchannel(self, now: float) -> float | None:
+        """声を出している最中のユーザーの声が、相づちらしいか（bc_det）。らしければ、その値を返す。"""
         if not (self._cfg.barge_guard and self._speech_started_while_playing and self._playing()):
-            return False
+            return None
         frame = self._fresh_frame(now)
-        return (frame is not None and frame.p_bc_det_user is not None
-                and frame.p_bc_det_user >= self._cfg.guard_bc_det)
+        if (frame is not None and frame.p_bc_det_user is not None
+                and frame.p_bc_det_user >= self._cfg.guard_bc_det):
+            return frame.p_bc_det_user
+        return None
 
     def _maybe_backchannel(self, frame: MaaiFrame | None) -> None:
         cfg = self._cfg
-        if not cfg.backchannel or self._bc_clip is None or frame is None or frame.p_bc is None:
+        if not cfg.backchannel or self._bc_clip is None or self._maai is None:
             return
         now = self._vad.now_s
-        if frame.p_bc >= cfg.bc_threshold and frame.at_s > self._bc_armed_frame:
+        if (frame is not None and frame.p_bc is not None and frame.p_bc >= cfg.bc_threshold
+                and frame.at_s > self._bc_armed_frame and now - frame.at_s <= cfg.maai_stale_s):
             # p_bc は、相づちを打つべき時刻より先に上がる。少しの間、ユーザーの短い無音を待つ
             self._bc_armed_until, self._bc_armed_frame = frame.at_s + cfg.bc_arm_s, frame.at_s
         vad = self._vad
-        if (now > self._bc_armed_until or not vad.speaking
+        latest = self._fresh_frame(now)  # 最後の判断は、届いた順ではなく、いちばん新しい予測で
+        if (latest is None or now > self._bc_armed_until or not vad.speaking
                 or vad.quiet_s + 1e-9 < cfg.bc_quiet_s
+                # 無音に入ってからの予測を待つ（言い終わりの直後に、無音の前の予測で打たない）
+                or latest.at_s + 1e-9 < now - vad.quiet_s
                 or now - vad.start_s < cfg.bc_min_turn_s
                 or now - self._bc_last < cfg.bc_cooldown_s
                 or self._playing()
                 or (self._answering is not None and not self._answering.done())):
             return
-        if frame.p_now is not None and frame.p_now[1] >= cfg.bc_max_shift_p:
+        if latest.p_now is not None and latest.p_now[1] >= cfg.bc_max_shift_p:
             return  # 言い終わりらしい。相づちではなく答える場面
         self._bc_last, self._bc_armed_until = now, -1.0
         generation = self._new_generation()
         self._trace.event("backchannel", generation=generation, text=cfg.bc_text,
-                          p_bc=round(frame.p_bc, 3), quiet_s=round(vad.quiet_s, 3))
-        if self._maai is not None:
-            self._maai.add_tomoko_audio(self._bc_clip, self._trace.audio_s)
-        asyncio.get_running_loop().create_task(self._send_clip(generation, self._bc_clip))
-
-    async def _send_clip(self, generation: int, clip: np.ndarray) -> None:
-        piece = round(self._cfg.send_chunk_s * OUT_SR)
-        for seq, i in enumerate(range(0, len(clip), piece)):
-            await self._send_audio(generation, seq, clip[i : i + piece])
+                          armed_at_s=round(self._bc_armed_frame, 3), quiet_s=round(vad.quiet_s, 3),
+                          latest_at_s=round(latest.at_s, 3))
+        self._maai_call(self._maai.add_tomoko_audio, self._bc_clip, self._trace.audio_s)
+        # 1 回で送る（断片に分けると、返事の断片と入れ違うことがある）
+        self._bc_task = asyncio.get_running_loop().create_task(
+            self._send_audio(generation, 0, self._bc_clip))
 
     def _new_generation(self) -> int:
         self._generations += 1
@@ -229,7 +251,7 @@ class BaselineSession:
             self._trace.event("stop", turn=self._turn, generation=self._generation)
             self._play_end = 0.0
             if self._maai is not None:
-                self._maai.stop_tomoko(self._trace.audio_s)
+                self._maai_call(self._maai.stop_tomoko, self._trace.audio_s)
             if answering:
                 self._answering.cancel()
             asyncio.get_running_loop().create_task(
@@ -308,7 +330,7 @@ class BaselineSession:
                         self._spoken.append(phrase)
                     self._play_end = max(self._play_end, loop.time()) + len(audio) / OUT_SR
                     if self._maai is not None:
-                        self._maai.add_tomoko_audio(audio, self._trace.audio_s)
+                        self._maai_call(self._maai.add_tomoko_audio, audio, self._trace.audio_s)
                     for i in range(0, len(audio), piece):
                         await self._send_audio(generation, seq, audio[i : i + piece])
                         seq += 1
@@ -329,6 +351,13 @@ class BaselineSession:
                 yield audio
         else:
             yield await self._synthesize(phrase)
+
+
+def _close_quietly(maai) -> None:
+    try:
+        maai.close()
+    except Exception:  # noqa: BLE001, S110  壊れた MaAI の後始末。失敗は maai_failed で記録済み
+        pass
 
 
 def _frame_fields(frame: MaaiFrame) -> dict:

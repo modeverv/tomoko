@@ -58,3 +58,27 @@ def test_only_one_connection_holds_the_model_at_a_time():
     t.join(1.0)
     assert len(got) == 1
     got[0].stop()
+
+
+def test_a_model_that_failed_is_not_lent_again():
+    model = FakeModel()
+
+    def fail(ch1, ch2):
+        raise RuntimeError("boom")
+
+    shared = SharedMaai(model, warm_frames=0)
+    lease = shared.lease()
+    model.process = fail
+    with pytest.raises(RuntimeError):
+        lease.process(np.zeros(1280, dtype=np.float32), np.zeros(1280, dtype=np.float32))
+    lease.stop()
+    with pytest.raises(RuntimeError):
+        shared.lease()
+
+
+def test_waiting_for_a_busy_model_gives_up():
+    shared = SharedMaai(FakeModel(), warm_frames=0, lease_timeout_s=0.05)
+    first = shared.lease()
+    with pytest.raises(TimeoutError):
+        shared.lease()
+    first.stop()
