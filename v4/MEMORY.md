@@ -94,3 +94,18 @@
 
 ### 今回の実測制約
 - small の評価に必要な VAP と CPC はキャッシュにあるが、BC / BC-Det は未取得だった。BC の取得要求が huggingface.co の名前解決に失敗したため、ユーザーの指示どおり実測を中止した。MaAI の推論は走らせていない。v1inputs の結果ファイルは未作成。
+
+## 2026-11-13（Codex）: MaAI センサーの静的確認
+
+- MaAI 0.2.27 の MaaiMultiple は、コンストラクタで runtime reset 済み。同期 process(ch1, ch2) を使うときに start() は不要。両側を Chunk にして mono の選択を避ける。終了時は process が戻った作業スレッドから stop(wait=True) を呼べる（指定された site-packages/maai/model.py:953-980,1113,1191-1211）。
+- Mimi ONNX は最初の encoder 出力を意図的に捨て、空特徴でも出力しないことがある。同期 process の後に result_dict_queue が空でも無期限に待たない（model.py:1281-1295）。結果の時刻は壁時計 t ではなく、呼び出した入力フレームの終端サンプルから付ける。
+- Multiple の辞書はトップの mode label の内側に各出力が入る。bc.p_bc と bc_det.p_bc_det は別の信号であり、bc.p_bc_detect を後者の代用にしない（model.py:1340-1406,1444-1495）。
+- mimi_onnx_cpu_intra_threads / mimi_onnx_cpu_inter_threads は正式なコンストラクタ引数。torch のスレッド数だけでは ONNX の負荷は制限されない。今回は実モデルの読み込み・負荷測定を行わない。
+
+### 確定した判断: センサー単体の入力・通知契約（Codex の実装）
+
+- MaaiSensor は接続ごとのインスタンス。既定は1280サンプル、待機上限4フレーム、モデル入力 ch1=ユーザー。user_channel=1 で逆入力にし、DTO は常に (ユーザー, Tomoko) 順へ戻す。BC の意味として正しい向きは未確定で、ユーザーの判断や実測結果にしない。
+- Tomoko の24 kHz のサンプル位置を保ってから、マイクのフレームへ線形補間する。すでに予約した声の後ろへ連結し、各断片の長さの丸めを累積させない。未着の隣接サンプルは待たず右端保持し、過去に推論へ渡した入力は再計算しない。
+- 待機フレームを捨てた際は feed_mic の返り値と dropped_frames 累計と warning で観測する。入力時刻の欠落を検出したら encoder / KV をリセットし、欠けた音声の前後を連続した履歴にしない。
+- close 後の未実行通知は配送時に抑止する。同期 process は強制停止できないため、close の期限超過は TimeoutError。モデルの一次エラーを終了処理の二次エラーで上書きせず、両方のログを残す。
+- 25件の合成・偽モデル試験を追加し、全155件の unit と ruff が成功。独立 Codex（gpt-6.1-sol / max）の静的レビューを受け、指摘3点は先行の回帰テストで再現後に修正した。実モデルや相づちの体験品質を確認した結果ではない。
