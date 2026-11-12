@@ -17,6 +17,7 @@ from bench.generate.tts import (
     Synthesizer,
     annotate_one_pass,
     pick_voice,
+    shorten_pauses,
     synthesize,
     synthesize_one_pass,
 )
@@ -32,11 +33,13 @@ def build(
     for i, step in enumerate(scenario.steps):
         if one_pass:
             parts = step.parts()
+            requested = [p for p in parts if isinstance(p, float)]
+            label = f"{scenario.id} step {i + 1}"
             samples = synthesize_one_pass(parts, voice, cache, synth=synth)
-            voiced, pauses = annotate_one_pass(
-                samples, [p for p in parts if isinstance(p, float)],
-                label=f"{scenario.id} step {i + 1}",
-            )
+            _, pauses = annotate_one_pass(samples, requested, label=label)
+            # 声の自然な間が足された区切りを、台本の長さに縮めてから、声の区間を取り直す
+            samples, pauses = shorten_pauses(samples, pauses, requested)
+            voiced, _ = annotate_one_pass(samples, [], label=label)
             t = len(samples) / d.IN_SR
         else:
             synth_fn = synth if synth is not None else synthesize

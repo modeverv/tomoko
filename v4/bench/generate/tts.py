@@ -79,6 +79,30 @@ def _synthesize(text: str, voice: str, cache: Path, *, one_pass: bool = False) -
     return read_wav(path)[0]
 
 
+def shorten_pauses(
+    samples: np.ndarray, pauses: list[list[float]], requested: list[float],
+) -> tuple[np.ndarray, list[list[float]]]:
+    """区切りの無音を、台本の長さまで縮める。声の自然な間が足されて長くなった分を、無音の真ん中から除く。
+
+    v1（部品ごとの合成）の区切りは台本どおりの長さなので、無音の長さをそろえ、抑揚の違いだけを比べられるようにする。
+    台本より短い区切りは、そのまま残す。
+    """
+    pieces: list[np.ndarray] = []
+    shortened: list[list[float]] = []
+    pos = removed = 0
+    for (a, b), want in zip(pauses, requested, strict=True):
+        start, end = round(a * d.IN_SR), round(b * d.IN_SR)
+        keep = min(end - start, round(want * d.IN_SR))
+        cut_from = start + keep // 2
+        pieces.append(samples[pos:cut_from])
+        pos = cut_from + (end - start - keep)
+        shortened.append([round((start - removed) / d.IN_SR, 4),
+                          round((start - removed + keep) / d.IN_SR, 4)])
+        removed += end - start - keep
+    pieces.append(samples[pos:])
+    return np.concatenate(pieces), shortened
+
+
 def annotate_one_pass(
     samples: np.ndarray, requested_pauses: list[float], *, label: str,
 ) -> tuple[list[list[float]], list[list[float]]]:

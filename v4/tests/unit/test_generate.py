@@ -117,6 +117,27 @@ def test_one_pass_annotates_actual_voice_and_longest_internal_gaps(tmp_path: Pat
     np.testing.assert_allclose(saved, samples, atol=1 / 32768)
 
 
+def test_one_pass_shortens_each_pause_to_the_requested_length(tmp_path: Path) -> None:
+    # 声の自然な間が足されて長くなった区切りを、台本の長さに縮める（v1 と無音の長さをそろえる）
+    sc = Scenario("t5-short", "T5", (Step("あ。[pause 0.7]い、[pause 0.7]う", at=1.0),))
+    samples = waveform((0.3, 0.1), (1.4, 0), (0.3, 0.1), (0.7, 0), (0.3, 0.1))
+    m = build(sc, tmp_path / sc.id, tmp_path / "cache", synth=lambda *_: samples, one_pass=True)
+    a = m.audio[0]
+    assert a.pauses == [[0.3, 1.0], [1.3, 2.0]]
+    assert a.voiced == [[0.0, 0.3], [1.0, 1.3], [2.0, 2.3]]
+    assert a.duration == pytest.approx(2.3)
+    saved, _ = read_wav(tmp_path / sc.id / a.wav)
+    assert len(saved) == round(2.3 * 16000)
+    assert np.all(saved[round(0.3 * 16000):round(1.0 * 16000)] == 0)
+
+
+def test_one_pass_keeps_a_pause_shorter_than_requested() -> None:
+    samples = waveform((0.3, 0.1), (0.6, 0), (0.3, 0.1))
+    out, pauses = tts.shorten_pauses(samples, [[0.3, 0.9]], [0.7])
+    np.testing.assert_array_equal(out, samples)
+    assert pauses == [[0.3, 0.9]]
+
+
 @pytest.mark.parametrize("gap_samples", [2399, 2400])
 def test_one_pass_voice_merge_is_strictly_below_150ms(tmp_path: Path, gap_samples: int) -> None:
     sc = Scenario("t1-gap", "T1", (Step("自然な間", at=1.0),))
