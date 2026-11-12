@@ -42,10 +42,14 @@ def _reply_onset(mains: list[Seg], end: float, not_before: float | None = None) 
     return None
 
 
-def _turn(target: StepTime, tomoko: list[Seg]) -> dict:
+def _turn(steps: list[StepTime], tomoko: list[Seg]) -> dict:
+    target = steps[-1]
     mains = _mains(tomoko)
     # 早すぎ: ユーザーが話している間に本発話を始めた
     early = any(target.start <= s[0] < target.end - d.ONSET_TOLERANCE_S for s in mains)
+    early_first = len(steps) > 1 and any(
+        steps[0].start <= s[0] < steps[0].end - d.ONSET_TOLERANCE_S for s in mains
+    )
     # かぶせ続けた: ユーザーが話し始めたときに話していて、窓の中で譲らなかった
     talked_over = any(
         s[0] < target.start and s[1] > min(target.end, target.start + d.STOP_WINDOW_S) for s in mains
@@ -59,8 +63,14 @@ def _turn(target: StepTime, tomoko: list[Seg]) -> dict:
     latency = None if early or talked_over or onset is None else max(0.0, onset - target.end)
     after = [s for s in mains if s[0] >= target.end - d.ONSET_TOLERANCE_S]
     double = any(b[0] - a[1] >= d.DOUBLE_ANSWER_GAP_S for a, b in itertools.pairwise(after))
-    return {"responded": responded, "early": early, "talked_over": talked_over,
-            "latency": latency, "double_answer": double}
+    shorts_during_user = sum(
+        1 for s in _shorts(tomoko) if any(st.start <= s[0] < st.end for st in steps)
+    )
+    return {
+        "responded": responded, "early": early, "early_first": early_first,
+        "talked_over": talked_over, "latency": latency, "double_answer": double,
+        "shorts_during_user": shorts_during_user,
+    }
 
 
 def _active_main(tomoko: list[Seg], t: float) -> Seg | None:
@@ -120,6 +130,13 @@ def _t5(talk: StepTime, tomoko: list[Seg]) -> dict:
             overlapped += 1
     mains = _mains(tomoko)
     minutes = (talk.end - talk.start) / 60
+    final_responded = any(
+        _overlap(s, talk.end, talk.end + d.RESPONSE_WINDOW_S) > 0
+        and s[0] <= talk.end + d.RESPONSE_WINDOW_S
+        for s in mains
+    )
+    onset = _reply_onset(mains, talk.end)
+    final_latency = None if onset is None else max(0.0, onset - talk.end)
     return {
         "count": len(shorts),
         "per_minute": len(shorts) / minutes if minutes > 0 else 0.0,
@@ -129,6 +146,8 @@ def _t5(talk: StepTime, tomoko: list[Seg]) -> dict:
         "main_interruptions": sum(
             1 for s in mains if _overlap(s, talk.start, talk.end) >= d.OVERLAP_MIN_S
         ),
+        "final_responded": final_responded,
+        "final_latency": final_latency,
     }
 
 
@@ -137,7 +156,7 @@ def score_timing(
 ) -> dict:
     """1 回の実行を採点する。答えなかった回も、必ず結果を返す（分母から外さない）。"""
     tomoko = sorted(tomoko)
-    out: dict = {"axis": axis, "silent": not tomoko}
+    out: dict = {"axis": axis, "silent": not tomoko, "no_main": not _mains(tomoko)}
     if axis == "T2":
         out |= _t2(steps[0], tomoko)
     elif axis == "T3":
@@ -147,5 +166,5 @@ def score_timing(
     elif axis == "T5":
         out |= _t5(steps[0], tomoko)
     else:  # T1、C2、C3 は、最後の発話への応答を見る
-        out |= _turn(steps[-1], tomoko)
+        out |= _turn(steps, tomoko)
     return out

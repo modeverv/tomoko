@@ -186,3 +186,77 @@ def test_double_answer_is_flagged():
 def test_one_answer_with_a_short_breath_is_not_double():
     r = score_timing("T1", [step(1.0, 3.0)], [(3.5, 5.5), (6.2, 8.0)])
     assert not r["double_answer"]
+
+
+# ---- 追加の指標（2026-11-13） ----
+
+def test_no_main_distinguishes_backchannel_only_from_main_reply():
+    for axis in ("T1", "T2", "T3", "T4", "T5", "C2", "C3"):
+        steps = [step(1.0, 3.0), step(6.0, 8.0)] if axis in ("T3", "T4", "C2") else [step(1.0, 3.0)]
+        r_silent = score_timing(axis, steps, [])
+        assert r_silent["silent"] and r_silent["no_main"]
+
+        r_short = score_timing(axis, steps, [(1.5, 1.9)])
+        assert not r_short["silent"] and r_short["no_main"]
+
+        r_main = score_timing(axis, steps, [(3.5, 5.5)])
+        assert not r_main["silent"] and not r_main["no_main"]
+
+
+def test_c2_early_first_detects_main_started_during_first_step():
+    steps = [step(1.0, 4.0, pauses=[(2.0, 2.6)]), step(7.0, 9.0)]
+    r_early = score_timing("C2", steps, [(2.2, 3.6), (9.5, 11.5)])
+    assert r_early["early_first"] and not r_early["early"] and r_early["responded"]
+
+    # 1 つ目の発話の途中の短い相づちは early_first ではない
+    r_bc = score_timing("C2", steps, [(2.2, 2.6), (4.5, 6.2), (9.5, 11.5)])
+    assert not r_bc["early_first"] and not r_bc["early"]
+
+    # 1 つ目の言い終わり直前（ONSET_TOLERANCE_S 以内）の本応答は early_first ではない
+    r_tol = score_timing("C2", steps, [(3.85, 5.5), (9.5, 11.5)])
+    assert not r_tol["early_first"]
+
+
+def test_early_first_requires_at_least_two_steps_or_multi_step_turn():
+    # 1 発話の T1 で早すぎた場合は early のみ True で early_first は False
+    r_one = score_timing("T1", [step(1.0, 3.0)], [(2.0, 6.0)])
+    assert r_one["early"] and not r_one["early_first"]
+
+    # 2 発話ある T1・C3 では steps[0] の早すぎを early_first で見る
+    two = [step(1.0, 3.0), step(6.0, 8.0)]
+    assert score_timing("T1", two, [(1.5, 3.0), (8.5, 10.5)])["early_first"]
+    assert score_timing("C3", two, [(1.5, 3.0), (8.5, 10.5)])["early_first"]
+
+
+def test_t5_final_responded_and_final_latency():
+    talk = step(0.0, 30.0, pauses=[(5.0, 5.7), (15.0, 15.7)])
+    # 相づちのあと、語り終えて 0.8 秒後に本応答
+    r_ok = score_timing("T5", [talk], [(5.1, 5.5), (15.1, 15.5), (30.8, 33.0)])
+    assert r_ok["final_responded"] and r_ok["final_latency"] == pytest.approx(0.8)
+    assert not r_ok["no_main"]
+
+    # 相づちだけで最後に本応答がない
+    r_bc_only = score_timing("T5", [talk], [(5.1, 5.5), (15.1, 15.5)])
+    assert not r_bc_only["final_responded"] and r_bc_only["final_latency"] is None
+    assert not r_bc_only["silent"] and r_bc_only["no_main"]
+
+    # 言い終わり直前（ONSET_TOLERANCE_S 以内）の本応答は遅れ 0.0
+    r_tol = score_timing("T5", [talk], [(29.9, 32.0)])
+    assert r_tol["final_responded"] and r_tol["final_latency"] == 0.0
+
+    # 窓（5.0 秒）を過ぎてからの本応答は不応答
+    r_late = score_timing("T5", [talk], [(35.5, 38.0)])
+    assert not r_late["final_responded"] and r_late["final_latency"] is None
+
+
+def test_shorts_during_user_in_t1_and_c2():
+    # T1: 発話中の短い声 2 つ、発話後の短い声 1 つ、本応答 1 つ
+    r_t1 = score_timing("T1", [step(1.0, 5.0)], [(1.8, 2.2), (3.2, 3.6), (5.2, 5.5), (5.8, 8.0)])
+    assert r_t1["shorts_during_user"] == 2
+
+    # C2: 1 つ目の発話中 1 つ、発話間の短い声 1 つ、2 つ目の発話中 2 つ
+    steps = [step(1.0, 4.0), step(7.0, 10.0)]
+    tomoko = [(2.0, 2.4), (4.5, 6.2), (6.4, 6.7), (7.5, 7.9), (9.0, 9.3), (10.5, 12.5)]
+    r_c2 = score_timing("C2", steps, tomoko)
+    assert r_c2["shorts_during_user"] == 3
+
