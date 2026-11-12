@@ -123,3 +123,32 @@
 - Drive の START-HERE.org と関連する Tomoko のイベントを取得した。snapshots フォルダの検索結果は0件だった。
 - 新規 org イベントを作成し、events フォルダへ text/plain でアップロードしようとしたが、ツールが「MCP tool call requires approval, but approval policy is never」と拒否した。Drive は未保存で、読み戻しの検証も未実施。
 - org 下書き: /private/tmp/20261113T013928-f65c5b2b-8029-437d-bad5-a5d2bf0388b2.org（作成者 Codex、原典と試験結果と実測中止の理由を記載）。
+
+## 2026-11-13 セッション3（Codex）: MaAI の実時間センサー
+
+### やること（開始時に書く）
+- P3 のセンサー部品として MaaiSensor と MaaiFrame を追加する。マイクの時計に Tomoko の音を合わせ、同期 process を専用スレッドで呼び、最新値・通知・待機フレームの破棄数を公開する。
+- MaAI / torch を読み込まない偽モデルの単体テストを先に書く。指定の tests/unit と ruff を検証し、モデルの読み込み・実推論・ネットワーク・uv sync は行わない。
+- 作業開始時の Git 差分はなし。v4 の MEMORY.md / LOG.md / README.md / PLAN.html / ARCHITECTURE.html と過去世代の関連記録を確認した。コード索引は承認ポリシーで拒否されたため直接参照する。
+- Codex（gpt-6.1-sol、推論 max）に公開パッケージの静的 API 調査を並行依頼。コードだけを渡し、本人の録音・実会話・私的なデータは渡さない。
+- 変更はこの worktree の v4 内だけ。ws / baseline / EngineConfig は変更せず、コミットしない。今回の明示指示に従い Drive は未取得・未保存。
+
+### やったこと
+- tests/unit/test_engine_maai_sensor.py を先に追加し、未実装の MaaiFrame の import 失敗を確認してから実装した。工場の fake import 試験も実装より先に追加した。
+- engine/dto.py に frozen / slots の MaaiFrame、engine/sensors/maai.py に MaaiSensor と make_maai_multiple を追加した。音声の予約と補間は内部用 _maai_audio.py に分けた。
+- 任意長入力の分割、24→16 kHz・時刻・連結・停止、Multiple の部分辞書・ユーザー軸、初回結果なし、過負荷の破棄と累計、asyncio 通知、終了を合成波形だけで検証した。
+- Codex（gpt-6.1-sol / max）のレビューで判明した、欠落後の文脈継続・close 後の通知・一次障害の上書きを回帰テストで失敗させてから修正した。未着 TTS の境界は未来を待たない規約と交互投入テストを追加し、最終レビューで残る公開契約違反は見つからなかった。
+- README.md、ARCHITECTURE.html、_docs/maai-sensor.md に API と検証範囲を記録した。LOG.md / MEMORY.md は追記のみ。EngineConfig の項目・既定・環境変数の挙動は変更していない。dto.py への future import に伴い from_env の戻り値注釈の引用符だけ外して ruff に合わせた。
+
+### 詰まったこと・解決したこと
+- 変更前の tests/unit は既存の httpx 不足で4ファイルの収集に失敗した。この worktree の .venv に、指定された p3wt の既存 .venv から httpx / httpcore / anyio / certifi / idna / h11 の不足分だけをコピーして補った。元環境・依存宣言・uv.lock は変更せず、ネットワーク・uv sync も使っていない。
+- Mimi が同期 process の初回に結果を返さないことを静的に確認し、空の結果キューを待たず次の入力へ進む。Multiple の mode ごとの部分辞書も確認できた。BC の意味として正しいチャンネル順と、実モデルの実時間性能は未確定。
+- 偽モデルを待機させた状態の feed_mic 1回は0.023458 ms、破棄0件。_docs/latency.md に条件と限界を記録した。MaAI の実推論や E2E の計測値ではない。
+
+### 最終検証
+- `.venv/bin/python -m pytest -q tests/unit`: **155 passed in 0.58s**（追加25件）。既存の pytest-asyncio の loop scope 未指定の警告は残る。
+- `.venv/bin/ruff check .`: **All checks passed!**
+- `git diff --check`: 成功。実 MaAI / torch の import、重みのロード、実推論、ネットワーク、エンジンへの接続、コミットは行っていない。Drive はユーザー指示により未取得・未保存。
+
+### 次のセッションでやること
+- 別担当が利用方針と EngineConfig を定めてから組み込む。遅延測定と重ならない機会に、実 MaaiMultiple の3モード・チャンネルの意味・warmup / reset・CPU 負荷を検証する。

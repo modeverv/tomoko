@@ -1,5 +1,7 @@
 """層をまたぐ型は、すべてここに置く。"""
 
+from __future__ import annotations
+
 import dataclasses
 import os
 from dataclasses import dataclass, field
@@ -9,6 +11,19 @@ import numpy as np
 
 IN_SR = 16_000  # マイクの音
 OUT_SR = 24_000  # 声
+
+
+@dataclass(frozen=True, slots=True)
+class MaaiFrame:
+    """入力フレーム終端の予測。2 要素の値は常に (ユーザー, Tomoko)。欠測は None。"""
+
+    at_s: float
+    p_now: tuple[float, float] | None = None
+    p_future: tuple[float, float] | None = None
+    p_bc: float | None = None
+    p_bc_det_user: float | None = None
+    vad_user: float | None = None
+    vad_tomoko: float | None = None
 
 
 @dataclass(frozen=True)
@@ -56,7 +71,7 @@ class EngineConfig:
     )
 
     @classmethod
-    def from_env(cls) -> "EngineConfig":
+    def from_env(cls) -> EngineConfig:
         """TOMOKO_<項目名> の環境変数で、項目を上書きする。空の文字は None。測定で構成を切り替えるのに使う。"""
         values = {}
         for f in dataclasses.fields(cls):

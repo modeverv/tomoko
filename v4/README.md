@@ -7,6 +7,7 @@
 - 進め方: [PLAN.html](PLAN.html)
 - 部品のライセンス: [_docs/licenses.md](_docs/licenses.md)
 - ベンチの定義: [_docs/bench-definitions.md](_docs/bench-definitions.md)
+- MaAI センサーの API と検証範囲: [_docs/maai-sensor.md](_docs/maai-sensor.md)
 
 ## 準備
 

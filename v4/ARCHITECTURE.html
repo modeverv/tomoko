@@ -487,6 +487,19 @@ th { background: var(--accent-bg); }
 この項目のない古い <code>scenario.json</code> も読める。単体試験では合成関数を差し替え、
 <code>say</code> とモデルを呼ばずに検証する。</p>
 
+<h2 id="maai-sensor">追記 2026-11-13（Codex）: 共有エンコーダーの MaAI センサー</h2>
+<p><code>engine/sensors/maai.py</code> に <code>MaaiSensor</code> を追加した。
+<code>MaaiMultiple</code> の共有 Mimi で vap / bc / bc_det を動かすための部品であり、
+指揮者や基準線への接続は今回の作業に含まない。モデルは外から工場関数で渡し、
+センサーの専用スレッドから同期の <code>process(ch1, ch2)</code> を呼ぶ。
+MaAI 自身の入力 worker は起動しない。</p>
+<p>ユーザーの16 kHzの音と、予定再生時刻を付けた Tomoko の24 kHzの声を、マイクの時計で
+同じ範囲にそろえる。予測は <code>engine/dto.py</code> の <code>MaaiFrame</code> にする。
+待機フレームを破棄したときは数とログを残し、入力時刻の欠落でモデルの文脈をリセットする。
+実モデルの推論・精度・負荷は未検証。
+API、チャンネルの向き、未着音声の補間と終了の規約は
+<a href="_docs/maai-sensor.md">MaAI センサーの文書</a>に記した。</p>
+
 </main>
 </body>
 </html>
