@@ -113,7 +113,7 @@ def test_missing_result_is_an_error_instead_of_silently_skipping():
     model = FakeModel()
     model.process = lambda _a, _b: None
     with pytest.raises(RuntimeError, match="結果"):
-        run_model(model, np.zeros(1600, dtype=np.float32), "vap")
+        run_model(model, np.zeros(1600 * 3, dtype=np.float32), "vap")  # 最初の 2 フレームは結果なしを許す
 
 
 def test_legacy_vap_helpers_keep_their_return_types(monkeypatch):
