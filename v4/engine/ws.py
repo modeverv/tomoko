@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from engine.baseline import BaselineSession
 from engine.dto import EngineConfig
 from engine.front_llm import stream_reply
+from engine.sensors.maai import MaaiSensor, SharedMaai, make_maai_multiple
 from engine.sensors.stt import WhisperStt
 from engine.sensors.stt_remote import WhisperCppStt
 from engine.sensors.vad import VadSensor, silero_prob
@@ -46,6 +47,8 @@ class Models:
         self.transcribe = None  # 音 → 文字
         self.synthesize = None  # 句 → 声。TTS ごとに呼び方が違うので、ここでそろえる
         self.synthesize_stream = None  # 句 → 声の断片。逐次に返せる TTS だけ
+        self.maai: SharedMaai | None = None  # MaAI のモデル。接続ごとに貸し出す
+        self.backchannel_clip: np.ndarray | None = None  # 前もって合成した相づち
 
     def load(self) -> None:
         if self.cfg.stt == "mlx":
@@ -76,6 +79,12 @@ class Models:
             raise ValueError(f"知らない STT: {self.cfg.stt}")
         if self.synthesize is None:
             raise ValueError(f"知らない TTS: {self.cfg.tts}")
+        if self.cfg.maai:
+            modes = tuple(m.strip() for m in self.cfg.maai_modes.split(",") if m.strip())
+            self.maai = await asyncio.to_thread(
+                lambda: SharedMaai(make_maai_multiple(modes, torch_threads=self.cfg.maai_threads)))
+        if self.cfg.backchannel:
+            self.backchannel_clip = _trim(await self.synthesize(self.cfg.bc_text))
 
     async def run(self, fn, *args):
         return await asyncio.get_running_loop().run_in_executor(self.mlx, fn, *args)
@@ -109,14 +118,21 @@ async def ws(socket: WebSocket) -> None:
         await socket.send_text(json.dumps(obj, ensure_ascii=False))
 
     vad = VadSensor(silero_prob(), cfg.vad_threshold, cfg.vad_silence_s, cfg.vad_preroll_s,
-                    cfg.vad_min_voiced_s, sustain_s=cfg.barge_in_voiced_s)
+                    cfg.vad_min_voiced_s, sustain_s=cfg.barge_in_voiced_s,
+                    sustain_max_s=cfg.guard_max_voiced_s if cfg.barge_guard else None)
     session = BaselineSession(
         cfg, vad, trace,
         transcribe=models.transcribe,
         reply=lambda messages: stream_reply(models.http, cfg, messages),
         synthesize=models.synthesize, synthesize_stream=models.synthesize_stream,
         send_audio=send_audio, send_json=send_json,
+        backchannel_clip=models.backchannel_clip,
     )
+    if models.maai is not None:
+        session.attach_maai(MaaiSensor(
+            models.maai.lease, frame_samples=models.maai.frame_samples,
+            user_channel=cfg.maai_user_channel, on_frame=session.on_maai,
+            loop=asyncio.get_running_loop()))
     try:
         while True:
             message = await socket.receive()
@@ -135,3 +151,9 @@ async def ws(socket: WebSocket) -> None:
 
 
 app.mount("/", StaticFiles(directory=Path(__file__).resolve().parents[1] / "client", html=True))
+
+
+def _trim(audio: np.ndarray, threshold: float = 0.005) -> np.ndarray:
+    """前もって合成した短い声の、前後の無音を除く。"""
+    loud = np.flatnonzero(np.abs(audio) > threshold)
+    return audio[loud[0] : loud[-1] + 1] if len(loud) else audio
