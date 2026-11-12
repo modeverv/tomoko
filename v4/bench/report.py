@@ -10,14 +10,19 @@ import sys
 from pathlib import Path
 
 LABELS = {
-    "n": "件数", "silent": "無音の回", "errors": "接続の失敗", "precondition_failed": "前提不成立",
+    "n": "件数", "silent": "無音の回", "no_main": "本応答なしの回",
+    "errors": "接続の失敗", "precondition_failed": "前提不成立",
     "valid": "前提が成り立った件数",
     "response_rate": "応答率", "early_rate": "早すぎた割合",
+    "early_first_rate": "最初の発話で早すぎた割合",
     "talked_over_rate": "かぶせ続けた割合", "latency_p50": "遅れ 中央値(秒)",
     "latency_p90": "遅れ 90%点(秒)", "interruption_rate": "割り込み率", "stop_rate": "2 秒以内に止まった割合",
     "stop_latency_p50": "停止の遅れ 中央値(秒)", "per_minute": "相づち 回/分",
     "in_gap_share": "間に入った割合", "overlapped_share": "発話に被った割合", "bursts": "連発の回数",
-    "main_interruptions": "本発話で遮った回数", "double_answers": "二重の答え", "stale_chunks": "停止後に届いた古い断片",
+    "main_interruptions": "本発話で遮った回数",
+    "final_response_rate": "最後の応答率", "final_latency_p50": "最後の遅れ 中央値(秒)",
+    "double_answers": "二重の答え", "shorts_during_user": "発話中の短い反応",
+    "stale_chunks": "停止後に届いた古い断片",
     "score_mean": "関連性 平均(0〜2)", "judged": "採点した件数", "accuracy": "正答率",
     "first_reaction_p50": "最初の受け答え 中央値(秒)", "answer_time_p50": "答えまで 中央値(秒)",
     "longest_silence_p50": "黙り込んだ最長 中央値(秒)",
@@ -26,6 +31,16 @@ LABELS = {
 
 def _rate(flags: list) -> float | None:
     return sum(bool(f) for f in flags) / len(flags) if flags else None
+
+
+def _opt_rate(ts: list[dict], key: str) -> float | None:
+    """2026-11-13 に足した指標。それより前に採点した結果には項目がないので、ないものは数えない。"""
+    return _rate([t[key] for t in ts if key in t])
+
+
+def _opt_sum(ts: list[dict], key: str) -> int | None:
+    values = [t[key] for t in ts if key in t]
+    return sum(values) if values else None
 
 
 def _pct(values: list[float], q: float) -> float | None:
@@ -40,9 +55,11 @@ def _turn(ts: list[dict]) -> dict:
     return {
         "response_rate": _rate([t["responded"] for t in ts]),
         "early_rate": _rate([t["early"] for t in ts]),
+        "early_first_rate": _opt_rate(ts, "early_first"),
         "talked_over_rate": _rate([t["talked_over"] for t in ts]),
         "latency_p50": _pct(lat, 0.5), "latency_p90": _pct(lat, 0.9),
         "double_answers": sum(t["double_answer"] for t in ts),
+        "shorts_during_user": _opt_sum(ts, "shorts_during_user"),
     }
 
 
@@ -56,6 +73,7 @@ def summarize(runs: list[dict]) -> dict[str, dict]:
         s: dict = {
             "n": len(rs), "errors": len(rs) - len(ok),
             "silent": sum(t["silent"] for t in ts),
+            "no_main": _opt_sum(ts, "no_main"),
             "precondition_failed": sum(r["precondition_failed"] for r in ok),
         }
         if axis in ("T1", "C2", "C3"):
@@ -80,7 +98,9 @@ def summarize(runs: list[dict]) -> dict[str, dict]:
                   "in_gap_share": sum(t["in_gap"] for t in ts) / count if count else None,
                   "overlapped_share": sum(t["overlapped"] for t in ts) / count if count else None,
                   "bursts": sum(t["bursts"] for t in ts),
-                  "main_interruptions": sum(t["main_interruptions"] for t in ts)}
+                  "main_interruptions": sum(t["main_interruptions"] for t in ts),
+                  "final_response_rate": _opt_rate(ts, "final_responded"),
+                  "final_latency_p50": _pct([t.get("final_latency") for t in ts], 0.5)}
         out[axis] = s
 
     judged = [r for r in runs if r.get("content", {}).get("judged") in ("ok", "no_reply")]
