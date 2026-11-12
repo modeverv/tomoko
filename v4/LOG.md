@@ -53,3 +53,34 @@
 - 起こしたもの: tmux `v4-voicevox`（50021）、`v4-tunnel`（3060、18090/18091）、`v4-tunnel-mbp`（MBP、50122）。MBP では PR 1823 版の VOICEVOX を nohup で起こした（127.0.0.1:50122、ログ `~/tomoko-v4-logs/voicevox-pr1823.log`）。MBP の設定は変えていない。
 - 無効: p3-5（STT を 3060 に）。3060 が 20:20 ごろから応答しない。
 - 人間に頼むこと: 3060 を起こす。MaAI の手順を入れるか決める。相づちで止まる 3 件の扱いを決める。VOICEVOX の声を聴く。P3 の目標の数字を決める。
+
+## 2026-11-13 セッション2（Codex）: MaAI のオフライン評価の拡張
+
+### やること（開始時）
+- ユーザーの依頼に従い、生成済み入力の評価、vap / bc / bc_2type / bc_det の集計を追加する。実運用への組み込みとコミットはしない。
+- MaAI を読み込まない単体テストを先に追加し、tests/unit 全体と ruff を通す。
+- パッケージのチャンネル順と出力をコードで確認する。コード索引ツールは承認拒否のため、ファイルの直接参照へ切り替える。
+- 余力があれば small の入力を各モード一巡だけ評価する。torch は 2 スレッド、推論は直列、1 フレームごとに受信する。
+- work/ は本体の共有ディレクトリへのリンクなので読み取りだけに使い、出力はこの worktree の _docs/data/ に置く。
+
+### やったこと
+- tests/unit/ の先行テストで AUC・分位点・無音と声の区間・T3/T4 の末尾選択を検証してから実装した。
+- scripts/maai_offline.py を生成入力と4モードに対応させ、入力の処理は bench/maai_input.py、モデルに依存しない集計は bench/score/maai.py に分けた。
+- 偽モデルで、チャンネル順・出力の軸・1フレームずつの回収・サンプル時刻・旧 run の JSON と helper API の互換性を検証した。
+- Codex（gpt-6.1-sol、推論 max）にパッケージコードの調査とレビューを依頼した。コードだけを渡し、本人の録音・実会話・私的なログは渡していない。
+- レビューの指摘を反映し、録音末尾以後の vap の遅れを欠測にした。実際のモデル variant を JSON に残し、生成注釈の voiced の意味を文書に明記した。
+- _docs/maai-offline.md に使い方・集計の定義・解釈の制約を、_docs/latency.md に未測定の理由を記録した。
+
+### 検証結果と制約
+- .venv/bin/python -m pytest -q tests/unit: 99 passed（0.53秒）。既存の pytest-asyncio の fixture loop scope 未指定の警告あり。
+- .venv/bin/ruff check .: All checks passed。
+- 実測の準備で BC / BC-Det の重みが未取得と分かった。書き込み先を一時ディレクトリに限定して BC の取得を試したが、huggingface.co の名前解決に失敗した（Errno 8 / LocalEntryNotFoundError）。指示どおり停止し、MaAI 推論は1件も実行していない。
+- _docs/data/maai-offline-v1inputs.json は作成していない。コミット・共有 work/ への書き込みはしていない。
+
+### 次のセッションでやること
+- 必要な重みが取得できる環境で small を vap,bc,bc_det の順に直列で一巡だけ評価する。small-v2 も同じ定義で測り、音声の生成方法と区間定義の違いを区別して比較する。
+
+### 共通記録の保存状況
+- Drive の START-HERE.org と関連する Tomoko のイベントを取得した。snapshots フォルダの検索結果は0件だった。
+- 新規 org イベントを作成し、events フォルダへ text/plain でアップロードしようとしたが、ツールが「MCP tool call requires approval, but approval policy is never」と拒否した。Drive は未保存で、読み戻しの検証も未実施。
+- org 下書き: /private/tmp/20261113T013928-f65c5b2b-8029-437d-bad5-a5d2bf0388b2.org（作成者 Codex、原典と試験結果と実測中止の理由を記載）。
