@@ -1,0 +1,59 @@
+{
+  "author": "Codex",
+  "created_at": "2026-11-13T16:07:01.527267+09:00",
+  "source_commit": "bdbd637ae6f6dec63fdc8e211209442b278a6f3e",
+  "previous_source_commit": "e7765682fc818acad52b836c322b00060203f4c4",
+  "source_sha256": {
+    "engine/baseline.py": "360c30a803a6614e2fd2ad337f34eaa37720ca1f41bca39c6c0504e1ebbca31e",
+    "engine/sensors/vad.py": "2477d2501229c34aa230cc9f82b4474bf1fd465437663469fa882247f46b2a8d",
+    "engine/dto.py": "7c0874c3e63dc6aeec1246915d926bc670f129188d4e75322a26d7b1da1a5aa0",
+    "scripts/diagnose_reply_race.py": "723ea290b3753c4c2b3b6dc17dbe0932cc9111e219eb2130c16426bd56643364",
+    "tests/unit/test_first_audio_hold.py": "7c9669d3df587b642a17564449204ae5cca7d1a8f2bb9613f8e25a1b37de2265",
+    "tests/unit/first_audio_hold_support.py": "5fa26b99ae1850f447a657629f9ea561d52e2f692313e680e92333da7ec29f21",
+    "tests/unit/test_reply_race_diagnostic.py": "4ede10fbd76cba99ff7ae6111438d0237a533fbd1d3b5a090eff437900d05b1e",
+    "bench/run.py": "63c74da003039245778db952ce968d3950af22eef32aaeddcc621c455d1b0ca5",
+    "bench/score/timing.py": "bf73088936e210ec934305f322f40554f7f3ba2c05d302d45807edfccaab79f9",
+    "bench/score/segments.py": "0c84aaf959b3535338845414f8bd57cc99d6428b57a1408d66739e890597a906"
+  },
+  "tests": {
+    "new_regression_cases": 20,
+    "unit_passed": 265,
+    "unit_deselected": 4,
+    "unit_wall_s": 2.06,
+    "existing_fake_integration_passed": 4,
+    "fake_integration_wall_s": 41.08,
+    "ruff": "passed",
+    "independent_code_review": "passed after empty/failed-original regression fix"
+  },
+  "real_check": {
+    "before_cases": 10,
+    "after_cases": 10,
+    "repetitions_per_arm": 1,
+    "live_redeployment_cases": 1,
+    "content_scoring": false,
+    "scoring": "existing local Silero timing scorer; torch CPU threads2",
+    "cloud_audio_or_dialogue_upload": false,
+    "source_data": "existing synthetic small-v2, all private=false",
+    "settings": "same runtime settings excluding trace storage path and clocks",
+    "interrupted_trial": "after-1 stopped after reviewer finding; preserved but excluded"
+  },
+  "artifacts": {
+    "after-timing.json": "ee0aebe036cdba0ebc0ed6313af00256f7f4737502e89cea803634e3047aa841",
+    "after_numeric.json": "e007753b01819106f9e8ddffede17a2231da5b5b1f342940388046fcf2fd5af3",
+    "analyze_hold_check.py": "04d1fcd05bfae11238abd9ecaa9fbc05c5c5c24f6bc550cbab747855eadf6b0a",
+    "before-timing.json": "dfc68c958690d17307c80996bcb96c79f99fe2906c526d54cf97eca6eca5bad3",
+    "before_numeric.json": "e0e424fc676e18095c7aeea93d0b9119deaf9c993de691bd7663d8fb83650850",
+    "controlled-after.json": "0f2eff38e2a2223c3ef424980869b0825249a9a71d7bd7e0c069d4d1a989b3f2",
+    "final_verification_numeric.json": "18fa584a9414d0dfb34233a962a38c09a7753a77dd4209d8bb4782b526ca6c4d",
+    "live-check.json": "c67c08d64c8bf922a48a67acd44276680e4f398545fc1143b32cf83f715186ea",
+    "runtime.json": "1371cc82f6c95f56528d3bee0bee50ab25a31c5fff93beb718a2e285426e7606"
+  },
+  "limits": [
+    "before first-send times inferred from receiver/control offsets; exact after markers available",
+    "one selected repetition; no population performance estimate",
+    "T5 final-response median increased1.1304 to1.5037s",
+    "T3 backchannel interruption remains2/2",
+    "real microphone/human listening not evaluated",
+    "live output WAV confirms received synthesized output, not physical speaker playback"
+  ]
+}

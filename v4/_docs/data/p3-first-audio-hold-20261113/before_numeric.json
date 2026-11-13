@@ -1,0 +1,1516 @@
+{
+  "schema_version": 1,
+  "arm": "before",
+  "cases": {
+    "t1-01": {
+      "axis": "T1",
+      "connection_error": false,
+      "precondition_failed_runtime": false,
+      "source_run_sha256": "404a078e3bcef6be5c56426ff518ef0fa1b70093b0d08737b14a63cf098d3efd",
+      "source_trace_sha256": "84d7b59bfd6e139e55673c6ebc686b2083b625cadf2b9ffad3576cd7fc656b69",
+      "trace_name": "20261113T153249-0007.jsonl",
+      "trace_events": {
+        "backchannel": 1,
+        "config": 1,
+        "llm_done": 1,
+        "llm_first_token": 1,
+        "llm_start": 1,
+        "maai": 330,
+        "playback": 148,
+        "sent": 3,
+        "stt_final": 1,
+        "stt_start": 1,
+        "tts_done": 3,
+        "tts_first_audio": 3,
+        "tts_start": 3,
+        "vad_end": 1,
+        "vad_start": 1,
+        "vad_sustained": 1,
+        "vad_sustained_max": 1
+      },
+      "pairing": {
+        "complete_stt_sequences_match": true,
+        "stop_generations_match": true
+      },
+      "receiver_minus_server_control_offsets": {
+        "n_stt": 1,
+        "n_stop": 0,
+        "min_s": -0.01980000000000004,
+        "median_s": -0.01980000000000004,
+        "max_s": -0.01980000000000004
+      },
+      "confirmation_windows": [
+        {
+          "start_server_t": 1.0424,
+          "start_input_s": 0.992,
+          "close_server_t": 1.5229,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 1.504
+        }
+      ],
+      "main_seq0_arrivals": [
+        {
+          "generation": 1,
+          "receiver_t": 5.4626,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 5.4824,
+          "empirical_server_range_s": [
+            5.4824,
+            5.4824
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": false
+        }
+      ],
+      "exact_server_first_send_events": [],
+      "explicit_bc_dispatch_events": 1,
+      "bc_seq0_arrivals": 1,
+      "bc_seq0_accepted": 1,
+      "maai_drop_events": 0,
+      "maai_dropped_frames": 0,
+      "stale_chunks": 0,
+      "scorer_timing": {
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.2916999999999996,
+        "double_answer": false
+      },
+      "t1_first_main_packet_latency_s": 1.2503000000000002
+    },
+    "t3-03": {
+      "axis": "T3",
+      "connection_error": false,
+      "precondition_failed_runtime": false,
+      "source_run_sha256": "21eabb6d097863815fdcd1ef446712b5c60c5ff5d7b8bd4d0b57c5425281fe7d",
+      "source_trace_sha256": "938adb2371e640d321fc87b0c056a74b1b6b8a39ec6b1d9c4c0168ab6a3f640b",
+      "trace_name": "20261113T153304-0008.jsonl",
+      "trace_events": {
+        "backchannel": 1,
+        "config": 1,
+        "llm_done": 2,
+        "llm_first_token": 2,
+        "llm_start": 2,
+        "maai": 487,
+        "playback": 218,
+        "sent": 3,
+        "stop": 1,
+        "stt_final": 2,
+        "stt_start": 2,
+        "tts_done": 3,
+        "tts_first_audio": 4,
+        "tts_start": 4,
+        "vad_end": 2,
+        "vad_start": 2,
+        "vad_sustained": 2,
+        "vad_sustained_max": 1
+      },
+      "pairing": {
+        "complete_stt_sequences_match": true,
+        "stop_generations_match": true
+      },
+      "receiver_minus_server_control_offsets": {
+        "n_stt": 2,
+        "n_stop": 1,
+        "min_s": -0.019999999999999574,
+        "median_s": -0.01980000000000004,
+        "max_s": -0.019699999999999385
+      },
+      "confirmation_windows": [
+        {
+          "start_server_t": 1.1026,
+          "start_input_s": 1.056,
+          "close_server_t": 1.6416,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 1.6320000000000001
+        },
+        {
+          "start_server_t": 9.0418,
+          "start_input_s": 8.992,
+          "close_server_t": 9.5226,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 9.504
+        }
+      ],
+      "main_seq0_arrivals": [
+        {
+          "generation": 1,
+          "receiver_t": 6.449,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 6.4688,
+          "empirical_server_range_s": [
+            6.468699999999999,
+            6.468999999999999
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": false
+        },
+        {
+          "generation": 2,
+          "receiver_t": 10.5751,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 10.5949,
+          "empirical_server_range_s": [
+            10.5948,
+            10.5951
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": false
+        }
+      ],
+      "exact_server_first_send_events": [],
+      "explicit_bc_dispatch_events": 1,
+      "bc_seq0_arrivals": 1,
+      "bc_seq0_accepted": 1,
+      "maai_drop_events": 0,
+      "maai_dropped_frames": 0,
+      "stale_chunks": 0,
+      "scorer_timing": {
+        "silent": false,
+        "no_main": false,
+        "precondition": true
+      },
+      "t1_first_main_packet_latency_s": null
+    },
+    "t3-06": {
+      "axis": "T3",
+      "connection_error": false,
+      "precondition_failed_runtime": false,
+      "source_run_sha256": "1b96ee1c02c6c169ba641a88df81f5fcb47f74874b8be7d7c94a10ede444f54b",
+      "source_trace_sha256": "ecf36e9e146488c9e896475f3efaa0d2fea1670b8c34614e097e30fc0c9db451",
+      "trace_name": "20261113T153326-0009.jsonl",
+      "trace_events": {
+        "config": 1,
+        "llm_done": 2,
+        "llm_first_token": 2,
+        "llm_start": 2,
+        "maai": 472,
+        "playback": 211,
+        "sent": 5,
+        "stop": 1,
+        "stt_final": 2,
+        "stt_start": 2,
+        "tts_done": 5,
+        "tts_first_audio": 6,
+        "tts_start": 6,
+        "vad_end": 2,
+        "vad_start": 2,
+        "vad_sustained": 2,
+        "vad_sustained_max": 1
+      },
+      "pairing": {
+        "complete_stt_sequences_match": true,
+        "stop_generations_match": true
+      },
+      "receiver_minus_server_control_offsets": {
+        "n_stt": 2,
+        "n_stop": 1,
+        "min_s": -0.019899999999999807,
+        "median_s": -0.01980000000000004,
+        "max_s": -0.019700000000000273
+      },
+      "confirmation_windows": [
+        {
+          "start_server_t": 1.0422,
+          "start_input_s": 0.992,
+          "close_server_t": 1.5425,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 1.536
+        },
+        {
+          "start_server_t": 8.3035,
+          "start_input_s": 8.256,
+          "close_server_t": 8.7821,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 8.768
+        }
+      ],
+      "main_seq0_arrivals": [
+        {
+          "generation": 0,
+          "receiver_t": 5.7179,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 5.7377,
+          "empirical_server_range_s": [
+            5.7376000000000005,
+            5.7378
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": false
+        },
+        {
+          "generation": 1,
+          "receiver_t": 10.0503,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 10.0701,
+          "empirical_server_range_s": [
+            10.07,
+            10.0702
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": false
+        }
+      ],
+      "exact_server_first_send_events": [],
+      "explicit_bc_dispatch_events": 0,
+      "bc_seq0_arrivals": 0,
+      "bc_seq0_accepted": 0,
+      "maai_drop_events": 0,
+      "maai_dropped_frames": 0,
+      "stale_chunks": 0,
+      "scorer_timing": {
+        "silent": false,
+        "no_main": false,
+        "precondition": true
+      },
+      "t1_first_main_packet_latency_s": null
+    },
+    "t4-01": {
+      "axis": "T4",
+      "connection_error": false,
+      "precondition_failed_runtime": false,
+      "source_run_sha256": "fb0f1f5096b22c6ef601dd11ec4a45a24cd03ff5ec802330c0dee9e0c3d8fe82",
+      "source_trace_sha256": "91c94861f21c1fb9c982b559034d4c0214a0193bca57ac063adb5fbfa20b1bef",
+      "trace_name": "20261113T153347-0010.jsonl",
+      "trace_events": {
+        "backchannel": 1,
+        "config": 1,
+        "ignored_short_voice": 2,
+        "llm_done": 2,
+        "llm_first_token": 3,
+        "llm_start": 3,
+        "maai": 586,
+        "playback": 262,
+        "sent": 4,
+        "stop": 2,
+        "stt_final": 3,
+        "stt_start": 3,
+        "tts_done": 4,
+        "tts_first_audio": 6,
+        "tts_start": 6,
+        "vad_end": 5,
+        "vad_start": 5,
+        "vad_sustained": 3,
+        "vad_sustained_max": 3
+      },
+      "pairing": {
+        "complete_stt_sequences_match": true,
+        "stop_generations_match": true
+      },
+      "receiver_minus_server_control_offsets": {
+        "n_stt": 3,
+        "n_stop": 2,
+        "min_s": -0.019999999999999574,
+        "median_s": -0.019899999999999807,
+        "max_s": -0.019700000000000273
+      },
+      "confirmation_windows": [
+        {
+          "start_server_t": 1.0429,
+          "start_input_s": 0.992,
+          "close_server_t": 1.5221,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 1.504
+        },
+        {
+          "start_server_t": 7.5228,
+          "start_input_s": 7.488,
+          "close_server_t": 8.0015,
+          "close_kind": "vad_end",
+          "close_vad_input_s": 8.0
+        },
+        {
+          "start_server_t": 8.0816,
+          "start_input_s": 8.032,
+          "close_server_t": 8.7423,
+          "close_kind": "vad_end",
+          "close_vad_input_s": 8.736
+        },
+        {
+          "start_server_t": 8.8824,
+          "start_input_s": 8.832,
+          "close_server_t": 9.4429,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 9.44
+        },
+        {
+          "start_server_t": 11.6017,
+          "start_input_s": 11.552,
+          "close_server_t": 12.0822,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 12.064
+        }
+      ],
+      "main_seq0_arrivals": [
+        {
+          "generation": 0,
+          "receiver_t": 5.9539,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 5.9738,
+          "empirical_server_range_s": [
+            5.9736,
+            5.9738999999999995
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": false
+        },
+        {
+          "generation": 2,
+          "receiver_t": 12.0273,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 12.0472,
+          "empirical_server_range_s": [
+            12.047,
+            12.0473
+          ],
+          "pending_window_point_indices": [
+            4
+          ],
+          "pending_window_all_empirical_offsets_indices": [
+            4
+          ],
+          "pending_window_any_empirical_offsets_indices": [
+            4
+          ],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 3,
+          "receiver_t": 14.1326,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 14.1525,
+          "empirical_server_range_s": [
+            14.1523,
+            14.1526
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": false
+        }
+      ],
+      "exact_server_first_send_events": [],
+      "explicit_bc_dispatch_events": 1,
+      "bc_seq0_arrivals": 1,
+      "bc_seq0_accepted": 1,
+      "maai_drop_events": 0,
+      "maai_dropped_frames": 0,
+      "stale_chunks": 0,
+      "scorer_timing": {
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "latency": 1.3895999999999997,
+        "precondition": true,
+        "stopped": false,
+        "stop_latency": 2.023999999999999
+      },
+      "t1_first_main_packet_latency_s": null
+    },
+    "t4-07": {
+      "axis": "T4",
+      "connection_error": false,
+      "precondition_failed_runtime": false,
+      "source_run_sha256": "9c963c1b5c19af43c978e08073a47ec3f2bce1df4e3797bd55d3284160402974",
+      "source_trace_sha256": "bf506c9ac9d7733fcfb1579cb5380a98f6753ba106fa60b98592db67cf8212d2",
+      "trace_name": "20261113T153413-0011.jsonl",
+      "trace_events": {
+        "backchannel": 2,
+        "config": 1,
+        "ignored_short_voice": 1,
+        "llm_done": 2,
+        "llm_first_token": 2,
+        "llm_start": 2,
+        "maai": 567,
+        "playback": 253,
+        "sent": 5,
+        "stop": 1,
+        "stt_final": 2,
+        "stt_start": 2,
+        "tts_done": 5,
+        "tts_first_audio": 6,
+        "tts_start": 6,
+        "vad_drop": 1,
+        "vad_end": 3,
+        "vad_start": 4,
+        "vad_sustained": 2,
+        "vad_sustained_max": 2
+      },
+      "pairing": {
+        "complete_stt_sequences_match": true,
+        "stop_generations_match": true
+      },
+      "receiver_minus_server_control_offsets": {
+        "n_stt": 2,
+        "n_stop": 1,
+        "min_s": -0.019899999999999807,
+        "median_s": -0.01980000000000004,
+        "max_s": -0.019700000000000273
+      },
+      "confirmation_windows": [
+        {
+          "start_server_t": 1.1023,
+          "start_input_s": 1.056,
+          "close_server_t": 1.5824,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 1.568
+        },
+        {
+          "start_server_t": 7.5621,
+          "start_input_s": 7.52,
+          "close_server_t": 7.8216,
+          "close_kind": "vad_drop",
+          "close_vad_input_s": 7.808
+        },
+        {
+          "start_server_t": 8.1614,
+          "start_input_s": 8.128,
+          "close_server_t": 9.2027,
+          "close_kind": "vad_end",
+          "close_vad_input_s": 9.184000000000001
+        },
+        {
+          "start_server_t": 9.2622,
+          "start_input_s": 9.216,
+          "close_server_t": 9.742,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 9.728
+        }
+      ],
+      "main_seq0_arrivals": [
+        {
+          "generation": 1,
+          "receiver_t": 5.972,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 5.9918000000000005,
+          "empirical_server_range_s": [
+            5.991700000000001,
+            5.9919
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": false
+        },
+        {
+          "generation": 3,
+          "receiver_t": 12.4091,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 12.4289,
+          "empirical_server_range_s": [
+            12.4288,
+            12.429
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": false
+        }
+      ],
+      "exact_server_first_send_events": [],
+      "explicit_bc_dispatch_events": 2,
+      "bc_seq0_arrivals": 2,
+      "bc_seq0_accepted": 2,
+      "maai_drop_events": 0,
+      "maai_dropped_frames": 0,
+      "stale_chunks": 0,
+      "scorer_timing": {
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "latency": 1.2199000000000009,
+        "precondition": true,
+        "stopped": false,
+        "stop_latency": 2.292
+      },
+      "t1_first_main_packet_latency_s": null
+    },
+    "t5-01": {
+      "axis": "T5",
+      "connection_error": false,
+      "precondition_failed_runtime": false,
+      "source_run_sha256": "553fab2b713c5a9b0ee8ecb6026ac2ab60b61fca8277a2958806c1ef7b14e728",
+      "source_trace_sha256": "7c5c2ede279cfc698276a6d3ba088d4515741bcdccd2f58ca4bbe13d5b35e84a",
+      "trace_name": "20261113T153439-0012.jsonl",
+      "trace_events": {
+        "backchannel": 7,
+        "config": 1,
+        "discard_reply": 7,
+        "llm_done": 1,
+        "llm_first_token": 3,
+        "llm_start": 3,
+        "maai": 1151,
+        "playback": 513,
+        "sent": 4,
+        "stt_final": 3,
+        "stt_start": 8,
+        "tts_done": 4,
+        "tts_first_audio": 4,
+        "tts_start": 6,
+        "vad_end": 8,
+        "vad_start": 8,
+        "vad_sustained": 8,
+        "vad_sustained_max": 7
+      },
+      "pairing": {
+        "complete_stt_sequences_match": true,
+        "stop_generations_match": true
+      },
+      "receiver_minus_server_control_offsets": {
+        "n_stt": 3,
+        "n_stop": 0,
+        "min_s": -0.020000000000000462,
+        "median_s": -0.019800000000003593,
+        "max_s": -0.019700000000000273
+      },
+      "confirmation_windows": [
+        {
+          "start_server_t": 1.1222,
+          "start_input_s": 1.088,
+          "close_server_t": 1.8619,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 1.856
+        },
+        {
+          "start_server_t": 4.7213,
+          "start_input_s": 4.672,
+          "close_server_t": 5.3219,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 5.312
+        },
+        {
+          "start_server_t": 8.8816,
+          "start_input_s": 8.832,
+          "close_server_t": 9.3632,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 9.344
+        },
+        {
+          "start_server_t": 12.8821,
+          "start_input_s": 12.832,
+          "close_server_t": 13.3621,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 13.344
+        },
+        {
+          "start_server_t": 14.182,
+          "start_input_s": 14.144,
+          "close_server_t": 14.6628,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 14.656
+        },
+        {
+          "start_server_t": 17.9231,
+          "start_input_s": 17.888,
+          "close_server_t": 18.4028,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 18.400000000000002
+        },
+        {
+          "start_server_t": 22.8622,
+          "start_input_s": 22.816,
+          "close_server_t": 23.343,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 23.328
+        },
+        {
+          "start_server_t": 27.8419,
+          "start_input_s": 27.808,
+          "close_server_t": 28.3221,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 28.32
+        }
+      ],
+      "main_seq0_arrivals": [
+        {
+          "generation": 9,
+          "receiver_t": 36.8595,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 36.8793,
+          "empirical_server_range_s": [
+            36.8792,
+            36.8795
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": false
+        }
+      ],
+      "exact_server_first_send_events": [],
+      "explicit_bc_dispatch_events": 7,
+      "bc_seq0_arrivals": 7,
+      "bc_seq0_accepted": 7,
+      "maai_drop_events": 0,
+      "maai_dropped_frames": 0,
+      "stale_chunks": 0,
+      "scorer_timing": {
+        "silent": false,
+        "no_main": false,
+        "count": 0,
+        "overlapped": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 3.7173000000000016
+      },
+      "t1_first_main_packet_latency_s": null
+    },
+    "t5-02": {
+      "axis": "T5",
+      "connection_error": false,
+      "precondition_failed_runtime": false,
+      "source_run_sha256": "52fb14318066e14d5a193f4b4edf54b2e68d2048926c2a8a55a95111605bae84",
+      "source_trace_sha256": "bed2400a008e3aaf47131c43c0bb985bb5b1f14d937a5e994f025468f40e7dbe",
+      "trace_name": "20261113T153530-0013.jsonl",
+      "trace_events": {
+        "backchannel": 7,
+        "config": 1,
+        "discard_reply": 6,
+        "llm_done": 1,
+        "llm_first_token": 3,
+        "llm_start": 3,
+        "maai": 1395,
+        "playback": 621,
+        "sent": 5,
+        "stt_final": 3,
+        "stt_start": 7,
+        "tts_done": 5,
+        "tts_first_audio": 5,
+        "tts_start": 6,
+        "vad_end": 7,
+        "vad_start": 7,
+        "vad_sustained": 7,
+        "vad_sustained_max": 7
+      },
+      "pairing": {
+        "complete_stt_sequences_match": true,
+        "stop_generations_match": true
+      },
+      "receiver_minus_server_control_offsets": {
+        "n_stt": 3,
+        "n_stop": 0,
+        "min_s": -0.019900000000000695,
+        "median_s": -0.019899999999999807,
+        "max_s": -0.019700000000000273
+      },
+      "confirmation_windows": [
+        {
+          "start_server_t": 1.0423,
+          "start_input_s": 0.992,
+          "close_server_t": 1.5223,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 1.504
+        },
+        {
+          "start_server_t": 4.9622,
+          "start_input_s": 4.928,
+          "close_server_t": 5.442,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 5.44
+        },
+        {
+          "start_server_t": 11.2816,
+          "start_input_s": 11.232,
+          "close_server_t": 12.0422,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 12.032
+        },
+        {
+          "start_server_t": 16.3221,
+          "start_input_s": 16.288,
+          "close_server_t": 16.8019,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 16.8
+        },
+        {
+          "start_server_t": 21.0026,
+          "start_input_s": 20.96,
+          "close_server_t": 21.4824,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 21.472
+        },
+        {
+          "start_server_t": 26.3825,
+          "start_input_s": 26.336,
+          "close_server_t": 26.8623,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 26.848
+        },
+        {
+          "start_server_t": 30.182,
+          "start_input_s": 30.144,
+          "close_server_t": 30.662,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 30.656000000000002
+        }
+      ],
+      "main_seq0_arrivals": [
+        {
+          "generation": 9,
+          "receiver_t": 38.6781,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 38.698,
+          "empirical_server_range_s": [
+            38.6978,
+            38.698
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": false
+        }
+      ],
+      "exact_server_first_send_events": [],
+      "explicit_bc_dispatch_events": 7,
+      "bc_seq0_arrivals": 7,
+      "bc_seq0_accepted": 7,
+      "maai_drop_events": 0,
+      "maai_dropped_frames": 0,
+      "stale_chunks": 0,
+      "scorer_timing": {
+        "silent": false,
+        "no_main": false,
+        "count": 3,
+        "overlapped": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 3.7757000000000005
+      },
+      "t1_first_main_packet_latency_s": null
+    },
+    "t5-03": {
+      "axis": "T5",
+      "connection_error": false,
+      "precondition_failed_runtime": false,
+      "source_run_sha256": "f47551ea46c082784b303faff69a1c6fef611096af3496bbcc1f4cb7d129c020",
+      "source_trace_sha256": "1fb72cc48467af4cb2872411ffd97287e6ed8118650cbed18a4e264efd43cfff",
+      "trace_name": "20261113T153632-0014.jsonl",
+      "trace_events": {
+        "backchannel": 5,
+        "config": 1,
+        "discard_reply": 2,
+        "llm_done": 5,
+        "llm_first_token": 6,
+        "llm_start": 6,
+        "maai": 856,
+        "playback": 382,
+        "sent": 2,
+        "stop": 3,
+        "stt_final": 6,
+        "stt_start": 6,
+        "tts_done": 2,
+        "tts_first_audio": 5,
+        "tts_start": 6,
+        "vad_end": 6,
+        "vad_start": 6,
+        "vad_sustained": 6,
+        "vad_sustained_max": 6
+      },
+      "pairing": {
+        "complete_stt_sequences_match": true,
+        "stop_generations_match": true
+      },
+      "receiver_minus_server_control_offsets": {
+        "n_stt": 6,
+        "n_stop": 3,
+        "min_s": -0.020000000000000462,
+        "median_s": -0.019700000000000273,
+        "max_s": -0.019400000000000972
+      },
+      "confirmation_windows": [
+        {
+          "start_server_t": 1.0613,
+          "start_input_s": 1.024,
+          "close_server_t": 1.5421,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 1.536
+        },
+        {
+          "start_server_t": 5.2624,
+          "start_input_s": 5.216,
+          "close_server_t": 5.7433,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 5.728
+        },
+        {
+          "start_server_t": 8.9024,
+          "start_input_s": 8.864,
+          "close_server_t": 9.3814,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 9.376
+        },
+        {
+          "start_server_t": 14.0018,
+          "start_input_s": 13.952,
+          "close_server_t": 14.502,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 14.496
+        },
+        {
+          "start_server_t": 18.2227,
+          "start_input_s": 18.176,
+          "close_server_t": 18.7034,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 18.688
+        },
+        {
+          "start_server_t": 25.6423,
+          "start_input_s": 25.6,
+          "close_server_t": 26.1212,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 26.112000000000002
+        }
+      ],
+      "main_seq0_arrivals": [
+        {
+          "generation": 1,
+          "receiver_t": 5.7036,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 5.7233,
+          "empirical_server_range_s": [
+            5.723000000000001,
+            5.7236
+          ],
+          "pending_window_point_indices": [
+            1
+          ],
+          "pending_window_all_empirical_offsets_indices": [
+            1
+          ],
+          "pending_window_any_empirical_offsets_indices": [
+            1
+          ],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 6,
+          "receiver_t": 18.6822,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 18.701900000000002,
+          "empirical_server_range_s": [
+            18.701600000000003,
+            18.7022
+          ],
+          "pending_window_point_indices": [
+            4
+          ],
+          "pending_window_all_empirical_offsets_indices": [
+            4
+          ],
+          "pending_window_any_empirical_offsets_indices": [
+            4
+          ],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 8,
+          "receiver_t": 25.9759,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 25.9956,
+          "empirical_server_range_s": [
+            25.9953,
+            25.9959
+          ],
+          "pending_window_point_indices": [
+            5
+          ],
+          "pending_window_all_empirical_offsets_indices": [
+            5
+          ],
+          "pending_window_any_empirical_offsets_indices": [
+            5
+          ],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 10,
+          "receiver_t": 32.4793,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 32.499,
+          "empirical_server_range_s": [
+            32.4987,
+            32.499300000000005
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": false
+        }
+      ],
+      "exact_server_first_send_events": [],
+      "explicit_bc_dispatch_events": 5,
+      "bc_seq0_arrivals": 5,
+      "bc_seq0_accepted": 5,
+      "maai_drop_events": 0,
+      "maai_dropped_frames": 0,
+      "stale_chunks": 0,
+      "scorer_timing": {
+        "silent": false,
+        "no_main": false,
+        "count": 0,
+        "overlapped": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.130399999999998
+      },
+      "t1_first_main_packet_latency_s": null
+    },
+    "t5-04": {
+      "axis": "T5",
+      "connection_error": false,
+      "precondition_failed_runtime": false,
+      "source_run_sha256": "758fd410ddc1d9ace2aebe87c69ba6115c2b6e25ffdbfd492e6f68d0efc64ca1",
+      "source_trace_sha256": "966cbfd8b32a636b85bba42269705f45757e15cd98ef6342457f5a867e0438d3",
+      "trace_name": "20261113T153710-0015.jsonl",
+      "trace_events": {
+        "backchannel": 6,
+        "config": 1,
+        "discard_reply": 2,
+        "llm_done": 9,
+        "llm_first_token": 9,
+        "llm_start": 9,
+        "maai": 942,
+        "playback": 420,
+        "sent": 6,
+        "stop": 5,
+        "stt_final": 9,
+        "stt_start": 9,
+        "tts_done": 6,
+        "tts_first_audio": 10,
+        "tts_start": 13,
+        "vad_end": 9,
+        "vad_start": 9,
+        "vad_sustained": 8,
+        "vad_sustained_max": 6
+      },
+      "pairing": {
+        "complete_stt_sequences_match": true,
+        "stop_generations_match": true
+      },
+      "receiver_minus_server_control_offsets": {
+        "n_stt": 9,
+        "n_stop": 5,
+        "min_s": -0.02000000000000135,
+        "median_s": -0.019800000000001816,
+        "max_s": -0.019200000000001438
+      },
+      "confirmation_windows": [
+        {
+          "start_server_t": 1.1027,
+          "start_input_s": 1.056,
+          "close_server_t": 1.6439,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 1.6320000000000001
+        },
+        {
+          "start_server_t": 3.242,
+          "start_input_s": 3.2,
+          "close_server_t": 3.8426,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 3.84
+        },
+        {
+          "start_server_t": 8.6221,
+          "start_input_s": 8.576,
+          "close_server_t": 9.1018,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 9.088000000000001
+        },
+        {
+          "start_server_t": 11.0221,
+          "start_input_s": 10.976,
+          "close_server_t": 11.5021,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 11.488
+        },
+        {
+          "start_server_t": 17.2824,
+          "start_input_s": 17.248,
+          "close_server_t": 17.7621,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 17.76
+        },
+        {
+          "start_server_t": 21.9621,
+          "start_input_s": 21.92,
+          "close_server_t": 22.4427,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 22.432000000000002
+        },
+        {
+          "start_server_t": 28.3226,
+          "start_input_s": 28.288,
+          "close_server_t": 28.9422,
+          "close_kind": "vad_end",
+          "close_vad_input_s": 28.928
+        },
+        {
+          "start_server_t": 29.0017,
+          "start_input_s": 28.96,
+          "close_server_t": 29.482,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 29.472
+        },
+        {
+          "start_server_t": 31.8426,
+          "start_input_s": 31.808,
+          "close_server_t": 32.3225,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 32.32
+        }
+      ],
+      "main_seq0_arrivals": [
+        {
+          "generation": 1,
+          "receiver_t": 3.4884,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 3.5082000000000018,
+          "empirical_server_range_s": [
+            3.5076000000000014,
+            3.5084000000000013
+          ],
+          "pending_window_point_indices": [
+            1
+          ],
+          "pending_window_all_empirical_offsets_indices": [
+            1
+          ],
+          "pending_window_any_empirical_offsets_indices": [
+            1
+          ],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 3,
+          "receiver_t": 8.9547,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 8.974500000000003,
+          "empirical_server_range_s": [
+            8.973900000000002,
+            8.974700000000002
+          ],
+          "pending_window_point_indices": [
+            2
+          ],
+          "pending_window_all_empirical_offsets_indices": [
+            2
+          ],
+          "pending_window_any_empirical_offsets_indices": [
+            2
+          ],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 4,
+          "receiver_t": 11.3505,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 11.370300000000002,
+          "empirical_server_range_s": [
+            11.369700000000002,
+            11.370500000000002
+          ],
+          "pending_window_point_indices": [
+            3
+          ],
+          "pending_window_all_empirical_offsets_indices": [
+            3
+          ],
+          "pending_window_any_empirical_offsets_indices": [
+            3
+          ],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 6,
+          "receiver_t": 17.5487,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 17.5685,
+          "empirical_server_range_s": [
+            17.5679,
+            17.5687
+          ],
+          "pending_window_point_indices": [
+            4
+          ],
+          "pending_window_all_empirical_offsets_indices": [
+            4
+          ],
+          "pending_window_any_empirical_offsets_indices": [
+            4
+          ],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 10,
+          "receiver_t": 28.546,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 28.565800000000003,
+          "empirical_server_range_s": [
+            28.5652,
+            28.566000000000003
+          ],
+          "pending_window_point_indices": [
+            6
+          ],
+          "pending_window_all_empirical_offsets_indices": [
+            6
+          ],
+          "pending_window_any_empirical_offsets_indices": [
+            6
+          ],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 11,
+          "receiver_t": 30.0213,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 30.0411,
+          "empirical_server_range_s": [
+            30.0405,
+            30.0413
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 14,
+          "receiver_t": 33.9024,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 33.922200000000004,
+          "empirical_server_range_s": [
+            33.9216,
+            33.9224
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": false
+        }
+      ],
+      "exact_server_first_send_events": [],
+      "explicit_bc_dispatch_events": 6,
+      "bc_seq0_arrivals": 6,
+      "bc_seq0_accepted": 6,
+      "maai_drop_events": 0,
+      "maai_dropped_frames": 0,
+      "stale_chunks": 0,
+      "scorer_timing": {
+        "silent": false,
+        "no_main": false,
+        "count": 4,
+        "overlapped": 4,
+        "main_interruptions": 1,
+        "final_responded": true,
+        "final_latency": 1.015900000000002
+      },
+      "t1_first_main_packet_latency_s": null
+    },
+    "t5-05": {
+      "axis": "T5",
+      "connection_error": false,
+      "precondition_failed_runtime": false,
+      "source_run_sha256": "2b2d57937e084cbcb5ed4b8a520e4ade2e67d7090ae99f94c11412ecfab41c0a",
+      "source_trace_sha256": "96366c7381e2d40796fa69a083c18a67b061c328ae8bfa88bd2651f49d4c4d02",
+      "trace_name": "20261113T153752-0016.jsonl",
+      "trace_events": {
+        "backchannel": 6,
+        "config": 1,
+        "discard_reply": 1,
+        "llm_done": 7,
+        "llm_first_token": 7,
+        "llm_start": 7,
+        "maai": 955,
+        "playback": 426,
+        "sent": 3,
+        "stop": 5,
+        "stt_final": 7,
+        "stt_start": 7,
+        "tts_done": 3,
+        "tts_first_audio": 7,
+        "tts_start": 9,
+        "vad_end": 7,
+        "vad_start": 7,
+        "vad_sustained": 7,
+        "vad_sustained_max": 7
+      },
+      "pairing": {
+        "complete_stt_sequences_match": true,
+        "stop_generations_match": true
+      },
+      "receiver_minus_server_control_offsets": {
+        "n_stt": 7,
+        "n_stop": 5,
+        "min_s": -0.020000000000000462,
+        "median_s": -0.01980000000000004,
+        "max_s": -0.019600000000000506
+      },
+      "confirmation_windows": [
+        {
+          "start_server_t": 1.0623,
+          "start_input_s": 1.024,
+          "close_server_t": 1.542,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 1.536
+        },
+        {
+          "start_server_t": 5.2224,
+          "start_input_s": 5.184,
+          "close_server_t": 5.7018,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 5.696
+        },
+        {
+          "start_server_t": 9.3226,
+          "start_input_s": 9.28,
+          "close_server_t": 9.8016,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 9.792
+        },
+        {
+          "start_server_t": 15.6223,
+          "start_input_s": 15.584,
+          "close_server_t": 16.1025,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 16.096
+        },
+        {
+          "start_server_t": 20.622,
+          "start_input_s": 20.576,
+          "close_server_t": 21.1023,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 21.088
+        },
+        {
+          "start_server_t": 24.7817,
+          "start_input_s": 24.736,
+          "close_server_t": 25.2617,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 25.248
+        },
+        {
+          "start_server_t": 29.2223,
+          "start_input_s": 29.184,
+          "close_server_t": 29.7034,
+          "close_kind": "vad_sustained",
+          "close_vad_input_s": 29.696
+        }
+      ],
+      "main_seq0_arrivals": [
+        {
+          "generation": 1,
+          "receiver_t": 5.5711,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 5.5909,
+          "empirical_server_range_s": [
+            5.590700000000001,
+            5.591100000000001
+          ],
+          "pending_window_point_indices": [
+            1
+          ],
+          "pending_window_all_empirical_offsets_indices": [
+            1
+          ],
+          "pending_window_any_empirical_offsets_indices": [
+            1
+          ],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 3,
+          "receiver_t": 9.5628,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 9.5826,
+          "empirical_server_range_s": [
+            9.5824,
+            9.582799999999999
+          ],
+          "pending_window_point_indices": [
+            2
+          ],
+          "pending_window_all_empirical_offsets_indices": [
+            2
+          ],
+          "pending_window_any_empirical_offsets_indices": [
+            2
+          ],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 5,
+          "receiver_t": 15.8821,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 15.9019,
+          "empirical_server_range_s": [
+            15.9017,
+            15.9021
+          ],
+          "pending_window_point_indices": [
+            3
+          ],
+          "pending_window_all_empirical_offsets_indices": [
+            3
+          ],
+          "pending_window_any_empirical_offsets_indices": [
+            3
+          ],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 9,
+          "receiver_t": 25.2098,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 25.2296,
+          "empirical_server_range_s": [
+            25.229400000000002,
+            25.2298
+          ],
+          "pending_window_point_indices": [
+            5
+          ],
+          "pending_window_all_empirical_offsets_indices": [
+            5
+          ],
+          "pending_window_any_empirical_offsets_indices": [
+            5
+          ],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 11,
+          "receiver_t": 29.5505,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 29.5703,
+          "empirical_server_range_s": [
+            29.5701,
+            29.5705
+          ],
+          "pending_window_point_indices": [
+            6
+          ],
+          "pending_window_all_empirical_offsets_indices": [
+            6
+          ],
+          "pending_window_any_empirical_offsets_indices": [
+            6
+          ],
+          "arrived_during_annotated_voice": true
+        },
+        {
+          "generation": 12,
+          "receiver_t": 35.718,
+          "played": true,
+          "samples": 4800,
+          "estimated_server_t": 35.73780000000001,
+          "empirical_server_range_s": [
+            35.7376,
+            35.73800000000001
+          ],
+          "pending_window_point_indices": [],
+          "pending_window_all_empirical_offsets_indices": [],
+          "pending_window_any_empirical_offsets_indices": [],
+          "arrived_during_annotated_voice": false
+        }
+      ],
+      "exact_server_first_send_events": [],
+      "explicit_bc_dispatch_events": 6,
+      "bc_seq0_arrivals": 6,
+      "bc_seq0_accepted": 6,
+      "maai_drop_events": 0,
+      "maai_dropped_frames": 0,
+      "stale_chunks": 0,
+      "scorer_timing": {
+        "silent": false,
+        "no_main": false,
+        "count": 2,
+        "overlapped": 2,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.121299999999998
+      },
+      "t1_first_main_packet_latency_s": null
+    }
+  },
+  "summary": {
+    "n": 10,
+    "connection_errors": 0,
+    "turn_failed_events": 0,
+    "maai_failed_events": 0,
+    "discard_reply_events": 18,
+    "stop_events": 18,
+    "explicit_bc_dispatch_events": 36,
+    "bc_seq0_arrivals": 36,
+    "maai_drop_events": 0,
+    "maai_dropped_frames": 0,
+    "main_seq0_arrivals": 29,
+    "accepted_main_seq0_arrivals": 29,
+    "arrival_pending_point_estimates": 14,
+    "arrival_pending_for_all_empirical_offsets": 14,
+    "arrival_pending_for_any_empirical_offsets": 14,
+    "server_first_send_markers": 0,
+    "exact_server_send_measurement_available": false,
+    "server_first_sends_in_pending_window": null,
+    "server_first_sends_with_unconfirmed_voice": null,
+    "scored_t1_latency_n": 1,
+    "scored_t1_latency_p50_s": 1.2916999999999996,
+    "scored_t1_latency_p90_s": 1.2916999999999996
+  },
+  "scoring_available": true,
+  "source_results_sha256": "e1835aeb1961a363cd2d069fbdc8c9148499e19594cac04066fbd6c286571d90",
+  "source_runtime_metadata_sha256": "43b5f00db499354c066776c288781a746442d3555df6dac43c2dea5429c82625",
+  "source_analysis_script_sha256": "04d1fcd05bfae11238abd9ecaa9fbc05c5c5c24f6bc550cbab747855eadf6b0a",
+  "limits": [
+    "seq0 run events are receiver packet arrivals, not server send calls or audible onsets",
+    "receiver/server alignment is estimated from matched control packets; its empirical range is not a guaranteed timing bound",
+    "exact reply_first_audio_send markers exist only in instrumented source; baseline absence is not zero violations",
+    "confirmation windows close on sustained or unconfirmed end/drop; their input clock differs from wall delivery time",
+    "explicit BC events are dispatches; accepted packets do not prove audible BC quality",
+    "T1 scorer latency is read only from existing results; no scoring or model inference is invoked",
+    "one repetition of ten selected scenarios does not establish population improvement"
+  ]
+}

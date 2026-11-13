@@ -1,0 +1,316 @@
+{
+  "schema_version": 1,
+  "scope": "numeric verification of final after-2 versus before; discarded after-1 excluded",
+  "source_numeric_sha256": {
+    "before": "e0e424fc676e18095c7aeea93d0b9119deaf9c993de691bd7663d8fb83650850",
+    "after": "e007753b01819106f9e8ddffede17a2231da5b5b1f342940388046fcf2fd5af3"
+  },
+  "arms": {
+    "before": {
+      "results_sha256": "e1835aeb1961a363cd2d069fbdc8c9148499e19594cac04066fbd6c286571d90",
+      "definitions": "1",
+      "cases": {
+        "T1": {
+          "t1-01": {
+            "silent": false,
+            "no_main": false,
+            "responded": true,
+            "early": false,
+            "early_first": false,
+            "talked_over": false,
+            "latency": 1.2916999999999996,
+            "double_answer": false,
+            "shorts_during_user": 0
+          }
+        },
+        "T3": {
+          "t3-03": {
+            "silent": false,
+            "no_main": false,
+            "precondition": true,
+            "interrupted": true
+          },
+          "t3-06": {
+            "silent": false,
+            "no_main": false,
+            "precondition": true,
+            "interrupted": true
+          }
+        },
+        "T4": {
+          "t4-01": {
+            "silent": false,
+            "no_main": false,
+            "precondition": true,
+            "stopped": false,
+            "stop_latency": 2.023999999999999,
+            "responded": true,
+            "latency": 1.3895999999999997
+          },
+          "t4-07": {
+            "silent": false,
+            "no_main": false,
+            "precondition": true,
+            "stopped": false,
+            "stop_latency": 2.292,
+            "responded": true,
+            "latency": 1.2199000000000009
+          }
+        },
+        "T5": {
+          "t5-01": {
+            "silent": false,
+            "no_main": false,
+            "count": 0,
+            "per_minute": 0.0,
+            "in_gap": 0,
+            "overlapped": 0,
+            "bursts": 0,
+            "main_interruptions": 0,
+            "final_responded": true,
+            "final_latency": 3.7173000000000016
+          },
+          "t5-02": {
+            "silent": false,
+            "no_main": false,
+            "count": 3,
+            "per_minute": 5.297810532635984,
+            "in_gap": 3,
+            "overlapped": 0,
+            "bursts": 0,
+            "main_interruptions": 0,
+            "final_responded": true,
+            "final_latency": 3.7757000000000005
+          },
+          "t5-03": {
+            "silent": false,
+            "no_main": false,
+            "count": 0,
+            "per_minute": 0.0,
+            "in_gap": 0,
+            "overlapped": 0,
+            "bursts": 0,
+            "main_interruptions": 0,
+            "final_responded": true,
+            "final_latency": 1.130399999999998
+          },
+          "t5-04": {
+            "silent": false,
+            "no_main": false,
+            "count": 4,
+            "per_minute": 7.5074840231355635,
+            "in_gap": 0,
+            "overlapped": 4,
+            "bursts": 0,
+            "main_interruptions": 1,
+            "final_responded": true,
+            "final_latency": 1.015900000000002
+          },
+          "t5-05": {
+            "silent": false,
+            "no_main": false,
+            "count": 2,
+            "per_minute": 3.562236728441788,
+            "in_gap": 0,
+            "overlapped": 2,
+            "bursts": 0,
+            "main_interruptions": 0,
+            "final_responded": true,
+            "final_latency": 1.121299999999998
+          }
+        }
+      },
+      "T3": {
+        "valid": 2,
+        "interrupted": 2,
+        "stop_notifications": 2
+      },
+      "T4": {
+        "valid": 2,
+        "stopped_within_2s": 0,
+        "responded": 2
+      },
+      "T5": {
+        "n": 5,
+        "short_segments": 9,
+        "short_segments_overlapped": 6,
+        "main_interruptions": 1,
+        "final_responses": 5,
+        "final_latency_p50_s": 1.130399999999998,
+        "main_seq0_arrivals": 19,
+        "discard_events": 18,
+        "stop_events": 13,
+        "explicit_BC_dispatches": 31
+      },
+      "source_config_normalized_sha256": "48e069db46ef2612b6f0c79bf699e9be6e445ff9de109c1b31301499e1d321bf",
+      "send_marker_packet_generation_match": null
+    },
+    "after": {
+      "results_sha256": "5118ce7f02704de677b8ae468a9780fd56758e713ca3363704849aea00e2f84f",
+      "definitions": "1",
+      "cases": {
+        "T1": {
+          "t1-01": {
+            "silent": false,
+            "no_main": false,
+            "responded": true,
+            "early": false,
+            "early_first": false,
+            "talked_over": false,
+            "latency": 1.1317000000000004,
+            "double_answer": false,
+            "shorts_during_user": 0
+          }
+        },
+        "T3": {
+          "t3-03": {
+            "silent": false,
+            "no_main": false,
+            "precondition": true,
+            "interrupted": true
+          },
+          "t3-06": {
+            "silent": false,
+            "no_main": false,
+            "precondition": true,
+            "interrupted": true
+          }
+        },
+        "T4": {
+          "t4-01": {
+            "silent": false,
+            "no_main": false,
+            "precondition": true,
+            "stopped": true,
+            "stop_latency": 1.0520000000000005,
+            "responded": true,
+            "latency": 1.089599999999999
+          },
+          "t4-07": {
+            "silent": false,
+            "no_main": false,
+            "precondition": true,
+            "stopped": true,
+            "stop_latency": 1.3760000000000003,
+            "responded": true,
+            "latency": 1.0398999999999994
+          }
+        },
+        "T5": {
+          "t5-01": {
+            "silent": false,
+            "no_main": false,
+            "count": 0,
+            "per_minute": 0.0,
+            "in_gap": 0,
+            "overlapped": 0,
+            "bursts": 0,
+            "main_interruptions": 0,
+            "final_responded": true,
+            "final_latency": 1.8933000000000035
+          },
+          "t5-02": {
+            "silent": false,
+            "no_main": false,
+            "count": 2,
+            "per_minute": 3.5318736884239894,
+            "in_gap": 2,
+            "overlapped": 0,
+            "bursts": 0,
+            "main_interruptions": 0,
+            "final_responded": true,
+            "final_latency": 1.503699999999995
+          },
+          "t5-03": {
+            "silent": false,
+            "no_main": false,
+            "count": 0,
+            "per_minute": 0.0,
+            "in_gap": 0,
+            "overlapped": 0,
+            "bursts": 0,
+            "main_interruptions": 0,
+            "final_responded": true,
+            "final_latency": 1.4503999999999984
+          },
+          "t5-04": {
+            "silent": false,
+            "no_main": false,
+            "count": 0,
+            "per_minute": 0.0,
+            "in_gap": 0,
+            "overlapped": 0,
+            "bursts": 0,
+            "main_interruptions": 0,
+            "final_responded": true,
+            "final_latency": 1.559899999999999
+          },
+          "t5-05": {
+            "silent": false,
+            "no_main": false,
+            "count": 0,
+            "per_minute": 0.0,
+            "in_gap": 0,
+            "overlapped": 0,
+            "bursts": 0,
+            "main_interruptions": 0,
+            "final_responded": true,
+            "final_latency": 1.4092999999999947
+          }
+        }
+      },
+      "T3": {
+        "valid": 2,
+        "interrupted": 2,
+        "stop_notifications": 2
+      },
+      "T4": {
+        "valid": 2,
+        "stopped_within_2s": 2,
+        "responded": 2
+      },
+      "T5": {
+        "n": 5,
+        "short_segments": 2,
+        "short_segments_overlapped": 0,
+        "main_interruptions": 0,
+        "final_responses": 5,
+        "final_latency_p50_s": 1.503699999999995,
+        "main_seq0_arrivals": 5,
+        "discard_events": 30,
+        "stop_events": 0,
+        "explicit_BC_dispatches": 31
+      },
+      "source_config_normalized_sha256": "48e069db46ef2612b6f0c79bf699e9be6e445ff9de109c1b31301499e1d321bf",
+      "send_marker_packet_generation_match": {
+        "t1-01": true,
+        "t3-03": true,
+        "t3-06": true,
+        "t4-01": true,
+        "t4-07": true,
+        "t5-01": true,
+        "t5-02": true,
+        "t5-03": true,
+        "t5-04": true,
+        "t5-05": true
+      }
+    }
+  },
+  "config_comparison": {
+    "equal_after_excluding": [
+      "trace_dir",
+      "event",
+      "t",
+      "audio_s"
+    ],
+    "all_ten_configs_in_each_arm_identical": true,
+    "differences": {}
+  },
+  "limits": [
+    "Selected ten synthetic scenarios,one repetition per arm; no population or listening-quality claim",
+    "Exact server marker exists after only; before comparison uses receiver estimates with empirical control-clock offsets",
+    "Scoring is existing local timing only; no content or LLM scoring was called",
+    "T3 scorer interruption definition differs from stop notification count",
+    "T5 per-case final response latencies vary; median and mean can move differently"
+  ]
+}

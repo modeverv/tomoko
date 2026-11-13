@@ -1,0 +1,282 @@
+{
+  "definitions": "1",
+  "runs": [
+    {
+      "id": "t1-01",
+      "axis": "T1",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.344,
+          15.232
+        ]
+      ],
+      "timing": {
+        "axis": "T1",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.1317000000000004,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "t3-03",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.664,
+          5.888
+        ],
+        [
+          6.4,
+          9.408
+        ],
+        [
+          10.944,
+          18.112
+        ]
+      ],
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": true
+      }
+    },
+    {
+      "id": "t3-06",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.6,
+          8.64
+        ],
+        [
+          9.792,
+          16.192
+        ]
+      ],
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": true
+      }
+    },
+    {
+      "id": "t4-01",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.632,
+          8.192
+        ],
+        [
+          13.568,
+          24.608
+        ]
+      ],
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 1.0520000000000005,
+        "responded": true,
+        "latency": 1.089599999999999
+      }
+    },
+    {
+      "id": "t4-07",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.728,
+          8.576
+        ],
+        [
+          11.936,
+          20.704
+        ]
+      ],
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 1.3760000000000003,
+        "responded": true,
+        "latency": 1.0398999999999994
+      }
+    },
+    {
+      "id": "t5-01",
+      "axis": "T5",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          35.52,
+          46.112
+        ]
+      ],
+      "timing": {
+        "axis": "T5",
+        "silent": false,
+        "no_main": false,
+        "count": 0,
+        "per_minute": 0.0,
+        "in_gap": 0,
+        "overlapped": 0,
+        "bursts": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.8933000000000035
+      }
+    },
+    {
+      "id": "t5-02",
+      "axis": "T5",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          16.064,
+          16.288
+        ],
+        [
+          20.736,
+          20.96
+        ],
+        [
+          36.48,
+          46.368
+        ]
+      ],
+      "timing": {
+        "axis": "T5",
+        "silent": false,
+        "no_main": false,
+        "count": 2,
+        "per_minute": 3.5318736884239894,
+        "in_gap": 2,
+        "overlapped": 0,
+        "bursts": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.503699999999995
+      }
+    },
+    {
+      "id": "t5-03",
+      "axis": "T5",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          31.744,
+          31.968
+        ],
+        [
+          32.8,
+          42.176
+        ],
+        [
+          42.624,
+          44.352
+        ]
+      ],
+      "timing": {
+        "axis": "T5",
+        "silent": false,
+        "no_main": false,
+        "count": 0,
+        "per_minute": 0.0,
+        "in_gap": 0,
+        "overlapped": 0,
+        "bursts": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.4503999999999984
+      }
+    },
+    {
+      "id": "t5-04",
+      "axis": "T5",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          34.528,
+          41.056
+        ]
+      ],
+      "timing": {
+        "axis": "T5",
+        "silent": false,
+        "no_main": false,
+        "count": 0,
+        "per_minute": 0.0,
+        "in_gap": 0,
+        "overlapped": 0,
+        "bursts": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.559899999999999
+      }
+    },
+    {
+      "id": "t5-05",
+      "axis": "T5",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          36.096,
+          46.56
+        ]
+      ],
+      "timing": {
+        "axis": "T5",
+        "silent": false,
+        "no_main": false,
+        "count": 0,
+        "per_minute": 0.0,
+        "in_gap": 0,
+        "overlapped": 0,
+        "bursts": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.4092999999999947
+      }
+    }
+  ]
+}
