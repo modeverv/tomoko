@@ -1,0 +1,69 @@
+{
+  "analysis_base_commit": "dbde3fdd0221808e4b93e996e1bc5b1535bed1e7",
+  "created_at": "2026-11-13T14:54:51.093343+09:00",
+  "author": "Codex",
+  "privacy": "Only synthetic/private=false runs and numeric summaries; no waveform or dialogue text exported.",
+  "source_sha256": {
+    "engine/baseline.py": "9089ee9691d1b812dc0994e42cfc604dc1f3e7aa09c7facecdca1f10d0a3ca03",
+    "engine/sensors/vad.py": "2477d2501229c34aa230cc9f82b4474bf1fd465437663469fa882247f46b2a8d",
+    "engine/sensors/maai.py": "0767cfc4aeca16b77c30d4aad1aeaf0abfc53c6082a155359d7f4fa2a3673f8f",
+    "scripts/maai_offline.py": "b7947f9649c6f9dbf02dd98192312b656b6b38bcecbc02f2645c4af3940d0c34",
+    "scripts/diagnose_reply_race.py": "b4ce432f6ccffa7298622bc962165b799c85ed54e01b634c258535dc38a9dd39",
+    "scripts/diagnose_maai_stereo.py": "4cdaca74b2cfd8390334ce075fbe8314eb5738e43983f030e4f953dcc6e7b52a",
+    "tests/unit/test_reply_race_diagnostic.py": "63d06a68ba7fed4400438f408369e42402a2f8b0ebfa5ef8338b086501daebdf",
+    "tests/unit/test_maai_stereo_diagnostic.py": "0f77e6a4342831a9f10a50637655a02f4aed11c7b0a333ffe542969e089a5785"
+  },
+  "versions": {
+    "maai": "0.2.27",
+    "torch": "2.15.0",
+    "numpy": "2.5.4",
+    "soundfile": "0.14.0"
+  },
+  "tests": {
+    "unit_passed": 245,
+    "deselected": 4,
+    "wall_s": 2.02,
+    "ruff": "passed"
+  },
+  "real_model_probes": {
+    "factory": "scripts.maai_offline.make_model(mode, jp, 10, cpc); bc_det selects Mimi 12.5 Hz/context20s; vap CPC10Hz/context5s; torch CPU2 threads",
+    "environment": {
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1"
+    },
+    "start_s": 0,
+    "duration_limit_s": 45,
+    "cpc_run_order": [
+      "p3-12-ep-1/t5-02",
+      "p3-12-ep-1/t5-04"
+    ],
+    "mimi_run_order": [
+      "p3-13-guard-3/t3-03",
+      "p3-13-guard-3/t3-06"
+    ],
+    "condition_order": [
+      "system_zero",
+      "system_recorded"
+    ],
+    "command_template": "python -m scripts.diagnose_maai_stereo RUN_DIR_1 RUN_DIR_2 --mode vap_or_bc_det --duration-s 45 --out OUT.json",
+    "limits": [
+      "receiver timeline approximation; no live policy replay",
+      "whole fixed system output removed, not backchannel alone",
+      "serial single-model throughput, not online latency",
+      "fixed condition order; no inference about runtime drop cause",
+      "historical runs loaded source not hashed; see prior recovery report"
+    ]
+  },
+  "artifacts": {
+    "cpc-pause-contrast-summary.json": "180fe3a014b24e540926456bc36db7711e13921515a27d5bb1a66e2666fd7f5d",
+    "cpc-stereo-contrast.json": "095c50499e4e6965bffce06b280fb9b0a6bc7e49c20d7b39493656a4e7713960",
+    "guard-six-gates.json": "4ca2f7085638785fd1ea9c88112b100d5b1ed14a87b8c5a082c966358f9ccb57",
+    "maai_metrics_callbacks_dbde3fd.json": "7894d1f25218e8a596e4795686913ebf94ca3a0389338aafd8ae022f9fb5a5c7",
+    "maai_metrics_masking_vad_context_dbde3fd.json": "5f68f243dc28322333927dae892f321ebbeaeac731a86f18737a82b4227b9b58",
+    "mimi-interjection-contrast-summary.json": "d33ae4877a0ab6a1e826d4e6e12854e06a898ae8be0adb7f147130da576b528b",
+    "mimi-stereo-contrast.json": "c314ca75114d8cd75602254fb6ad5461d0b281139c4bfbbbe05094f5b57a7de8",
+    "reply-race-controlled.json": "e0f713128000c74c554b9ebd82470f8ccd21ea18dfe51f6139c954dfadcca3ed",
+    "reply-window-events.json": "0711e25d75ea07baa7ed7498b5b63c2b855faa7070dcd6165e91dde2357bb894",
+    "reply-window-verification.json": "288871ed109fa9c7f21ca1a739e43305dd109d82fb72294b9e86be85131a61ab"
+  }
+}

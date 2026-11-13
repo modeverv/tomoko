@@ -1,0 +1,159 @@
+{
+  "scope": "Two selected synthetic T5 runs. Same fixed mic; recorded receiver output vs system zero. Annotated pauses only; no VAD policy replay. Correlated frames are not independent trials.",
+  "rows": [
+    {
+      "run": "p3-12-ep-1",
+      "id": "t5-02",
+      "source_sha256": {
+        "run_json": "edc1716014ed66ec78a436823ae5b17a99d480b965ac78189db0a6372607986f",
+        "input_wav": "a7ed6a677df1982f2a301bacf5ba568db6fecb4a37baba48cc12397d5e9377c9",
+        "output_wav": "f9a62026f1ebe82dd9d042139f0322f167fe9d68510f90a44d27a77ceb741a96"
+      },
+      "pauses": [
+        {
+          "pause_start_s": 4.2352,
+          "pause_end_s": 4.9352,
+          "frames": 7,
+          "pnow_delta_mean": 0.18601945042610168,
+          "pause_end_frame_s": 4.9,
+          "end_pnow_system_zero": 0.14500196278095245,
+          "end_pnow_system_recorded": 0.47061651945114136,
+          "cross_up_0_6": 2,
+          "cross_down_0_6": 0
+        },
+        {
+          "pause_start_s": 10.5409,
+          "pause_end_s": 11.2409,
+          "frames": 7,
+          "pnow_delta_mean": -0.08457868652684349,
+          "pause_end_frame_s": 11.2,
+          "end_pnow_system_zero": 0.48130926489830017,
+          "end_pnow_system_recorded": 0.40577781200408936,
+          "cross_up_0_6": 2,
+          "cross_down_0_6": 0
+        },
+        {
+          "pause_start_s": 15.5927,
+          "pause_end_s": 16.2927,
+          "frames": 7,
+          "pnow_delta_mean": 0.4967979980366571,
+          "pause_end_frame_s": 16.2,
+          "end_pnow_system_zero": 0.3551080524921417,
+          "end_pnow_system_recorded": 0.7382239103317261,
+          "cross_up_0_6": 7,
+          "cross_down_0_6": 0
+        },
+        {
+          "pause_start_s": 20.272,
+          "pause_end_s": 20.972,
+          "frames": 7,
+          "pnow_delta_mean": 0.09508830096040453,
+          "pause_end_frame_s": 20.9,
+          "end_pnow_system_zero": 0.40480685234069824,
+          "end_pnow_system_recorded": 0.5568910241127014,
+          "cross_up_0_6": 1,
+          "cross_down_0_6": 0
+        },
+        {
+          "pause_start_s": 25.5977,
+          "pause_end_s": 26.2977,
+          "frames": 7,
+          "pnow_delta_mean": -0.027466003383908952,
+          "pause_end_frame_s": 26.2,
+          "end_pnow_system_zero": 0.5885072350502014,
+          "end_pnow_system_recorded": 0.6908401846885681,
+          "cross_up_0_6": 2,
+          "cross_down_0_6": 4
+        },
+        {
+          "pause_start_s": 29.4575,
+          "pause_end_s": 30.1575,
+          "frames": 7,
+          "pnow_delta_mean": -0.03185326712472098,
+          "pause_end_frame_s": 30.1,
+          "end_pnow_system_zero": 0.5005951523780823,
+          "end_pnow_system_recorded": 0.5411644577980042,
+          "cross_up_0_6": 2,
+          "cross_down_0_6": 0
+        }
+      ]
+    },
+    {
+      "run": "p3-12-ep-1",
+      "id": "t5-04",
+      "source_sha256": {
+        "run_json": "25fcaab2b6b05bfb2a07b2268a079a9b80e54af6d702b58afd08adfb9ba34362",
+        "input_wav": "6b818fe66196b4116da9993b3f50c00681001a95fa4090dc59a790180a5c51b0",
+        "output_wav": "dc7d3abf2bb6fb31bd14fcf2f665db94598e4ee5e0fd610e0f19307c381290e1"
+      },
+      "pauses": [
+        {
+          "pause_start_s": 2.4421,
+          "pause_end_s": 3.1421,
+          "frames": 7,
+          "pnow_delta_mean": 0.15471501861299788,
+          "pause_end_frame_s": 3.1,
+          "end_pnow_system_zero": 0.3030262589454651,
+          "end_pnow_system_recorded": 0.5719396471977234,
+          "cross_up_0_6": 2,
+          "cross_down_0_6": 0
+        },
+        {
+          "pause_start_s": 7.8678,
+          "pause_end_s": 8.5678,
+          "frames": 7,
+          "pnow_delta_mean": -0.1297291602407183,
+          "pause_end_frame_s": 8.5,
+          "end_pnow_system_zero": 0.6607891917228699,
+          "end_pnow_system_recorded": 0.56586092710495,
+          "cross_up_0_6": 0,
+          "cross_down_0_6": 7
+        },
+        {
+          "pause_start_s": 10.2677,
+          "pause_end_s": 10.9678,
+          "frames": 7,
+          "pnow_delta_mean": -0.15538814238139562,
+          "pause_end_frame_s": 10.9,
+          "end_pnow_system_zero": 0.5368573069572449,
+          "end_pnow_system_recorded": 0.4203765094280243,
+          "cross_up_0_6": 0,
+          "cross_down_0_6": 0
+        },
+        {
+          "pause_start_s": 16.5398,
+          "pause_end_s": 17.2398,
+          "frames": 7,
+          "pnow_delta_mean": -0.1435857585498265,
+          "pause_end_frame_s": 17.2,
+          "end_pnow_system_zero": 0.6023371815681458,
+          "end_pnow_system_recorded": 0.38671982288360596,
+          "cross_up_0_6": 1,
+          "cross_down_0_6": 1
+        },
+        {
+          "pause_start_s": 21.2199,
+          "pause_end_s": 21.9199,
+          "frames": 7,
+          "pnow_delta_mean": -0.06858241558074951,
+          "pause_end_frame_s": 21.9,
+          "end_pnow_system_zero": 0.6018947958946228,
+          "end_pnow_system_recorded": 0.5745435357093811,
+          "cross_up_0_6": 0,
+          "cross_down_0_6": 3
+        },
+        {
+          "pause_start_s": 27.5617,
+          "pause_end_s": 28.2617,
+          "frames": 7,
+          "pnow_delta_mean": -0.05460176829780851,
+          "pause_end_frame_s": 28.2,
+          "end_pnow_system_zero": 0.40801575779914856,
+          "end_pnow_system_recorded": 0.43133804202079773,
+          "cross_up_0_6": 0,
+          "cross_down_0_6": 0
+        }
+      ]
+    }
+  ]
+}

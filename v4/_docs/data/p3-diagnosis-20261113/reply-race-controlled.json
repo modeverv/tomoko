@@ -1,0 +1,557 @@
+{
+  "schema_version": 1,
+  "mock": true,
+  "config": {
+    "vad_silence_s": 0.4,
+    "barge_in_voiced_s": 0.5,
+    "barge_in": true,
+    "maai": false,
+    "maai_endpoint": false,
+    "backchannel": false,
+    "barge_guard": false
+  },
+  "input": {
+    "sample_rate": 16000,
+    "window_samples": 512,
+    "first_voiced_s": 1.024,
+    "pause_requested_s": 0.7,
+    "pause_s": 0.704,
+    "resumed_voiced_s": 1.024
+  },
+  "cases": [
+    {
+      "case": "before_resume",
+      "tts_release_s": 1.6,
+      "first_vad_end_s": 1.408,
+      "resume_s": 1.728,
+      "resumed_sustained_s": 2.24,
+      "first_tts_audio_s": 1.6,
+      "first_send_s": 1.6,
+      "first_send_user_speaking": false,
+      "discard_reply": false,
+      "stop": true,
+      "stt_input_samples": [
+        16384,
+        21504
+      ],
+      "events": [
+        {
+          "event": "vad_start",
+          "mic_s": 0.032,
+          "at_s": 0.0
+        },
+        {
+          "event": "vad_sustained",
+          "mic_s": 0.512,
+          "at_s": 0.512
+        },
+        {
+          "event": "vad_end",
+          "mic_s": 1.408,
+          "speech_start_s": 0.0,
+          "speech_end_s": 1.024
+        },
+        {
+          "event": "stt_start",
+          "mic_s": 1.408,
+          "turn": 1,
+          "audio_len_s": 1.024
+        },
+        {
+          "event": "stt_final",
+          "mic_s": 1.408,
+          "turn": 1
+        },
+        {
+          "event": "llm_start",
+          "mic_s": 1.408,
+          "turn": 1
+        },
+        {
+          "event": "llm_first_token",
+          "mic_s": 1.408,
+          "turn": 1
+        },
+        {
+          "event": "llm_done",
+          "mic_s": 1.408,
+          "turn": 1
+        },
+        {
+          "event": "tts_start",
+          "mic_s": 1.408,
+          "turn": 1,
+          "phrase": 0
+        },
+        {
+          "event": "mock_tts_wait",
+          "mic_s": 1.408,
+          "call": 1
+        },
+        {
+          "event": "mock_tts_release",
+          "mic_s": 1.6,
+          "call": 1
+        },
+        {
+          "event": "tts_first_audio",
+          "mic_s": 1.6,
+          "turn": 1,
+          "phrase": 0
+        },
+        {
+          "event": "send_audio",
+          "mic_s": 1.6,
+          "generation": 0,
+          "seq": 0,
+          "samples": 24000,
+          "user_speaking": false
+        },
+        {
+          "event": "tts_done",
+          "mic_s": 1.6,
+          "turn": 1,
+          "phrase": 0,
+          "audio_len_s": 1.0
+        },
+        {
+          "event": "sent",
+          "mic_s": 1.6,
+          "turn": 1,
+          "phrase": 0,
+          "generation": 0
+        },
+        {
+          "event": "vad_start",
+          "mic_s": 1.76,
+          "at_s": 1.728
+        },
+        {
+          "event": "vad_sustained",
+          "mic_s": 2.24,
+          "at_s": 2.24
+        },
+        {
+          "event": "stop",
+          "mic_s": 2.24,
+          "turn": 1,
+          "generation": 0
+        },
+        {
+          "event": "vad_end",
+          "mic_s": 3.136,
+          "speech_start_s": 1.728,
+          "speech_end_s": 2.752
+        },
+        {
+          "event": "stt_start",
+          "mic_s": 3.136,
+          "turn": 2,
+          "audio_len_s": 1.344
+        },
+        {
+          "event": "stt_final",
+          "mic_s": 3.136,
+          "turn": 2
+        },
+        {
+          "event": "llm_start",
+          "mic_s": 3.136,
+          "turn": 2
+        },
+        {
+          "event": "llm_first_token",
+          "mic_s": 3.136,
+          "turn": 2
+        },
+        {
+          "event": "llm_done",
+          "mic_s": 3.136,
+          "turn": 2
+        },
+        {
+          "event": "tts_start",
+          "mic_s": 3.136,
+          "turn": 2,
+          "phrase": 0
+        },
+        {
+          "event": "tts_first_audio",
+          "mic_s": 3.136,
+          "turn": 2,
+          "phrase": 0
+        },
+        {
+          "event": "send_audio",
+          "mic_s": 3.136,
+          "generation": 1,
+          "seq": 0,
+          "samples": 24000,
+          "user_speaking": false
+        },
+        {
+          "event": "tts_done",
+          "mic_s": 3.136,
+          "turn": 2,
+          "phrase": 0,
+          "audio_len_s": 1.0
+        },
+        {
+          "event": "sent",
+          "mic_s": 3.136,
+          "turn": 2,
+          "phrase": 0,
+          "generation": 1
+        }
+      ]
+    },
+    {
+      "case": "during_grace",
+      "tts_release_s": 2.016,
+      "first_vad_end_s": 1.408,
+      "resume_s": 1.728,
+      "resumed_sustained_s": 2.24,
+      "first_tts_audio_s": 2.016,
+      "first_send_s": 2.016,
+      "first_send_user_speaking": true,
+      "discard_reply": false,
+      "stop": true,
+      "stt_input_samples": [
+        16384,
+        21504
+      ],
+      "events": [
+        {
+          "event": "vad_start",
+          "mic_s": 0.032,
+          "at_s": 0.0
+        },
+        {
+          "event": "vad_sustained",
+          "mic_s": 0.512,
+          "at_s": 0.512
+        },
+        {
+          "event": "vad_end",
+          "mic_s": 1.408,
+          "speech_start_s": 0.0,
+          "speech_end_s": 1.024
+        },
+        {
+          "event": "stt_start",
+          "mic_s": 1.408,
+          "turn": 1,
+          "audio_len_s": 1.024
+        },
+        {
+          "event": "stt_final",
+          "mic_s": 1.408,
+          "turn": 1
+        },
+        {
+          "event": "llm_start",
+          "mic_s": 1.408,
+          "turn": 1
+        },
+        {
+          "event": "llm_first_token",
+          "mic_s": 1.408,
+          "turn": 1
+        },
+        {
+          "event": "llm_done",
+          "mic_s": 1.408,
+          "turn": 1
+        },
+        {
+          "event": "tts_start",
+          "mic_s": 1.408,
+          "turn": 1,
+          "phrase": 0
+        },
+        {
+          "event": "mock_tts_wait",
+          "mic_s": 1.408,
+          "call": 1
+        },
+        {
+          "event": "vad_start",
+          "mic_s": 1.76,
+          "at_s": 1.728
+        },
+        {
+          "event": "mock_tts_release",
+          "mic_s": 2.016,
+          "call": 1
+        },
+        {
+          "event": "tts_first_audio",
+          "mic_s": 2.016,
+          "turn": 1,
+          "phrase": 0
+        },
+        {
+          "event": "send_audio",
+          "mic_s": 2.016,
+          "generation": 0,
+          "seq": 0,
+          "samples": 24000,
+          "user_speaking": true
+        },
+        {
+          "event": "tts_done",
+          "mic_s": 2.016,
+          "turn": 1,
+          "phrase": 0,
+          "audio_len_s": 1.0
+        },
+        {
+          "event": "sent",
+          "mic_s": 2.016,
+          "turn": 1,
+          "phrase": 0,
+          "generation": 0
+        },
+        {
+          "event": "vad_sustained",
+          "mic_s": 2.24,
+          "at_s": 2.24
+        },
+        {
+          "event": "stop",
+          "mic_s": 2.24,
+          "turn": 1,
+          "generation": 0
+        },
+        {
+          "event": "vad_end",
+          "mic_s": 3.136,
+          "speech_start_s": 1.728,
+          "speech_end_s": 2.752
+        },
+        {
+          "event": "stt_start",
+          "mic_s": 3.136,
+          "turn": 2,
+          "audio_len_s": 1.344
+        },
+        {
+          "event": "stt_final",
+          "mic_s": 3.136,
+          "turn": 2
+        },
+        {
+          "event": "llm_start",
+          "mic_s": 3.136,
+          "turn": 2
+        },
+        {
+          "event": "llm_first_token",
+          "mic_s": 3.136,
+          "turn": 2
+        },
+        {
+          "event": "llm_done",
+          "mic_s": 3.136,
+          "turn": 2
+        },
+        {
+          "event": "tts_start",
+          "mic_s": 3.136,
+          "turn": 2,
+          "phrase": 0
+        },
+        {
+          "event": "tts_first_audio",
+          "mic_s": 3.136,
+          "turn": 2,
+          "phrase": 0
+        },
+        {
+          "event": "send_audio",
+          "mic_s": 3.136,
+          "generation": 1,
+          "seq": 0,
+          "samples": 24000,
+          "user_speaking": false
+        },
+        {
+          "event": "tts_done",
+          "mic_s": 3.136,
+          "turn": 2,
+          "phrase": 0,
+          "audio_len_s": 1.0
+        },
+        {
+          "event": "sent",
+          "mic_s": 3.136,
+          "turn": 2,
+          "phrase": 0,
+          "generation": 1
+        }
+      ]
+    },
+    {
+      "case": "after_sustained",
+      "tts_release_s": 2.272,
+      "first_vad_end_s": 1.408,
+      "resume_s": 1.728,
+      "resumed_sustained_s": 2.24,
+      "first_tts_audio_s": null,
+      "first_send_s": null,
+      "first_send_user_speaking": null,
+      "discard_reply": true,
+      "stop": false,
+      "stt_input_samples": [
+        16384,
+        49152
+      ],
+      "events": [
+        {
+          "event": "vad_start",
+          "mic_s": 0.032,
+          "at_s": 0.0
+        },
+        {
+          "event": "vad_sustained",
+          "mic_s": 0.512,
+          "at_s": 0.512
+        },
+        {
+          "event": "vad_end",
+          "mic_s": 1.408,
+          "speech_start_s": 0.0,
+          "speech_end_s": 1.024
+        },
+        {
+          "event": "stt_start",
+          "mic_s": 1.408,
+          "turn": 1,
+          "audio_len_s": 1.024
+        },
+        {
+          "event": "stt_final",
+          "mic_s": 1.408,
+          "turn": 1
+        },
+        {
+          "event": "llm_start",
+          "mic_s": 1.408,
+          "turn": 1
+        },
+        {
+          "event": "llm_first_token",
+          "mic_s": 1.408,
+          "turn": 1
+        },
+        {
+          "event": "llm_done",
+          "mic_s": 1.408,
+          "turn": 1
+        },
+        {
+          "event": "tts_start",
+          "mic_s": 1.408,
+          "turn": 1,
+          "phrase": 0
+        },
+        {
+          "event": "mock_tts_wait",
+          "mic_s": 1.408,
+          "call": 1
+        },
+        {
+          "event": "vad_start",
+          "mic_s": 1.76,
+          "at_s": 1.728
+        },
+        {
+          "event": "vad_sustained",
+          "mic_s": 2.24,
+          "at_s": 2.24
+        },
+        {
+          "event": "discard_reply",
+          "mic_s": 2.24,
+          "turn": 1
+        },
+        {
+          "event": "mock_tts_cancelled",
+          "mic_s": 2.24,
+          "call": 1
+        },
+        {
+          "event": "mock_tts_release",
+          "mic_s": 2.272,
+          "call": 1
+        },
+        {
+          "event": "vad_end",
+          "mic_s": 3.136,
+          "speech_start_s": 1.728,
+          "speech_end_s": 2.752
+        },
+        {
+          "event": "stt_start",
+          "mic_s": 3.136,
+          "turn": 2,
+          "audio_len_s": 3.072
+        },
+        {
+          "event": "stt_final",
+          "mic_s": 3.136,
+          "turn": 2
+        },
+        {
+          "event": "llm_start",
+          "mic_s": 3.136,
+          "turn": 2
+        },
+        {
+          "event": "llm_first_token",
+          "mic_s": 3.136,
+          "turn": 2
+        },
+        {
+          "event": "llm_done",
+          "mic_s": 3.136,
+          "turn": 2
+        },
+        {
+          "event": "tts_start",
+          "mic_s": 3.136,
+          "turn": 2,
+          "phrase": 0
+        },
+        {
+          "event": "tts_first_audio",
+          "mic_s": 3.136,
+          "turn": 2,
+          "phrase": 0
+        },
+        {
+          "event": "send_audio",
+          "mic_s": 3.136,
+          "generation": 1,
+          "seq": 0,
+          "samples": 24000,
+          "user_speaking": false
+        },
+        {
+          "event": "tts_done",
+          "mic_s": 3.136,
+          "turn": 2,
+          "phrase": 0,
+          "audio_len_s": 1.0
+        },
+        {
+          "event": "sent",
+          "mic_s": 3.136,
+          "turn": 2,
+          "phrase": 0,
+          "generation": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,4029 @@
+{
+  "parent_diagnostic_sha256": "7894d1f25218e8a596e4795686913ebf94ca3a0389338aafd8ae022f9fb5a5c7",
+  "method": "Last-delivered callback replay with VAD speaking reconstructed from vad_start/end/drop. Annotated user interval membership is input timing only, not VAD ground truth. This does not log actual worker latest() at decisions. mask_proxy=None means no one-fresh/one-stale coupling; it can mean both fresh or both stale. Individual freshness is exported on vad_end samples.",
+  "cases": {
+    "p3-12-ep-2/t1-06": {
+      "source_run_sha256": "88c635d9c9f4250273dfc844214344106f60597be57a492a9d5b1f5e713a2a24",
+      "user_intervals_s": [
+        [
+          1.0,
+          5.6214
+        ]
+      ],
+      "counts": {
+        "old_CPC_masks_fresh_Mimi": 74,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 74,
+        "old_Mimi_masks_fresh_CPC": 67,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 67
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 6.0236,
+          "vad_now_s": 5.952,
+          "speech_end_s": 5.664,
+          "mask_proxy": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 5.84,
+          "cpc_at_s": 5.7,
+          "cpc_pnow_tomoko": 0.427,
+          "primary_age_s": 0.112,
+          "cpc_age_s": 0.252,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": false,
+          "composite_fresh_proxy": false
+        }
+      ],
+      "vad_active_mask_witnesses": []
+    },
+    "p3-12-ep-2/t1-08": {
+      "source_run_sha256": "3a80ee4e11792472f5b4aac2a23f11d4eb5833e1a06389308056d98e028b8c1c",
+      "user_intervals_s": [
+        [
+          1.0,
+          4.9786
+        ]
+      ],
+      "counts": {
+        "old_CPC_masks_fresh_Mimi": 10,
+        "old_CPC_masks_fresh_Mimi_vad_speaking": 3,
+        "old_CPC_masks_fresh_Mimi_annotated_user_turn": 3,
+        "old_CPC_masks_fresh_Mimi_annotated_voice": 3,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 7,
+        "old_Mimi_masks_fresh_CPC": 5,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 5
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 5.4512,
+          "vad_now_s": 5.44,
+          "speech_end_s": 5.056,
+          "mask_proxy": null,
+          "primary_at_s": 5.36,
+          "cpc_at_s": 5.4,
+          "cpc_pnow_tomoko": 0.256,
+          "primary_age_s": 0.08,
+          "cpc_age_s": 0.04,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": [
+        {
+          "event_index": 51,
+          "wall_s": 1.7793,
+          "audio_s": 1.76,
+          "vad_now_s": 1.76,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.52,
+          "cpc_at_s": 1.4,
+          "cpc_pnow_tomoko": 0.055,
+          "primary_pbc": 0.311
+        },
+        {
+          "event_index": 52,
+          "wall_s": 1.7922,
+          "audio_s": 1.78,
+          "vad_now_s": 1.76,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.52,
+          "cpc_at_s": 1.5,
+          "cpc_pnow_tomoko": 0.066,
+          "primary_pbc": 0.311
+        },
+        {
+          "event_index": 53,
+          "wall_s": 1.8107,
+          "audio_s": 1.8,
+          "vad_now_s": 1.792,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.6,
+          "cpc_at_s": 1.5,
+          "cpc_pnow_tomoko": 0.066,
+          "primary_pbc": 0.297
+        }
+      ]
+    },
+    "p3-12-ep-2/t2-04": {
+      "source_run_sha256": "eb071ac88ad8ed4af21f57a61774dcac327f68654677a63eba19b70153d6f2e7",
+      "user_intervals_s": [
+        [
+          1.0,
+          9.8221
+        ]
+      ],
+      "counts": {
+        "old_CPC_masks_fresh_Mimi": 41,
+        "old_CPC_masks_fresh_Mimi_vad_speaking": 24,
+        "old_CPC_masks_fresh_Mimi_annotated_user_turn": 24,
+        "old_CPC_masks_fresh_Mimi_annotated_voice": 20,
+        "old_Mimi_masks_fresh_CPC": 67,
+        "old_Mimi_masks_fresh_CPC_vad_speaking": 20,
+        "old_Mimi_masks_fresh_CPC_annotated_user_turn": 13,
+        "old_Mimi_masks_fresh_CPC_annotated_voice": 11,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 47,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 17
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 3.8821,
+          "vad_now_s": 3.872,
+          "speech_end_s": 2.88,
+          "mask_proxy": null,
+          "primary_at_s": 3.84,
+          "cpc_at_s": 3.8,
+          "cpc_pnow_tomoko": 0.035,
+          "primary_age_s": 0.032,
+          "cpc_age_s": 0.072,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 10.2266,
+          "vad_now_s": 10.208,
+          "speech_end_s": 9.824,
+          "mask_proxy": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 9.36,
+          "cpc_at_s": 10.1,
+          "cpc_pnow_tomoko": 0.149,
+          "primary_age_s": 0.848,
+          "cpc_age_s": 0.108,
+          "primary_fresh_proxy": false,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": false
+        }
+      ],
+      "vad_active_mask_witnesses": [
+        {
+          "event_index": 227,
+          "wall_s": 6.663,
+          "audio_s": 6.64,
+          "vad_now_s": 6.624,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 6.48,
+          "cpc_at_s": 6.3,
+          "cpc_pnow_tomoko": 0.063,
+          "primary_pbc": 0.3
+        },
+        {
+          "event_index": 228,
+          "wall_s": 6.6901,
+          "audio_s": 6.68,
+          "vad_now_s": 6.656,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 6.48,
+          "cpc_at_s": 6.4,
+          "cpc_pnow_tomoko": 0.053,
+          "primary_pbc": 0.3
+        },
+        {
+          "event_index": 230,
+          "wall_s": 6.7394,
+          "audio_s": 6.72,
+          "vad_now_s": 6.72,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 6.56,
+          "cpc_at_s": 6.4,
+          "cpc_pnow_tomoko": 0.053,
+          "primary_pbc": 0.293
+        },
+        {
+          "event_index": 231,
+          "wall_s": 6.8274,
+          "audio_s": 6.8,
+          "vad_now_s": 6.784,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 6.64,
+          "cpc_at_s": 6.4,
+          "cpc_pnow_tomoko": 0.053,
+          "primary_pbc": 0.292
+        },
+        {
+          "event_index": 233,
+          "wall_s": 6.8637,
+          "audio_s": 6.82,
+          "vad_now_s": 6.816,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 6.64,
+          "cpc_at_s": 6.5,
+          "cpc_pnow_tomoko": 0.058,
+          "primary_pbc": 0.292
+        },
+        {
+          "event_index": 234,
+          "wall_s": 6.9244,
+          "audio_s": 6.9,
+          "vad_now_s": 6.88,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 6.72,
+          "cpc_at_s": 6.5,
+          "cpc_pnow_tomoko": 0.058,
+          "primary_pbc": 0.295
+        },
+        {
+          "event_index": 236,
+          "wall_s": 7.0248,
+          "audio_s": 7.0,
+          "vad_now_s": 6.976,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 6.8,
+          "cpc_at_s": 6.5,
+          "cpc_pnow_tomoko": 0.058,
+          "primary_pbc": 0.224
+        },
+        {
+          "event_index": 238,
+          "wall_s": 7.0607,
+          "audio_s": 7.02,
+          "vad_now_s": 7.008,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 6.8,
+          "cpc_at_s": 6.6,
+          "cpc_pnow_tomoko": 0.054,
+          "primary_pbc": 0.224
+        },
+        {
+          "event_index": 239,
+          "wall_s": 7.1175,
+          "audio_s": 7.08,
+          "vad_now_s": 7.072,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 6.88,
+          "cpc_at_s": 6.6,
+          "cpc_pnow_tomoko": 0.054,
+          "primary_pbc": 0.263
+        },
+        {
+          "event_index": 242,
+          "wall_s": 7.1718,
+          "audio_s": 7.16,
+          "vad_now_s": 7.136,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 6.96,
+          "cpc_at_s": 6.7,
+          "cpc_pnow_tomoko": 0.057,
+          "primary_pbc": 0.389
+        },
+        {
+          "event_index": 244,
+          "wall_s": 7.2375,
+          "audio_s": 7.22,
+          "vad_now_s": 7.2,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.04,
+          "cpc_at_s": 6.7,
+          "cpc_pnow_tomoko": 0.057,
+          "primary_pbc": 0.375
+        },
+        {
+          "event_index": 245,
+          "wall_s": 7.2719,
+          "audio_s": 7.24,
+          "vad_now_s": 7.232,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.04,
+          "cpc_at_s": 6.8,
+          "cpc_pnow_tomoko": 0.041,
+          "primary_pbc": 0.375
+        },
+        {
+          "event_index": 246,
+          "wall_s": 7.3004,
+          "audio_s": 7.28,
+          "vad_now_s": 7.264,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.12,
+          "cpc_at_s": 6.8,
+          "cpc_pnow_tomoko": 0.041,
+          "primary_pbc": 0.37
+        },
+        {
+          "event_index": 248,
+          "wall_s": 7.3619,
+          "audio_s": 7.34,
+          "vad_now_s": 7.328,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.12,
+          "cpc_at_s": 6.9,
+          "cpc_pnow_tomoko": 0.039,
+          "primary_pbc": 0.37
+        },
+        {
+          "event_index": 249,
+          "wall_s": 7.3796,
+          "audio_s": 7.36,
+          "vad_now_s": 7.36,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.2,
+          "cpc_at_s": 6.9,
+          "cpc_pnow_tomoko": 0.039,
+          "primary_pbc": 0.389
+        },
+        {
+          "event_index": 251,
+          "wall_s": 7.4527,
+          "audio_s": 7.44,
+          "vad_now_s": 7.424,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.28,
+          "cpc_at_s": 6.9,
+          "cpc_pnow_tomoko": 0.039,
+          "primary_pbc": 0.423
+        },
+        {
+          "event_index": 252,
+          "wall_s": 7.5036,
+          "audio_s": 7.48,
+          "vad_now_s": 7.456,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.28,
+          "cpc_at_s": 7.0,
+          "cpc_pnow_tomoko": 0.033,
+          "primary_pbc": 0.423
+        },
+        {
+          "event_index": 253,
+          "wall_s": 7.515,
+          "audio_s": 7.5,
+          "vad_now_s": 7.488,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.36,
+          "cpc_at_s": 7.0,
+          "cpc_pnow_tomoko": 0.033,
+          "primary_pbc": 0.568
+        },
+        {
+          "event_index": 255,
+          "wall_s": 7.5847,
+          "audio_s": 7.56,
+          "vad_now_s": 7.552,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.44,
+          "cpc_at_s": 7.0,
+          "cpc_pnow_tomoko": 0.033,
+          "primary_pbc": 0.721
+        },
+        {
+          "event_index": 257,
+          "wall_s": 7.6164,
+          "audio_s": 7.6,
+          "vad_now_s": 7.584,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.44,
+          "cpc_at_s": 7.1,
+          "cpc_pnow_tomoko": 0.033,
+          "primary_pbc": 0.721
+        },
+        {
+          "event_index": 259,
+          "wall_s": 7.6697,
+          "audio_s": 7.66,
+          "vad_now_s": 7.648,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.52,
+          "cpc_at_s": 7.1,
+          "cpc_pnow_tomoko": 0.033,
+          "primary_pbc": 0.602
+        },
+        {
+          "event_index": 260,
+          "wall_s": 7.6747,
+          "audio_s": 7.66,
+          "vad_now_s": 7.648,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.52,
+          "cpc_at_s": 7.3,
+          "cpc_pnow_tomoko": 0.073,
+          "primary_pbc": 0.602
+        },
+        {
+          "event_index": 261,
+          "wall_s": 7.6863,
+          "audio_s": 7.68,
+          "vad_now_s": 7.68,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.52,
+          "cpc_at_s": 7.4,
+          "cpc_pnow_tomoko": 0.092,
+          "primary_pbc": 0.602
+        },
+        {
+          "event_index": 262,
+          "wall_s": 7.6925,
+          "audio_s": 7.68,
+          "vad_now_s": 7.68,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.6,
+          "cpc_at_s": 7.4,
+          "cpc_pnow_tomoko": 0.092,
+          "primary_pbc": 0.494
+        },
+        {
+          "event_index": 276,
+          "wall_s": 8.1173,
+          "audio_s": 8.1,
+          "vad_now_s": 8.096,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 7.84,
+          "cpc_at_s": 8.1,
+          "cpc_pnow_tomoko": 0.039,
+          "primary_pbc": 0.438
+        },
+        {
+          "event_index": 281,
+          "wall_s": 8.293,
+          "audio_s": 8.28,
+          "vad_now_s": 8.256,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.0,
+          "cpc_at_s": 8.2,
+          "cpc_pnow_tomoko": 0.055,
+          "primary_pbc": 0.381
+        },
+        {
+          "event_index": 283,
+          "wall_s": 8.4075,
+          "audio_s": 8.4,
+          "vad_now_s": 8.384,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.0,
+          "cpc_at_s": 8.3,
+          "cpc_pnow_tomoko": 0.049,
+          "primary_pbc": 0.381
+        },
+        {
+          "event_index": 286,
+          "wall_s": 8.5199,
+          "audio_s": 8.5,
+          "vad_now_s": 8.48,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.0,
+          "cpc_at_s": 8.4,
+          "cpc_pnow_tomoko": 0.052,
+          "primary_pbc": 0.381
+        },
+        {
+          "event_index": 300,
+          "wall_s": 9.0016,
+          "audio_s": 8.98,
+          "vad_now_s": 8.96,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.48,
+          "cpc_at_s": 8.8,
+          "cpc_pnow_tomoko": 0.056,
+          "primary_pbc": 0.175
+        },
+        {
+          "event_index": 302,
+          "wall_s": 9.0293,
+          "audio_s": 9.02,
+          "vad_now_s": 8.992,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.48,
+          "cpc_at_s": 8.9,
+          "cpc_pnow_tomoko": 0.066,
+          "primary_pbc": 0.175
+        },
+        {
+          "event_index": 304,
+          "wall_s": 9.0639,
+          "audio_s": 9.06,
+          "vad_now_s": 9.056,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.48,
+          "cpc_at_s": 9.0,
+          "cpc_pnow_tomoko": 0.187,
+          "primary_pbc": 0.175
+        },
+        {
+          "event_index": 311,
+          "wall_s": 9.3546,
+          "audio_s": 9.34,
+          "vad_now_s": 9.312,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.48,
+          "cpc_at_s": 9.1,
+          "cpc_pnow_tomoko": 0.185,
+          "primary_pbc": 0.175
+        },
+        {
+          "event_index": 313,
+          "wall_s": 9.4074,
+          "audio_s": 9.4,
+          "vad_now_s": 9.376,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.48,
+          "cpc_at_s": 9.2,
+          "cpc_pnow_tomoko": 0.097,
+          "primary_pbc": 0.175
+        },
+        {
+          "event_index": 315,
+          "wall_s": 9.4398,
+          "audio_s": 9.42,
+          "vad_now_s": 9.408,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.48,
+          "cpc_at_s": 9.3,
+          "cpc_pnow_tomoko": 0.097,
+          "primary_pbc": 0.175
+        },
+        {
+          "event_index": 319,
+          "wall_s": 9.581,
+          "audio_s": 9.56,
+          "vad_now_s": 9.536,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.56,
+          "cpc_at_s": 9.3,
+          "cpc_pnow_tomoko": 0.097,
+          "primary_pbc": 0.262
+        },
+        {
+          "event_index": 321,
+          "wall_s": 9.6396,
+          "audio_s": 9.62,
+          "vad_now_s": 9.6,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.56,
+          "cpc_at_s": 9.4,
+          "cpc_pnow_tomoko": 0.146,
+          "primary_pbc": 0.262
+        },
+        {
+          "event_index": 322,
+          "wall_s": 9.6702,
+          "audio_s": 9.66,
+          "vad_now_s": 9.632,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.56,
+          "cpc_at_s": 9.5,
+          "cpc_pnow_tomoko": 0.107,
+          "primary_pbc": 0.262
+        },
+        {
+          "event_index": 327,
+          "wall_s": 9.8561,
+          "audio_s": 9.84,
+          "vad_now_s": 9.824,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.56,
+          "cpc_at_s": 9.6,
+          "cpc_pnow_tomoko": 0.109,
+          "primary_pbc": 0.262
+        },
+        {
+          "event_index": 328,
+          "wall_s": 9.9051,
+          "audio_s": 9.9,
+          "vad_now_s": 9.888,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.56,
+          "cpc_at_s": 9.7,
+          "cpc_pnow_tomoko": 0.108,
+          "primary_pbc": 0.262
+        },
+        {
+          "event_index": 331,
+          "wall_s": 9.9746,
+          "audio_s": 9.96,
+          "vad_now_s": 9.952,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.56,
+          "cpc_at_s": 9.8,
+          "cpc_pnow_tomoko": 0.071,
+          "primary_pbc": 0.262
+        },
+        {
+          "event_index": 334,
+          "wall_s": 10.0425,
+          "audio_s": 10.04,
+          "vad_now_s": 10.016,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 9.36,
+          "cpc_at_s": 9.8,
+          "cpc_pnow_tomoko": 0.071,
+          "primary_pbc": 0.452
+        },
+        {
+          "event_index": 335,
+          "wall_s": 10.1138,
+          "audio_s": 10.1,
+          "vad_now_s": 10.08,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 9.36,
+          "cpc_at_s": 9.9,
+          "cpc_pnow_tomoko": 0.07,
+          "primary_pbc": 0.452
+        },
+        {
+          "event_index": 337,
+          "wall_s": 10.1496,
+          "audio_s": 10.14,
+          "vad_now_s": 10.112,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 9.36,
+          "cpc_at_s": 10.0,
+          "cpc_pnow_tomoko": 0.145,
+          "primary_pbc": 0.452
+        },
+        {
+          "event_index": 339,
+          "wall_s": 10.1905,
+          "audio_s": 10.18,
+          "vad_now_s": 10.176,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 9.36,
+          "cpc_at_s": 10.1,
+          "cpc_pnow_tomoko": 0.149,
+          "primary_pbc": 0.452
+        }
+      ]
+    },
+    "p3-12-ep-2/t2-05": {
+      "source_run_sha256": "6f49d048e31fb21af7dad538652d68f2b654dacb3da9ac288c3d41b849f7aa8b",
+      "user_intervals_s": [
+        [
+          1.0,
+          8.5996
+        ]
+      ],
+      "counts": {
+        "old_Mimi_masks_fresh_CPC": 9,
+        "old_Mimi_masks_fresh_CPC_vad_speaking": 5,
+        "old_Mimi_masks_fresh_CPC_annotated_user_turn": 1,
+        "old_CPC_masks_fresh_Mimi": 13,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 13,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 4
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 4.567,
+          "vad_now_s": 4.544,
+          "speech_end_s": 4.064,
+          "mask_proxy": null,
+          "primary_at_s": 4.48,
+          "cpc_at_s": 4.5,
+          "cpc_pnow_tomoko": 0.689,
+          "primary_age_s": 0.064,
+          "cpc_age_s": 0.044,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 7.3066,
+          "vad_now_s": 7.296,
+          "speech_end_s": 6.912,
+          "mask_proxy": null,
+          "primary_at_s": 7.12,
+          "cpc_at_s": 7.2,
+          "cpc_pnow_tomoko": 0.403,
+          "primary_age_s": 0.176,
+          "cpc_age_s": 0.096,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 9.0495,
+          "vad_now_s": 9.024,
+          "speech_end_s": 8.64,
+          "mask_proxy": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.4,
+          "cpc_at_s": 8.8,
+          "cpc_pnow_tomoko": 0.241,
+          "primary_age_s": 0.624,
+          "cpc_age_s": 0.224,
+          "primary_fresh_proxy": false,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": false
+        }
+      ],
+      "vad_active_mask_witnesses": [
+        {
+          "event_index": 240,
+          "wall_s": 7.02,
+          "audio_s": 7.0,
+          "vad_now_s": 6.976,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 6.72,
+          "cpc_at_s": 7.0,
+          "cpc_pnow_tomoko": 0.328,
+          "primary_pbc": 0.412
+        },
+        {
+          "event_index": 303,
+          "wall_s": 8.6672,
+          "audio_s": 8.66,
+          "vad_now_s": 8.64,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.32,
+          "cpc_at_s": 8.5,
+          "cpc_pnow_tomoko": 0.022,
+          "primary_pbc": 0.1
+        },
+        {
+          "event_index": 307,
+          "wall_s": 8.8639,
+          "audio_s": 8.84,
+          "vad_now_s": 8.832,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.32,
+          "cpc_at_s": 8.6,
+          "cpc_pnow_tomoko": 0.046,
+          "primary_pbc": 0.1
+        },
+        {
+          "event_index": 310,
+          "wall_s": 8.9582,
+          "audio_s": 8.94,
+          "vad_now_s": 8.928,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.32,
+          "cpc_at_s": 8.7,
+          "cpc_pnow_tomoko": 0.138,
+          "primary_pbc": 0.1
+        },
+        {
+          "event_index": 313,
+          "wall_s": 9.0184,
+          "audio_s": 9.0,
+          "vad_now_s": 8.992,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 8.4,
+          "cpc_at_s": 8.8,
+          "cpc_pnow_tomoko": 0.241,
+          "primary_pbc": 0.092
+        }
+      ]
+    },
+    "p3-12-ep-2/t2-06": {
+      "source_run_sha256": "320a38f56c877e6e42f705a19fb81670f9cbee7693a377d6f50b5afd181dc092",
+      "user_intervals_s": [
+        [
+          1.0,
+          9.8871
+        ]
+      ],
+      "counts": {
+        "old_Mimi_masks_fresh_CPC": 48,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 48
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 6.6028,
+          "vad_now_s": 6.592,
+          "speech_end_s": 5.6,
+          "mask_proxy": null,
+          "primary_at_s": 6.56,
+          "cpc_at_s": 6.5,
+          "cpc_pnow_tomoko": 0.174,
+          "primary_age_s": 0.032,
+          "cpc_age_s": 0.092,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 8.742,
+          "vad_now_s": 8.736,
+          "speech_end_s": 8.352,
+          "mask_proxy": null,
+          "primary_at_s": 8.72,
+          "cpc_at_s": 8.7,
+          "cpc_pnow_tomoko": 0.338,
+          "primary_age_s": 0.016,
+          "cpc_age_s": 0.036,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 10.3433,
+          "vad_now_s": 10.336,
+          "speech_end_s": 9.952,
+          "mask_proxy": null,
+          "primary_at_s": 10.24,
+          "cpc_at_s": 10.3,
+          "cpc_pnow_tomoko": 0.356,
+          "primary_age_s": 0.096,
+          "cpc_age_s": 0.036,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": []
+    },
+    "p3-12-ep-2/t2-07": {
+      "source_run_sha256": "a8d1ec926cc16433c79c3abc2bf27e233a55c8f4a25a38147f96042dc62cdd35",
+      "user_intervals_s": [
+        [
+          1.0,
+          8.2136
+        ]
+      ],
+      "counts": {
+        "old_CPC_masks_fresh_Mimi": 23,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 15,
+        "old_Mimi_masks_fresh_CPC": 67,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 56,
+        "old_Mimi_masks_fresh_CPC_vad_speaking": 11,
+        "old_Mimi_masks_fresh_CPC_annotated_user_turn": 11,
+        "old_Mimi_masks_fresh_CPC_annotated_voice": 11,
+        "old_CPC_masks_fresh_Mimi_vad_speaking": 8,
+        "old_CPC_masks_fresh_Mimi_annotated_user_turn": 8,
+        "old_CPC_masks_fresh_Mimi_annotated_voice": 8
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 4.0653,
+          "vad_now_s": 3.968,
+          "speech_end_s": 3.584,
+          "mask_proxy": null,
+          "primary_at_s": 3.36,
+          "cpc_at_s": 3.3,
+          "cpc_pnow_tomoko": 0.036,
+          "primary_age_s": 0.608,
+          "cpc_age_s": 0.668,
+          "primary_fresh_proxy": false,
+          "cpc_fresh_proxy": false,
+          "composite_fresh_proxy": false
+        },
+        {
+          "wall_s": 8.644,
+          "vad_now_s": 8.64,
+          "speech_end_s": 8.256,
+          "mask_proxy": null,
+          "primary_at_s": 8.56,
+          "cpc_at_s": 8.6,
+          "cpc_pnow_tomoko": 0.423,
+          "primary_age_s": 0.08,
+          "cpc_age_s": 0.04,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": [
+        {
+          "event_index": 29,
+          "wall_s": 1.053,
+          "audio_s": 1.04,
+          "vad_now_s": 1.024,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.64,
+          "cpc_at_s": 1.0,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.035
+        },
+        {
+          "event_index": 32,
+          "wall_s": 1.137,
+          "audio_s": 1.12,
+          "vad_now_s": 1.12,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.64,
+          "cpc_at_s": 1.1,
+          "cpc_pnow_tomoko": 0.042,
+          "primary_pbc": 0.035
+        },
+        {
+          "event_index": 35,
+          "wall_s": 1.2583,
+          "audio_s": 1.24,
+          "vad_now_s": 1.216,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.72,
+          "cpc_at_s": 1.1,
+          "cpc_pnow_tomoko": 0.042,
+          "primary_pbc": 0.032
+        },
+        {
+          "event_index": 36,
+          "wall_s": 1.2764,
+          "audio_s": 1.26,
+          "vad_now_s": 1.248,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.72,
+          "cpc_at_s": 1.2,
+          "cpc_pnow_tomoko": 0.032,
+          "primary_pbc": 0.032
+        },
+        {
+          "event_index": 39,
+          "wall_s": 1.3223,
+          "audio_s": 1.32,
+          "vad_now_s": 1.312,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 1.04,
+          "cpc_at_s": 1.3,
+          "cpc_pnow_tomoko": 0.032,
+          "primary_pbc": 0.206
+        },
+        {
+          "event_index": 56,
+          "wall_s": 1.9669,
+          "audio_s": 1.9,
+          "vad_now_s": 1.888,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.68,
+          "cpc_at_s": 1.6,
+          "cpc_pnow_tomoko": 0.037,
+          "primary_pbc": 0.332
+        },
+        {
+          "event_index": 58,
+          "wall_s": 2.022,
+          "audio_s": 2.0,
+          "vad_now_s": 1.984,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.76,
+          "cpc_at_s": 1.6,
+          "cpc_pnow_tomoko": 0.037,
+          "primary_pbc": 0.229
+        },
+        {
+          "event_index": 61,
+          "wall_s": 2.069,
+          "audio_s": 2.06,
+          "vad_now_s": 2.048,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.84,
+          "cpc_at_s": 1.7,
+          "cpc_pnow_tomoko": 0.029,
+          "primary_pbc": 0.201
+        },
+        {
+          "event_index": 64,
+          "wall_s": 2.1331,
+          "audio_s": 2.12,
+          "vad_now_s": 2.112,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.92,
+          "cpc_at_s": 1.8,
+          "cpc_pnow_tomoko": 0.026,
+          "primary_pbc": 0.255
+        },
+        {
+          "event_index": 65,
+          "wall_s": 2.1746,
+          "audio_s": 2.16,
+          "vad_now_s": 2.144,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.0,
+          "cpc_at_s": 1.8,
+          "cpc_pnow_tomoko": 0.026,
+          "primary_pbc": 0.183
+        },
+        {
+          "event_index": 66,
+          "wall_s": 2.1851,
+          "audio_s": 2.18,
+          "vad_now_s": 2.176,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.0,
+          "cpc_at_s": 1.9,
+          "cpc_pnow_tomoko": 0.03,
+          "primary_pbc": 0.183
+        },
+        {
+          "event_index": 67,
+          "wall_s": 2.2,
+          "audio_s": 2.18,
+          "vad_now_s": 2.176,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.08,
+          "cpc_at_s": 1.9,
+          "cpc_pnow_tomoko": 0.03,
+          "primary_pbc": 0.178
+        },
+        {
+          "event_index": 105,
+          "wall_s": 3.497,
+          "audio_s": 3.38,
+          "vad_now_s": 3.36,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.2,
+          "cpc_at_s": 3.1,
+          "cpc_pnow_tomoko": 0.092,
+          "primary_pbc": 0.479
+        },
+        {
+          "event_index": 133,
+          "wall_s": 4.2457,
+          "audio_s": 4.24,
+          "vad_now_s": 4.224,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.44,
+          "cpc_at_s": 4.0,
+          "cpc_pnow_tomoko": 0.508,
+          "primary_pbc": 0.21
+        },
+        {
+          "event_index": 134,
+          "wall_s": 4.3456,
+          "audio_s": 4.3,
+          "vad_now_s": 4.288,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.44,
+          "cpc_at_s": 4.1,
+          "cpc_pnow_tomoko": 0.073,
+          "primary_pbc": 0.21
+        },
+        {
+          "event_index": 162,
+          "wall_s": 5.0407,
+          "audio_s": 5.02,
+          "vad_now_s": 4.992,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 4.72,
+          "cpc_at_s": 4.8,
+          "cpc_pnow_tomoko": 0.073,
+          "primary_pbc": 0.258
+        },
+        {
+          "event_index": 163,
+          "wall_s": 5.0609,
+          "audio_s": 5.04,
+          "vad_now_s": 5.024,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 4.72,
+          "cpc_at_s": 4.9,
+          "cpc_pnow_tomoko": 0.067,
+          "primary_pbc": 0.258
+        },
+        {
+          "event_index": 164,
+          "wall_s": 5.0755,
+          "audio_s": 5.06,
+          "vad_now_s": 5.056,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 4.8,
+          "cpc_at_s": 4.9,
+          "cpc_pnow_tomoko": 0.067,
+          "primary_pbc": 0.24
+        },
+        {
+          "event_index": 165,
+          "wall_s": 5.1157,
+          "audio_s": 5.1,
+          "vad_now_s": 5.088,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 4.8,
+          "cpc_at_s": 5.0,
+          "cpc_pnow_tomoko": 0.075,
+          "primary_pbc": 0.24
+        }
+      ]
+    },
+    "p3-12-ep-2/t2-08": {
+      "source_run_sha256": "12a831f8bb39b81bc04f82e0ba3b06d9612eddf76a1ca6b74d438c069757f5f5",
+      "user_intervals_s": [
+        [
+          1.0,
+          9.4611
+        ]
+      ],
+      "counts": {
+        "old_CPC_masks_fresh_Mimi": 32,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 14,
+        "old_CPC_masks_fresh_Mimi_vad_speaking": 18,
+        "old_CPC_masks_fresh_Mimi_annotated_user_turn": 24,
+        "old_CPC_masks_fresh_Mimi_annotated_voice": 17,
+        "old_CPC_masks_fresh_Mimi_annotated_pause": 6,
+        "old_Mimi_masks_fresh_CPC": 7,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 7
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 3.8263,
+          "vad_now_s": 3.808,
+          "speech_end_s": 3.424,
+          "mask_proxy": null,
+          "primary_at_s": 3.68,
+          "cpc_at_s": 3.7,
+          "cpc_pnow_tomoko": 0.303,
+          "primary_age_s": 0.128,
+          "cpc_age_s": 0.108,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 7.6658,
+          "vad_now_s": 7.648,
+          "speech_end_s": 7.392,
+          "mask_proxy": null,
+          "primary_at_s": 7.6,
+          "cpc_at_s": 7.6,
+          "cpc_pnow_tomoko": 0.618,
+          "primary_age_s": 0.048,
+          "cpc_age_s": 0.048,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 9.9229,
+          "vad_now_s": 9.92,
+          "speech_end_s": 9.536,
+          "mask_proxy": null,
+          "primary_at_s": 9.84,
+          "cpc_at_s": 9.9,
+          "cpc_pnow_tomoko": 0.492,
+          "primary_age_s": 0.08,
+          "cpc_age_s": 0.02,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": [
+        {
+          "event_index": 30,
+          "wall_s": 1.1643,
+          "audio_s": 1.1,
+          "vad_now_s": 1.088,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 0.96,
+          "cpc_at_s": 0.7,
+          "cpc_pnow_tomoko": 0.51,
+          "primary_pbc": 0.029
+        },
+        {
+          "event_index": 31,
+          "wall_s": 1.1644,
+          "audio_s": 1.1,
+          "vad_now_s": 1.088,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 0.96,
+          "cpc_at_s": 0.8,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.029
+        },
+        {
+          "event_index": 33,
+          "wall_s": 1.2052,
+          "audio_s": 1.18,
+          "vad_now_s": 1.152,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.04,
+          "cpc_at_s": 0.8,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.055
+        },
+        {
+          "event_index": 35,
+          "wall_s": 1.2765,
+          "audio_s": 1.26,
+          "vad_now_s": 1.248,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.12,
+          "cpc_at_s": 0.8,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.062
+        },
+        {
+          "event_index": 36,
+          "wall_s": 1.2765,
+          "audio_s": 1.26,
+          "vad_now_s": 1.248,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.12,
+          "cpc_at_s": 0.9,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.062
+        },
+        {
+          "event_index": 38,
+          "wall_s": 1.3424,
+          "audio_s": 1.32,
+          "vad_now_s": 1.312,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.2,
+          "cpc_at_s": 0.9,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.073
+        },
+        {
+          "event_index": 39,
+          "wall_s": 1.3667,
+          "audio_s": 1.36,
+          "vad_now_s": 1.344,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.2,
+          "cpc_at_s": 1.0,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.073
+        },
+        {
+          "event_index": 40,
+          "wall_s": 1.3913,
+          "audio_s": 1.38,
+          "vad_now_s": 1.376,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.28,
+          "cpc_at_s": 1.0,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.1
+        },
+        {
+          "event_index": 42,
+          "wall_s": 1.4725,
+          "audio_s": 1.46,
+          "vad_now_s": 1.44,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.36,
+          "cpc_at_s": 1.0,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.065
+        },
+        {
+          "event_index": 43,
+          "wall_s": 1.4733,
+          "audio_s": 1.46,
+          "vad_now_s": 1.44,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.36,
+          "cpc_at_s": 1.1,
+          "cpc_pnow_tomoko": 0.043,
+          "primary_pbc": 0.065
+        },
+        {
+          "event_index": 44,
+          "wall_s": 1.5147,
+          "audio_s": 1.5,
+          "vad_now_s": 1.472,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.36,
+          "cpc_at_s": 1.2,
+          "cpc_pnow_tomoko": 0.055,
+          "primary_pbc": 0.065
+        },
+        {
+          "event_index": 45,
+          "wall_s": 1.5189,
+          "audio_s": 1.5,
+          "vad_now_s": 1.472,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.44,
+          "cpc_at_s": 1.2,
+          "cpc_pnow_tomoko": 0.055,
+          "primary_pbc": 0.047
+        },
+        {
+          "event_index": 47,
+          "wall_s": 1.5954,
+          "audio_s": 1.58,
+          "vad_now_s": 1.568,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.44,
+          "cpc_at_s": 1.3,
+          "cpc_pnow_tomoko": 0.273,
+          "primary_pbc": 0.047
+        },
+        {
+          "event_index": 48,
+          "wall_s": 1.5985,
+          "audio_s": 1.58,
+          "vad_now_s": 1.568,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.52,
+          "cpc_at_s": 1.3,
+          "cpc_pnow_tomoko": 0.273,
+          "primary_pbc": 0.043
+        },
+        {
+          "event_index": 50,
+          "wall_s": 1.6554,
+          "audio_s": 1.64,
+          "vad_now_s": 1.632,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.6,
+          "cpc_at_s": 1.3,
+          "cpc_pnow_tomoko": 0.273,
+          "primary_pbc": 0.047
+        },
+        {
+          "event_index": 252,
+          "wall_s": 7.4182,
+          "audio_s": 7.4,
+          "vad_now_s": 7.392,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 7.28,
+          "cpc_at_s": 7.1,
+          "cpc_pnow_tomoko": 0.117,
+          "primary_pbc": 0.325
+        },
+        {
+          "event_index": 289,
+          "wall_s": 8.3127,
+          "audio_s": 8.3,
+          "vad_now_s": 8.288,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 8.16,
+          "cpc_at_s": 8.0,
+          "cpc_pnow_tomoko": 0.753,
+          "primary_pbc": 0.216
+        },
+        {
+          "event_index": 292,
+          "wall_s": 8.379,
+          "audio_s": 8.36,
+          "vad_now_s": 8.352,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 8.24,
+          "cpc_at_s": 8.1,
+          "cpc_pnow_tomoko": 0.453,
+          "primary_pbc": 0.176
+        }
+      ]
+    },
+    "p3-12-ep-2/t2-09": {
+      "source_run_sha256": "b3af487de3fb53c17f94fab1b62847816136aaccb569a7340dfd4ceac3e4d516",
+      "user_intervals_s": [
+        [
+          1.0,
+          7.7276
+        ]
+      ],
+      "counts": {
+        "old_Mimi_masks_fresh_CPC": 73,
+        "old_Mimi_masks_fresh_CPC_vad_speaking": 59,
+        "old_Mimi_masks_fresh_CPC_annotated_user_turn": 63,
+        "old_Mimi_masks_fresh_CPC_annotated_voice": 45,
+        "old_Mimi_masks_fresh_CPC_annotated_pause": 12,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 14,
+        "old_CPC_masks_fresh_Mimi": 19,
+        "old_CPC_masks_fresh_Mimi_vad_speaking": 4,
+        "old_CPC_masks_fresh_Mimi_annotated_user_turn": 4,
+        "old_CPC_masks_fresh_Mimi_annotated_voice": 4,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 15
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 4.5672,
+          "vad_now_s": 4.544,
+          "speech_end_s": 4.16,
+          "mask_proxy": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.28,
+          "cpc_at_s": 4.3,
+          "cpc_pnow_tomoko": 0.194,
+          "primary_age_s": 1.264,
+          "cpc_age_s": 0.244,
+          "primary_fresh_proxy": false,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": false
+        },
+        {
+          "wall_s": 8.2043,
+          "vad_now_s": 8.192,
+          "speech_end_s": 7.808,
+          "mask_proxy": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 6.96,
+          "cpc_at_s": 8.1,
+          "cpc_pnow_tomoko": 0.465,
+          "primary_age_s": 1.232,
+          "cpc_age_s": 0.092,
+          "primary_fresh_proxy": false,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": false
+        }
+      ],
+      "vad_active_mask_witnesses": [
+        {
+          "event_index": 34,
+          "wall_s": 1.1953,
+          "audio_s": 1.18,
+          "vad_now_s": 1.152,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.88,
+          "cpc_at_s": 1.1,
+          "cpc_pnow_tomoko": 0.02,
+          "primary_pbc": 0.03
+        },
+        {
+          "event_index": 36,
+          "wall_s": 1.2383,
+          "audio_s": 1.22,
+          "vad_now_s": 1.216,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.88,
+          "cpc_at_s": 1.2,
+          "cpc_pnow_tomoko": 0.014,
+          "primary_pbc": 0.03
+        },
+        {
+          "event_index": 40,
+          "wall_s": 1.4313,
+          "audio_s": 1.42,
+          "vad_now_s": 1.408,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.88,
+          "cpc_at_s": 1.3,
+          "cpc_pnow_tomoko": 0.019,
+          "primary_pbc": 0.03
+        },
+        {
+          "event_index": 42,
+          "wall_s": 1.4559,
+          "audio_s": 1.44,
+          "vad_now_s": 1.44,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.88,
+          "cpc_at_s": 1.4,
+          "cpc_pnow_tomoko": 0.018,
+          "primary_pbc": 0.03
+        },
+        {
+          "event_index": 45,
+          "wall_s": 1.5258,
+          "audio_s": 1.52,
+          "vad_now_s": 1.504,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.96,
+          "cpc_at_s": 1.4,
+          "cpc_pnow_tomoko": 0.018,
+          "primary_pbc": 0.029
+        },
+        {
+          "event_index": 48,
+          "wall_s": 1.6519,
+          "audio_s": 1.64,
+          "vad_now_s": 1.632,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.96,
+          "cpc_at_s": 1.5,
+          "cpc_pnow_tomoko": 0.019,
+          "primary_pbc": 0.029
+        },
+        {
+          "event_index": 51,
+          "wall_s": 1.7347,
+          "audio_s": 1.72,
+          "vad_now_s": 1.696,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.96,
+          "cpc_at_s": 1.6,
+          "cpc_pnow_tomoko": 0.021,
+          "primary_pbc": 0.029
+        },
+        {
+          "event_index": 52,
+          "wall_s": 1.7546,
+          "audio_s": 1.74,
+          "vad_now_s": 1.728,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.96,
+          "cpc_at_s": 1.7,
+          "cpc_pnow_tomoko": 0.013,
+          "primary_pbc": 0.029
+        },
+        {
+          "event_index": 55,
+          "wall_s": 1.8917,
+          "audio_s": 1.88,
+          "vad_now_s": 1.856,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.96,
+          "cpc_at_s": 1.8,
+          "cpc_pnow_tomoko": 0.016,
+          "primary_pbc": 0.029
+        },
+        {
+          "event_index": 58,
+          "wall_s": 1.981,
+          "audio_s": 1.96,
+          "vad_now_s": 1.952,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.96,
+          "cpc_at_s": 1.9,
+          "cpc_pnow_tomoko": 0.021,
+          "primary_pbc": 0.029
+        },
+        {
+          "event_index": 62,
+          "wall_s": 2.135,
+          "audio_s": 2.12,
+          "vad_now_s": 2.112,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.96,
+          "cpc_at_s": 2.0,
+          "cpc_pnow_tomoko": 0.031,
+          "primary_pbc": 0.029
+        },
+        {
+          "event_index": 64,
+          "wall_s": 2.2053,
+          "audio_s": 2.2,
+          "vad_now_s": 2.176,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.96,
+          "cpc_at_s": 2.1,
+          "cpc_pnow_tomoko": 0.029,
+          "primary_pbc": 0.029
+        },
+        {
+          "event_index": 66,
+          "wall_s": 2.2588,
+          "audio_s": 2.24,
+          "vad_now_s": 2.24,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.96,
+          "cpc_at_s": 2.2,
+          "cpc_pnow_tomoko": 0.035,
+          "primary_pbc": 0.029
+        },
+        {
+          "event_index": 68,
+          "wall_s": 2.3853,
+          "audio_s": 2.38,
+          "vad_now_s": 2.368,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.0,
+          "cpc_at_s": 2.2,
+          "cpc_pnow_tomoko": 0.035,
+          "primary_pbc": 0.336
+        },
+        {
+          "event_index": 69,
+          "wall_s": 2.3896,
+          "audio_s": 2.38,
+          "vad_now_s": 2.368,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.0,
+          "cpc_at_s": 2.3,
+          "cpc_pnow_tomoko": 0.044,
+          "primary_pbc": 0.336
+        },
+        {
+          "event_index": 72,
+          "wall_s": 2.5084,
+          "audio_s": 2.5,
+          "vad_now_s": 2.496,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.0,
+          "cpc_at_s": 2.4,
+          "cpc_pnow_tomoko": 0.027,
+          "primary_pbc": 0.336
+        },
+        {
+          "event_index": 75,
+          "wall_s": 2.581,
+          "audio_s": 2.56,
+          "vad_now_s": 2.56,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.08,
+          "cpc_at_s": 2.4,
+          "cpc_pnow_tomoko": 0.027,
+          "primary_pbc": 0.322
+        },
+        {
+          "event_index": 76,
+          "wall_s": 2.6065,
+          "audio_s": 2.6,
+          "vad_now_s": 2.592,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.08,
+          "cpc_at_s": 2.5,
+          "cpc_pnow_tomoko": 0.025,
+          "primary_pbc": 0.322
+        },
+        {
+          "event_index": 78,
+          "wall_s": 2.6534,
+          "audio_s": 2.64,
+          "vad_now_s": 2.624,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.08,
+          "cpc_at_s": 2.6,
+          "cpc_pnow_tomoko": 0.026,
+          "primary_pbc": 0.322
+        },
+        {
+          "event_index": 80,
+          "wall_s": 2.7756,
+          "audio_s": 2.76,
+          "vad_now_s": 2.752,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.4,
+          "cpc_at_s": 2.6,
+          "cpc_pnow_tomoko": 0.026,
+          "primary_pbc": 0.155
+        },
+        {
+          "event_index": 83,
+          "wall_s": 2.8894,
+          "audio_s": 2.88,
+          "vad_now_s": 2.88,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.4,
+          "cpc_at_s": 2.7,
+          "cpc_pnow_tomoko": 0.03,
+          "primary_pbc": 0.155
+        },
+        {
+          "event_index": 85,
+          "wall_s": 2.9464,
+          "audio_s": 2.94,
+          "vad_now_s": 2.912,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.48,
+          "cpc_at_s": 2.7,
+          "cpc_pnow_tomoko": 0.03,
+          "primary_pbc": 0.146
+        },
+        {
+          "event_index": 86,
+          "wall_s": 3.0193,
+          "audio_s": 3.0,
+          "vad_now_s": 2.976,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.48,
+          "cpc_at_s": 2.8,
+          "cpc_pnow_tomoko": 0.037,
+          "primary_pbc": 0.146
+        },
+        {
+          "event_index": 88,
+          "wall_s": 3.0771,
+          "audio_s": 3.06,
+          "vad_now_s": 3.04,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.48,
+          "cpc_at_s": 2.9,
+          "cpc_pnow_tomoko": 0.071,
+          "primary_pbc": 0.146
+        },
+        {
+          "event_index": 89,
+          "wall_s": 3.1101,
+          "audio_s": 3.1,
+          "vad_now_s": 3.072,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.48,
+          "cpc_at_s": 3.0,
+          "cpc_pnow_tomoko": 0.059,
+          "primary_pbc": 0.146
+        },
+        {
+          "event_index": 90,
+          "wall_s": 3.1159,
+          "audio_s": 3.1,
+          "vad_now_s": 3.072,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.72,
+          "cpc_at_s": 3.0,
+          "cpc_pnow_tomoko": 0.059,
+          "primary_pbc": 0.326
+        },
+        {
+          "event_index": 92,
+          "wall_s": 3.1347,
+          "audio_s": 3.12,
+          "vad_now_s": 3.104,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.72,
+          "cpc_at_s": 3.1,
+          "cpc_pnow_tomoko": 0.173,
+          "primary_pbc": 0.326
+        },
+        {
+          "event_index": 94,
+          "wall_s": 3.2103,
+          "audio_s": 3.2,
+          "vad_now_s": 3.2,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.8,
+          "cpc_at_s": 3.1,
+          "cpc_pnow_tomoko": 0.173,
+          "primary_pbc": 0.339
+        },
+        {
+          "event_index": 98,
+          "wall_s": 3.3919,
+          "audio_s": 3.38,
+          "vad_now_s": 3.36,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.8,
+          "cpc_at_s": 3.2,
+          "cpc_pnow_tomoko": 0.165,
+          "primary_pbc": 0.339
+        },
+        {
+          "event_index": 100,
+          "wall_s": 3.4541,
+          "audio_s": 3.44,
+          "vad_now_s": 3.424,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.8,
+          "cpc_at_s": 3.3,
+          "cpc_pnow_tomoko": 0.234,
+          "primary_pbc": 0.339
+        },
+        {
+          "event_index": 101,
+          "wall_s": 3.4948,
+          "audio_s": 3.48,
+          "vad_now_s": 3.456,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.8,
+          "cpc_at_s": 3.4,
+          "cpc_pnow_tomoko": 0.118,
+          "primary_pbc": 0.339
+        },
+        {
+          "event_index": 103,
+          "wall_s": 3.5364,
+          "audio_s": 3.52,
+          "vad_now_s": 3.52,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.2,
+          "cpc_at_s": 3.4,
+          "cpc_pnow_tomoko": 0.118,
+          "primary_pbc": 0.284
+        },
+        {
+          "event_index": 106,
+          "wall_s": 3.6858,
+          "audio_s": 3.68,
+          "vad_now_s": 3.68,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.2,
+          "cpc_at_s": 3.5,
+          "cpc_pnow_tomoko": 0.082,
+          "primary_pbc": 0.284
+        },
+        {
+          "event_index": 108,
+          "wall_s": 3.7466,
+          "audio_s": 3.74,
+          "vad_now_s": 3.712,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.2,
+          "cpc_at_s": 3.6,
+          "cpc_pnow_tomoko": 0.082,
+          "primary_pbc": 0.284
+        },
+        {
+          "event_index": 109,
+          "wall_s": 3.7535,
+          "audio_s": 3.74,
+          "vad_now_s": 3.712,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.28,
+          "cpc_at_s": 3.6,
+          "cpc_pnow_tomoko": 0.082,
+          "primary_pbc": 0.201
+        },
+        {
+          "event_index": 112,
+          "wall_s": 3.9096,
+          "audio_s": 3.9,
+          "vad_now_s": 3.872,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.28,
+          "cpc_at_s": 3.7,
+          "cpc_pnow_tomoko": 0.069,
+          "primary_pbc": 0.201
+        },
+        {
+          "event_index": 116,
+          "wall_s": 4.0469,
+          "audio_s": 4.04,
+          "vad_now_s": 4.032,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.28,
+          "cpc_at_s": 3.8,
+          "cpc_pnow_tomoko": 0.061,
+          "primary_pbc": 0.201
+        },
+        {
+          "event_index": 117,
+          "wall_s": 4.0734,
+          "audio_s": 4.06,
+          "vad_now_s": 4.032,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.28,
+          "cpc_at_s": 3.9,
+          "cpc_pnow_tomoko": 0.056,
+          "primary_pbc": 0.201
+        },
+        {
+          "event_index": 118,
+          "wall_s": 4.1185,
+          "audio_s": 4.1,
+          "vad_now_s": 4.096,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.28,
+          "cpc_at_s": 4.0,
+          "cpc_pnow_tomoko": 0.048,
+          "primary_pbc": 0.201
+        },
+        {
+          "event_index": 124,
+          "wall_s": 4.3368,
+          "audio_s": 4.32,
+          "vad_now_s": 4.32,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.28,
+          "cpc_at_s": 4.1,
+          "cpc_pnow_tomoko": 0.153,
+          "primary_pbc": 0.201
+        },
+        {
+          "event_index": 125,
+          "wall_s": 4.3708,
+          "audio_s": 4.36,
+          "vad_now_s": 4.352,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.28,
+          "cpc_at_s": 4.2,
+          "cpc_pnow_tomoko": 0.154,
+          "primary_pbc": 0.201
+        },
+        {
+          "event_index": 127,
+          "wall_s": 4.4075,
+          "audio_s": 4.4,
+          "vad_now_s": 4.384,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.28,
+          "cpc_at_s": 4.3,
+          "cpc_pnow_tomoko": 0.194,
+          "primary_pbc": 0.201
+        },
+        {
+          "event_index": 189,
+          "wall_s": 6.1711,
+          "audio_s": 6.16,
+          "vad_now_s": 6.144,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 5.68,
+          "cpc_at_s": 5.9,
+          "cpc_pnow_tomoko": 0.939,
+          "primary_pbc": 0.003
+        },
+        {
+          "event_index": 190,
+          "wall_s": 6.1757,
+          "audio_s": 6.16,
+          "vad_now_s": 6.144,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 5.76,
+          "cpc_at_s": 5.9,
+          "cpc_pnow_tomoko": 0.939,
+          "primary_pbc": 0.0
+        },
+        {
+          "event_index": 191,
+          "wall_s": 6.1937,
+          "audio_s": 6.18,
+          "vad_now_s": 6.176,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 5.76,
+          "cpc_at_s": 6.0,
+          "cpc_pnow_tomoko": 0.916,
+          "primary_pbc": 0.0
+        },
+        {
+          "event_index": 196,
+          "wall_s": 6.2256,
+          "audio_s": 6.22,
+          "vad_now_s": 6.208,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 5.76,
+          "cpc_at_s": 6.1,
+          "cpc_pnow_tomoko": 0.499,
+          "primary_pbc": 0.0
+        },
+        {
+          "event_index": 197,
+          "wall_s": 6.2451,
+          "audio_s": 6.24,
+          "vad_now_s": 6.24,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 5.76,
+          "cpc_at_s": 6.2,
+          "cpc_pnow_tomoko": 0.467,
+          "primary_pbc": 0.0
+        },
+        {
+          "event_index": 216,
+          "wall_s": 6.7395,
+          "audio_s": 6.72,
+          "vad_now_s": 6.72,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 6.64,
+          "cpc_at_s": 6.4,
+          "cpc_pnow_tomoko": 0.466,
+          "primary_pbc": 0.105
+        },
+        {
+          "event_index": 217,
+          "wall_s": 6.7701,
+          "audio_s": 6.76,
+          "vad_now_s": 6.752,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 6.64,
+          "cpc_at_s": 6.5,
+          "cpc_pnow_tomoko": 0.347,
+          "primary_pbc": 0.105
+        },
+        {
+          "event_index": 218,
+          "wall_s": 6.7729,
+          "audio_s": 6.76,
+          "vad_now_s": 6.752,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 6.72,
+          "cpc_at_s": 6.5,
+          "cpc_pnow_tomoko": 0.347,
+          "primary_pbc": 0.167
+        },
+        {
+          "event_index": 226,
+          "wall_s": 7.1056,
+          "audio_s": 7.1,
+          "vad_now_s": 7.072,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 6.88,
+          "cpc_at_s": 6.8,
+          "cpc_pnow_tomoko": 0.063,
+          "primary_pbc": 0.209
+        },
+        {
+          "event_index": 231,
+          "wall_s": 7.273,
+          "audio_s": 7.26,
+          "vad_now_s": 7.232,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 6.88,
+          "cpc_at_s": 7.1,
+          "cpc_pnow_tomoko": 0.037,
+          "primary_pbc": 0.209
+        },
+        {
+          "event_index": 233,
+          "wall_s": 7.3613,
+          "audio_s": 7.34,
+          "vad_now_s": 7.328,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 6.88,
+          "cpc_at_s": 7.2,
+          "cpc_pnow_tomoko": 0.033,
+          "primary_pbc": 0.209
+        },
+        {
+          "event_index": 235,
+          "wall_s": 7.3998,
+          "audio_s": 7.38,
+          "vad_now_s": 7.36,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 6.88,
+          "cpc_at_s": 7.3,
+          "cpc_pnow_tomoko": 0.039,
+          "primary_pbc": 0.209
+        },
+        {
+          "event_index": 238,
+          "wall_s": 7.469,
+          "audio_s": 7.46,
+          "vad_now_s": 7.456,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 6.88,
+          "cpc_at_s": 7.4,
+          "cpc_pnow_tomoko": 0.039,
+          "primary_pbc": 0.209
+        },
+        {
+          "event_index": 241,
+          "wall_s": 7.5478,
+          "audio_s": 7.54,
+          "vad_now_s": 7.52,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 6.88,
+          "cpc_at_s": 7.5,
+          "cpc_pnow_tomoko": 0.052,
+          "primary_pbc": 0.209
+        },
+        {
+          "event_index": 242,
+          "wall_s": 7.5555,
+          "audio_s": 7.54,
+          "vad_now_s": 7.52,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 6.96,
+          "cpc_at_s": 7.5,
+          "cpc_pnow_tomoko": 0.052,
+          "primary_pbc": 0.204
+        },
+        {
+          "event_index": 244,
+          "wall_s": 7.6301,
+          "audio_s": 7.62,
+          "vad_now_s": 7.616,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 6.96,
+          "cpc_at_s": 7.6,
+          "cpc_pnow_tomoko": 0.063,
+          "primary_pbc": 0.204
+        },
+        {
+          "event_index": 247,
+          "wall_s": 7.7404,
+          "audio_s": 7.72,
+          "vad_now_s": 7.712,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 6.96,
+          "cpc_at_s": 7.7,
+          "cpc_pnow_tomoko": 0.221,
+          "primary_pbc": 0.204
+        },
+        {
+          "event_index": 251,
+          "wall_s": 7.8682,
+          "audio_s": 7.86,
+          "vad_now_s": 7.84,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 6.96,
+          "cpc_at_s": 7.8,
+          "cpc_pnow_tomoko": 0.259,
+          "primary_pbc": 0.204
+        },
+        {
+          "event_index": 254,
+          "wall_s": 7.9598,
+          "audio_s": 7.94,
+          "vad_now_s": 7.936,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 6.96,
+          "cpc_at_s": 7.9,
+          "cpc_pnow_tomoko": 0.396,
+          "primary_pbc": 0.204
+        },
+        {
+          "event_index": 257,
+          "wall_s": 8.0857,
+          "audio_s": 8.08,
+          "vad_now_s": 8.064,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 6.96,
+          "cpc_at_s": 8.0,
+          "cpc_pnow_tomoko": 0.436,
+          "primary_pbc": 0.204
+        },
+        {
+          "event_index": 259,
+          "wall_s": 8.1254,
+          "audio_s": 8.12,
+          "vad_now_s": 8.096,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 6.96,
+          "cpc_at_s": 8.1,
+          "cpc_pnow_tomoko": 0.465,
+          "primary_pbc": 0.204
+        }
+      ]
+    },
+    "p3-12-ep-2/t2-10": {
+      "source_run_sha256": "80b81ac26bbc07b33fe468b20fdd78b2efbbbcb14dda17c86a37ad82a3d7e6a0",
+      "user_intervals_s": [
+        [
+          1.0,
+          8.5377
+        ]
+      ],
+      "counts": {},
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 7.5025,
+          "vad_now_s": 7.488,
+          "speech_end_s": 7.104,
+          "mask_proxy": null,
+          "primary_at_s": 7.44,
+          "cpc_at_s": 7.4,
+          "cpc_pnow_tomoko": 0.291,
+          "primary_age_s": 0.048,
+          "cpc_age_s": 0.088,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 9.0024,
+          "vad_now_s": 8.992,
+          "speech_end_s": 8.608,
+          "mask_proxy": null,
+          "primary_at_s": 8.96,
+          "cpc_at_s": 8.9,
+          "cpc_pnow_tomoko": 0.342,
+          "primary_age_s": 0.032,
+          "cpc_age_s": 0.092,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": []
+    },
+    "p3-12-ep-2/t3-01": {
+      "source_run_sha256": "81b30e71c6549e4cc0da2c76b56e8fe07f9a4bbcb4d3cb803ca6e68bfcfd092d",
+      "user_intervals_s": [
+        [
+          1.0,
+          4.72
+        ],
+        [
+          7.3,
+          7.7
+        ]
+      ],
+      "counts": {
+        "old_Mimi_masks_fresh_CPC": 2,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 2
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 5.1628,
+          "vad_now_s": 5.152,
+          "speech_end_s": 4.768,
+          "mask_proxy": null,
+          "primary_at_s": 5.12,
+          "cpc_at_s": 5.1,
+          "cpc_pnow_tomoko": 0.547,
+          "primary_age_s": 0.032,
+          "cpc_age_s": 0.052,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 7.9811,
+          "vad_now_s": 7.968,
+          "speech_end_s": 7.744,
+          "mask_proxy": null,
+          "primary_at_s": 7.92,
+          "cpc_at_s": 7.9,
+          "cpc_pnow_tomoko": 0.948,
+          "primary_age_s": 0.048,
+          "cpc_age_s": 0.068,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": []
+    },
+    "p3-12-ep-2/t3-03": {
+      "source_run_sha256": "403d4b7e377f21fd7d09cb82c14b3eee58e32253cf014caae046847ef3b4f7b1",
+      "user_intervals_s": [
+        [
+          1.0,
+          5.2617
+        ],
+        [
+          8.98,
+          9.5249
+        ]
+      ],
+      "counts": {
+        "old_Mimi_masks_fresh_CPC": 45,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 45
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 5.7024,
+          "vad_now_s": 5.696,
+          "speech_end_s": 5.312,
+          "mask_proxy": null,
+          "primary_at_s": 5.68,
+          "cpc_at_s": 5.6,
+          "cpc_pnow_tomoko": 0.483,
+          "primary_age_s": 0.016,
+          "cpc_age_s": 0.096,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 10.0024,
+          "vad_now_s": 9.984,
+          "speech_end_s": 9.6,
+          "mask_proxy": null,
+          "primary_at_s": 9.92,
+          "cpc_at_s": 9.9,
+          "cpc_pnow_tomoko": 0.431,
+          "primary_age_s": 0.064,
+          "cpc_age_s": 0.084,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": []
+    },
+    "p3-12-ep-2/t3-04": {
+      "source_run_sha256": "58d612ce8957b2a21da612f92fb6ceeaa78c116f8c957e9d3cb69b7a8a1d8d2c",
+      "user_intervals_s": [
+        [
+          1.0,
+          5.4908
+        ],
+        [
+          8.3,
+          8.6102
+        ]
+      ],
+      "counts": {
+        "old_Mimi_masks_fresh_CPC": 44,
+        "old_Mimi_masks_fresh_CPC_vad_speaking": 4,
+        "old_Mimi_masks_fresh_CPC_annotated_user_turn": 4,
+        "old_CPC_masks_fresh_Mimi": 41,
+        "old_CPC_masks_fresh_Mimi_vad_speaking": 4,
+        "old_CPC_masks_fresh_Mimi_annotated_user_turn": 3,
+        "old_CPC_masks_fresh_Mimi_annotated_voice": 3,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 37,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 40
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 5.9533,
+          "vad_now_s": 5.92,
+          "speech_end_s": 5.536,
+          "mask_proxy": null,
+          "primary_at_s": 5.76,
+          "cpc_at_s": 5.7,
+          "cpc_pnow_tomoko": 0.404,
+          "primary_age_s": 0.16,
+          "cpc_age_s": 0.22,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 8.872,
+          "vad_now_s": 8.832,
+          "speech_end_s": 8.608,
+          "mask_proxy": null,
+          "primary_at_s": 8.72,
+          "cpc_at_s": 8.7,
+          "cpc_pnow_tomoko": 0.947,
+          "primary_age_s": 0.112,
+          "cpc_age_s": 0.132,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": [
+        {
+          "event_index": 77,
+          "wall_s": 2.5212,
+          "audio_s": 2.5,
+          "vad_now_s": 2.496,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.24,
+          "cpc_at_s": 2.3,
+          "cpc_pnow_tomoko": 0.045,
+          "primary_pbc": 0.252
+        },
+        {
+          "event_index": 79,
+          "wall_s": 2.5936,
+          "audio_s": 2.58,
+          "vad_now_s": 2.56,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.24,
+          "cpc_at_s": 2.4,
+          "cpc_pnow_tomoko": 0.134,
+          "primary_pbc": 0.252
+        },
+        {
+          "event_index": 81,
+          "wall_s": 2.6641,
+          "audio_s": 2.64,
+          "vad_now_s": 2.624,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.32,
+          "cpc_at_s": 2.4,
+          "cpc_pnow_tomoko": 0.134,
+          "primary_pbc": 0.248
+        },
+        {
+          "event_index": 83,
+          "wall_s": 2.6791,
+          "audio_s": 2.66,
+          "vad_now_s": 2.656,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.4,
+          "cpc_at_s": 2.5,
+          "cpc_pnow_tomoko": 0.169,
+          "primary_pbc": 0.449
+        },
+        {
+          "event_index": 86,
+          "wall_s": 2.7771,
+          "audio_s": 2.76,
+          "vad_now_s": 2.752,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.56,
+          "cpc_at_s": 2.5,
+          "cpc_pnow_tomoko": 0.169,
+          "primary_pbc": 0.63
+        },
+        {
+          "event_index": 93,
+          "wall_s": 3.0147,
+          "audio_s": 3.0,
+          "vad_now_s": 2.976,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.8,
+          "cpc_at_s": 2.7,
+          "cpc_pnow_tomoko": 0.117,
+          "primary_pbc": 0.398
+        },
+        {
+          "event_index": 97,
+          "wall_s": 3.1007,
+          "audio_s": 3.08,
+          "vad_now_s": 3.072,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.96,
+          "cpc_at_s": 2.8,
+          "cpc_pnow_tomoko": 0.151,
+          "primary_pbc": 0.323
+        },
+        {
+          "event_index": 188,
+          "wall_s": 5.8906,
+          "audio_s": 5.88,
+          "vad_now_s": 5.856,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 5.76,
+          "cpc_at_s": 5.6,
+          "cpc_pnow_tomoko": 0.353,
+          "primary_pbc": 0.69
+        }
+      ]
+    },
+    "p3-12-ep-2/t3-05": {
+      "source_run_sha256": "9b3d9ec5bdb490ead5003773ea6303bf7213084a142f6534cc3960475da0877c",
+      "user_intervals_s": [
+        [
+          1.0,
+          6.5413
+        ],
+        [
+          9.62,
+          10.7167
+        ]
+      ],
+      "counts": {
+        "old_CPC_masks_fresh_Mimi": 4,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 4,
+        "old_Mimi_masks_fresh_CPC": 40,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 24,
+        "old_Mimi_masks_fresh_CPC_vad_speaking": 16,
+        "old_Mimi_masks_fresh_CPC_annotated_user_turn": 14,
+        "old_Mimi_masks_fresh_CPC_annotated_voice": 9
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 6.8637,
+          "vad_now_s": 6.848,
+          "speech_end_s": 6.592,
+          "mask_proxy": null,
+          "primary_at_s": 6.8,
+          "cpc_at_s": 6.8,
+          "cpc_pnow_tomoko": 0.615,
+          "primary_age_s": 0.048,
+          "cpc_age_s": 0.048,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 10.9827,
+          "vad_now_s": 10.976,
+          "speech_end_s": 10.752,
+          "mask_proxy": null,
+          "primary_at_s": 10.88,
+          "cpc_at_s": 10.9,
+          "cpc_pnow_tomoko": 0.601,
+          "primary_age_s": 0.096,
+          "cpc_age_s": 0.076,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": [
+        {
+          "event_index": 327,
+          "wall_s": 9.8344,
+          "audio_s": 9.82,
+          "vad_now_s": 9.792,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 9.52,
+          "cpc_at_s": 9.8,
+          "cpc_pnow_tomoko": 0.512,
+          "primary_pbc": 0.0
+        },
+        {
+          "event_index": 329,
+          "wall_s": 9.9828,
+          "audio_s": 9.98,
+          "vad_now_s": 9.952,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 9.52,
+          "cpc_at_s": 9.9,
+          "cpc_pnow_tomoko": 0.558,
+          "primary_pbc": 0.0
+        },
+        {
+          "event_index": 332,
+          "wall_s": 10.029,
+          "audio_s": 10.02,
+          "vad_now_s": 10.016,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 9.6,
+          "cpc_at_s": 9.9,
+          "cpc_pnow_tomoko": 0.558,
+          "primary_pbc": 0.0
+        },
+        {
+          "event_index": 333,
+          "wall_s": 10.037,
+          "audio_s": 10.02,
+          "vad_now_s": 10.016,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 9.6,
+          "cpc_at_s": 10.0,
+          "cpc_pnow_tomoko": 0.66,
+          "primary_pbc": 0.0
+        },
+        {
+          "event_index": 334,
+          "wall_s": 10.1191,
+          "audio_s": 10.1,
+          "vad_now_s": 10.08,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 9.6,
+          "cpc_at_s": 10.1,
+          "cpc_pnow_tomoko": 0.926,
+          "primary_pbc": 0.0
+        },
+        {
+          "event_index": 336,
+          "wall_s": 10.1542,
+          "audio_s": 10.14,
+          "vad_now_s": 10.112,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 9.84,
+          "cpc_at_s": 10.1,
+          "cpc_pnow_tomoko": 0.926,
+          "primary_pbc": 0.002
+        },
+        {
+          "event_index": 341,
+          "wall_s": 10.2302,
+          "audio_s": 10.22,
+          "vad_now_s": 10.208,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 9.84,
+          "cpc_at_s": 10.2,
+          "cpc_pnow_tomoko": 0.965,
+          "primary_pbc": 0.002
+        },
+        {
+          "event_index": 342,
+          "wall_s": 10.2322,
+          "audio_s": 10.22,
+          "vad_now_s": 10.208,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 9.92,
+          "cpc_at_s": 10.2,
+          "cpc_pnow_tomoko": 0.965,
+          "primary_pbc": 0.001
+        },
+        {
+          "event_index": 344,
+          "wall_s": 10.3331,
+          "audio_s": 10.32,
+          "vad_now_s": 10.304,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 9.92,
+          "cpc_at_s": 10.3,
+          "cpc_pnow_tomoko": 0.959,
+          "primary_pbc": 0.001
+        },
+        {
+          "event_index": 347,
+          "wall_s": 10.4163,
+          "audio_s": 10.4,
+          "vad_now_s": 10.4,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 10.0,
+          "cpc_at_s": 10.3,
+          "cpc_pnow_tomoko": 0.959,
+          "primary_pbc": 0.001
+        },
+        {
+          "event_index": 349,
+          "wall_s": 10.4273,
+          "audio_s": 10.42,
+          "vad_now_s": 10.4,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 10.0,
+          "cpc_at_s": 10.4,
+          "cpc_pnow_tomoko": 0.529,
+          "primary_pbc": 0.001
+        },
+        {
+          "event_index": 352,
+          "wall_s": 10.5201,
+          "audio_s": 10.5,
+          "vad_now_s": 10.496,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 10.0,
+          "cpc_at_s": 10.5,
+          "cpc_pnow_tomoko": 0.5,
+          "primary_pbc": 0.001
+        },
+        {
+          "event_index": 355,
+          "wall_s": 10.6237,
+          "audio_s": 10.62,
+          "vad_now_s": 10.592,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 10.0,
+          "cpc_at_s": 10.6,
+          "cpc_pnow_tomoko": 0.454,
+          "primary_pbc": 0.001
+        },
+        {
+          "event_index": 357,
+          "wall_s": 10.6571,
+          "audio_s": 10.64,
+          "vad_now_s": 10.624,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 10.24,
+          "cpc_at_s": 10.6,
+          "cpc_pnow_tomoko": 0.454,
+          "primary_pbc": 0.001
+        },
+        {
+          "event_index": 359,
+          "wall_s": 10.7757,
+          "audio_s": 10.76,
+          "vad_now_s": 10.752,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 10.48,
+          "cpc_at_s": 10.6,
+          "cpc_pnow_tomoko": 0.454,
+          "primary_pbc": 0.009
+        },
+        {
+          "event_index": 360,
+          "wall_s": 10.7911,
+          "audio_s": 10.78,
+          "vad_now_s": 10.752,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 10.48,
+          "cpc_at_s": 10.7,
+          "cpc_pnow_tomoko": 0.448,
+          "primary_pbc": 0.009
+        }
+      ]
+    },
+    "p3-12-ep-2/t3-06": {
+      "source_run_sha256": "ffda1632aa8a455bbf49938d2f7b95c0bb014c5548ef722b6f431c752da211f0",
+      "user_intervals_s": [
+        [
+          1.0,
+          4.7033
+        ],
+        [
+          8.08,
+          8.8294
+        ]
+      ],
+      "counts": {
+        "old_Mimi_masks_fresh_CPC": 11,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 11
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 5.0022,
+          "vad_now_s": 4.992,
+          "speech_end_s": 4.768,
+          "mask_proxy": null,
+          "primary_at_s": 4.96,
+          "cpc_at_s": 4.9,
+          "cpc_pnow_tomoko": 0.745,
+          "primary_age_s": 0.032,
+          "cpc_age_s": 0.092,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 9.2623,
+          "vad_now_s": 9.248,
+          "speech_end_s": 8.864,
+          "mask_proxy": null,
+          "primary_at_s": 9.2,
+          "cpc_at_s": 9.2,
+          "cpc_pnow_tomoko": 0.483,
+          "primary_age_s": 0.048,
+          "cpc_age_s": 0.048,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": []
+    },
+    "p3-12-ep-2/t3-07": {
+      "source_run_sha256": "98200681d0bc1466f9bbcdd6306d968c30df74f8decca81360b0f098fd1f2682",
+      "user_intervals_s": [
+        [
+          1.0,
+          4.5809
+        ],
+        [
+          7.18,
+          7.6236
+        ]
+      ],
+      "counts": {
+        "old_Mimi_masks_fresh_CPC": 47,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 47
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 5.043,
+          "vad_now_s": 5.024,
+          "speech_end_s": 4.64,
+          "mask_proxy": null,
+          "primary_at_s": 4.96,
+          "cpc_at_s": 5.0,
+          "cpc_pnow_tomoko": 0.26,
+          "primary_age_s": 0.064,
+          "cpc_age_s": 0.024,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 7.9228,
+          "vad_now_s": 7.904,
+          "speech_end_s": 7.68,
+          "mask_proxy": null,
+          "primary_at_s": 7.84,
+          "cpc_at_s": 7.9,
+          "cpc_pnow_tomoko": 0.648,
+          "primary_age_s": 0.064,
+          "cpc_age_s": 0.004,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": []
+    },
+    "p3-12-ep-2/t3-08": {
+      "source_run_sha256": "b3be5f73f7210cfd7bf37ef62527a10802bfa8aa79d6a2a6a5bf2d6c53e4d135",
+      "user_intervals_s": [
+        [
+          1.0,
+          5.2941
+        ],
+        [
+          8.22,
+          8.4864
+        ]
+      ],
+      "counts": {
+        "old_Mimi_masks_fresh_CPC": 14,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 6,
+        "old_Mimi_masks_fresh_CPC_vad_speaking": 8,
+        "old_Mimi_masks_fresh_CPC_annotated_user_turn": 8,
+        "old_Mimi_masks_fresh_CPC_annotated_voice": 8,
+        "old_CPC_masks_fresh_Mimi": 17,
+        "old_CPC_masks_fresh_Mimi_vad_speaking": 17,
+        "old_CPC_masks_fresh_Mimi_annotated_user_turn": 17,
+        "old_CPC_masks_fresh_Mimi_annotated_voice": 17
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 5.6474,
+          "vad_now_s": 5.632,
+          "speech_end_s": 5.376,
+          "mask_proxy": null,
+          "primary_at_s": 5.6,
+          "cpc_at_s": 5.6,
+          "cpc_pnow_tomoko": 0.615,
+          "primary_age_s": 0.032,
+          "cpc_age_s": 0.032,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": [
+        {
+          "event_index": 32,
+          "wall_s": 1.1437,
+          "audio_s": 1.12,
+          "vad_now_s": 1.12,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.56,
+          "cpc_at_s": 1.1,
+          "cpc_pnow_tomoko": 0.028,
+          "primary_pbc": 0.038
+        },
+        {
+          "event_index": 34,
+          "wall_s": 1.2399,
+          "audio_s": 1.22,
+          "vad_now_s": 1.216,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.56,
+          "cpc_at_s": 1.2,
+          "cpc_pnow_tomoko": 0.028,
+          "primary_pbc": 0.038
+        },
+        {
+          "event_index": 37,
+          "wall_s": 1.3342,
+          "audio_s": 1.32,
+          "vad_now_s": 1.312,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.56,
+          "cpc_at_s": 1.3,
+          "cpc_pnow_tomoko": 0.027,
+          "primary_pbc": 0.038
+        },
+        {
+          "event_index": 38,
+          "wall_s": 1.4257,
+          "audio_s": 1.4,
+          "vad_now_s": 1.376,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 0.56,
+          "cpc_at_s": 1.4,
+          "cpc_pnow_tomoko": 0.022,
+          "primary_pbc": 0.038
+        },
+        {
+          "event_index": 40,
+          "wall_s": 1.4623,
+          "audio_s": 1.44,
+          "vad_now_s": 1.44,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 1.12,
+          "cpc_at_s": 1.4,
+          "cpc_pnow_tomoko": 0.022,
+          "primary_pbc": 0.184
+        },
+        {
+          "event_index": 41,
+          "wall_s": 1.4939,
+          "audio_s": 1.48,
+          "vad_now_s": 1.472,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 1.2,
+          "cpc_at_s": 1.4,
+          "cpc_pnow_tomoko": 0.022,
+          "primary_pbc": 0.109
+        },
+        {
+          "event_index": 110,
+          "wall_s": 3.655,
+          "audio_s": 3.62,
+          "vad_now_s": 3.616,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.28,
+          "cpc_at_s": 3.4,
+          "cpc_pnow_tomoko": 0.014,
+          "primary_pbc": 0.095
+        },
+        {
+          "event_index": 111,
+          "wall_s": 3.7354,
+          "audio_s": 3.68,
+          "vad_now_s": 3.68,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.28,
+          "cpc_at_s": 3.5,
+          "cpc_pnow_tomoko": 0.018,
+          "primary_pbc": 0.095
+        },
+        {
+          "event_index": 128,
+          "wall_s": 4.3458,
+          "audio_s": 4.32,
+          "vad_now_s": 4.32,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.08,
+          "cpc_at_s": 3.8,
+          "cpc_pnow_tomoko": 0.019,
+          "primary_pbc": 0.286
+        },
+        {
+          "event_index": 130,
+          "wall_s": 4.4065,
+          "audio_s": 4.38,
+          "vad_now_s": 4.352,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.16,
+          "cpc_at_s": 3.9,
+          "cpc_pnow_tomoko": 0.018,
+          "primary_pbc": 0.322
+        },
+        {
+          "event_index": 133,
+          "wall_s": 4.5662,
+          "audio_s": 4.5,
+          "vad_now_s": 4.48,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.24,
+          "cpc_at_s": 3.9,
+          "cpc_pnow_tomoko": 0.018,
+          "primary_pbc": 0.341
+        },
+        {
+          "event_index": 135,
+          "wall_s": 4.5734,
+          "audio_s": 4.56,
+          "vad_now_s": 4.544,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.32,
+          "cpc_at_s": 3.9,
+          "cpc_pnow_tomoko": 0.018,
+          "primary_pbc": 0.275
+        },
+        {
+          "event_index": 136,
+          "wall_s": 4.5797,
+          "audio_s": 4.56,
+          "vad_now_s": 4.544,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.32,
+          "cpc_at_s": 4.0,
+          "cpc_pnow_tomoko": 0.02,
+          "primary_pbc": 0.275
+        },
+        {
+          "event_index": 137,
+          "wall_s": 4.6075,
+          "audio_s": 4.58,
+          "vad_now_s": 4.576,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.4,
+          "cpc_at_s": 4.0,
+          "cpc_pnow_tomoko": 0.02,
+          "primary_pbc": 0.245
+        },
+        {
+          "event_index": 138,
+          "wall_s": 4.6246,
+          "audio_s": 4.6,
+          "vad_now_s": 4.576,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.4,
+          "cpc_at_s": 4.2,
+          "cpc_pnow_tomoko": 0.061,
+          "primary_pbc": 0.245
+        },
+        {
+          "event_index": 140,
+          "wall_s": 4.6316,
+          "audio_s": 4.62,
+          "vad_now_s": 4.608,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.48,
+          "cpc_at_s": 4.2,
+          "cpc_pnow_tomoko": 0.061,
+          "primary_pbc": 0.215
+        },
+        {
+          "event_index": 141,
+          "wall_s": 4.6565,
+          "audio_s": 4.64,
+          "vad_now_s": 4.64,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.56,
+          "cpc_at_s": 4.2,
+          "cpc_pnow_tomoko": 0.061,
+          "primary_pbc": 0.246
+        },
+        {
+          "event_index": 142,
+          "wall_s": 4.6622,
+          "audio_s": 4.64,
+          "vad_now_s": 4.64,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.56,
+          "cpc_at_s": 4.3,
+          "cpc_pnow_tomoko": 0.033,
+          "primary_pbc": 0.246
+        },
+        {
+          "event_index": 143,
+          "wall_s": 4.7016,
+          "audio_s": 4.68,
+          "vad_now_s": 4.672,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.64,
+          "cpc_at_s": 4.3,
+          "cpc_pnow_tomoko": 0.033,
+          "primary_pbc": 0.281
+        },
+        {
+          "event_index": 144,
+          "wall_s": 4.7056,
+          "audio_s": 4.68,
+          "vad_now_s": 4.672,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.64,
+          "cpc_at_s": 4.4,
+          "cpc_pnow_tomoko": 0.025,
+          "primary_pbc": 0.281
+        },
+        {
+          "event_index": 147,
+          "wall_s": 4.8302,
+          "audio_s": 4.8,
+          "vad_now_s": 4.8,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.72,
+          "cpc_at_s": 4.5,
+          "cpc_pnow_tomoko": 0.035,
+          "primary_pbc": 0.333
+        },
+        {
+          "event_index": 150,
+          "wall_s": 4.907,
+          "audio_s": 4.88,
+          "vad_now_s": 4.864,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.8,
+          "cpc_at_s": 4.6,
+          "cpc_pnow_tomoko": 0.058,
+          "primary_pbc": 0.3
+        },
+        {
+          "event_index": 152,
+          "wall_s": 4.9728,
+          "audio_s": 4.96,
+          "vad_now_s": 4.96,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.88,
+          "cpc_at_s": 4.6,
+          "cpc_pnow_tomoko": 0.058,
+          "primary_pbc": 0.258
+        },
+        {
+          "event_index": 153,
+          "wall_s": 4.9854,
+          "audio_s": 4.96,
+          "vad_now_s": 4.96,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.88,
+          "cpc_at_s": 4.7,
+          "cpc_pnow_tomoko": 0.06,
+          "primary_pbc": 0.258
+        },
+        {
+          "event_index": 154,
+          "wall_s": 4.9981,
+          "audio_s": 4.98,
+          "vad_now_s": 4.96,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 4.96,
+          "cpc_at_s": 4.7,
+          "cpc_pnow_tomoko": 0.06,
+          "primary_pbc": 0.24
+        }
+      ]
+    },
+    "p3-12-ep-2/t4-05": {
+      "source_run_sha256": "95bb6eaa8cb3c598ee728a77f2e18083386a244567674bf2626bd64d8301c347",
+      "user_intervals_s": [
+        [
+          1.0,
+          6.9485
+        ],
+        [
+          9.9,
+          13.8614
+        ]
+      ],
+      "counts": {
+        "old_Mimi_masks_fresh_CPC": 4,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 4
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 7.1819,
+          "vad_now_s": 7.168,
+          "speech_end_s": 6.944,
+          "mask_proxy": null,
+          "primary_at_s": 7.12,
+          "cpc_at_s": 7.1,
+          "cpc_pnow_tomoko": 0.656,
+          "primary_age_s": 0.048,
+          "cpc_age_s": 0.068,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 14.282,
+          "vad_now_s": 14.272,
+          "speech_end_s": 13.888,
+          "mask_proxy": null,
+          "primary_at_s": 14.24,
+          "cpc_at_s": 14.2,
+          "cpc_pnow_tomoko": 0.546,
+          "primary_age_s": 0.032,
+          "cpc_age_s": 0.072,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": []
+    },
+    "p3-12-ep-3/c2-10": {
+      "source_run_sha256": "748d65de967eb0c5b52866c05a9897778913e47c003fbea6f501c62a3a8a9ea1",
+      "user_intervals_s": [
+        [
+          1.0,
+          6.7767
+        ],
+        [
+          14.74,
+          17.2006
+        ]
+      ],
+      "counts": {
+        "old_Mimi_masks_fresh_CPC": 3,
+        "old_Mimi_masks_fresh_CPC_vad_speaking": 2,
+        "old_Mimi_masks_fresh_CPC_annotated_user_turn": 2,
+        "old_Mimi_masks_fresh_CPC_annotated_pause": 2,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 1,
+        "old_CPC_masks_fresh_Mimi": 14,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 14
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 4.0443,
+          "vad_now_s": 4.032,
+          "speech_end_s": 3.648,
+          "mask_proxy": null,
+          "primary_at_s": 3.92,
+          "cpc_at_s": 3.9,
+          "cpc_pnow_tomoko": 0.275,
+          "primary_age_s": 0.112,
+          "cpc_age_s": 0.132,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 7.6221,
+          "vad_now_s": 7.616,
+          "speech_end_s": 6.848,
+          "mask_proxy": null,
+          "primary_at_s": 7.6,
+          "cpc_at_s": 7.6,
+          "cpc_pnow_tomoko": 0.204,
+          "primary_age_s": 0.016,
+          "cpc_age_s": 0.016,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 17.6421,
+          "vad_now_s": 17.632,
+          "speech_end_s": 17.248,
+          "mask_proxy": null,
+          "primary_at_s": 17.6,
+          "cpc_at_s": 17.6,
+          "cpc_pnow_tomoko": 0.52,
+          "primary_age_s": 0.032,
+          "cpc_age_s": 0.032,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": [
+        {
+          "event_index": 119,
+          "wall_s": 3.8133,
+          "audio_s": 3.8,
+          "vad_now_s": 3.776,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.52,
+          "cpc_at_s": 3.6,
+          "cpc_pnow_tomoko": 0.097,
+          "primary_pbc": 0.132
+        },
+        {
+          "event_index": 121,
+          "wall_s": 3.8475,
+          "audio_s": 3.84,
+          "vad_now_s": 3.84,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.52,
+          "cpc_at_s": 3.7,
+          "cpc_pnow_tomoko": 0.164,
+          "primary_pbc": 0.132
+        }
+      ]
+    },
+    "p3-12-ep-3/t1-01": {
+      "source_run_sha256": "d9483240097023ba266bdefa09ec1bdf4a2033f84c1aa9929cdb3e9f6e2b32ac",
+      "user_intervals_s": [
+        [
+          1.0,
+          4.2123
+        ]
+      ],
+      "counts": {
+        "old_CPC_masks_fresh_Mimi": 46,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 46
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 4.7531,
+          "vad_now_s": 4.64,
+          "speech_end_s": 4.256,
+          "mask_proxy": null,
+          "primary_at_s": 3.84,
+          "cpc_at_s": 3.8,
+          "cpc_pnow_tomoko": 0.069,
+          "primary_age_s": 0.8,
+          "cpc_age_s": 0.84,
+          "primary_fresh_proxy": false,
+          "cpc_fresh_proxy": false,
+          "composite_fresh_proxy": false
+        }
+      ],
+      "vad_active_mask_witnesses": []
+    },
+    "p3-12-ep-3/t4-05": {
+      "source_run_sha256": "19f72f906b1c9be0b01ca4cad0862e9a7bf38e9796ba3e897e2a07b0163821ea",
+      "user_intervals_s": [
+        [
+          1.0,
+          6.9485
+        ],
+        [
+          9.76,
+          13.7214
+        ]
+      ],
+      "counts": {
+        "old_Mimi_masks_fresh_CPC": 10,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 10
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 7.1816,
+          "vad_now_s": 7.168,
+          "speech_end_s": 6.944,
+          "mask_proxy": null,
+          "primary_at_s": 7.12,
+          "cpc_at_s": 7.1,
+          "cpc_pnow_tomoko": 0.656,
+          "primary_age_s": 0.048,
+          "cpc_age_s": 0.068,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 14.022,
+          "vad_now_s": 14.016,
+          "speech_end_s": 13.792,
+          "mask_proxy": null,
+          "primary_at_s": 14.0,
+          "cpc_at_s": 14.0,
+          "cpc_pnow_tomoko": 0.689,
+          "primary_age_s": 0.016,
+          "cpc_age_s": 0.016,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": []
+    },
+    "p3-13-guard-3/t1-02": {
+      "source_run_sha256": "0fe2af1df3fc3cf4fc6d2fba38c629b2c6810295d33947878b9c711bcc72fa8b",
+      "user_intervals_s": [
+        [
+          1.0,
+          4.7458
+        ]
+      ],
+      "counts": {
+        "old_Mimi_masks_fresh_CPC": 55,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 55,
+        "old_CPC_masks_fresh_Mimi": 8,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 8
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 5.1219,
+          "vad_now_s": 5.12,
+          "speech_end_s": 4.8,
+          "mask_proxy": null,
+          "primary_at_s": 5.04,
+          "cpc_at_s": 5.1,
+          "cpc_pnow_tomoko": 0.616,
+          "primary_age_s": 0.08,
+          "cpc_age_s": 0.02,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": []
+    },
+    "p3-13-guard-3/t1-03": {
+      "source_run_sha256": "f47b8af80557d9f1b01be80e7a1eca1fc9142de25ed4b85120ccbd52e64de033",
+      "user_intervals_s": [
+        [
+          1.0,
+          6.7632
+        ]
+      ],
+      "counts": {
+        "old_CPC_masks_fresh_Mimi": 22,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 21,
+        "old_CPC_masks_fresh_Mimi_vad_speaking": 1,
+        "old_CPC_masks_fresh_Mimi_annotated_user_turn": 1,
+        "old_CPC_masks_fresh_Mimi_annotated_voice": 1,
+        "old_Mimi_masks_fresh_CPC": 52,
+        "old_Mimi_masks_fresh_CPC_vad_speaking": 1,
+        "old_Mimi_masks_fresh_CPC_annotated_user_turn": 1,
+        "old_Mimi_masks_fresh_CPC_annotated_voice": 1,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 51
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 7.2022,
+          "vad_now_s": 7.2,
+          "speech_end_s": 6.816,
+          "mask_proxy": null,
+          "primary_at_s": 7.12,
+          "cpc_at_s": 7.1,
+          "cpc_pnow_tomoko": 0.204,
+          "primary_age_s": 0.08,
+          "cpc_age_s": 0.1,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": [
+        {
+          "event_index": 84,
+          "wall_s": 2.7423,
+          "audio_s": 2.72,
+          "vad_now_s": 2.72,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.48,
+          "cpc_at_s": 2.4,
+          "cpc_pnow_tomoko": 0.031,
+          "primary_pbc": 0.168
+        },
+        {
+          "event_index": 86,
+          "wall_s": 2.7754,
+          "audio_s": 2.76,
+          "vad_now_s": 2.752,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 2.48,
+          "cpc_at_s": 2.6,
+          "cpc_pnow_tomoko": 0.103,
+          "primary_pbc": 0.168
+        }
+      ]
+    },
+    "p3-13-guard-3/t1-04": {
+      "source_run_sha256": "2647ceaed95702ddab76f30cfd2faccdae68de1016bee399b09e46a101bafeb8",
+      "user_intervals_s": [
+        [
+          1.0,
+          5.3647
+        ]
+      ],
+      "counts": {
+        "old_CPC_masks_fresh_Mimi": 15,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 15,
+        "old_Mimi_masks_fresh_CPC": 69,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 69
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 4.1046,
+          "vad_now_s": 4.096,
+          "speech_end_s": 3.712,
+          "mask_proxy": null,
+          "primary_at_s": 4.0,
+          "cpc_at_s": 4.0,
+          "cpc_pnow_tomoko": 0.533,
+          "primary_age_s": 0.096,
+          "cpc_age_s": 0.096,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        },
+        {
+          "wall_s": 5.8431,
+          "vad_now_s": 5.824,
+          "speech_end_s": 5.44,
+          "mask_proxy": null,
+          "primary_at_s": 5.76,
+          "cpc_at_s": 5.8,
+          "cpc_pnow_tomoko": 0.481,
+          "primary_age_s": 0.064,
+          "cpc_age_s": 0.024,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": []
+    },
+    "p3-13-guard-3/t1-05": {
+      "source_run_sha256": "ed64ab1e4b19d983d256889b46cedb448c9d01d4e8fa2833b0cc778349f2ee1c",
+      "user_intervals_s": [
+        [
+          1.0,
+          5.6675
+        ]
+      ],
+      "counts": {
+        "old_CPC_masks_fresh_Mimi": 11,
+        "old_CPC_masks_fresh_Mimi_vad_speaking": 10,
+        "old_CPC_masks_fresh_Mimi_annotated_user_turn": 10,
+        "old_CPC_masks_fresh_Mimi_annotated_voice": 9,
+        "old_Mimi_masks_fresh_CPC": 88,
+        "old_Mimi_masks_fresh_CPC_vad_speaking": 8,
+        "old_Mimi_masks_fresh_CPC_annotated_user_turn": 8,
+        "old_Mimi_masks_fresh_CPC_annotated_voice": 7,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 1,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 80
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 6.0624,
+          "vad_now_s": 6.048,
+          "speech_end_s": 5.664,
+          "mask_proxy": null,
+          "primary_at_s": 6.0,
+          "cpc_at_s": 6.0,
+          "cpc_pnow_tomoko": 0.226,
+          "primary_age_s": 0.048,
+          "cpc_age_s": 0.048,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": [
+        {
+          "event_index": 88,
+          "wall_s": 2.8035,
+          "audio_s": 2.76,
+          "vad_now_s": 2.752,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.64,
+          "cpc_at_s": 2.5,
+          "cpc_pnow_tomoko": 0.039,
+          "primary_pbc": 0.113
+        },
+        {
+          "event_index": 95,
+          "wall_s": 2.9949,
+          "audio_s": 2.98,
+          "vad_now_s": 2.976,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.88,
+          "cpc_at_s": 2.7,
+          "cpc_pnow_tomoko": 0.031,
+          "primary_pbc": 0.068
+        },
+        {
+          "event_index": 104,
+          "wall_s": 3.372,
+          "audio_s": 3.28,
+          "vad_now_s": 3.264,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.12,
+          "cpc_at_s": 3.0,
+          "cpc_pnow_tomoko": 0.026,
+          "primary_pbc": 0.142
+        },
+        {
+          "event_index": 106,
+          "wall_s": 3.4227,
+          "audio_s": 3.36,
+          "vad_now_s": 3.36,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.2,
+          "cpc_at_s": 3.0,
+          "cpc_pnow_tomoko": 0.026,
+          "primary_pbc": 0.161
+        },
+        {
+          "event_index": 108,
+          "wall_s": 3.4349,
+          "audio_s": 3.42,
+          "vad_now_s": 3.392,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.2,
+          "cpc_at_s": 3.1,
+          "cpc_pnow_tomoko": 0.028,
+          "primary_pbc": 0.161
+        },
+        {
+          "event_index": 109,
+          "wall_s": 3.4596,
+          "audio_s": 3.44,
+          "vad_now_s": 3.424,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.28,
+          "cpc_at_s": 3.1,
+          "cpc_pnow_tomoko": 0.028,
+          "primary_pbc": 0.125
+        },
+        {
+          "event_index": 111,
+          "wall_s": 3.527,
+          "audio_s": 3.52,
+          "vad_now_s": 3.52,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.28,
+          "cpc_at_s": 3.2,
+          "cpc_pnow_tomoko": 0.02,
+          "primary_pbc": 0.125
+        },
+        {
+          "event_index": 112,
+          "wall_s": 3.5271,
+          "audio_s": 3.52,
+          "vad_now_s": 3.52,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.36,
+          "cpc_at_s": 3.2,
+          "cpc_pnow_tomoko": 0.02,
+          "primary_pbc": 0.077
+        },
+        {
+          "event_index": 114,
+          "wall_s": 3.6685,
+          "audio_s": 3.64,
+          "vad_now_s": 3.616,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.44,
+          "cpc_at_s": 3.2,
+          "cpc_pnow_tomoko": 0.02,
+          "primary_pbc": 0.076
+        },
+        {
+          "event_index": 115,
+          "wall_s": 3.8742,
+          "audio_s": 3.68,
+          "vad_now_s": 3.68,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.44,
+          "cpc_at_s": 3.3,
+          "cpc_pnow_tomoko": 0.019,
+          "primary_pbc": 0.076
+        },
+        {
+          "event_index": 125,
+          "wall_s": 4.0123,
+          "audio_s": 4.0,
+          "vad_now_s": 4.0,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.52,
+          "cpc_at_s": 3.8,
+          "cpc_pnow_tomoko": 0.029,
+          "primary_pbc": 0.077
+        },
+        {
+          "event_index": 127,
+          "wall_s": 4.038,
+          "audio_s": 4.02,
+          "vad_now_s": 4.0,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.52,
+          "cpc_at_s": 3.9,
+          "cpc_pnow_tomoko": 0.051,
+          "primary_pbc": 0.077
+        },
+        {
+          "event_index": 128,
+          "wall_s": 4.0644,
+          "audio_s": 4.06,
+          "vad_now_s": 4.032,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.52,
+          "cpc_at_s": 4.0,
+          "cpc_pnow_tomoko": 0.054,
+          "primary_pbc": 0.077
+        },
+        {
+          "event_index": 131,
+          "wall_s": 4.2284,
+          "audio_s": 4.14,
+          "vad_now_s": 4.128,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 3.6,
+          "cpc_at_s": 4.0,
+          "cpc_pnow_tomoko": 0.054,
+          "primary_pbc": 0.084
+        },
+        {
+          "event_index": 141,
+          "wall_s": 4.5629,
+          "audio_s": 4.56,
+          "vad_now_s": 4.544,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 4.08,
+          "cpc_at_s": 4.3,
+          "cpc_pnow_tomoko": 0.123,
+          "primary_pbc": 0.402
+        },
+        {
+          "event_index": 142,
+          "wall_s": 4.573,
+          "audio_s": 4.56,
+          "vad_now_s": 4.544,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 4.08,
+          "cpc_at_s": 4.4,
+          "cpc_pnow_tomoko": 0.064,
+          "primary_pbc": 0.402
+        },
+        {
+          "event_index": 143,
+          "wall_s": 4.5942,
+          "audio_s": 4.58,
+          "vad_now_s": 4.576,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 4.32,
+          "cpc_at_s": 4.4,
+          "cpc_pnow_tomoko": 0.064,
+          "primary_pbc": 0.29
+        },
+        {
+          "event_index": 144,
+          "wall_s": 4.5969,
+          "audio_s": 4.58,
+          "vad_now_s": 4.576,
+          "mode": "old_Mimi_masks_fresh_CPC",
+          "primary_at_s": 4.32,
+          "cpc_at_s": 4.5,
+          "cpc_pnow_tomoko": 0.046,
+          "primary_pbc": 0.29
+        }
+      ]
+    },
+    "p3-13-guard-3/t1-06": {
+      "source_run_sha256": "d4fd2576bb018ffefc5395df6b76ddf7bf978cefed951f98642bd7660066f8d7",
+      "user_intervals_s": [
+        [
+          1.0,
+          5.6214
+        ]
+      ],
+      "counts": {
+        "old_CPC_masks_fresh_Mimi": 41,
+        "old_CPC_masks_fresh_Mimi_vad_not_speaking": 6,
+        "old_CPC_masks_fresh_Mimi_vad_speaking": 35,
+        "old_CPC_masks_fresh_Mimi_annotated_user_turn": 35,
+        "old_CPC_masks_fresh_Mimi_annotated_voice": 31,
+        "old_Mimi_masks_fresh_CPC": 2,
+        "old_Mimi_masks_fresh_CPC_vad_not_speaking": 2
+      },
+      "vad_end_callback_state_samples": [
+        {
+          "wall_s": 6.0646,
+          "vad_now_s": 6.048,
+          "speech_end_s": 5.664,
+          "mask_proxy": null,
+          "primary_at_s": 6.0,
+          "cpc_at_s": 6.0,
+          "cpc_pnow_tomoko": 0.536,
+          "primary_age_s": 0.048,
+          "cpc_age_s": 0.048,
+          "primary_fresh_proxy": true,
+          "cpc_fresh_proxy": true,
+          "composite_fresh_proxy": true
+        }
+      ],
+      "vad_active_mask_witnesses": [
+        {
+          "event_index": 30,
+          "wall_s": 1.0916,
+          "audio_s": 1.06,
+          "vad_now_s": 1.056,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 0.96,
+          "cpc_at_s": 0.7,
+          "cpc_pnow_tomoko": 0.51,
+          "primary_pbc": 0.029
+        },
+        {
+          "event_index": 32,
+          "wall_s": 1.1519,
+          "audio_s": 1.12,
+          "vad_now_s": 1.12,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 0.96,
+          "cpc_at_s": 0.8,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.029
+        },
+        {
+          "event_index": 33,
+          "wall_s": 1.1702,
+          "audio_s": 1.16,
+          "vad_now_s": 1.152,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.04,
+          "cpc_at_s": 0.8,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.045
+        },
+        {
+          "event_index": 35,
+          "wall_s": 1.2397,
+          "audio_s": 1.22,
+          "vad_now_s": 1.216,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.12,
+          "cpc_at_s": 0.8,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.051
+        },
+        {
+          "event_index": 36,
+          "wall_s": 1.3366,
+          "audio_s": 1.3,
+          "vad_now_s": 1.28,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.12,
+          "cpc_at_s": 0.9,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.051
+        },
+        {
+          "event_index": 38,
+          "wall_s": 1.3632,
+          "audio_s": 1.32,
+          "vad_now_s": 1.312,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.2,
+          "cpc_at_s": 0.9,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.043
+        },
+        {
+          "event_index": 40,
+          "wall_s": 1.5,
+          "audio_s": 1.42,
+          "vad_now_s": 1.408,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.28,
+          "cpc_at_s": 0.9,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.039
+        },
+        {
+          "event_index": 44,
+          "wall_s": 1.5408,
+          "audio_s": 1.52,
+          "vad_now_s": 1.504,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.28,
+          "cpc_at_s": 1.0,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.039
+        },
+        {
+          "event_index": 45,
+          "wall_s": 1.549,
+          "audio_s": 1.54,
+          "vad_now_s": 1.536,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.36,
+          "cpc_at_s": 1.0,
+          "cpc_pnow_tomoko": 0.511,
+          "primary_pbc": 0.055
+        },
+        {
+          "event_index": 46,
+          "wall_s": 1.6158,
+          "audio_s": 1.6,
+          "vad_now_s": 1.6,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.36,
+          "cpc_at_s": 1.2,
+          "cpc_pnow_tomoko": 0.1,
+          "primary_pbc": 0.055
+        },
+        {
+          "event_index": 47,
+          "wall_s": 1.6236,
+          "audio_s": 1.6,
+          "vad_now_s": 1.6,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.44,
+          "cpc_at_s": 1.2,
+          "cpc_pnow_tomoko": 0.1,
+          "primary_pbc": 0.05
+        },
+        {
+          "event_index": 49,
+          "wall_s": 1.686,
+          "audio_s": 1.68,
+          "vad_now_s": 1.664,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.44,
+          "cpc_at_s": 1.3,
+          "cpc_pnow_tomoko": 0.071,
+          "primary_pbc": 0.05
+        },
+        {
+          "event_index": 50,
+          "wall_s": 1.72,
+          "audio_s": 1.7,
+          "vad_now_s": 1.696,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.52,
+          "cpc_at_s": 1.3,
+          "cpc_pnow_tomoko": 0.071,
+          "primary_pbc": 0.066
+        },
+        {
+          "event_index": 52,
+          "wall_s": 1.7325,
+          "audio_s": 1.72,
+          "vad_now_s": 1.696,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.52,
+          "cpc_at_s": 1.4,
+          "cpc_pnow_tomoko": 0.091,
+          "primary_pbc": 0.066
+        },
+        {
+          "event_index": 54,
+          "wall_s": 1.7676,
+          "audio_s": 1.76,
+          "vad_now_s": 1.76,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 1.6,
+          "cpc_at_s": 1.5,
+          "cpc_pnow_tomoko": 0.093,
+          "primary_pbc": 0.051
+        },
+        {
+          "event_index": 84,
+          "wall_s": 2.7602,
+          "audio_s": 2.74,
+          "vad_now_s": 2.72,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.48,
+          "cpc_at_s": 2.4,
+          "cpc_pnow_tomoko": 0.038,
+          "primary_pbc": 0.233
+        },
+        {
+          "event_index": 88,
+          "wall_s": 2.8918,
+          "audio_s": 2.88,
+          "vad_now_s": 2.88,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.64,
+          "cpc_at_s": 2.5,
+          "cpc_pnow_tomoko": 0.045,
+          "primary_pbc": 0.187
+        },
+        {
+          "event_index": 91,
+          "wall_s": 2.9551,
+          "audio_s": 2.94,
+          "vad_now_s": 2.912,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.72,
+          "cpc_at_s": 2.6,
+          "cpc_pnow_tomoko": 0.035,
+          "primary_pbc": 0.177
+        },
+        {
+          "event_index": 93,
+          "wall_s": 3.027,
+          "audio_s": 3.02,
+          "vad_now_s": 3.008,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.8,
+          "cpc_at_s": 2.6,
+          "cpc_pnow_tomoko": 0.035,
+          "primary_pbc": 0.244
+        },
+        {
+          "event_index": 94,
+          "wall_s": 3.0834,
+          "audio_s": 3.06,
+          "vad_now_s": 3.04,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.8,
+          "cpc_at_s": 2.7,
+          "cpc_pnow_tomoko": 0.038,
+          "primary_pbc": 0.244
+        },
+        {
+          "event_index": 95,
+          "wall_s": 3.0884,
+          "audio_s": 3.08,
+          "vad_now_s": 3.072,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.88,
+          "cpc_at_s": 2.7,
+          "cpc_pnow_tomoko": 0.038,
+          "primary_pbc": 0.332
+        },
+        {
+          "event_index": 97,
+          "wall_s": 3.1642,
+          "audio_s": 3.14,
+          "vad_now_s": 3.136,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.96,
+          "cpc_at_s": 2.7,
+          "cpc_pnow_tomoko": 0.038,
+          "primary_pbc": 0.48
+        },
+        {
+          "event_index": 98,
+          "wall_s": 3.1988,
+          "audio_s": 3.18,
+          "vad_now_s": 3.168,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 2.96,
+          "cpc_at_s": 2.8,
+          "cpc_pnow_tomoko": 0.048,
+          "primary_pbc": 0.48
+        },
+        {
+          "event_index": 99,
+          "wall_s": 3.2163,
+          "audio_s": 3.2,
+          "vad_now_s": 3.2,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.04,
+          "cpc_at_s": 2.8,
+          "cpc_pnow_tomoko": 0.048,
+          "primary_pbc": 0.456
+        },
+        {
+          "event_index": 101,
+          "wall_s": 3.2996,
+          "audio_s": 3.28,
+          "vad_now_s": 3.264,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.12,
+          "cpc_at_s": 2.8,
+          "cpc_pnow_tomoko": 0.048,
+          "primary_pbc": 0.365
+        },
+        {
+          "event_index": 102,
+          "wall_s": 3.3166,
+          "audio_s": 3.3,
+          "vad_now_s": 3.296,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.12,
+          "cpc_at_s": 2.9,
+          "cpc_pnow_tomoko": 0.129,
+          "primary_pbc": 0.365
+        },
+        {
+          "event_index": 104,
+          "wall_s": 3.341,
+          "audio_s": 3.32,
+          "vad_now_s": 3.296,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.2,
+          "cpc_at_s": 2.9,
+          "cpc_pnow_tomoko": 0.129,
+          "primary_pbc": 0.28
+        },
+        {
+          "event_index": 105,
+          "wall_s": 3.3808,
+          "audio_s": 3.36,
+          "vad_now_s": 3.36,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.2,
+          "cpc_at_s": 3.0,
+          "cpc_pnow_tomoko": 0.181,
+          "primary_pbc": 0.28
+        },
+        {
+          "event_index": 106,
+          "wall_s": 3.3905,
+          "audio_s": 3.38,
+          "vad_now_s": 3.36,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.28,
+          "cpc_at_s": 3.0,
+          "cpc_pnow_tomoko": 0.181,
+          "primary_pbc": 0.208
+        },
+        {
+          "event_index": 108,
+          "wall_s": 3.4509,
+          "audio_s": 3.44,
+          "vad_now_s": 3.424,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.36,
+          "cpc_at_s": 3.0,
+          "cpc_pnow_tomoko": 0.181,
+          "primary_pbc": 0.133
+        },
+        {
+          "event_index": 109,
+          "wall_s": 3.4619,
+          "audio_s": 3.44,
+          "vad_now_s": 3.424,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.36,
+          "cpc_at_s": 3.1,
+          "cpc_pnow_tomoko": 0.153,
+          "primary_pbc": 0.133
+        },
+        {
+          "event_index": 110,
+          "wall_s": 3.507,
+          "audio_s": 3.5,
+          "vad_now_s": 3.488,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.44,
+          "cpc_at_s": 3.1,
+          "cpc_pnow_tomoko": 0.153,
+          "primary_pbc": 0.09
+        },
+        {
+          "event_index": 111,
+          "wall_s": 3.5134,
+          "audio_s": 3.5,
+          "vad_now_s": 3.488,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.44,
+          "cpc_at_s": 3.2,
+          "cpc_pnow_tomoko": 0.077,
+          "primary_pbc": 0.09
+        },
+        {
+          "event_index": 113,
+          "wall_s": 3.5733,
+          "audio_s": 3.56,
+          "vad_now_s": 3.552,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.52,
+          "cpc_at_s": 3.2,
+          "cpc_pnow_tomoko": 0.077,
+          "primary_pbc": 0.124
+        },
+        {
+          "event_index": 114,
+          "wall_s": 3.579,
+          "audio_s": 3.56,
+          "vad_now_s": 3.552,
+          "mode": "old_CPC_masks_fresh_Mimi",
+          "primary_at_s": 3.52,
+          "cpc_at_s": 3.3,
+          "cpc_pnow_tomoko": 0.058,
+          "primary_pbc": 0.124
+        }
+      ]
+    }
+  }
+}

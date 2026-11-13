@@ -1,0 +1,61 @@
+{
+  "scope": "Selected synthetic T3 runs; single Maai bc_det Mimi offline, not live MaaiMultiple. Same fixed mic, system zero or fixed receiver output. Peaks from user start through end+0.4s. No live guard replay.",
+  "rows": [
+    {
+      "run": "p3-13-guard-3",
+      "id": "t3-03",
+      "user_start_s": 8.76,
+      "user_end_s": 9.3049,
+      "conditions": {
+        "system_zero": {
+          "max_p_bc_det_user": 0.004470393527299166,
+          "peak_at_s": 8.8,
+          "processing_wall_s": 4.3241086669731885,
+          "process_wall_s": {
+            "p50": 0.016311707906425,
+            "p99": 0.02254011663608253,
+            "max": 0.023860458051785827
+          }
+        },
+        "system_recorded": {
+          "max_p_bc_det_user": 0.2465183138847351,
+          "peak_at_s": 8.8,
+          "processing_wall_s": 3.950559667078778,
+          "process_wall_s": {
+            "p50": 0.014283749973401427,
+            "p99": 0.021941150212660427,
+            "max": 0.022334458073601127
+          }
+        }
+      }
+    },
+    {
+      "run": "p3-13-guard-3",
+      "id": "t3-06",
+      "user_start_s": 8.04,
+      "user_end_s": 8.7894,
+      "conditions": {
+        "system_zero": {
+          "max_p_bc_det_user": 9.513254917692393e-05,
+          "peak_at_s": 8.16,
+          "processing_wall_s": 4.256225292105228,
+          "process_wall_s": {
+            "p50": 0.014179833931848407,
+            "p99": 0.01791532821953297,
+            "max": 0.020109500037506223
+          }
+        },
+        "system_recorded": {
+          "max_p_bc_det_user": 0.03758030757308006,
+          "peak_at_s": 8.16,
+          "processing_wall_s": 4.265843000030145,
+          "process_wall_s": {
+            "p50": 0.014199917204678059,
+            "p99": 0.01599810499697924,
+            "max": 0.016195208067074418
+          }
+        }
+      }
+    }
+  ]
+}
