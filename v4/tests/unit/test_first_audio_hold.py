@@ -239,3 +239,47 @@ async def test_no_resumption_adds_no_wait_between_tts_ready_and_first_send(hold_
     sent = rig.events("reply_first_audio_send")[0]
     assert ready["mic_s"] == sent["mic_s"]
     assert not rig.events("reply_audio_hold")
+
+
+@pytest.mark.parametrize("failure", [False, True])
+async def test_short_voice_answers_when_original_stt_disappeared_after_start(
+    hold_rig, failure: bool,
+) -> None:
+    rig = hold_rig()
+
+    async def transcribe(audio: np.ndarray) -> str:
+        text = await rig.transcribe(audio)
+        if len(rig.heard) == 1:
+            await rig.tts_gate.wait()
+            if failure:
+                raise RuntimeError("MOCK: first STT failed")
+            return ""
+        return text
+
+    rig.session._transcribe = transcribe
+    await rig.feed(np.concatenate([voice(32), quiet(12)]))
+    await rig.feed(voice(8))
+    await rig.ready_audio()
+    assert not rig.session._answer_in_flight()
+    await rig.feed(quiet(12))
+    assert len(rig.heard) == 2 and len(rig.prompts) == 1 and rig.sent
+    assert not rig.events("ignored_pending_short_voice")
+
+
+async def test_short_voice_answers_when_original_tts_disappeared_after_start(hold_rig) -> None:
+    rig = hold_rig()
+
+    async def synthesize(phrase: str) -> np.ndarray:
+        audio = await rig.synthesize(phrase)
+        if rig.tts_calls == 1:
+            raise RuntimeError("MOCK: first TTS failed")
+        return audio
+
+    rig.session._synthesize = synthesize
+    await rig.prepare_reply()
+    await rig.feed(voice(8))
+    await rig.ready_audio()
+    assert not rig.session._answer_in_flight()
+    await rig.feed(quiet(12))
+    assert len(rig.heard) == len(rig.prompts) == 2 and rig.sent
+    assert not rig.events("ignored_pending_short_voice")

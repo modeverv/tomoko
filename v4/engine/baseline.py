@@ -259,7 +259,10 @@ class BaselineSession:
 
     def _finish_voice(self) -> bool:
         """end/drop で確認待ちを解く。返答待ちに入った短い声は別の回答へ回さない。"""
-        pending_short = self._cfg.barge_in and self._voice_pending_reply and not self._sustained
+        pending_reply = ((self._answer_in_flight() and not self._audible)
+                         or not self._queue.empty() or self._carry is not None)
+        pending_short = (self._cfg.barge_in and self._voice_pending_reply
+                         and not self._sustained and pending_reply)
         self._voice_pending_reply = False
         self._voice_ended.set()
         if self._cfg.barge_in:
