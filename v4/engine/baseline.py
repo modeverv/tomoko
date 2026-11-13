@@ -20,8 +20,12 @@ MaAI をつなぐと（P3、attach_maai。どれも設定で 1 つずつ入れ�
   長く続いたら止める。
 """
 
+from __future__ import annotations
+
 import asyncio
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import aclosing
 
 import numpy as np
 
@@ -32,6 +36,7 @@ from engine.trace import Trace
 
 SendAudio = Callable[[int, int, np.ndarray], Awaitable[None]]
 SendJson = Callable[[dict], Awaitable[None]]
+log = logging.getLogger(__name__)
 
 
 class BaselineSession:
@@ -61,6 +66,9 @@ class BaselineSession:
         self._carry: Utterance | None = None  # 捨てた返事の元の発話。次の発話の頭につなぐ
         self._speech_started_while_playing = False
         self._sustained = False  # いまの声が、割り込みとみなす長さまで続いたか
+        self._voice_ended = asyncio.Event()  # 初回の本返答だけが、未確定の声の終了を待つ
+        self._voice_ended.set()
+        self._voice_pending_reply = False  # 今の短い声は、未送信の返答の確認中に始まったか
         self._user_text = ""
         self._closing = False
         # MaAI（attach_maai でつなぐ）
@@ -90,14 +98,26 @@ class BaselineSession:
                 self._trace.event("maai_dropped", frames=dropped)
         for ev in self._vad.feed(samples):
             if ev.kind == "end":
+                pending_short = self._finish_voice()
                 self._trace.event("vad_end", speech_start_s=round(ev.utterance.start_s, 3),
                                   speech_end_s=round(ev.utterance.end_s, 3))
-                self._on_utterance(ev.utterance)
+                if pending_short:
+                    self._trace.event("ignored_pending_short_voice",
+                                      speech_end_s=round(ev.utterance.end_s, 3))
+                else:
+                    self._on_utterance(ev.utterance)
                 continue
             self._trace.event(f"vad_{ev.kind}", at_s=round(ev.at_s, 3))
             if ev.kind == "start":
                 self._speech_started_while_playing, self._sustained = self._playing(), False
                 self._guard_hold = False
+                if self._cfg.barge_in:
+                    answering = self._answer_in_flight()
+                    self._voice_pending_reply = (
+                        (answering and not self._audible)
+                        or (not answering and (not self._queue.empty() or self._carry is not None)))
+                    self._voice_ended.clear()
+                    log.info("reply confirmation state=pending at_s=%.3f", ev.at_s)
             elif ev.kind == "sustained":
                 self._sustained = True
                 if self._cfg.barge_in:
@@ -111,6 +131,8 @@ class BaselineSession:
                 self._guard_hold = False
                 self._trace.event("barge_guard_release", turn=self._turn)
                 self._on_barge_in()
+            elif ev.kind == "drop":
+                self._finish_voice()
         if self._maai is not None:
             self._maybe_backchannel(None)
 
@@ -130,7 +152,9 @@ class BaselineSession:
         except asyncio.CancelledError:
             pass
         if self._answering is not None:
-            self._answering.cancel()
+            if not self._answering.cancelling():
+                self._answering.cancel()
+            await asyncio.gather(self._answering, return_exceptions=True)
         if self._bc_task is not None:
             self._bc_task.cancel()
         try:
@@ -229,6 +253,35 @@ class BaselineSession:
     def _playing(self) -> bool:
         return asyncio.get_running_loop().time() < self._play_end
 
+    def _answer_in_flight(self) -> bool:
+        task = self._answering
+        return task is not None and not task.done() and not task.cancelling()
+
+    def _finish_voice(self) -> bool:
+        """end/drop で確認待ちを解く。返答待ちに入った短い声は別の回答へ回さない。"""
+        pending_short = self._cfg.barge_in and self._voice_pending_reply and not self._sustained
+        self._voice_pending_reply = False
+        self._voice_ended.set()
+        if self._cfg.barge_in:
+            log.info("reply confirmation state=ended at_s=%.3f", self._vad.now_s)
+        return pending_short
+
+    async def _wait_first_audio(self, turn: int, generation: int) -> None:
+        if not self._cfg.barge_in or self._voice_ended.is_set():
+            return
+        self._trace.event("reply_audio_hold", turn=turn, generation=generation)
+        log.info("reply audio state=held turn=%d generation=%d", turn, generation)
+        try:
+            # end の直後に別の start が来た場合、古い通知では再開しない。
+            while not self._voice_ended.is_set():
+                await self._voice_ended.wait()
+        except asyncio.CancelledError:
+            self._trace.event("reply_audio_cancel", turn=turn, generation=generation)
+            log.info("reply audio state=cancelled turn=%d generation=%d", turn, generation)
+            raise
+        self._trace.event("reply_audio_release", turn=turn, generation=generation)
+        log.info("reply audio state=released turn=%d generation=%d", turn, generation)
+
     def _on_utterance(self, utterance: Utterance) -> None:
         if self._cfg.barge_in and self._speech_started_while_playing and not self._sustained:
             # 声が出ている最中の短い声。相づちとして聞き流す
@@ -245,7 +298,7 @@ class BaselineSession:
         self._queue.put_nowait(utterance)
 
     def _on_barge_in(self) -> None:
-        answering = self._answering is not None and not self._answering.done()
+        answering = self._answer_in_flight()
         if answering and not self._audible:
             # まだ声を出していない。作りかけを捨て、続きの発話とつないで答え直す
             self._trace.event("discard_reply", turn=self._turn)
@@ -260,6 +313,16 @@ class BaselineSession:
                 self._answering.cancel()
             asyncio.get_running_loop().create_task(
                 self._send_json({"type": "stop", "generation": self._generation}))
+        elif self._voice_pending_reply:
+            # 同じ on_mic 内で sustained まで進み、働き手がまだ起きていない場合。
+            count = 0
+            while not self._queue.empty():
+                pending = self._queue.get_nowait()
+                self._carry = pending if self._carry is None else _join(self._carry, pending)
+                count += 1
+            if count:
+                self._trace.event("discard_queued_reply", turn=self._turn, utterances=count)
+                log.info("reply queued state=carried utterances=%d", count)
 
     # ---- 働き手 ----
 
@@ -327,19 +390,30 @@ class BaselineSession:
             while (phrase := await phrases.get()) is not None:
                 tr.event("tts_start", turn=turn, phrase=n, text=phrase)
                 length, first = 0, True
-                async for audio in self._pieces(phrase):
-                    if first:  # 最初の断片が届いた。丸ごと合成する TTS では、句の全体
-                        tr.event("tts_first_audio", turn=turn, phrase=n)
-                        self._audible, first = True, False
-                        self._spoken.append(phrase)
-                    self._output_end = max(self._output_end, loop.time()) + len(audio) / OUT_SR
-                    self._play_end = self._output_end
-                    if self._maai is not None:
-                        self._maai_call(self._maai.add_tomoko_audio, audio, self._trace.audio_s)
-                    for i in range(0, len(audio), piece):
-                        await self._send_audio(generation, seq, audio[i : i + piece])
-                        seq += 1
-                    length += len(audio)
+                async with aclosing(self._pieces(phrase)) as pieces:
+                    async for audio in pieces:
+                        if first:  # 準備完了。保留した場合の送信開始とは分けて記録する。
+                            tr.event("tts_first_audio", turn=turn, phrase=n)
+                        if not self._audible:
+                            await self._wait_first_audio(turn, generation)
+                        if first:
+                            first = False
+                            self._spoken.append(phrase)
+                        self._output_end = max(self._output_end, loop.time()) + len(audio) / OUT_SR
+                        self._play_end = self._output_end
+                        if self._maai is not None:
+                            self._maai_call(self._maai.add_tomoko_audio, audio, self._trace.audio_s)
+                        for i in range(0, len(audio), piece):
+                            if not self._audible:
+                                self._audible = True
+                                log.info("reply audio state=sending turn=%d generation=%d",
+                                         turn, generation)
+                                tr.event("reply_first_audio_send", turn=turn, generation=generation,
+                                         vad_now_s=self._vad.now_s, user_speaking=self._vad.speaking,
+                                         sustained=self._sustained)
+                            await self._send_audio(generation, seq, audio[i : i + piece])
+                            seq += 1
+                        length += len(audio)
                 tr.event("tts_done", turn=turn, phrase=n, audio_len_s=round(length / OUT_SR, 3))
                 tr.event("sent", turn=turn, phrase=n, generation=generation)
                 n += 1
@@ -352,8 +426,14 @@ class BaselineSession:
 
     async def _pieces(self, phrase: str) -> AsyncIterator[np.ndarray]:
         if self._synthesize_stream is not None:
-            async for audio in self._synthesize_stream(phrase):
-                yield audio
+            stream = self._synthesize_stream(phrase)
+            try:
+                async for audio in stream:
+                    yield audio
+            finally:
+                close = getattr(stream, "aclose", None)
+                if close is not None:
+                    await close()
         else:
             yield await self._synthesize(phrase)
 

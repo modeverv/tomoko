@@ -1,10 +1,10 @@
-"""MOCK: 同じ入力で TTS の解除時刻だけを変え、現在の返答の競合を記録する。
+"""MOCK: 同じ入力で TTS の解除時刻だけを変え、初回送信の保留を観測する。
 
     python -m scripts.diagnose_reply_race --out /tmp/reply-race.json
 
 実際の BaselineSession / VadSensor を使う。ワーカー、VAD確率、時計、波形は合成。
 MaAI・モデル・ネットワークは使わない。音声の受信・実再生を測る道具ではなく、
-送信呼び出しまでの制御順序の診断であり、新しい方針の正しさを主張しない。
+送信呼び出しまでの制御順序の診断であり、会話体験の良さを主張しない。
 """
 
 from __future__ import annotations
