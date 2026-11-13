@@ -1,0 +1,465 @@
+{
+  "code_commit": "318180eea39049dda30576674e955a43f72a073b",
+  "engine_baseline_sha256": "9089ee9691d1b812dc0994e42cfc604dc1f3e7aa09c7facecdca1f10d0a3ca03",
+  "input_ids": [
+    "t1-01",
+    "t3-03",
+    "t3-05",
+    "t3-06",
+    "t4-01",
+    "t4-07",
+    "t5-01"
+  ],
+  "configuration_note": "Same flags as p3-13-guard; playback queue fix only. Trial flags, no default-policy changes.",
+  "source_results_sha256": "ef812a4e9aebcd26bc7acca23dbbdf12d2f97ea609626b038773b0140c5af22d",
+  "summary": {
+    "T1": {
+      "n": 1,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "response_rate": 1.0,
+      "early_rate": 0.0,
+      "early_first_rate": 0.0,
+      "talked_over_rate": 0.0,
+      "latency_p50": 1.3236999999999997,
+      "latency_p90": 1.3236999999999997,
+      "double_answers": 0,
+      "shorts_during_user": 0
+    },
+    "T3": {
+      "n": 3,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "valid": 3,
+      "interruption_rate": 0.0
+    },
+    "T4": {
+      "n": 2,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "valid": 2,
+      "stop_rate": 1.0,
+      "stop_latency_p50": 1.08,
+      "response_rate": 1.0,
+      "latency_p50": 0.9638999999999989
+    },
+    "T5": {
+      "n": 1,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "per_minute": 11.033907811700233,
+      "in_gap_share": 0.16666666666666666,
+      "overlapped_share": 0.8333333333333334,
+      "bursts": 1,
+      "main_interruptions": 0,
+      "final_response_rate": 1.0,
+      "final_latency_p50": 1.0932999999999993
+    },
+    "C1": {
+      "judged": 3,
+      "score_mean": 1.6666666666666667
+    },
+    "R1": {
+      "stale_chunks": 0,
+      "double_answers": 0
+    }
+  },
+  "scenarios": [
+    {
+      "id": "t1-01",
+      "axis": "T1",
+      "error": null,
+      "precondition_failed": false,
+      "timing": {
+        "axis": "T1",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.3236999999999997,
+        "double_answer": false,
+        "shorts_during_user": 0
+      },
+      "events": {
+        "config": 1,
+        "playback": 178,
+        "maai": 397,
+        "vad_start": 1,
+        "vad_sustained": 1,
+        "vad_sustained_max": 1,
+        "backchannel": 1,
+        "vad_end": 1,
+        "stt_start": 1,
+        "stt_final": 1,
+        "llm_start": 1,
+        "llm_first_token": 1,
+        "tts_start": 3,
+        "llm_done": 1,
+        "tts_first_audio": 3,
+        "tts_done": 3,
+        "sent": 3
+      },
+      "maai_dropped_frames": 0,
+      "stop_notifications": [],
+      "audio_chunks": 64,
+      "trace_sha256": "0261695e58266d212b70186d33567e8ab193afc8a6c2a30372504806a4ec6fa5",
+      "run_sha256": "91110ca180088fb715ad77763aa65422412749e7a02fd69e60c9d77cc542bf7f",
+      "trace_pairing_stt_matches": true
+    },
+    {
+      "id": "t3-03",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": false
+      },
+      "events": {
+        "config": 1,
+        "playback": 209,
+        "maai": 467,
+        "vad_start": 2,
+        "vad_sustained": 2,
+        "vad_sustained_max": 1,
+        "backchannel": 1,
+        "vad_end": 2,
+        "stt_start": 2,
+        "stt_final": 2,
+        "llm_start": 2,
+        "llm_first_token": 2,
+        "tts_start": 5,
+        "tts_first_audio": 5,
+        "llm_done": 2,
+        "tts_done": 4,
+        "sent": 4,
+        "stop": 1
+      },
+      "maai_dropped_frames": 0,
+      "stop_notifications": [
+        {
+          "t": 9.4022,
+          "generation": 1
+        }
+      ],
+      "audio_chunks": 95,
+      "trace_sha256": "291f2533f1dc3550dc43788ecafbe2a5df2973c9dd0431925a6bf12387280efb",
+      "run_sha256": "0e8b48d86838623f0b94b649d02f07fbf4005cb8de6d0f41f77e5c300fff6793",
+      "trace_pairing_stt_matches": true
+    },
+    {
+      "id": "t3-05",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": false
+      },
+      "events": {
+        "config": 1,
+        "playback": 244,
+        "maai": 545,
+        "vad_start": 3,
+        "vad_sustained": 1,
+        "vad_sustained_max": 1,
+        "vad_end": 3,
+        "stt_start": 1,
+        "stt_final": 1,
+        "llm_start": 1,
+        "llm_first_token": 1,
+        "tts_start": 3,
+        "tts_first_audio": 3,
+        "llm_done": 1,
+        "tts_done": 3,
+        "sent": 3,
+        "ignored_short_voice": 2
+      },
+      "maai_dropped_frames": 0,
+      "stop_notifications": [],
+      "audio_chunks": 93,
+      "trace_sha256": "3f48f4e97cffe0cf7366fd2998b19cfe17cff10f75612dd3545ee73e7d7127d6",
+      "run_sha256": "2020f594d42ae32f7f9764a65e3a515a520e105e00862ab7da178f08b84803b9",
+      "trace_pairing_stt_matches": true
+    },
+    {
+      "id": "t3-06",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": false
+      },
+      "events": {
+        "config": 1,
+        "playback": 204,
+        "maai": 455,
+        "vad_start": 2,
+        "vad_sustained": 2,
+        "vad_sustained_max": 1,
+        "vad_end": 2,
+        "stt_start": 2,
+        "stt_final": 2,
+        "llm_start": 2,
+        "llm_first_token": 2,
+        "tts_start": 4,
+        "tts_first_audio": 4,
+        "llm_done": 2,
+        "tts_done": 3,
+        "sent": 3,
+        "stop": 1
+      },
+      "maai_dropped_frames": 0,
+      "stop_notifications": [
+        {
+          "t": 8.6025,
+          "generation": 0
+        }
+      ],
+      "audio_chunks": 95,
+      "trace_sha256": "7def74b1a0dc96b2c5eb0f2c74aeb5f229e0de0c647f060315c9c948940e9e1c",
+      "run_sha256": "292154ee3dd70ee90078f82193f7952f65e89010bd8dda0478f5b0bd0b208007",
+      "trace_pairing_stt_matches": true
+    },
+    {
+      "id": "t4-01",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 1.08,
+        "responded": true,
+        "latency": 1.0215999999999994
+      },
+      "events": {
+        "config": 1,
+        "playback": 226,
+        "maai": 505,
+        "vad_start": 4,
+        "vad_sustained": 3,
+        "vad_sustained_max": 2,
+        "vad_end": 4,
+        "stt_start": 3,
+        "stt_final": 3,
+        "llm_start": 3,
+        "llm_first_token": 3,
+        "tts_start": 6,
+        "tts_first_audio": 5,
+        "tts_done": 4,
+        "sent": 4,
+        "llm_done": 3,
+        "ignored_short_voice": 1,
+        "stop": 2,
+        "backchannel": 1
+      },
+      "maai_dropped_frames": 0,
+      "stop_notifications": [
+        {
+          "t": 8.1226,
+          "generation": 0
+        },
+        {
+          "t": 11.6626,
+          "generation": 2
+        }
+      ],
+      "audio_chunks": 81,
+      "trace_sha256": "6cdabbd5c112617087e6ae59c9af4f6907fd821be93fb43476cf7bfb8cf11bab",
+      "run_sha256": "81a02138c495f2d37e3e1a79d1d81c692b7948ddf93a3ed0882f8624eb0f15ed",
+      "trace_pairing_stt_matches": true
+    },
+    {
+      "id": "t4-07",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 1.524000000000001,
+        "responded": true,
+        "latency": 0.9638999999999989
+      },
+      "events": {
+        "config": 1,
+        "playback": 209,
+        "maai": 467,
+        "vad_start": 3,
+        "vad_sustained": 2,
+        "vad_sustained_max": 2,
+        "backchannel": 2,
+        "vad_end": 2,
+        "stt_start": 2,
+        "stt_final": 2,
+        "llm_start": 2,
+        "llm_first_token": 2,
+        "tts_start": 4,
+        "tts_first_audio": 4,
+        "tts_done": 3,
+        "sent": 3,
+        "llm_done": 2,
+        "vad_drop": 1,
+        "stop": 1
+      },
+      "maai_dropped_frames": 0,
+      "stop_notifications": [
+        {
+          "t": 8.7824,
+          "generation": 1
+        }
+      ],
+      "audio_chunks": 88,
+      "trace_sha256": "211e8cfee599fb20eeafb13ad4662a46159ca47a984b108bed52f94dd5b5c323",
+      "run_sha256": "0c6ecfcdb84147b4806a173c05d0158435a60ebc594ae48115c3ce9b16fea683",
+      "trace_pairing_stt_matches": true
+    },
+    {
+      "id": "t5-01",
+      "axis": "T5",
+      "error": null,
+      "precondition_failed": false,
+      "timing": {
+        "axis": "T5",
+        "silent": false,
+        "no_main": false,
+        "count": 6,
+        "per_minute": 11.033907811700233,
+        "in_gap": 1,
+        "overlapped": 5,
+        "bursts": 1,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.0932999999999993
+      },
+      "events": {
+        "config": 1,
+        "playback": 420,
+        "maai": 941,
+        "vad_start": 8,
+        "vad_sustained": 8,
+        "vad_sustained_max": 7,
+        "backchannel": 6,
+        "vad_end": 8,
+        "stt_start": 8,
+        "stt_final": 8,
+        "llm_start": 8,
+        "llm_first_token": 8,
+        "tts_start": 11,
+        "llm_done": 8,
+        "tts_first_audio": 9,
+        "stop": 7,
+        "tts_done": 4,
+        "sent": 4
+      },
+      "maai_dropped_frames": 0,
+      "stop_notifications": [
+        {
+          "t": 5.3026,
+          "generation": 1
+        },
+        {
+          "t": 9.3415,
+          "generation": 3
+        },
+        {
+          "t": 13.3434,
+          "generation": 5
+        },
+        {
+          "t": 14.6423,
+          "generation": 6
+        },
+        {
+          "t": 18.3826,
+          "generation": 8
+        },
+        {
+          "t": 23.3227,
+          "generation": 10
+        },
+        {
+          "t": 28.3027,
+          "generation": 11
+        }
+      ],
+      "audio_chunks": 63,
+      "trace_sha256": "9020753339b3190520b5ba65199502c20bed6552da43d95de2fe9341bf5a9e9b",
+      "run_sha256": "a037f740f96cf91d4ba72a08be68e3f5ffc4412b12868ed3a03547d2f14e7fa4",
+      "trace_pairing_stt_matches": true
+    }
+  ],
+  "limitations": "Seven fixed synthetic cases, one repetition. Not human listening or proof of MaAI policy improvement; score and stop notifications are separate.",
+  "config": {
+    "llm_url": "http://127.0.0.1:18090/v1/chat/completions",
+    "llm_model": "mlx-community/gemma-4-E4B-it-4bit",
+    "llm_max_tokens": "200",
+    "stt": "whispercpp",
+    "stt_model": "mlx-community/whisper-large-v3-turbo",
+    "stt_url": "http://127.0.0.1:18091",
+    "tts": "voicevox",
+    "tts_voice": "jf_alpha",
+    "voicevox_url": "http://127.0.0.1:50122",
+    "voicevox_speaker": "8",
+    "voicevox_streaming": "True",
+    "tts_pre_silence_s": "0.0",
+    "first_cut_min_chars": "3",
+    "vad_threshold": "0.5",
+    "vad_silence_s": "0.4",
+    "vad_preroll_s": "0.5",
+    "vad_min_voiced_s": "0.2",
+    "barge_in": "True",
+    "barge_in_voiced_s": "0.5",
+    "send_chunk_s": "0.2",
+    "maai": "True",
+    "maai_modes": "bc,bc_det",
+    "maai_vap_cpc": "True",
+    "maai_user_channel": "0",
+    "maai_threads": "4",
+    "maai_stale_s": "0.25",
+    "backchannel": "True",
+    "bc_text": "うん",
+    "bc_threshold": "0.4",
+    "bc_arm_s": "0.5",
+    "bc_quiet_s": "0.35",
+    "bc_cooldown_s": "3.0",
+    "bc_min_turn_s": "1.2",
+    "bc_max_shift_p": "1.0",
+    "maai_endpoint": "True",
+    "ep_signal": "p_now",
+    "ep_shift_p": "0.6",
+    "ep_hold_p": "0.2",
+    "ep_min_silence_s": "0.224",
+    "ep_max_silence_s": "1.0",
+    "barge_guard": "True",
+    "guard_bc_det": "0.25",
+    "guard_max_voiced_s": "1.3"
+  }
+}
