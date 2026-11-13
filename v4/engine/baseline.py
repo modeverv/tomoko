@@ -56,7 +56,8 @@ class BaselineSession:
         self._utterance: Utterance | None = None  # いま答えている発話
         self._audible = False  # いまの返事の声を、1 断片でも送ったか
         self._spoken: list[str] = []  # いまの返事で、声にして送った句
-        self._play_end = 0.0  # 送った声が鳴り終わる見込みの時刻（このプロセスの時計）
+        self._play_end = 0.0  # 本返答が鳴り終わる見込みの時刻（このプロセスの時計）
+        self._output_end = 0.0  # 相づちを含む、送った全音声の再生待ち行列の末尾
         self._carry: Utterance | None = None  # 捨てた返事の元の発話。次の発話の頭につなぐ
         self._speech_started_while_playing = False
         self._sustained = False  # いまの声が、割り込みとみなす長さまで続いたか
@@ -201,7 +202,8 @@ class BaselineSession:
                 or latest.at_s + 1e-9 < now - vad.quiet_s
                 or now - vad.start_s < cfg.bc_min_turn_s
                 or now - self._bc_last < cfg.bc_cooldown_s
-                or self._playing()
+                or asyncio.get_running_loop().time() < self._output_end
+                or (self._bc_task is not None and not self._bc_task.done())
                 or (self._answering is not None and not self._answering.done())):
             return
         if latest.p_now is not None and latest.p_now[1] >= cfg.bc_max_shift_p:
@@ -211,9 +213,11 @@ class BaselineSession:
         self._trace.event("backchannel", generation=generation, text=cfg.bc_text,
                           armed_at_s=round(self._bc_armed_frame, 3), quiet_s=round(vad.quiet_s, 3),
                           latest_at_s=round(latest.at_s, 3))
+        loop = asyncio.get_running_loop()
+        self._output_end = max(self._output_end, loop.time()) + len(self._bc_clip) / OUT_SR
         self._maai_call(self._maai.add_tomoko_audio, self._bc_clip, self._trace.audio_s)
         # 1 回で送る（断片に分けると、返事の断片と入れ違うことがある）
-        self._bc_task = asyncio.get_running_loop().create_task(
+        self._bc_task = loop.create_task(
             self._send_audio(generation, 0, self._bc_clip))
 
     def _new_generation(self) -> int:
@@ -249,7 +253,7 @@ class BaselineSession:
             self._answering.cancel()
         elif answering or self._playing():
             self._trace.event("stop", turn=self._turn, generation=self._generation)
-            self._play_end = 0.0
+            self._play_end = self._output_end = 0.0
             if self._maai is not None:
                 self._maai_call(self._maai.stop_tomoko, self._trace.audio_s)
             if answering:
@@ -328,7 +332,8 @@ class BaselineSession:
                         tr.event("tts_first_audio", turn=turn, phrase=n)
                         self._audible, first = True, False
                         self._spoken.append(phrase)
-                    self._play_end = max(self._play_end, loop.time()) + len(audio) / OUT_SR
+                    self._output_end = max(self._output_end, loop.time()) + len(audio) / OUT_SR
+                    self._play_end = self._output_end
                     if self._maai is not None:
                         self._maai_call(self._maai.add_tomoko_audio, audio, self._trace.audio_s)
                     for i in range(0, len(audio), piece):
