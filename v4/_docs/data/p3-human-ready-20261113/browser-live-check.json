@@ -1,0 +1,54 @@
+{
+  "url": "http://127.0.0.1:8700/",
+  "physical_microphone_used": false,
+  "input": "Silent MediaStreamDestination provided by a test getUserMedia override",
+  "transport": "Actual browser WebSocket and local engine",
+  "started": {
+    "button": "止める",
+    "contexts": [
+      {
+        "sampleRate": 16000,
+        "state": "running"
+      },
+      {
+        "sampleRate": 24000,
+        "state": "running"
+      }
+    ],
+    "disabled": false,
+    "sockets": [
+      1
+    ],
+    "state": "聞いています",
+    "tracks": [
+      "live"
+    ]
+  },
+  "stopped": {
+    "button": "始める",
+    "contexts": [
+      {
+        "sampleRate": 16000,
+        "state": "closed"
+      },
+      {
+        "sampleRate": 24000,
+        "state": "closed"
+      }
+    ],
+    "disabled": false,
+    "sockets": [
+      3
+    ],
+    "state": "止まっています",
+    "syntheticSourceClosedByHarness": "closed",
+    "tracks": [
+      "ended"
+    ]
+  },
+  "limits": [
+    "No physical microphone, speaker listening, or own-voice evaluation performed",
+    "Synthetic source context was closed explicitly by the test harness after app resources were checked"
+  ],
+  "cleanup": "Navigated to /check.html to remove all page-local test overrides"
+}

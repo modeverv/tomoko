@@ -1,0 +1,50 @@
+{
+  "source_commit": "318f59705b5d21a8a7f59d849a107f289430a91d",
+  "base_commit": "f49f59a4706657b93791731b4bd78507ff369ebc",
+  "author": "Codex",
+  "scope": "Synthetic inputs and mock regression tests only; personal microphone and subjective voice timing not validated",
+  "tests": {
+    "python_unit": {
+      "passed": 297,
+      "deselected": 4,
+      "wall_s": 2.09
+    },
+    "fake_integration": {
+      "passed": 4,
+      "deselected": 297,
+      "wall_s": 41.0
+    },
+    "node_client": {
+      "passed": 13,
+      "wall_ms": 76.342625
+    },
+    "ruff": "passed",
+    "independent_engine_review": "passed after legacy timestamp fix",
+    "independent_client_review": "passed"
+  },
+  "source_sha256": {
+    "engine/baseline.py": "a2ec78b59c8b64f075f77207f56fc396c957d4fd6c630f7792afda75dc2f022d",
+    "engine/dto.py": "5705db28d8b00e957436e0086f275c28f2432602d3cd2e730f02596ba424b371",
+    "engine/sensors/maai.py": "eb0599c47c0d931fea85eae2169270884b64cce5a254bb883bd6e53fa96d9cca",
+    "engine/sensors/_maai_worker.py": "3864beb556c6d007a1bfb1cc55f0b1e53932cf9c8634b85763ef4a1b434f0126",
+    "engine/ws.py": "07def1e136ee4b076d673498f84fffd3a1433f2adfef18f159ff4d80a66e6eed",
+    "client/main.js": "d686b7f0fc3cddaa3a8850dec9bbcfbb8b4ca142e65b53d8ad4b646d08c6672f",
+    "client/index.html": "a2bd72e9f4b60af4fac54abc1e14d66cfd049c0396e743b2c970c4941316fbef",
+    "client/check.html": "9ad2c56492b274de837820ad173498345d4498f71f8fef82d31e2976862b6e59",
+    "scripts/diagnose_guard_history.py": "73803ea946445acc2d3b17af9753fe75f611e4e05379f8fa49b6286fd63227b1",
+    "tests/client/lifecycle.test.mjs": "5cb0112bd0837f96bc9b1183373a2a357dca19163c8a0992dcea5c78b001ff2a",
+    "tests/unit/test_maai_signal_freshness.py": "b824dc865020d4d666c7643d764ca3dd8e9f7ebf26ff5f94010f9dbce9b5d075",
+    "tests/unit/test_maai_worker_observation.py": "5ed21edbd23c2f4a850a6d440e8ff32a421d069bb3883be6f52abf3680762fc5",
+    "tests/unit/test_guard_history_diagnostic.py": "d0acc645cf8628fec4116b15ec581da3594efaf8681cd713a4d56918815d91fe"
+  },
+  "independent_review": [
+    "Signal timestamp fallback across all six legacy/explicit combinations was corrected before real-model testing.",
+    "Client start/stop, failure cleanup, stale callback and playback compatibility checks passed.",
+    "Report wording distinguishes post-fix send timestamps from receiver-based queue estimates."
+  ],
+  "human_pending": [
+    "Own-voice backchannel versus intentional interruption",
+    "Perceived response wait and backchannel frequency",
+    "Physical microphone and speaker routing"
+  ]
+}

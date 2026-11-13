@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "author": "Codex",
+  "source_commit": "318f59705b5d21a8a7f59d849a107f289430a91d",
+  "base_commit": "f49f59a4706657b93791731b4bd78507ff369ebc",
+  "report": {
+    "path": "../../p3-human-ready-20261113.md",
+    "sha256": "81b6d377657dc55ade06f7addf6700c098bf8d99c065223c2919748e342ada9a"
+  },
+  "scope": "Code and existing synthetic private=false benchmark inputs; no personal recordings or dialogue text included",
+  "real_model_runs": {
+    "targeted_before": 10,
+    "targeted_candidate": 10,
+    "full_candidate": 55,
+    "c2_08_recheck": 2,
+    "live_smoke": 1
+  },
+  "source_sha256": {
+    "engine/baseline.py": "a2ec78b59c8b64f075f77207f56fc396c957d4fd6c630f7792afda75dc2f022d",
+    "engine/dto.py": "5705db28d8b00e957436e0086f275c28f2432602d3cd2e730f02596ba424b371",
+    "engine/sensors/maai.py": "eb0599c47c0d931fea85eae2169270884b64cce5a254bb883bd6e53fa96d9cca",
+    "engine/sensors/_maai_worker.py": "3864beb556c6d007a1bfb1cc55f0b1e53932cf9c8634b85763ef4a1b434f0126",
+    "engine/ws.py": "07def1e136ee4b076d673498f84fffd3a1433f2adfef18f159ff4d80a66e6eed",
+    "client/main.js": "d686b7f0fc3cddaa3a8850dec9bbcfbb8b4ca142e65b53d8ad4b646d08c6672f",
+    "client/index.html": "a2bd72e9f4b60af4fac54abc1e14d66cfd049c0396e743b2c970c4941316fbef",
+    "client/check.html": "9ad2c56492b274de837820ad173498345d4498f71f8fef82d31e2976862b6e59",
+    "scripts/diagnose_guard_history.py": "73803ea946445acc2d3b17af9753fe75f611e4e05379f8fa49b6286fd63227b1",
+    "tests/client/lifecycle.test.mjs": "5cb0112bd0837f96bc9b1183373a2a357dca19163c8a0992dcea5c78b001ff2a",
+    "tests/unit/test_maai_signal_freshness.py": "b824dc865020d4d666c7643d764ca3dd8e9f7ebf26ff5f94010f9dbce9b5d075",
+    "tests/unit/test_maai_worker_observation.py": "5ed21edbd23c2f4a850a6d440e8ff32a421d069bb3883be6f52abf3680762fc5",
+    "tests/unit/test_guard_history_diagnostic.py": "d0acc645cf8628fec4116b15ec581da3594efaf8681cd713a4d56918815d91fe"
+  },
+  "artifacts": {
+    "aggregate_maai_observations.py": {
+      "sha256": "2fb94bbcb564700d31e74c3e863f56234f25f8114ec57b126c58f7a264f9c1e8",
+      "bytes": 13999
+    },
+    "aggregate_maai_rechecks.py": {
+      "sha256": "cbd9647cb68d6eec35208de677afb544386b5bf97e2a4a78866f816c95d05c0f",
+      "bytes": 4107
+    },
+    "browser-check.json": {
+      "sha256": "ed09686b8d89c650e216aec80b5bb23faf5f656b34de9c6119ff779053e91a66",
+      "bytes": 1207
+    },
+    "browser-live-check.json": {
+      "sha256": "2051d914744edcb751bdab6ca3e42d736fcd6fbb0486f7ea33c715aeabfd0d2c",
+      "bytes": 1244
+    },
+    "c2-08-stall-numeric.json": {
+      "sha256": "5e4b98a112908b82db71784fb371fd482dcff3b452d83af611d8b425870903d3",
+      "bytes": 12769
+    },
+    "decompose_t5_final.py": {
+      "sha256": "70d97c711f1ec88f34b7f4d174e234898da4e45951d1b2f0a221c568da8ed396",
+      "bytes": 13223
+    },
+    "guard-history-gates.json": {
+      "sha256": "ad27091da419b1be893618ac7358599472613023850074d3849efdeca6e6ba75",
+      "bytes": 374976
+    },
+    "guard-history-summary.json": {
+      "sha256": "7d0e919301f9b6f267b16be2c19fb6e40c2472d0bdcf3317099e766cffc88f2a",
+      "bytes": 11082
+    },
+    "live-check.json": {
+      "sha256": "f7035c73797c7d640f0216c97982a429ab0c6d191102af905f33e0c7accab4fd",
+      "bytes": 1165
+    },
+    "live-runtime.json": {
+      "sha256": "2a030365dbec69ed7d1e6c5e73fea6fd7c119d01504f5974261c3a98bcaf5383",
+      "bytes": 2863
+    },
+    "observations-full.json": {
+      "sha256": "acbacfefe61e8b3c85779eba19f849b232dd1372d098828e6697562eb450b255",
+      "bytes": 316422
+    },
+    "observations-recheck-1.json": {
+      "sha256": "38fb447c83571bba804a1c1c67f1eb8b96c5d79b97fd16ddbd5ba1022440c03f",
+      "bytes": 13242
+    },
+    "observations-recheck-2.json": {
+      "sha256": "477a17d5093545e3d2ad4620796d66ea2d8eced460696bdcb2734f08c5f6a628",
+      "bytes": 13235
+    },
+    "observations-targeted-before.json": {
+      "sha256": "4c1af341a49e8f3d09b7dbb117205caa1d1abc48ed8079366cac214ba9f3eeeb",
+      "bytes": 14403
+    },
+    "observations-targeted-candidate.json": {
+      "sha256": "a252e9db57b133e6e8e0f624f421a526cdec82a74b99f1ee0a5147da8c399464",
+      "bytes": 65521
+    },
+    "runtime-full.json": {
+      "sha256": "b5897e3640d187e493968528116874afd4d898f4cb9f8f0b0920edec006cb97d",
+      "bytes": 15522
+    },
+    "runtime-recheck.json": {
+      "sha256": "0935004be4d53f912fa7f47efc69290275ef3e9e543402b2282980fe2d870395",
+      "bytes": 35076
+    },
+    "runtime-targeted.json": {
+      "sha256": "362fb195f33cad87d1b0d7b90c18360a932e9b7a1f20908e862ec5fc3149f1ee",
+      "bytes": 7374
+    },
+    "t5_final_latency_decomposition.json": {
+      "sha256": "ead1302a294413878e8efb5d03c1f4355333c767cd2b99c63a0b8620b2fc84b4",
+      "bytes": 52898
+    },
+    "t5_stt_cancellation_timing.json": {
+      "sha256": "bc37a5abe6f297ee0c65ac8e4ed16f29ba13dc5469786edb87e2b98e20b781c6",
+      "bytes": 13776
+    },
+    "timing-full.json": {
+      "sha256": "282019accbaa85dd897fd088f5cc2a25d89cea2d2eb17ed26c43e92fbe4b2e16",
+      "bytes": 31262
+    },
+    "timing-recheck-1.json": {
+      "sha256": "f75b54197ed0190e14ffb6d6444cd52466bc68bf6ca759b4c3c8c6389fc06af9",
+      "bytes": 1353
+    },
+    "timing-recheck-2.json": {
+      "sha256": "05d9f462558add8ee43310ce5d1574361da1a3b519576c703c7c5ca2367db4fe",
+      "bytes": 1347
+    },
+    "timing-targeted-before.json": {
+      "sha256": "752887fbd61fd23b374f494226758e56f1e14b058cef18f39870c859352ffe4f",
+      "bytes": 6941
+    },
+    "timing-targeted-candidate.json": {
+      "sha256": "7391dea27e0978678c38047cca12a6f5bf72fd660fc050aa8de63630ba17cd5d",
+      "bytes": 7125
+    },
+    "validation.json": {
+      "sha256": "d60d7863bdda36245c735299ea56a437e6fb98d55e235308a18609ea8fa3e951",
+      "bytes": 2572
+    }
+  },
+  "limitations": [
+    "T2/T3 interruptions remain; human voice and subjective timing evaluation pending",
+    "C2-08 dropped 11 input frames once; two repeats dropped zero; first cause remains unmeasured",
+    "Freshness contract regression fixed in controlled tests; no empirical unmasking benefit observed in these runs",
+    "No physical microphone or speaker listening performed by the agent"
+  ]
+}

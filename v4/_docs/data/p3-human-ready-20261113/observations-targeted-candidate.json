@@ -1,0 +1,2178 @@
+{
+  "schema_version": 1,
+  "arm": "candidate",
+  "partial_snapshot": false,
+  "source_verification": {
+    "expected": {
+      "engine/baseline.py": "a2ec78b59c8b64f075f77207f56fc396c957d4fd6c630f7792afda75dc2f022d",
+      "engine/dto.py": "5705db28d8b00e957436e0086f275c28f2432602d3cd2e730f02596ba424b371",
+      "engine/sensors/maai.py": "eb0599c47c0d931fea85eae2169270884b64cce5a254bb883bd6e53fa96d9cca",
+      "engine/sensors/_maai_worker.py": "3864beb556c6d007a1bfb1cc55f0b1e53932cf9c8634b85763ef4a1b434f0126",
+      "engine/ws.py": "07def1e136ee4b076d673498f84fffd3a1433f2adfef18f159ff4d80a66e6eed"
+    },
+    "current_files": {
+      "engine/baseline.py": "a2ec78b59c8b64f075f77207f56fc396c957d4fd6c630f7792afda75dc2f022d",
+      "engine/dto.py": "5705db28d8b00e957436e0086f275c28f2432602d3cd2e730f02596ba424b371",
+      "engine/sensors/maai.py": "eb0599c47c0d931fea85eae2169270884b64cce5a254bb883bd6e53fa96d9cca",
+      "engine/sensors/_maai_worker.py": "3864beb556c6d007a1bfb1cc55f0b1e53932cf9c8634b85763ef4a1b434f0126",
+      "engine/ws.py": "07def1e136ee4b076d673498f84fffd3a1433f2adfef18f159ff4d80a66e6eed"
+    },
+    "matches": true
+  },
+  "cases": [
+    {
+      "id": "t1-04",
+      "axis": "T1",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 2,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 2,
+          "p50": -0.0200499999999999,
+          "p95": -0.020004999999999606,
+          "p99": -0.02000099999999958,
+          "max": -0.019999999999999574
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 1,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 1,
+        "bc_seq0_accepted": 1
+      },
+      "workers": {
+        "cpc": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 3.2125040888786316e-05,
+            "p95": 3.2125040888786316e-05,
+            "p99": 3.2125040888786316e-05,
+            "max": 3.2125040888786316e-05
+          },
+          "queue_wait_s": {
+            "n": 162,
+            "p50": 4.543806426227093e-05,
+            "p95": 0.00013870003167539815,
+            "p99": 0.00017639106605201954,
+            "max": 0.00018425006419420242
+          },
+          "process_s": {
+            "n": 162,
+            "p50": 0.006490437430329621,
+            "p95": 0.007711531233508138,
+            "p99": 0.008387668989598748,
+            "max": 0.008569375146180391
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 163,
+            "p50": 9.979098103940487e-05,
+            "p95": 0.00013977154158055787,
+            "p99": 0.00021174004767090073,
+            "max": 0.0002257500309497118
+          },
+          "process_rows": 162,
+          "output_rows": 162,
+          "no_output": 0,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        },
+        "mimi": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 0.0011318752076476812,
+            "p95": 0.0011318752076476812,
+            "p99": 0.0011318752076476812,
+            "max": 0.0011318752076476812
+          },
+          "queue_wait_s": {
+            "n": 202,
+            "p50": 4.8729125410318375e-05,
+            "p95": 7.781420135870575e-05,
+            "p99": 8.627484785392882e-05,
+            "max": 0.00010124989785254002
+          },
+          "process_s": {
+            "n": 202,
+            "p50": 0.02051229204516858,
+            "p95": 0.022309812961611896,
+            "p99": 0.02394856870872901,
+            "max": 0.02633579191751778
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 203,
+            "p50": 0.00010037492029368877,
+            "p95": 0.00015414594672620284,
+            "p99": 0.000662028673104941,
+            "max": 0.0007767500355839729
+          },
+          "process_rows": 202,
+          "output_rows": 201,
+          "no_output": 1,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        }
+      },
+      "signal_reads": {
+        "vap": {
+          "reads": 13,
+          "new_accept": 13,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        },
+        "bc": {
+          "reads": 1,
+          "new_accept": 1,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        }
+      },
+      "source_run_sha256": "db173c1ab3b78d78790c5f80a5b46dabbd385d16cc95d0c3d680548093cc4fce",
+      "source_trace_sha256": "d486f250ba7e0b247e29370d34bd1437bb12bb973d2ddadc8a97e2078295cdb6",
+      "trace_name": "20261113T165057-0000.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t2-06",
+      "axis": "T2",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 3,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 3,
+          "p50": -0.019999999999999574,
+          "p95": -0.019730000000000202,
+          "p99": -0.019706000000000258,
+          "max": -0.019700000000000273
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 1,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 1,
+        "bc_seq0_accepted": 1
+      },
+      "workers": {
+        "cpc": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 0.010437792167067528,
+            "p95": 0.010437792167067528,
+            "p99": 0.010437792167067528,
+            "max": 0.010437792167067528
+          },
+          "queue_wait_s": {
+            "n": 203,
+            "p50": 4.4459011405706406e-05,
+            "p95": 0.00011861682869493939,
+            "p99": 0.0001625521294772624,
+            "max": 0.00022104103118181229
+          },
+          "process_s": {
+            "n": 203,
+            "p50": 0.006174624897539616,
+            "p95": 0.007354192016646265,
+            "p99": 0.007773309531621633,
+            "max": 0.00796708301641047
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 204,
+            "p50": 9.820796549320221e-05,
+            "p95": 0.00012474810937419535,
+            "p99": 0.00014510841108858583,
+            "max": 0.000710583059117198
+          },
+          "process_rows": 203,
+          "output_rows": 203,
+          "no_output": 0,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        },
+        "mimi": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 0.011292167007923126,
+            "p95": 0.011292167007923126,
+            "p99": 0.011292167007923126,
+            "max": 0.011292167007923126
+          },
+          "queue_wait_s": {
+            "n": 254,
+            "p50": 5.060399416834116e-05,
+            "p95": 7.601478137075901e-05,
+            "p99": 8.410437731072306e-05,
+            "max": 0.00010133301839232445
+          },
+          "process_s": {
+            "n": 254,
+            "p50": 0.0183174581034109,
+            "p95": 0.022288001631386577,
+            "p99": 0.02338923861272633,
+            "max": 0.023521834053099155
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 255,
+            "p50": 9.862496517598629e-05,
+            "p95": 0.00012367060407996177,
+            "p99": 0.0004744721157476332,
+            "max": 0.0019026249647140503
+          },
+          "process_rows": 254,
+          "output_rows": 253,
+          "no_output": 1,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        }
+      },
+      "signal_reads": {
+        "vap": {
+          "reads": 38,
+          "new_accept": 38,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        },
+        "bc": {
+          "reads": 1,
+          "new_accept": 1,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        }
+      },
+      "source_run_sha256": "cb4fdadf35c921a15595f098df4837eaf75b18473b23b1d946e04e1e3cf23f58",
+      "source_trace_sha256": "61ec44f2afe13c20bb5e1147199c36b09a758699f04e46c71a01781f37cff950",
+      "trace_name": "20261113T165113-0001.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t2-07",
+      "axis": "T2",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 2,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 2,
+          "p50": -0.019899999999999807,
+          "p95": -0.019899999999999807,
+          "p99": -0.019899999999999807,
+          "max": -0.019899999999999807
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 1,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 2,
+        "bc_seq0_accepted": 2
+      },
+      "workers": {
+        "cpc": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 2.037500962615013e-05,
+            "p95": 2.037500962615013e-05,
+            "p99": 2.037500962615013e-05,
+            "max": 2.037500962615013e-05
+          },
+          "queue_wait_s": {
+            "n": 216,
+            "p50": 4.412501584738493e-05,
+            "p95": 0.00011687498772516847,
+            "p99": 0.00017611873336136326,
+            "max": 0.00020933314226567745
+          },
+          "process_s": {
+            "n": 216,
+            "p50": 0.006151375011540949,
+            "p95": 0.007393645239062607,
+            "p99": 0.007981960929464548,
+            "max": 0.008851374965161085
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 217,
+            "p50": 0.00010233279317617416,
+            "p95": 0.00013514175079762936,
+            "p99": 0.00023721671663224717,
+            "max": 0.002724667079746723
+          },
+          "process_rows": 216,
+          "output_rows": 216,
+          "no_output": 0,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        },
+        "mimi": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 0.001129667041823268,
+            "p95": 0.001129667041823268,
+            "p99": 0.001129667041823268,
+            "max": 0.001129667041823268
+          },
+          "queue_wait_s": {
+            "n": 269,
+            "p50": 5.187490023672581e-05,
+            "p95": 7.805027998983859e-05,
+            "p99": 9.344196878373615e-05,
+            "max": 0.00013866601511836052
+          },
+          "process_s": {
+            "n": 269,
+            "p50": 0.01823000004515052,
+            "p95": 0.019602133659645915,
+            "p99": 0.020353285521268843,
+            "max": 0.021509958896785975
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 270,
+            "p50": 0.00010112451855093241,
+            "p95": 0.00013194381026551127,
+            "p99": 0.0005847541475668552,
+            "max": 0.0007830830290913582
+          },
+          "process_rows": 269,
+          "output_rows": 268,
+          "no_output": 1,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        }
+      },
+      "signal_reads": {
+        "vap": {
+          "reads": 19,
+          "new_accept": 19,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        },
+        "bc": {
+          "reads": 2,
+          "new_accept": 2,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        }
+      },
+      "source_run_sha256": "2fa993f36f4ae12e78c63be9cd5d7c5a5b1b6b2ce75f8cca3e9cab1c97f8049c",
+      "source_trace_sha256": "99cfd33150bdb0d6475b0489ebfb5b4ac839a3ffc9e1e213339db3a2cd58147d",
+      "trace_name": "20261113T165133-0002.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t3-03",
+      "axis": "T3",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 2,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 2,
+          "p50": -0.019899999999999807,
+          "p95": -0.019899999999999807,
+          "p99": -0.019899999999999807,
+          "max": -0.019899999999999807
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 2,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 1,
+        "bc_seq0_accepted": 1
+      },
+      "workers": {
+        "cpc": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 0.006957333069294691,
+            "p95": 0.006957333069294691,
+            "p99": 0.006957333069294691,
+            "max": 0.006957333069294691
+          },
+          "queue_wait_s": {
+            "n": 230,
+            "p50": 4.295795224606991e-05,
+            "p95": 0.00011572692310437558,
+            "p99": 0.0001755945244804027,
+            "max": 0.00020470819436013699
+          },
+          "process_s": {
+            "n": 230,
+            "p50": 0.006180749391205609,
+            "p95": 0.007470895862206816,
+            "p99": 0.007881069886498154,
+            "max": 0.008418750017881393
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 231,
+            "p50": 9.933393448591232e-05,
+            "p95": 0.0001289584906771779,
+            "p99": 0.0017508500721305584,
+            "max": 0.002056417055428028
+          },
+          "process_rows": 230,
+          "output_rows": 230,
+          "no_output": 0,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        },
+        "mimi": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 0.00798770785331726,
+            "p95": 0.00798770785331726,
+            "p99": 0.00798770785331726,
+            "max": 0.00798770785331726
+          },
+          "queue_wait_s": {
+            "n": 288,
+            "p50": 5.179201252758503e-05,
+            "p95": 7.81665090471506e-05,
+            "p99": 0.00010227930266410111,
+            "max": 0.00011245813220739365
+          },
+          "process_s": {
+            "n": 288,
+            "p50": 0.018264436977915466,
+            "p95": 0.01978995668468997,
+            "p99": 0.020745425357017663,
+            "max": 0.023617125116288662
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 289,
+            "p50": 0.00010020798072218895,
+            "p95": 0.0001353414263576269,
+            "p99": 0.0009730830602347857,
+            "max": 0.0019291250500828028
+          },
+          "process_rows": 288,
+          "output_rows": 287,
+          "no_output": 1,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        }
+      },
+      "signal_reads": {
+        "vap": {
+          "reads": 13,
+          "new_accept": 13,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        },
+        "bc": {
+          "reads": 1,
+          "new_accept": 1,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        },
+        "bc_det": {
+          "reads": 1,
+          "new_accept": 1,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        }
+      },
+      "source_run_sha256": "b1ece8bc63b37bf9876e012d0434d9acbd41b6e884d0bed2d81c231370e5c85c",
+      "source_trace_sha256": "46b3f2b3cd12f8ac2a11afacb9ba65591ec9fea042bf4472fc98e356fd61e03c",
+      "trace_name": "20261113T165155-0003.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t3-06",
+      "axis": "T3",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 2,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 2,
+          "p50": -0.019900000000000695,
+          "p95": -0.019899999999999897,
+          "p99": -0.019899999999999824,
+          "max": -0.019899999999999807
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 2,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 0,
+        "bc_seq0_accepted": 0
+      },
+      "workers": {
+        "cpc": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 2.5124987587332726e-05,
+            "p95": 2.5124987587332726e-05,
+            "p99": 2.5124987587332726e-05,
+            "max": 2.5124987587332726e-05
+          },
+          "queue_wait_s": {
+            "n": 226,
+            "p50": 4.427088424563408e-05,
+            "p95": 0.00012054137187078595,
+            "p99": 0.0001769482041709125,
+            "max": 0.00022229203023016453
+          },
+          "process_s": {
+            "n": 226,
+            "p50": 0.006169041502289474,
+            "p95": 0.0073030630010180175,
+            "p99": 0.007493260549381375,
+            "max": 0.00787524995394051
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 227,
+            "p50": 0.0001004580408334732,
+            "p95": 0.00013370011001825324,
+            "p99": 0.00022639980539679557,
+            "max": 0.002707083011046052
+          },
+          "process_rows": 226,
+          "output_rows": 226,
+          "no_output": 0,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        },
+        "mimi": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 0.0012299998197704554,
+            "p95": 0.0012299998197704554,
+            "p99": 0.0012299998197704554,
+            "max": 0.0012299998197704554
+          },
+          "queue_wait_s": {
+            "n": 283,
+            "p50": 5.041598342359066e-05,
+            "p95": 7.849982939660547e-05,
+            "p99": 9.049183689057828e-05,
+            "max": 0.00010562501847743988
+          },
+          "process_s": {
+            "n": 283,
+            "p50": 0.018318334128707647,
+            "p95": 0.019603658886626362,
+            "p99": 0.020649698204360908,
+            "max": 0.027478083968162537
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 284,
+            "p50": 0.00010222906712442636,
+            "p95": 0.00012449361383914948,
+            "p99": 0.0008951990632340387,
+            "max": 0.003593500005081296
+          },
+          "process_rows": 283,
+          "output_rows": 282,
+          "no_output": 1,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        }
+      },
+      "signal_reads": {
+        "vap": {
+          "reads": 5,
+          "new_accept": 5,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        },
+        "bc_det": {
+          "reads": 1,
+          "new_accept": 1,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        }
+      },
+      "source_run_sha256": "2cf855b018d503edafacfd8da322b0644a5a538307e88e02c78aa58c98f3a7b6",
+      "source_trace_sha256": "fb2df79adf5c6f1666115e26f034054f0736a38248a4f9859ffff89fff07429d",
+      "trace_name": "20261113T165218-0004.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t4-01",
+      "axis": "T4",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 3,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 3,
+          "p50": -0.019999999999999574,
+          "p95": -0.019909999999999782,
+          "p99": -0.019901999999999802,
+          "max": -0.019899999999999807
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 2,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 1,
+        "bc_seq0_accepted": 1
+      },
+      "workers": {
+        "cpc": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 2.0249979570508003e-05,
+            "p95": 2.0249979570508003e-05,
+            "p99": 2.0249979570508003e-05,
+            "max": 2.0249979570508003e-05
+          },
+          "queue_wait_s": {
+            "n": 238,
+            "p50": 4.23541059717536e-05,
+            "p95": 0.00010322668822482226,
+            "p99": 0.0001387558062560856,
+            "max": 0.0001842910423874855
+          },
+          "process_s": {
+            "n": 238,
+            "p50": 0.006164083490148187,
+            "p95": 0.007349143805913626,
+            "p99": 0.007768247362691909,
+            "max": 0.008054082980379462
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 239,
+            "p50": 9.837490506470203e-05,
+            "p95": 0.0001423753099516034,
+            "p99": 0.0008374370634555857,
+            "max": 0.0023187920451164246
+          },
+          "process_rows": 238,
+          "output_rows": 238,
+          "no_output": 0,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        },
+        "mimi": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 0.0011776660103350878,
+            "p95": 0.0011776660103350878,
+            "p99": 0.0011776660103350878,
+            "max": 0.0011776660103350878
+          },
+          "queue_wait_s": {
+            "n": 297,
+            "p50": 4.8208050429821014e-05,
+            "p95": 7.902509532868862e-05,
+            "p99": 8.979538455605507e-05,
+            "max": 0.00010325014591217041
+          },
+          "process_s": {
+            "n": 297,
+            "p50": 0.01819929201155901,
+            "p95": 0.019470350164920092,
+            "p99": 0.02068129306659103,
+            "max": 0.02575845899991691
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 298,
+            "p50": 9.812484495341778e-05,
+            "p95": 0.00012052683159708975,
+            "p99": 0.0005484123923815648,
+            "max": 0.0032946672290563583
+          },
+          "process_rows": 297,
+          "output_rows": 296,
+          "no_output": 1,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        }
+      },
+      "signal_reads": {
+        "vap": {
+          "reads": 19,
+          "new_accept": 19,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        },
+        "bc_det": {
+          "reads": 1,
+          "new_accept": 1,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        },
+        "bc": {
+          "reads": 1,
+          "new_accept": 1,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        }
+      },
+      "source_run_sha256": "52a184bf298587bd03e5c5b3c27007c6fbb7f734f3d8e3298ce239a5d2d8c889",
+      "source_trace_sha256": "de5f6b411541559a07afe205995a8e959890d071fe29f4d890c5dabc144bad9c",
+      "trace_name": "20261113T165241-0005.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t4-07",
+      "axis": "T4",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 2,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 2,
+          "p50": -0.019950000000000134,
+          "p95": -0.01990499999999984,
+          "p99": -0.019900999999999815,
+          "max": -0.019899999999999807
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 2,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 2,
+        "bc_seq0_accepted": 2
+      },
+      "workers": {
+        "cpc": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 3.004097379744053e-05,
+            "p95": 3.004097379744053e-05,
+            "p99": 3.004097379744053e-05,
+            "max": 3.004097379744053e-05
+          },
+          "queue_wait_s": {
+            "n": 231,
+            "p50": 4.370906390249729e-05,
+            "p95": 0.00010954204481095076,
+            "p99": 0.00016878370661288475,
+            "max": 0.00020541599951684475
+          },
+          "process_s": {
+            "n": 231,
+            "p50": 0.006238166010007262,
+            "p95": 0.0077121255453675985,
+            "p99": 0.008548496523872016,
+            "max": 0.012609958881512284
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 232,
+            "p50": 9.912543464452028e-05,
+            "p95": 0.0001387292984873056,
+            "p99": 0.00018330911640077827,
+            "max": 0.0011825421825051308
+          },
+          "process_rows": 231,
+          "output_rows": 231,
+          "no_output": 0,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        },
+        "mimi": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 0.0012889159843325615,
+            "p95": 0.0012889159843325615,
+            "p99": 0.0012889159843325615,
+            "max": 0.0012889159843325615
+          },
+          "queue_wait_s": {
+            "n": 289,
+            "p50": 4.983297549188137e-05,
+            "p95": 8.435877971351146e-05,
+            "p99": 9.98219568282366e-05,
+            "max": 0.00011358410120010376
+          },
+          "process_s": {
+            "n": 289,
+            "p50": 0.018361042020842433,
+            "p95": 0.02022731653414666,
+            "p99": 0.022838679980486633,
+            "max": 0.06418858305551112
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 290,
+            "p50": 0.00010093755554407835,
+            "p95": 0.00013375215930864215,
+            "p99": 0.00022686153417453216,
+            "max": 0.002145000034943223
+          },
+          "process_rows": 289,
+          "output_rows": 288,
+          "no_output": 1,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        }
+      },
+      "signal_reads": {
+        "vap": {
+          "reads": 16,
+          "new_accept": 16,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        },
+        "bc": {
+          "reads": 2,
+          "new_accept": 2,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        },
+        "bc_det": {
+          "reads": 1,
+          "new_accept": 1,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        }
+      },
+      "source_run_sha256": "f5cbf36b091300463082b5af99988770e08041bddc88484d5855df9e7c798e42",
+      "source_trace_sha256": "7364c57fd952ff99daa8a4c3c30d38c02140735eb7451a49497d7bfd3433946b",
+      "trace_name": "20261113T165305-0006.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t5-03",
+      "axis": "T5",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 6,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 6,
+          "p50": -0.019899999999999807,
+          "p95": -0.01982499999999998,
+          "p99": -0.019805000000000027,
+          "max": -0.01980000000000004
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 1,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 5,
+        "bc_seq0_accepted": 5
+      },
+      "workers": {
+        "cpc": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 2.1124957129359245e-05,
+            "p95": 2.1124957129359245e-05,
+            "p99": 2.1124957129359245e-05,
+            "max": 2.1124957129359245e-05
+          },
+          "queue_wait_s": {
+            "n": 469,
+            "p50": 4.941597580909729e-05,
+            "p95": 0.00013644983991980539,
+            "p99": 0.0001914529781788587,
+            "max": 0.0002704160287976265
+          },
+          "process_s": {
+            "n": 469,
+            "p50": 0.006454333895817399,
+            "p95": 0.008231758372858165,
+            "p99": 0.00948058020323515,
+            "max": 0.012314375024288893
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 470,
+            "p50": 0.00010497914627194405,
+            "p95": 0.00015438942937180396,
+            "p99": 0.0002560527808964254,
+            "max": 0.004501708084717393
+          },
+          "process_rows": 469,
+          "output_rows": 469,
+          "no_output": 0,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        },
+        "mimi": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 0.0011658330913633108,
+            "p95": 0.0011658330913633108,
+            "p99": 0.0011658330913633108,
+            "max": 0.0011658330913633108
+          },
+          "queue_wait_s": {
+            "n": 586,
+            "p50": 5.7208118960261345e-05,
+            "p95": 9.513512486591935e-05,
+            "p99": 0.00011155887041240927,
+            "max": 0.00014229095540940762
+          },
+          "process_s": {
+            "n": 586,
+            "p50": 0.018601353862322867,
+            "p95": 0.021869135496672243,
+            "p99": 0.02351293130777776,
+            "max": 0.027682125102728605
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 587,
+            "p50": 0.00010595796629786491,
+            "p95": 0.00016909569967538097,
+            "p99": 0.000577806830406189,
+            "max": 0.0026598749682307243
+          },
+          "process_rows": 586,
+          "output_rows": 585,
+          "no_output": 1,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        }
+      },
+      "signal_reads": {
+        "vap": {
+          "reads": 62,
+          "new_accept": 62,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        },
+        "bc": {
+          "reads": 5,
+          "new_accept": 5,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        }
+      },
+      "source_run_sha256": "d26583d91b1611c0e0d208822e18864187ecb2e694836d7575b5b16c07444f5c",
+      "source_trace_sha256": "4a04288104854b1399c79258aa17418716166a535961d8e48289d46f6dbb5141",
+      "trace_name": "20261113T165328-0007.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t5-04",
+      "axis": "T5",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 7,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 7,
+          "p50": -0.019899999999999807,
+          "p95": -0.01980000000000004,
+          "p99": -0.01980000000000004,
+          "max": -0.01980000000000004
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 1,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 6,
+        "bc_seq0_accepted": 6
+      },
+      "workers": {
+        "cpc": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 2.5166897103190422e-05,
+            "p95": 2.5166897103190422e-05,
+            "p99": 2.5166897103190422e-05,
+            "max": 2.5166897103190422e-05
+          },
+          "queue_wait_s": {
+            "n": 500,
+            "p50": 5.272938869893551e-05,
+            "p95": 0.00014308812096714972,
+            "p99": 0.00019783899886533619,
+            "max": 0.0003993748687207699
+          },
+          "process_s": {
+            "n": 500,
+            "p50": 0.006653146003372967,
+            "p95": 0.0081040941295214,
+            "p99": 0.010134384408593159,
+            "max": 0.03211570903658867
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 501,
+            "p50": 0.00011274986900389194,
+            "p95": 0.00016383384354412556,
+            "p99": 0.0012489999644458294,
+            "max": 0.004721042001619935
+          },
+          "process_rows": 500,
+          "output_rows": 500,
+          "no_output": 0,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        },
+        "mimi": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 0.0013686660677194595,
+            "p95": 0.0013686660677194595,
+            "p99": 0.0013686660677194595,
+            "max": 0.0013686660677194595
+          },
+          "queue_wait_s": {
+            "n": 626,
+            "p50": 6.866711191833019e-05,
+            "p95": 0.00010271876817569137,
+            "p99": 0.0001257082913070917,
+            "max": 0.000325583852827549
+          },
+          "process_s": {
+            "n": 626,
+            "p50": 0.018950395518913865,
+            "p95": 0.021505260549020022,
+            "p99": 0.02661464537959546,
+            "max": 0.05221316684037447
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 627,
+            "p50": 0.0001117088831961155,
+            "p95": 0.0001943376380950212,
+            "p99": 0.0006634660298004748,
+            "max": 0.0050541250966489315
+          },
+          "process_rows": 626,
+          "output_rows": 625,
+          "no_output": 1,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        }
+      },
+      "signal_reads": {
+        "vap": {
+          "reads": 62,
+          "new_accept": 62,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        },
+        "bc": {
+          "reads": 6,
+          "new_accept": 6,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        }
+      },
+      "source_run_sha256": "29c68e0cfdf9b3ac192b0d90232bb0074746eb7591fb08ac8303add997278cc8",
+      "source_trace_sha256": "9c4211dbe69e5368470ab1f3fe96196a3851bf62c268d2de7e414c537ec63b77",
+      "trace_name": "20261113T165415-0008.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t5-05",
+      "axis": "T5",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 7,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 7,
+          "p50": -0.019899999999999807,
+          "p95": -0.01982999999999997,
+          "p99": -0.019806000000000025,
+          "max": -0.01980000000000004
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 1,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 6,
+        "bc_seq0_accepted": 6
+      },
+      "workers": {
+        "cpc": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 2.8208130970597267e-05,
+            "p95": 2.8208130970597267e-05,
+            "p99": 2.8208130970597267e-05,
+            "max": 2.8208130970597267e-05
+          },
+          "queue_wait_s": {
+            "n": 460,
+            "p50": 4.160392563790083e-05,
+            "p95": 0.0001222206396050751,
+            "p99": 0.00016059676185250282,
+            "max": 0.0002156661357730627
+          },
+          "process_s": {
+            "n": 460,
+            "p50": 0.006143187521956861,
+            "p95": 0.007378572307061402,
+            "p99": 0.007824027556926004,
+            "max": 0.009134583873674273
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 461,
+            "p50": 9.683286771178246e-05,
+            "p95": 0.0001379579771310091,
+            "p99": 0.00019451715052127815,
+            "max": 0.0016214170027524233
+          },
+          "process_rows": 460,
+          "output_rows": 460,
+          "no_output": 0,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        },
+        "mimi": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 0.0012314999476075172,
+            "p95": 0.0012314999476075172,
+            "p99": 0.0012314999476075172,
+            "max": 0.0012314999476075172
+          },
+          "queue_wait_s": {
+            "n": 575,
+            "p50": 4.733284004032612e-05,
+            "p95": 7.675006054341792e-05,
+            "p99": 9.173820260912179e-05,
+            "max": 0.00011887494474649429
+          },
+          "process_s": {
+            "n": 575,
+            "p50": 0.01828987500630319,
+            "p95": 0.019597062538377934,
+            "p99": 0.020982015319168566,
+            "max": 0.026505457935854793
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 576,
+            "p50": 9.783345740288496e-05,
+            "p95": 0.00012362468987703323,
+            "p99": 0.0003297811490483582,
+            "max": 0.0015055409166961908
+          },
+          "process_rows": 575,
+          "output_rows": 574,
+          "no_output": 1,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        }
+      },
+      "signal_reads": {
+        "vap": {
+          "reads": 66,
+          "new_accept": 66,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        },
+        "bc": {
+          "reads": 6,
+          "new_accept": 6,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        }
+      },
+      "source_run_sha256": "ec8a104ad7249238b2793c376e685253ca1c39aa643bbaade78d84187ab0ec3c",
+      "source_trace_sha256": "b2b05277785d2e945c44c6457b5100ebea14bfb6f837074585d01b75acc9366d",
+      "trace_name": "20261113T165505-0009.jsonl",
+      "trace_complete_lines": true
+    }
+  ],
+  "summary": {
+    "matched_cases": 10,
+    "trace_files_seen": 10,
+    "unpaired_traces": 0,
+    "counts": {
+      "connection_error": 0,
+      "turn_failed": 0,
+      "maai_failed": 0,
+      "maai_close_failed": 0,
+      "maai_dropped_events": 0,
+      "maai_dropped_frames": 0,
+      "main_first_send": 14,
+      "main_first_send_user_speaking": 0,
+      "main_first_send_state_missing": 0,
+      "bc_dispatch": 25,
+      "bc_seq0_accepted": 25
+    },
+    "workers": {
+      "cpc": {
+        "factory_ready_s": {
+          "n": 10,
+          "p50": 2.6687514036893845e-05,
+          "p95": 0.008871585573069747,
+          "p99": 0.010124550848267973,
+          "max": 0.010437792167067528
+        },
+        "queue_wait_s": {
+          "n": 2935,
+          "p50": 4.52499371021986e-05,
+          "p95": 0.0001283455640077591,
+          "p99": 0.00018442903645336624,
+          "max": 0.0003993748687207699
+        },
+        "process_s": {
+          "n": 2935,
+          "p50": 0.00628804205916822,
+          "p95": 0.007718237582594156,
+          "p99": 0.008630775995552533,
+          "max": 0.03211570903658867
+        },
+        "reset_s": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "p99": null,
+          "max": null
+        },
+        "dispatch_s": {
+          "n": 2945,
+          "p50": 0.00010191602632403374,
+          "p95": 0.0001496670302003622,
+          "p99": 0.0002983984909951672,
+          "max": 0.004721042001619935
+        },
+        "process_rows": 2935,
+        "output_rows": 2935,
+        "no_output": 0,
+        "drop_events": 0,
+        "drop_frames": 0,
+        "largest_reported_drop_total": 0,
+        "negative_perf_deltas": {
+          "factory_ready_s": 0,
+          "queue_wait_s": 0,
+          "process_s": 0,
+          "reset_s": 0,
+          "dispatch_s": 0
+        }
+      },
+      "mimi": {
+        "factory_ready_s": {
+          "n": 10,
+          "p50": 0.0012307498836889863,
+          "p95": 0.009805160388350484,
+          "p99": 0.0109947656840086,
+          "max": 0.011292167007923126
+        },
+        "queue_wait_s": {
+          "n": 3669,
+          "p50": 5.204114131629467e-05,
+          "p95": 8.954200893640518e-05,
+          "p99": 0.0001074328459799291,
+          "max": 0.000325583852827549
+        },
+        "process_s": {
+          "n": 3669,
+          "p50": 0.018470332957804203,
+          "p95": 0.021322100097313522,
+          "p99": 0.02321223709732294,
+          "max": 0.06418858305551112
+        },
+        "reset_s": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "p99": null,
+          "max": null
+        },
+        "dispatch_s": {
+          "n": 3679,
+          "p50": 0.00010200007818639278,
+          "p95": 0.00014393320307135577,
+          "p99": 0.000649649924598634,
+          "max": 0.0050541250966489315
+        },
+        "process_rows": 3669,
+        "output_rows": 3659,
+        "no_output": 10,
+        "drop_events": 0,
+        "drop_frames": 0,
+        "largest_reported_drop_total": 0,
+        "negative_perf_deltas": {
+          "factory_ready_s": 0,
+          "queue_wait_s": 0,
+          "process_s": 0,
+          "reset_s": 0,
+          "dispatch_s": 0
+        }
+      }
+    },
+    "signal_reads": {
+      "vap": {
+        "reads": 313,
+        "new_accept": 313,
+        "required_missing": 0,
+        "old_min_reject_required_fresh": 0,
+        "old_accept_new_reject": 0,
+        "future_signal_timestamps": 0,
+        "future_by_signal": {},
+        "future_ages_s": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "p99": null,
+          "max": null
+        },
+        "contract_violations": {
+          "selected_at_not_required_at": 0,
+          "stale_required_used": 0,
+          "retained_signal_timestamp_changed": 0,
+          "stale_signal_leaked": 0,
+          "signal_values_changed": 0
+        }
+      },
+      "bc": {
+        "reads": 25,
+        "new_accept": 25,
+        "required_missing": 0,
+        "old_min_reject_required_fresh": 0,
+        "old_accept_new_reject": 0,
+        "future_signal_timestamps": 0,
+        "future_by_signal": {},
+        "future_ages_s": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "p99": null,
+          "max": null
+        },
+        "contract_violations": {
+          "selected_at_not_required_at": 0,
+          "stale_required_used": 0,
+          "retained_signal_timestamp_changed": 0,
+          "stale_signal_leaked": 0,
+          "signal_values_changed": 0
+        }
+      },
+      "bc_det": {
+        "reads": 4,
+        "new_accept": 4,
+        "required_missing": 0,
+        "old_min_reject_required_fresh": 0,
+        "old_accept_new_reject": 0,
+        "future_signal_timestamps": 0,
+        "future_by_signal": {},
+        "future_ages_s": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "p99": null,
+          "max": null
+        },
+        "contract_violations": {
+          "selected_at_not_required_at": 0,
+          "stale_required_used": 0,
+          "retained_signal_timestamp_changed": 0,
+          "stale_signal_leaked": 0,
+          "signal_values_changed": 0
+        }
+      }
+    }
+  },
+  "configuration": {
+    "identical_across_cases": true,
+    "sha256": "67becd0c0b1760c1b6434e47abe1d3f6d027f35576b5693f0235c67e040193e6",
+    "settings": {
+      "llm_model": "mlx-community/gemma-4-E4B-it-4bit",
+      "llm_max_tokens": 200.0,
+      "stt": "whispercpp",
+      "stt_model": "mlx-community/whisper-large-v3-turbo",
+      "tts": "voicevox",
+      "tts_voice": "jf_alpha",
+      "voicevox_speaker": 8.0,
+      "voicevox_streaming": true,
+      "tts_pre_silence_s": 0.0,
+      "first_cut_min_chars": 3.0,
+      "vad_threshold": 0.5,
+      "vad_silence_s": 0.4,
+      "vad_preroll_s": 0.5,
+      "vad_min_voiced_s": 0.2,
+      "barge_in": true,
+      "barge_in_voiced_s": 0.5,
+      "send_chunk_s": 0.2,
+      "maai": true,
+      "maai_modes": "bc,bc_det",
+      "maai_vap_cpc": true,
+      "maai_user_channel": 0.0,
+      "maai_threads": 4.0,
+      "maai_stale_s": 0.25,
+      "backchannel": true,
+      "bc_threshold": 0.4,
+      "bc_arm_s": 0.5,
+      "bc_quiet_s": 0.35,
+      "bc_cooldown_s": 3.0,
+      "bc_min_turn_s": 1.2,
+      "bc_max_shift_p": 1.0,
+      "maai_endpoint": true,
+      "ep_signal": "p_now",
+      "ep_shift_p": 0.6,
+      "ep_hold_p": 0.2,
+      "ep_min_silence_s": 0.224,
+      "ep_max_silence_s": 1.0,
+      "barge_guard": true,
+      "guard_bc_det": 0.25,
+      "guard_max_voiced_s": 1.3
+    }
+  },
+  "limits": [
+    "Perf durations subtract perf timestamps only; signal ages use input timestamps only",
+    "Before-source absent instrumentation is unmeasured, not zero",
+    "Counts are correlated reads/process calls, not independent improvement trials",
+    "Future signal input timestamps retain the existing contract; no cause inferred",
+    "Legacy acceptance comparison is conditional on a candidate snapshot, not old closed-loop replay"
+  ],
+  "runtime_sha256": "362fb195f33cad87d1b0d7b90c18360a932e9b7a1f20908e862ec5fc3149f1ee",
+  "analysis_script_sha256": "2fb94bbcb564700d31e74c3e863f56234f25f8114ec57b126c58f7a264f9c1e8"
+}

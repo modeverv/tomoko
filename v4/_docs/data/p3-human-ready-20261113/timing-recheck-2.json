@@ -1,0 +1,65 @@
+{
+  "definitions": "1",
+  "runs": [
+    {
+      "id": "c2-08",
+      "axis": "C2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          7.104,
+          7.296
+        ],
+        [
+          8.0,
+          13.28
+        ],
+        [
+          18.016,
+          18.208
+        ],
+        [
+          18.72,
+          24.544
+        ]
+      ],
+      "timing": {
+        "axis": "C2",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.142199999999999,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    }
+  ],
+  "source_results_sha256": "998ab6824bf94e2ff771ef3b43edc1c644fe400e607880359a290774a72dd0db",
+  "scoring": "Local timing only; no content judging",
+  "summary": {
+    "C2": {
+      "n": 1,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "response_rate": 1.0,
+      "early_rate": 0.0,
+      "early_first_rate": 0.0,
+      "talked_over_rate": 0.0,
+      "latency_p50": 1.142199999999999,
+      "latency_p90": 1.142199999999999,
+      "double_answers": 0,
+      "shorts_during_user": 0
+    },
+    "R1": {
+      "stale_chunks": 0,
+      "double_answers": 0
+    }
+  }
+}

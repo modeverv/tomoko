@@ -1,0 +1,42 @@
+{
+  "scenario": "t1-01",
+  "private": false,
+  "run_error": null,
+  "sample_rate": 24000,
+  "samples": 322080,
+  "nonzero_samples": 131648,
+  "peak_abs": 0.511566162109375,
+  "timing_summary": {
+    "T1": {
+      "n": 1,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "response_rate": 1.0,
+      "early_rate": 0.0,
+      "early_first_rate": 0.0,
+      "talked_over_rate": 0.0,
+      "latency_p50": 1.0037000000000003,
+      "latency_p90": 1.0037000000000003,
+      "double_answers": 0,
+      "shorts_during_user": 0
+    },
+    "R1": {
+      "stale_chunks": 0,
+      "double_answers": 0
+    }
+  },
+  "event_counts": {
+    "turn_failed": 0,
+    "maai_failed": 0,
+    "maai_close_failed": 0,
+    "maai_dropped": 0,
+    "reply_first_audio_send": 1
+  },
+  "source_run_sha256": "523b8e4920c5fe1feedbaf46cede5fff8f245831285f0b19d15f16e2e49580b1",
+  "source_results_sha256": "5879c50f188e5de80456f549db0c45244e8de39cf824a0669f44c6056a30d6c9",
+  "source_trace_sha256": "3fb9a91557a6380cded7753fbeedcc9c4943e545b4c57880e8c71f1ae21cd3af",
+  "trace_name": "20261113T172848-0000.jsonl",
+  "physical_listening": "not performed"
+}

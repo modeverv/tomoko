@@ -1,0 +1,446 @@
+{
+  "schema_version": 1,
+  "arm": "before",
+  "partial_snapshot": false,
+  "source_verification": {
+    "expected_baseline": "360c30a803a6614e2fd2ad337f34eaa37720ca1f41bca39c6c0504e1ebbca31e",
+    "committed_blob": "360c30a803a6614e2fd2ad337f34eaa37720ca1f41bca39c6c0504e1ebbca31e",
+    "matches": true
+  },
+  "cases": [
+    {
+      "id": "t1-04",
+      "axis": "T1",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 2,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 2,
+          "p50": -0.01994999999999969,
+          "p95": -0.019904999999999794,
+          "p99": -0.019900999999999804,
+          "max": -0.019899999999999807
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 1,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 1,
+        "bc_seq0_accepted": 1
+      },
+      "workers": null,
+      "signal_reads": {},
+      "source_run_sha256": "02903c8801545c1cbdc1cf81fd84756ad38fcee927747eee22243889662ebca1",
+      "source_trace_sha256": "66485236303436347b592b4cde66ef7cbbaef397010e2d8a03323338901f8354",
+      "trace_name": "20261113T163748-0001.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t2-06",
+      "axis": "T2",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 3,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 3,
+          "p50": -0.019900000000000695,
+          "p95": -0.019720000000000314,
+          "p99": -0.01970400000000028,
+          "max": -0.019700000000000273
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 1,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 1,
+        "bc_seq0_accepted": 1
+      },
+      "workers": null,
+      "signal_reads": {},
+      "source_run_sha256": "9b275c6784fb2a20631a6e6a0ecc686320e95bb1fda17ee6b0349fc6992c4f7a",
+      "source_trace_sha256": "b8f1ecc5f64401e47fdde2220686a7bfa9a1f56c39dc555209169179a8f60fbd",
+      "trace_name": "20261113T163807-0002.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t2-07",
+      "axis": "T2",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 2,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 2,
+          "p50": -0.01984999999999948,
+          "p95": -0.019804999999998386,
+          "p99": -0.01980099999999829,
+          "max": -0.019799999999998263
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 1,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 2,
+        "bc_seq0_accepted": 2
+      },
+      "workers": null,
+      "signal_reads": {},
+      "source_run_sha256": "9dbccd6d7e0630c803cf0a28b1659d4551c6a04f2ee1ce742973366726f9b57a",
+      "source_trace_sha256": "286758240d42bbac29b530c0c7373a8cb1162397600eeed3ca50a93a33fd8302",
+      "trace_name": "20261113T163829-0003.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t3-03",
+      "axis": "T3",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 2,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 2,
+          "p50": -0.01994999999999969,
+          "p95": -0.019904999999999794,
+          "p99": -0.019900999999999804,
+          "max": -0.019899999999999807
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 2,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 1,
+        "bc_seq0_accepted": 1
+      },
+      "workers": null,
+      "signal_reads": {},
+      "source_run_sha256": "08f7f48249335d084641783fe8946d38f8d38bc56af911d660e3c86bb680471c",
+      "source_trace_sha256": "96b0f233ec23fcbd4f283762cc12bcb362c1407b5867312283badcc6bdcf2fa0",
+      "trace_name": "20261113T163854-0004.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t3-06",
+      "axis": "T3",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 2,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 2,
+          "p50": -0.01980000000000004,
+          "p95": -0.019710000000000248,
+          "p99": -0.019702000000000268,
+          "max": -0.019700000000000273
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 2,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 0,
+        "bc_seq0_accepted": 0
+      },
+      "workers": null,
+      "signal_reads": {},
+      "source_run_sha256": "4820f28d09d1a9638cf2c77f8505fdc2a48e137f6d667e5605015355582b9356",
+      "source_trace_sha256": "2a3424fe2d5e177061f708ac36f73f7b90ffad4337214875687ae9911a0bbf8b",
+      "trace_name": "20261113T163915-0005.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t4-01",
+      "axis": "T4",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 3,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 3,
+          "p50": -0.019899999999999807,
+          "p95": -0.019899999999999807,
+          "p99": -0.019899999999999807,
+          "max": -0.019899999999999807
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 2,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 1,
+        "bc_seq0_accepted": 1
+      },
+      "workers": null,
+      "signal_reads": {},
+      "source_run_sha256": "b32458396b0b52f8949423cead69d9650cc9c080a0c31907ba1ef2837499f1f0",
+      "source_trace_sha256": "f7b0f7e5288e80a5169247002bf23fb1b6559393cde525e26e87b6c06ddc1dc2",
+      "trace_name": "20261113T163941-0006.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t4-07",
+      "axis": "T4",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 2,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 2,
+          "p50": -0.019950000000000134,
+          "p95": -0.01990499999999984,
+          "p99": -0.019900999999999815,
+          "max": -0.019899999999999807
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 2,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 2,
+        "bc_seq0_accepted": 2
+      },
+      "workers": null,
+      "signal_reads": {},
+      "source_run_sha256": "6e5545332074c5b28cfc2ee9db5255228b67ca0b82a46b1daaa10f843ee4a11d",
+      "source_trace_sha256": "f3d5b9f0adcc67906745c0ef4bde45b489330e74982957537ae153478c1a445b",
+      "trace_name": "20261113T164006-0007.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t5-03",
+      "axis": "T5",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 6,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 6,
+          "p50": -0.019849999999999923,
+          "p95": -0.01980000000000004,
+          "p99": -0.01980000000000004,
+          "max": -0.01980000000000004
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 1,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 5,
+        "bc_seq0_accepted": 5
+      },
+      "workers": null,
+      "signal_reads": {},
+      "source_run_sha256": "b9216d5104fd64e8a4a02ea8900ef4defbe500891557c6b539545d08cdd51858",
+      "source_trace_sha256": "75298e900786320c91422062f237e9afc37043c9aefc78d8216a01d6c386c987",
+      "trace_name": "20261113T164031-0008.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t5-04",
+      "axis": "T5",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 7,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 7,
+          "p50": -0.019899999999999807,
+          "p95": -0.019659999999999834,
+          "p99": -0.019612000000000372,
+          "max": -0.019600000000000506
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 1,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 6,
+        "bc_seq0_accepted": 6
+      },
+      "workers": null,
+      "signal_reads": {},
+      "source_run_sha256": "f8d1ac954c3a008cfd11f69688cd7b8d274e48729ce0d6dffa48063c553d0abb",
+      "source_trace_sha256": "75f40d5f0712ca4a227ee035477178bdb159b9900719058c7d9c07b660252527",
+      "trace_name": "20261113T164120-0009.jsonl",
+      "trace_complete_lines": true
+    },
+    {
+      "id": "t5-05",
+      "axis": "T5",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 7,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 7,
+          "p50": -0.019899999999999807,
+          "p95": -0.01972999999999958,
+          "p99": -0.019705999999999425,
+          "max": -0.019699999999999385
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 1,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 6,
+        "bc_seq0_accepted": 6
+      },
+      "workers": null,
+      "signal_reads": {},
+      "source_run_sha256": "f2c0676e5e291671bc39b266b4d21530d20565f749ca3967a918b5a181052f7c",
+      "source_trace_sha256": "9e5b702ace91f076c517905b692f84e47da02f3cf8228c20b55987a6ee24f692",
+      "trace_name": "20261113T164209-0010.jsonl",
+      "trace_complete_lines": true
+    }
+  ],
+  "summary": {
+    "matched_cases": 10,
+    "trace_files_seen": 10,
+    "unpaired_traces": 0,
+    "counts": {
+      "connection_error": 0,
+      "turn_failed": 0,
+      "maai_failed": 0,
+      "maai_close_failed": 0,
+      "maai_dropped_events": 0,
+      "maai_dropped_frames": 0,
+      "main_first_send": 14,
+      "main_first_send_user_speaking": 0,
+      "main_first_send_state_missing": 0,
+      "bc_dispatch": 25,
+      "bc_seq0_accepted": 25
+    },
+    "workers": null,
+    "signal_reads": {}
+  },
+  "configuration": {
+    "identical_across_cases": true,
+    "sha256": "67becd0c0b1760c1b6434e47abe1d3f6d027f35576b5693f0235c67e040193e6",
+    "settings": {
+      "llm_model": "mlx-community/gemma-4-E4B-it-4bit",
+      "llm_max_tokens": 200.0,
+      "stt": "whispercpp",
+      "stt_model": "mlx-community/whisper-large-v3-turbo",
+      "tts": "voicevox",
+      "tts_voice": "jf_alpha",
+      "voicevox_speaker": 8.0,
+      "voicevox_streaming": true,
+      "tts_pre_silence_s": 0.0,
+      "first_cut_min_chars": 3.0,
+      "vad_threshold": 0.5,
+      "vad_silence_s": 0.4,
+      "vad_preroll_s": 0.5,
+      "vad_min_voiced_s": 0.2,
+      "barge_in": true,
+      "barge_in_voiced_s": 0.5,
+      "send_chunk_s": 0.2,
+      "maai": true,
+      "maai_modes": "bc,bc_det",
+      "maai_vap_cpc": true,
+      "maai_user_channel": 0.0,
+      "maai_threads": 4.0,
+      "maai_stale_s": 0.25,
+      "backchannel": true,
+      "bc_threshold": 0.4,
+      "bc_arm_s": 0.5,
+      "bc_quiet_s": 0.35,
+      "bc_cooldown_s": 3.0,
+      "bc_min_turn_s": 1.2,
+      "bc_max_shift_p": 1.0,
+      "maai_endpoint": true,
+      "ep_signal": "p_now",
+      "ep_shift_p": 0.6,
+      "ep_hold_p": 0.2,
+      "ep_min_silence_s": 0.224,
+      "ep_max_silence_s": 1.0,
+      "barge_guard": true,
+      "guard_bc_det": 0.25,
+      "guard_max_voiced_s": 1.3
+    }
+  },
+  "limits": [
+    "Perf durations subtract perf timestamps only; signal ages use input timestamps only",
+    "Before-source absent instrumentation is unmeasured, not zero",
+    "Counts are correlated reads/process calls, not independent improvement trials",
+    "Future signal input timestamps retain the existing contract; no cause inferred",
+    "Legacy acceptance comparison is conditional on a candidate snapshot, not old closed-loop replay"
+  ],
+  "runtime_sha256": "362fb195f33cad87d1b0d7b90c18360a932e9b7a1f20908e862ec5fc3149f1ee",
+  "analysis_script_sha256": "2fb94bbcb564700d31e74c3e863f56234f25f8114ec57b126c58f7a264f9c1e8"
+}

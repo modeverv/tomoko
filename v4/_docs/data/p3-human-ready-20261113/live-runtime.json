@@ -1,0 +1,78 @@
+{
+  "pid": 82384,
+  "launcher_pid": 82383,
+  "port": 8700,
+  "source_commit": "318f59705b5d21a8a7f59d849a107f289430a91d",
+  "source_sha256": {
+    "engine/baseline.py": "a2ec78b59c8b64f075f77207f56fc396c957d4fd6c630f7792afda75dc2f022d",
+    "engine/dto.py": "5705db28d8b00e957436e0086f275c28f2432602d3cd2e730f02596ba424b371",
+    "engine/sensors/maai.py": "eb0599c47c0d931fea85eae2169270884b64cce5a254bb883bd6e53fa96d9cca",
+    "engine/sensors/_maai_worker.py": "3864beb556c6d007a1bfb1cc55f0b1e53932cf9c8634b85763ef4a1b434f0126",
+    "engine/ws.py": "07def1e136ee4b076d673498f84fffd3a1433f2adfef18f159ff4d80a66e6eed"
+  },
+  "trace_dir": "/Users/seijiro/Sync/sync_work/by-llms/tomoko/v4/work/traces/p3-21-human-ready-live",
+  "log": "/Users/seijiro/Sync/sync_work/by-llms/tomoko/v4/work/engine-human-ready-live.log",
+  "runtime_env": {
+    "TOMOKO_TRACE_DIR": "/Users/seijiro/Sync/sync_work/by-llms/tomoko/v4/work/traces/p3-21-human-ready-live",
+    "TOMOKO_TTS": "voicevox",
+    "TOMOKO_FIRST_CUT_MIN_CHARS": "3",
+    "TOMOKO_TTS_PRE_SILENCE_S": "0.0",
+    "TOMOKO_VOICEVOX_URL": "http://127.0.0.1:50122",
+    "TOMOKO_VOICEVOX_STREAMING": "1",
+    "TOMOKO_STT": "whispercpp",
+    "TOMOKO_BARGE_IN": "1",
+    "TOMOKO_LLM_URL": "http://127.0.0.1:18090/v1/chat/completions",
+    "TOMOKO_MAAI": "1",
+    "TOMOKO_MAAI_USER_CHANNEL": "0",
+    "TOMOKO_MAAI_THREADS": "4",
+    "TOMOKO_MAAI_MODES": "bc,bc_det",
+    "TOMOKO_BACKCHANNEL": "1",
+    "TOMOKO_BC_THRESHOLD": "0.4",
+    "TOMOKO_BC_MAX_SHIFT_P": "1.0",
+    "TOMOKO_BC_QUIET_S": "0.35",
+    "TOMOKO_BC_ARM_S": "0.5",
+    "TOMOKO_MAAI_VAP_CPC": "1",
+    "TOMOKO_MAAI_ENDPOINT": "1",
+    "TOMOKO_EP_SHIFT_P": "0.6",
+    "TOMOKO_EP_HOLD_P": "0.2",
+    "TOMOKO_BARGE_GUARD": "1",
+    "TOMOKO_GUARD_BC_DET": "0.25"
+  },
+  "stopped_previous_pids": [
+    67699,
+    64507
+  ],
+  "startup_http_status": 200,
+  "guide_sha256": "9ad2c56492b274de837820ad173498345d4498f71f8fef82d31e2976862b6e59",
+  "guide_matches_disk": true,
+  "http_assets": {
+    "/": {
+      "status": 200,
+      "sha256": "a2bd72e9f4b60af4fac54abc1e14d66cfd049c0396e743b2c970c4941316fbef",
+      "matches_disk": true
+    },
+    "/main.js": {
+      "status": 200,
+      "sha256": "d686b7f0fc3cddaa3a8850dec9bbcfbb8b4ca142e65b53d8ad4b646d08c6672f",
+      "matches_disk": true
+    },
+    "/mic-worklet.js": {
+      "status": 200,
+      "sha256": "e94af79a78b4b4b33cafa8836506d3766a32c8f0046c02fa7418dbf167340087",
+      "matches_disk": true
+    },
+    "/check.html": {
+      "status": 200,
+      "sha256": "9ad2c56492b274de837820ad173498345d4498f71f8fef82d31e2976862b6e59",
+      "matches_disk": true
+    }
+  },
+  "browser_guide": {
+    "url": "http://127.0.0.1:8700/check.html",
+    "conversation_url": "http://127.0.0.1:8700/",
+    "human_checks": 5,
+    "test_overrides_absent": true,
+    "visually_checked": true
+  },
+  "preview_8767_stopped": true
+}

@@ -1,0 +1,430 @@
+{
+  "schema_version": 1,
+  "arm": "repeat2",
+  "partial_snapshot": false,
+  "source_verification": {
+    "expected": {
+      "engine/baseline.py": "a2ec78b59c8b64f075f77207f56fc396c957d4fd6c630f7792afda75dc2f022d",
+      "engine/dto.py": "5705db28d8b00e957436e0086f275c28f2432602d3cd2e730f02596ba424b371",
+      "engine/sensors/maai.py": "eb0599c47c0d931fea85eae2169270884b64cce5a254bb883bd6e53fa96d9cca",
+      "engine/sensors/_maai_worker.py": "3864beb556c6d007a1bfb1cc55f0b1e53932cf9c8634b85763ef4a1b434f0126",
+      "engine/ws.py": "07def1e136ee4b076d673498f84fffd3a1433f2adfef18f159ff4d80a66e6eed"
+    },
+    "current_files": {
+      "engine/baseline.py": "a2ec78b59c8b64f075f77207f56fc396c957d4fd6c630f7792afda75dc2f022d",
+      "engine/dto.py": "5705db28d8b00e957436e0086f275c28f2432602d3cd2e730f02596ba424b371",
+      "engine/sensors/maai.py": "eb0599c47c0d931fea85eae2169270884b64cce5a254bb883bd6e53fa96d9cca",
+      "engine/sensors/_maai_worker.py": "3864beb556c6d007a1bfb1cc55f0b1e53932cf9c8634b85763ef4a1b434f0126",
+      "engine/ws.py": "07def1e136ee4b076d673498f84fffd3a1433f2adfef18f159ff4d80a66e6eed"
+    },
+    "matches": true
+  },
+  "cases": [
+    {
+      "id": "c2-08",
+      "axis": "C2",
+      "private": false,
+      "pairing": {
+        "complete_nonempty_stt_match": true,
+        "stt_events": 3,
+        "stop_generations_match": true,
+        "receiver_minus_trace_control_s": {
+          "n": 3,
+          "p50": -0.019899999999999807,
+          "p95": -0.019899999999999807,
+          "p99": -0.019899999999999807,
+          "max": -0.019899999999999807
+        }
+      },
+      "counts": {
+        "connection_error": false,
+        "turn_failed": 0,
+        "maai_failed": 0,
+        "maai_close_failed": 0,
+        "maai_dropped_events": 0,
+        "maai_dropped_frames": 0,
+        "main_first_send": 2,
+        "main_first_send_user_speaking": 0,
+        "main_first_send_state_missing": 0,
+        "bc_dispatch": 2,
+        "bc_seq0_accepted": 2
+      },
+      "workers": {
+        "cpc": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 1.9875122234225273e-05,
+            "p95": 1.9875122234225273e-05,
+            "p99": 1.9875122234225273e-05,
+            "max": 1.9875122234225273e-05
+          },
+          "queue_wait_s": {
+            "n": 274,
+            "p50": 5.0770584493875504e-05,
+            "p95": 0.0001648794626817106,
+            "p99": 0.0007309762504883099,
+            "max": 0.0014975417871028185
+          },
+          "process_s": {
+            "n": 274,
+            "p50": 0.006721416488289833,
+            "p95": 0.013653684745077003,
+            "p99": 0.043352324990555524,
+            "max": 0.08670183387584984
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 275,
+            "p50": 0.00010720896534621716,
+            "p95": 0.00014305447693914176,
+            "p99": 0.00019570847507566208,
+            "max": 0.0018747090362012386
+          },
+          "process_rows": 274,
+          "output_rows": 274,
+          "no_output": 0,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        },
+        "mimi": {
+          "factory_ready_s": {
+            "n": 1,
+            "p50": 0.001157917082309723,
+            "p95": 0.001157917082309723,
+            "p99": 0.001157917082309723,
+            "max": 0.001157917082309723
+          },
+          "queue_wait_s": {
+            "n": 343,
+            "p50": 5.683302879333496e-05,
+            "p95": 9.204582311213015e-05,
+            "p99": 0.00013481384608894553,
+            "max": 0.018671165918931365
+          },
+          "process_s": {
+            "n": 343,
+            "p50": 0.018434165976941586,
+            "p95": 0.03360956702381367,
+            "p99": 0.06191989935468866,
+            "max": 0.10239695780910552
+          },
+          "reset_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "dispatch_s": {
+            "n": 344,
+            "p50": 0.00010335398837924004,
+            "p95": 0.00019320360152050845,
+            "p99": 0.0017928036930970842,
+            "max": 0.0028213749174028635
+          },
+          "process_rows": 343,
+          "output_rows": 342,
+          "no_output": 1,
+          "drop_events": 0,
+          "drop_frames": 0,
+          "largest_reported_drop_total": 0,
+          "negative_perf_deltas": {
+            "factory_ready_s": 0,
+            "queue_wait_s": 0,
+            "process_s": 0,
+            "reset_s": 0,
+            "dispatch_s": 0
+          }
+        }
+      },
+      "signal_reads": {
+        "vap": {
+          "reads": 23,
+          "new_accept": 23,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        },
+        "bc": {
+          "reads": 2,
+          "new_accept": 2,
+          "required_missing": 0,
+          "old_min_reject_required_fresh": 0,
+          "old_accept_new_reject": 0,
+          "future_signal_timestamps": 0,
+          "future_by_signal": {},
+          "future_ages_s": {
+            "n": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "contract_violations": {
+            "selected_at_not_required_at": 0,
+            "stale_required_used": 0,
+            "retained_signal_timestamp_changed": 0,
+            "stale_signal_leaked": 0,
+            "signal_values_changed": 0
+          }
+        }
+      },
+      "source_run_sha256": "325effef0a3ed16cb568cd4857ea50a2efa1c976368dd367162b725f91d4abd2",
+      "source_trace_sha256": "31e53928c3a0114dae0c77958c11f44fbcfc59eac00bded8e1d1e5626bdd0748",
+      "trace_name": "20261113T172651-0066.jsonl",
+      "trace_complete_lines": true
+    }
+  ],
+  "summary": {
+    "matched_cases": 1,
+    "trace_files_seen": 1,
+    "unpaired_traces": 0,
+    "counts": {
+      "connection_error": false,
+      "turn_failed": 0,
+      "maai_failed": 0,
+      "maai_close_failed": 0,
+      "maai_dropped_events": 0,
+      "maai_dropped_frames": 0,
+      "main_first_send": 2,
+      "main_first_send_user_speaking": 0,
+      "main_first_send_state_missing": 0,
+      "bc_dispatch": 2,
+      "bc_seq0_accepted": 2
+    },
+    "workers": {
+      "cpc": {
+        "factory_ready_s": {
+          "n": 1,
+          "p50": 1.9875122234225273e-05,
+          "p95": 1.9875122234225273e-05,
+          "p99": 1.9875122234225273e-05,
+          "max": 1.9875122234225273e-05
+        },
+        "queue_wait_s": {
+          "n": 274,
+          "p50": 5.0770584493875504e-05,
+          "p95": 0.0001648794626817106,
+          "p99": 0.0007309762504883099,
+          "max": 0.0014975417871028185
+        },
+        "process_s": {
+          "n": 274,
+          "p50": 0.006721416488289833,
+          "p95": 0.013653684745077003,
+          "p99": 0.043352324990555524,
+          "max": 0.08670183387584984
+        },
+        "reset_s": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "p99": null,
+          "max": null
+        },
+        "dispatch_s": {
+          "n": 275,
+          "p50": 0.00010720896534621716,
+          "p95": 0.00014305447693914176,
+          "p99": 0.00019570847507566208,
+          "max": 0.0018747090362012386
+        },
+        "process_rows": 274,
+        "output_rows": 274,
+        "no_output": 0,
+        "drop_events": 0,
+        "drop_frames": 0,
+        "largest_reported_drop_total": 0,
+        "negative_perf_deltas": {
+          "factory_ready_s": 0,
+          "queue_wait_s": 0,
+          "process_s": 0,
+          "reset_s": 0,
+          "dispatch_s": 0
+        }
+      },
+      "mimi": {
+        "factory_ready_s": {
+          "n": 1,
+          "p50": 0.001157917082309723,
+          "p95": 0.001157917082309723,
+          "p99": 0.001157917082309723,
+          "max": 0.001157917082309723
+        },
+        "queue_wait_s": {
+          "n": 343,
+          "p50": 5.683302879333496e-05,
+          "p95": 9.204582311213015e-05,
+          "p99": 0.00013481384608894553,
+          "max": 0.018671165918931365
+        },
+        "process_s": {
+          "n": 343,
+          "p50": 0.018434165976941586,
+          "p95": 0.03360956702381367,
+          "p99": 0.06191989935468866,
+          "max": 0.10239695780910552
+        },
+        "reset_s": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "p99": null,
+          "max": null
+        },
+        "dispatch_s": {
+          "n": 344,
+          "p50": 0.00010335398837924004,
+          "p95": 0.00019320360152050845,
+          "p99": 0.0017928036930970842,
+          "max": 0.0028213749174028635
+        },
+        "process_rows": 343,
+        "output_rows": 342,
+        "no_output": 1,
+        "drop_events": 0,
+        "drop_frames": 0,
+        "largest_reported_drop_total": 0,
+        "negative_perf_deltas": {
+          "factory_ready_s": 0,
+          "queue_wait_s": 0,
+          "process_s": 0,
+          "reset_s": 0,
+          "dispatch_s": 0
+        }
+      }
+    },
+    "signal_reads": {
+      "vap": {
+        "reads": 23,
+        "new_accept": 23,
+        "required_missing": 0,
+        "old_min_reject_required_fresh": 0,
+        "old_accept_new_reject": 0,
+        "future_signal_timestamps": 0,
+        "future_by_signal": {},
+        "future_ages_s": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "p99": null,
+          "max": null
+        },
+        "contract_violations": {
+          "selected_at_not_required_at": 0,
+          "stale_required_used": 0,
+          "retained_signal_timestamp_changed": 0,
+          "stale_signal_leaked": 0,
+          "signal_values_changed": 0
+        }
+      },
+      "bc": {
+        "reads": 2,
+        "new_accept": 2,
+        "required_missing": 0,
+        "old_min_reject_required_fresh": 0,
+        "old_accept_new_reject": 0,
+        "future_signal_timestamps": 0,
+        "future_by_signal": {},
+        "future_ages_s": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "p99": null,
+          "max": null
+        },
+        "contract_violations": {
+          "selected_at_not_required_at": 0,
+          "stale_required_used": 0,
+          "retained_signal_timestamp_changed": 0,
+          "stale_signal_leaked": 0,
+          "signal_values_changed": 0
+        }
+      }
+    }
+  },
+  "configuration": {
+    "identical_across_cases": true,
+    "sha256": "67becd0c0b1760c1b6434e47abe1d3f6d027f35576b5693f0235c67e040193e6",
+    "settings": {
+      "llm_model": "mlx-community/gemma-4-E4B-it-4bit",
+      "llm_max_tokens": 200.0,
+      "stt": "whispercpp",
+      "stt_model": "mlx-community/whisper-large-v3-turbo",
+      "tts": "voicevox",
+      "tts_voice": "jf_alpha",
+      "voicevox_speaker": 8.0,
+      "voicevox_streaming": true,
+      "tts_pre_silence_s": 0.0,
+      "first_cut_min_chars": 3.0,
+      "vad_threshold": 0.5,
+      "vad_silence_s": 0.4,
+      "vad_preroll_s": 0.5,
+      "vad_min_voiced_s": 0.2,
+      "barge_in": true,
+      "barge_in_voiced_s": 0.5,
+      "send_chunk_s": 0.2,
+      "maai": true,
+      "maai_modes": "bc,bc_det",
+      "maai_vap_cpc": true,
+      "maai_user_channel": 0.0,
+      "maai_threads": 4.0,
+      "maai_stale_s": 0.25,
+      "backchannel": true,
+      "bc_threshold": 0.4,
+      "bc_arm_s": 0.5,
+      "bc_quiet_s": 0.35,
+      "bc_cooldown_s": 3.0,
+      "bc_min_turn_s": 1.2,
+      "bc_max_shift_p": 1.0,
+      "maai_endpoint": true,
+      "ep_signal": "p_now",
+      "ep_shift_p": 0.6,
+      "ep_hold_p": 0.2,
+      "ep_min_silence_s": 0.224,
+      "ep_max_silence_s": 1.0,
+      "barge_guard": true,
+      "guard_bc_det": 0.25,
+      "guard_max_voiced_s": 1.3
+    }
+  },
+  "runtime_sha256": "0935004be4d53f912fa7f47efc69290275ef3e9e543402b2282980fe2d870395",
+  "analysis_script_sha256": "2fb94bbcb564700d31e74c3e863f56234f25f8114ec57b126c58f7a264f9c1e8",
+  "analysis_adapter_sha256": "cbd9647cb68d6eec35208de677afb544386b5bf97e2a4a78866f816c95d05c0f",
+  "limits": [
+    "Explicitly authorized one-case recheck; shared helper analysis functions unchanged",
+    "Perf durations subtract perf timestamps only; signal ages use input timestamps only",
+    "Reads/process calls are correlated; these repeats do not establish an improvement rate",
+    "Legacy comparison is conditional on candidate snapshots, not old closed-loop replay"
+  ]
+}

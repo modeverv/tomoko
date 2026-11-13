@@ -1,0 +1,1600 @@
+{
+  "definitions": "1",
+  "source_results_sha256": "536270cc149363a4f8e8052a2b4d4aee003f1cf18d18ec20eb46c68c25c5ab66",
+  "scoring": "Local timing only; no content judging",
+  "percentile_method": "bench.report._pct: sorted non-null values at min(n-1, round((n-1)*p)), using Python round; P50 for n=10 is the lower middle observation",
+  "runs": [
+    {
+      "id": "c2-01",
+      "axis": "C2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          8.576,
+          15.584
+        ],
+        [
+          20.256,
+          25.472
+        ]
+      ],
+      "timing": {
+        "axis": "C2",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 0.46839999999999904,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "c2-02",
+      "axis": "C2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          7.424,
+          12.48
+        ],
+        [
+          16.864,
+          21.536
+        ]
+      ],
+      "timing": {
+        "axis": "C2",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 0.8895,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "c2-03",
+      "axis": "C2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.888,
+          10.752
+        ],
+        [
+          14.432,
+          14.656
+        ],
+        [
+          15.2,
+          21.536
+        ]
+      ],
+      "timing": {
+        "axis": "C2",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.112499999999999,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "c2-04",
+      "axis": "C2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          6.624,
+          10.496
+        ],
+        [
+          15.936,
+          19.776
+        ]
+      ],
+      "timing": {
+        "axis": "C2",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.0700000000000003,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "c2-05",
+      "axis": "C2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          6.496,
+          12.544
+        ],
+        [
+          17.088,
+          17.28
+        ],
+        [
+          18.112,
+          22.528
+        ]
+      ],
+      "timing": {
+        "axis": "C2",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.438399999999998,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "c2-06",
+      "axis": "C2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          7.04,
+          8.192
+        ],
+        [
+          8.768,
+          11.584
+        ],
+        [
+          16.896,
+          22.688
+        ]
+      ],
+      "timing": {
+        "axis": "C2",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 0.46080000000000254,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "c2-07",
+      "axis": "C2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          8.64,
+          14.592
+        ],
+        [
+          19.84,
+          25.056
+        ]
+      ],
+      "timing": {
+        "axis": "C2",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.0304000000000002,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "c2-08",
+      "axis": "C2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          7.04,
+          7.168
+        ],
+        [
+          7.936,
+          12.384
+        ],
+        [
+          17.888,
+          23.424
+        ]
+      ],
+      "timing": {
+        "axis": "C2",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.2102000000000004,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "c2-09",
+      "axis": "C2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          7.648,
+          14.784
+        ],
+        [
+          19.2,
+          22.848
+        ]
+      ],
+      "timing": {
+        "axis": "C2",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.3646999999999991,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "c2-10",
+      "axis": "C2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          7.936,
+          11.744
+        ],
+        [
+          15.616,
+          15.776
+        ],
+        [
+          16.224,
+          22.24
+        ]
+      ],
+      "timing": {
+        "axis": "C2",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.0633999999999997,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "t1-01",
+      "axis": "T1",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.216,
+          13.344
+        ]
+      ],
+      "timing": {
+        "axis": "T1",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.0037000000000003,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "t1-02",
+      "axis": "T1",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.728,
+          15.104
+        ]
+      ],
+      "timing": {
+        "axis": "T1",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 0.9821999999999997,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "t1-03",
+      "axis": "T1",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          7.808,
+          15.616
+        ],
+        [
+          16.064,
+          19.072
+        ]
+      ],
+      "timing": {
+        "axis": "T1",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.0447999999999995,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "t1-04",
+      "axis": "T1",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          4.064,
+          4.32
+        ],
+        [
+          6.368,
+          13.76
+        ]
+      ],
+      "timing": {
+        "axis": "T1",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.0033000000000003,
+        "double_answer": false,
+        "shorts_during_user": 1
+      }
+    },
+    {
+      "id": "t1-05",
+      "axis": "T1",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          6.624,
+          8.992
+        ],
+        [
+          9.408,
+          12.384
+        ]
+      ],
+      "timing": {
+        "axis": "T1",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 0.9564999999999992,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "t1-06",
+      "axis": "T1",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          7.04,
+          12.16
+        ],
+        [
+          12.576,
+          14.944
+        ]
+      ],
+      "timing": {
+        "axis": "T1",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.4185999999999996,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "t1-07",
+      "axis": "T1",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.152,
+          8.448
+        ],
+        [
+          8.864,
+          15.68
+        ]
+      ],
+      "timing": {
+        "axis": "T1",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 0.9781000000000004,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "t1-08",
+      "axis": "T1",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          6.176,
+          10.848
+        ],
+        [
+          11.296,
+          13.984
+        ],
+        [
+          14.432,
+          18.4
+        ]
+      ],
+      "timing": {
+        "axis": "T1",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.1974,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "t1-09",
+      "axis": "T1",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          7.392,
+          18.944
+        ]
+      ],
+      "timing": {
+        "axis": "T1",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 1.0268000000000006,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "t1-10",
+      "axis": "T1",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.344,
+          12.672
+        ]
+      ],
+      "timing": {
+        "axis": "T1",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 0.4405000000000001,
+        "double_answer": false,
+        "shorts_during_user": 0
+      }
+    },
+    {
+      "id": "t2-01",
+      "axis": "T2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          9.184,
+          13.856
+        ],
+        [
+          14.272,
+          17.344
+        ]
+      ],
+      "timing": {
+        "axis": "T2",
+        "silent": false,
+        "no_main": false,
+        "interrupted": false,
+        "responded": true
+      }
+    },
+    {
+      "id": "t2-02",
+      "axis": "T2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.088,
+          5.248
+        ],
+        [
+          11.072,
+          13.44
+        ],
+        [
+          13.856,
+          20.512
+        ]
+      ],
+      "timing": {
+        "axis": "T2",
+        "silent": false,
+        "no_main": false,
+        "interrupted": false,
+        "responded": true
+      }
+    },
+    {
+      "id": "t2-03",
+      "axis": "T2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          4.864,
+          5.12
+        ],
+        [
+          8.352,
+          8.544
+        ],
+        [
+          9.056,
+          18.048
+        ]
+      ],
+      "timing": {
+        "axis": "T2",
+        "silent": false,
+        "no_main": false,
+        "interrupted": false,
+        "responded": true
+      }
+    },
+    {
+      "id": "t2-04",
+      "axis": "T2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          4.384,
+          5.088
+        ],
+        [
+          10.816,
+          15.264
+        ]
+      ],
+      "timing": {
+        "axis": "T2",
+        "silent": false,
+        "no_main": false,
+        "interrupted": false,
+        "responded": true
+      }
+    },
+    {
+      "id": "t2-05",
+      "axis": "T2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.12,
+          5.568
+        ],
+        [
+          9.696,
+          20.16
+        ]
+      ],
+      "timing": {
+        "axis": "T2",
+        "silent": false,
+        "no_main": false,
+        "interrupted": false,
+        "responded": true
+      }
+    },
+    {
+      "id": "t2-06",
+      "axis": "T2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          8.704,
+          8.928
+        ],
+        [
+          11.008,
+          16.96
+        ]
+      ],
+      "timing": {
+        "axis": "T2",
+        "silent": false,
+        "no_main": false,
+        "interrupted": false,
+        "responded": true
+      }
+    },
+    {
+      "id": "t2-07",
+      "axis": "T2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          9.312,
+          12.448
+        ],
+        [
+          12.864,
+          19.424
+        ],
+        [
+          19.84,
+          23.488
+        ]
+      ],
+      "timing": {
+        "axis": "T2",
+        "silent": false,
+        "no_main": false,
+        "interrupted": false,
+        "responded": true
+      }
+    },
+    {
+      "id": "t2-08",
+      "axis": "T2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          4.48,
+          5.536
+        ],
+        [
+          10.528,
+          15.84
+        ],
+        [
+          16.32,
+          20.48
+        ]
+      ],
+      "timing": {
+        "axis": "T2",
+        "silent": false,
+        "no_main": false,
+        "interrupted": true,
+        "responded": true
+      }
+    },
+    {
+      "id": "t2-09",
+      "axis": "T2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.216,
+          6.624
+        ],
+        [
+          8.16,
+          8.32
+        ],
+        [
+          8.8,
+          14.432
+        ]
+      ],
+      "timing": {
+        "axis": "T2",
+        "silent": false,
+        "no_main": false,
+        "interrupted": true,
+        "responded": true
+      }
+    },
+    {
+      "id": "t2-10",
+      "axis": "T2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          9.6,
+          21.792
+        ],
+        [
+          22.208,
+          24.448
+        ]
+      ],
+      "timing": {
+        "axis": "T2",
+        "silent": false,
+        "no_main": false,
+        "interrupted": false,
+        "responded": true
+      }
+    },
+    {
+      "id": "t3-01",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.728,
+          18.944
+        ]
+      ],
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": false
+      }
+    },
+    {
+      "id": "t3-02",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          6.336,
+          13.472
+        ]
+      ],
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": false
+      }
+    },
+    {
+      "id": "t3-03",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.696,
+          5.888
+        ],
+        [
+          6.4,
+          9.44
+        ],
+        [
+          10.4,
+          20.032
+        ]
+      ],
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": false
+      }
+    },
+    {
+      "id": "t3-04",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          6.784,
+          17.056
+        ],
+        [
+          17.536,
+          21.728
+        ]
+      ],
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": false
+      }
+    },
+    {
+      "id": "t3-05",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          7.488,
+          28.96
+        ]
+      ],
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": false
+      }
+    },
+    {
+      "id": "t3-06",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.76,
+          8.768
+        ],
+        [
+          10.016,
+          18.24
+        ]
+      ],
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": true
+      }
+    },
+    {
+      "id": "t3-07",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.568,
+          11.872
+        ],
+        [
+          12.288,
+          19.936
+        ]
+      ],
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": false
+      }
+    },
+    {
+      "id": "t3-08",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          6.304,
+          16.096
+        ],
+        [
+          16.544,
+          20.16
+        ]
+      ],
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": false
+      }
+    },
+    {
+      "id": "t3-09",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.568,
+          14.784
+        ]
+      ],
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": false
+      }
+    },
+    {
+      "id": "t3-10",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          6.176,
+          19.2
+        ]
+      ],
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": false
+      }
+    },
+    {
+      "id": "t4-01",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.792,
+          8.352
+        ],
+        [
+          13.952,
+          24.032
+        ]
+      ],
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 1.0520000000000005,
+        "responded": true,
+        "latency": 1.3135999999999992
+      }
+    },
+    {
+      "id": "t4-02",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.696,
+          5.888
+        ],
+        [
+          6.336,
+          8.992
+        ],
+        [
+          12.896,
+          24.832
+        ]
+      ],
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 0.6120000000000001,
+        "responded": true,
+        "latency": 0.9803000000000015
+      }
+    },
+    {
+      "id": "t4-03",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          7.072,
+          10.272
+        ],
+        [
+          14.432,
+          25.728
+        ]
+      ],
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 0.652000000000001,
+        "responded": true,
+        "latency": 0.8931000000000004
+      }
+    },
+    {
+      "id": "t4-04",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          6.592,
+          9.152
+        ],
+        [
+          12.096,
+          12.256
+        ],
+        [
+          12.704,
+          28.192
+        ]
+      ],
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 1.032,
+        "responded": true,
+        "latency": 1.049100000000001
+      }
+    },
+    {
+      "id": "t4-05",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          7.84,
+          10.432
+        ],
+        [
+          14.816,
+          27.584
+        ]
+      ],
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 0.5920000000000005,
+        "responded": true,
+        "latency": 1.0146000000000015
+      }
+    },
+    {
+      "id": "t4-06",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.728,
+          8.768
+        ],
+        [
+          13.472,
+          22.208
+        ]
+      ],
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 0.5080000000000009,
+        "responded": true,
+        "latency": 1.1954999999999991
+      }
+    },
+    {
+      "id": "t4-07",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.568,
+          8.416
+        ],
+        [
+          11.968,
+          20.096
+        ]
+      ],
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 1.3360000000000003,
+        "responded": true,
+        "latency": 1.1919000000000004
+      }
+    },
+    {
+      "id": "t4-08",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.888,
+          8.48
+        ],
+        [
+          12.736,
+          21.376
+        ]
+      ],
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 0.5800000000000001,
+        "responded": true,
+        "latency": 0.9737000000000009
+      }
+    },
+    {
+      "id": "t4-09",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.696,
+          8.736
+        ],
+        [
+          11.936,
+          20.704
+        ],
+        [
+          21.28,
+          27.264
+        ]
+      ],
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 0.516,
+        "responded": true,
+        "latency": 0.47000000000000064
+      }
+    },
+    {
+      "id": "t4-10",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          6.528,
+          8.96
+        ],
+        [
+          12.672,
+          20.576
+        ]
+      ],
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 0.40000000000000036,
+        "responded": true,
+        "latency": 1.0211000000000006
+      }
+    },
+    {
+      "id": "t5-01",
+      "axis": "T5",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          35.04,
+          45.248
+        ]
+      ],
+      "timing": {
+        "axis": "T5",
+        "silent": false,
+        "no_main": false,
+        "count": 0,
+        "per_minute": 0.0,
+        "in_gap": 0,
+        "overlapped": 0,
+        "bursts": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.4132999999999996
+      }
+    },
+    {
+      "id": "t5-02",
+      "axis": "T5",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          16.064,
+          16.288
+        ],
+        [
+          20.736,
+          20.96
+        ],
+        [
+          26.08,
+          26.24
+        ],
+        [
+          36.544,
+          48.128
+        ]
+      ],
+      "timing": {
+        "axis": "T5",
+        "silent": false,
+        "no_main": false,
+        "count": 3,
+        "per_minute": 5.297810532635984,
+        "in_gap": 3,
+        "overlapped": 0,
+        "bursts": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.567699999999995
+      }
+    },
+    {
+      "id": "t5-03",
+      "axis": "T5",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          31.776,
+          31.968
+        ],
+        [
+          32.928,
+          43.008
+        ]
+      ],
+      "timing": {
+        "axis": "T5",
+        "silent": false,
+        "no_main": false,
+        "count": 0,
+        "per_minute": 0.0,
+        "in_gap": 0,
+        "overlapped": 0,
+        "bursts": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.5783999999999985
+      }
+    },
+    {
+      "id": "t5-04",
+      "axis": "T5",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          28.0,
+          28.192
+        ],
+        [
+          34.528,
+          39.232
+        ],
+        [
+          39.872,
+          43.424
+        ],
+        [
+          43.84,
+          45.728
+        ]
+      ],
+      "timing": {
+        "axis": "T5",
+        "silent": false,
+        "no_main": false,
+        "count": 1,
+        "per_minute": 1.8768710057838909,
+        "in_gap": 1,
+        "overlapped": 0,
+        "bursts": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.559899999999999
+      }
+    },
+    {
+      "id": "t5-05",
+      "axis": "T5",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          36.48,
+          47.68
+        ]
+      ],
+      "timing": {
+        "axis": "T5",
+        "silent": false,
+        "no_main": false,
+        "count": 0,
+        "per_minute": 0.0,
+        "in_gap": 0,
+        "overlapped": 0,
+        "bursts": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.793299999999995
+      }
+    }
+  ],
+  "summary": {
+    "C2": {
+      "n": 10,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "response_rate": 1.0,
+      "early_rate": 0.0,
+      "early_first_rate": 0.0,
+      "talked_over_rate": 0.0,
+      "latency_p50": 1.0633999999999997,
+      "latency_p90": 1.3646999999999991,
+      "double_answers": 0,
+      "shorts_during_user": 0
+    },
+    "T1": {
+      "n": 10,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "response_rate": 1.0,
+      "early_rate": 0.0,
+      "early_first_rate": 0.0,
+      "talked_over_rate": 0.0,
+      "latency_p50": 1.0033000000000003,
+      "latency_p90": 1.1974,
+      "double_answers": 0,
+      "shorts_during_user": 1
+    },
+    "T2": {
+      "n": 10,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "interruption_rate": 0.2,
+      "response_rate": 1.0
+    },
+    "T3": {
+      "n": 10,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "valid": 10,
+      "interruption_rate": 0.1
+    },
+    "T4": {
+      "n": 10,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "valid": 10,
+      "stop_rate": 1.0,
+      "stop_latency_p50": 0.5920000000000005,
+      "response_rate": 1.0,
+      "latency_p50": 1.0146000000000015
+    },
+    "T5": {
+      "n": 5,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "per_minute": 1.434936307683975,
+      "in_gap_share": 1.0,
+      "overlapped_share": 0.0,
+      "bursts": 0,
+      "main_interruptions": 0,
+      "final_response_rate": 1.0,
+      "final_latency_p50": 1.567699999999995
+    },
+    "R1": {
+      "stale_chunks": 0,
+      "double_answers": 0
+    }
+  }
+}

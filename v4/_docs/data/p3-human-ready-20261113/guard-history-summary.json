@@ -1,0 +1,482 @@
+{
+  "schema_version": 1,
+  "kind": "MOCK_counterfactual_callback_replay",
+  "limits": [
+    "No live policy adoption or closed-loop performance measurement",
+    "Playing uses full receiver clip envelopes, not audible intervals or engine state",
+    "Runtime worker latest may precede its logged callback and is unknown",
+    "Current selector is scoped to the current voice; pre-onset/future values excluded"
+  ],
+  "summary": {
+    "cases": 240,
+    "gate_count": 171,
+    "cases_without_gate": 88,
+    "decisions": {
+      "current": {
+        "not_eligible": 137,
+        "stop": 34
+      },
+      "recent_250ms": {
+        "not_eligible": 137,
+        "stop": 34
+      },
+      "since_onset": {
+        "not_eligible": 137,
+        "stop": 29,
+        "hold": 5
+      }
+    },
+    "nonfiring_reasons": {
+      "current": {
+        "guard_disabled": 128,
+        "below_threshold": 34,
+        "no_main_playback_at_start": 7,
+        "no_main_playback_at_gate": 2
+      },
+      "recent_250ms": {
+        "guard_disabled": 128,
+        "below_threshold": 34,
+        "no_main_playback_at_start": 7,
+        "no_main_playback_at_gate": 2
+      },
+      "since_onset": {
+        "guard_disabled": 128,
+        "below_threshold": 29,
+        "no_main_playback_at_start": 7,
+        "threshold_met": 5,
+        "no_main_playback_at_gate": 2
+      }
+    },
+    "t4_additional_hold_candidates": {
+      "current": 0,
+      "recent_250ms": 0,
+      "since_onset": 4
+    },
+    "measured_policy_improvement": false
+  },
+  "by_run": {
+    "p3-10-v2-1": {
+      "cases": 20,
+      "gate_count": 14,
+      "cases_without_gate": 7,
+      "decisions": {
+        "current": {
+          "not_eligible": 14
+        },
+        "recent_250ms": {
+          "not_eligible": 14
+        },
+        "since_onset": {
+          "not_eligible": 14
+        }
+      },
+      "nonfiring_reasons": {
+        "current": {
+          "guard_disabled": 14
+        },
+        "recent_250ms": {
+          "guard_disabled": 14
+        },
+        "since_onset": {
+          "guard_disabled": 14
+        }
+      },
+      "t4_additional_hold_candidates": {
+        "current": 0,
+        "recent_250ms": 0,
+        "since_onset": 0
+      },
+      "measured_policy_improvement": false
+    },
+    "p3-10-v2-2": {
+      "cases": 20,
+      "gate_count": 14,
+      "cases_without_gate": 7,
+      "decisions": {
+        "current": {
+          "not_eligible": 14
+        },
+        "recent_250ms": {
+          "not_eligible": 14
+        },
+        "since_onset": {
+          "not_eligible": 14
+        }
+      },
+      "nonfiring_reasons": {
+        "current": {
+          "guard_disabled": 14
+        },
+        "recent_250ms": {
+          "guard_disabled": 14
+        },
+        "since_onset": {
+          "guard_disabled": 14
+        }
+      },
+      "t4_additional_hold_candidates": {
+        "current": 0,
+        "recent_250ms": 0,
+        "since_onset": 0
+      },
+      "measured_policy_improvement": false
+    },
+    "p3-10-v2-3": {
+      "cases": 20,
+      "gate_count": 14,
+      "cases_without_gate": 7,
+      "decisions": {
+        "current": {
+          "not_eligible": 14
+        },
+        "recent_250ms": {
+          "not_eligible": 14
+        },
+        "since_onset": {
+          "not_eligible": 14
+        }
+      },
+      "nonfiring_reasons": {
+        "current": {
+          "guard_disabled": 14
+        },
+        "recent_250ms": {
+          "guard_disabled": 14
+        },
+        "since_onset": {
+          "guard_disabled": 14
+        }
+      },
+      "t4_additional_hold_candidates": {
+        "current": 0,
+        "recent_250ms": 0,
+        "since_onset": 0
+      },
+      "measured_policy_improvement": false
+    },
+    "p3-11-bc-1": {
+      "cases": 20,
+      "gate_count": 14,
+      "cases_without_gate": 7,
+      "decisions": {
+        "current": {
+          "not_eligible": 14
+        },
+        "recent_250ms": {
+          "not_eligible": 14
+        },
+        "since_onset": {
+          "not_eligible": 14
+        }
+      },
+      "nonfiring_reasons": {
+        "current": {
+          "guard_disabled": 14
+        },
+        "recent_250ms": {
+          "guard_disabled": 14
+        },
+        "since_onset": {
+          "guard_disabled": 14
+        }
+      },
+      "t4_additional_hold_candidates": {
+        "current": 0,
+        "recent_250ms": 0,
+        "since_onset": 0
+      },
+      "measured_policy_improvement": false
+    },
+    "p3-11-bc-2": {
+      "cases": 20,
+      "gate_count": 14,
+      "cases_without_gate": 7,
+      "decisions": {
+        "current": {
+          "not_eligible": 14
+        },
+        "recent_250ms": {
+          "not_eligible": 14
+        },
+        "since_onset": {
+          "not_eligible": 14
+        }
+      },
+      "nonfiring_reasons": {
+        "current": {
+          "guard_disabled": 14
+        },
+        "recent_250ms": {
+          "guard_disabled": 14
+        },
+        "since_onset": {
+          "guard_disabled": 14
+        }
+      },
+      "t4_additional_hold_candidates": {
+        "current": 0,
+        "recent_250ms": 0,
+        "since_onset": 0
+      },
+      "measured_policy_improvement": false
+    },
+    "p3-11-bc-3": {
+      "cases": 20,
+      "gate_count": 15,
+      "cases_without_gate": 7,
+      "decisions": {
+        "current": {
+          "not_eligible": 15
+        },
+        "recent_250ms": {
+          "not_eligible": 15
+        },
+        "since_onset": {
+          "not_eligible": 15
+        }
+      },
+      "nonfiring_reasons": {
+        "current": {
+          "guard_disabled": 15
+        },
+        "recent_250ms": {
+          "guard_disabled": 15
+        },
+        "since_onset": {
+          "guard_disabled": 15
+        }
+      },
+      "t4_additional_hold_candidates": {
+        "current": 0,
+        "recent_250ms": 0,
+        "since_onset": 0
+      },
+      "measured_policy_improvement": false
+    },
+    "p3-12-ep-1": {
+      "cases": 20,
+      "gate_count": 15,
+      "cases_without_gate": 7,
+      "decisions": {
+        "current": {
+          "not_eligible": 15
+        },
+        "recent_250ms": {
+          "not_eligible": 15
+        },
+        "since_onset": {
+          "not_eligible": 15
+        }
+      },
+      "nonfiring_reasons": {
+        "current": {
+          "guard_disabled": 15
+        },
+        "recent_250ms": {
+          "guard_disabled": 15
+        },
+        "since_onset": {
+          "guard_disabled": 15
+        }
+      },
+      "t4_additional_hold_candidates": {
+        "current": 0,
+        "recent_250ms": 0,
+        "since_onset": 0
+      },
+      "measured_policy_improvement": false
+    },
+    "p3-12-ep-2": {
+      "cases": 20,
+      "gate_count": 14,
+      "cases_without_gate": 7,
+      "decisions": {
+        "current": {
+          "not_eligible": 14
+        },
+        "recent_250ms": {
+          "not_eligible": 14
+        },
+        "since_onset": {
+          "not_eligible": 14
+        }
+      },
+      "nonfiring_reasons": {
+        "current": {
+          "guard_disabled": 14
+        },
+        "recent_250ms": {
+          "guard_disabled": 14
+        },
+        "since_onset": {
+          "guard_disabled": 14
+        }
+      },
+      "t4_additional_hold_candidates": {
+        "current": 0,
+        "recent_250ms": 0,
+        "since_onset": 0
+      },
+      "measured_policy_improvement": false
+    },
+    "p3-12-ep-3": {
+      "cases": 20,
+      "gate_count": 14,
+      "cases_without_gate": 8,
+      "decisions": {
+        "current": {
+          "not_eligible": 14
+        },
+        "recent_250ms": {
+          "not_eligible": 14
+        },
+        "since_onset": {
+          "not_eligible": 14
+        }
+      },
+      "nonfiring_reasons": {
+        "current": {
+          "guard_disabled": 14
+        },
+        "recent_250ms": {
+          "guard_disabled": 14
+        },
+        "since_onset": {
+          "guard_disabled": 14
+        }
+      },
+      "t4_additional_hold_candidates": {
+        "current": 0,
+        "recent_250ms": 0,
+        "since_onset": 0
+      },
+      "measured_policy_improvement": false
+    },
+    "p3-13-guard-1": {
+      "cases": 20,
+      "gate_count": 15,
+      "cases_without_gate": 8,
+      "decisions": {
+        "current": {
+          "stop": 12,
+          "not_eligible": 3
+        },
+        "recent_250ms": {
+          "stop": 12,
+          "not_eligible": 3
+        },
+        "since_onset": {
+          "stop": 11,
+          "not_eligible": 3,
+          "hold": 1
+        }
+      },
+      "nonfiring_reasons": {
+        "current": {
+          "below_threshold": 12,
+          "no_main_playback_at_start": 3
+        },
+        "recent_250ms": {
+          "below_threshold": 12,
+          "no_main_playback_at_start": 3
+        },
+        "since_onset": {
+          "below_threshold": 11,
+          "no_main_playback_at_start": 3,
+          "threshold_met": 1
+        }
+      },
+      "t4_additional_hold_candidates": {
+        "current": 0,
+        "recent_250ms": 0,
+        "since_onset": 1
+      },
+      "measured_policy_improvement": false
+    },
+    "p3-13-guard-2": {
+      "cases": 20,
+      "gate_count": 14,
+      "cases_without_gate": 8,
+      "decisions": {
+        "current": {
+          "stop": 12,
+          "not_eligible": 2
+        },
+        "recent_250ms": {
+          "stop": 12,
+          "not_eligible": 2
+        },
+        "since_onset": {
+          "stop": 11,
+          "not_eligible": 2,
+          "hold": 1
+        }
+      },
+      "nonfiring_reasons": {
+        "current": {
+          "below_threshold": 12,
+          "no_main_playback_at_start": 2
+        },
+        "recent_250ms": {
+          "below_threshold": 12,
+          "no_main_playback_at_start": 2
+        },
+        "since_onset": {
+          "below_threshold": 11,
+          "no_main_playback_at_start": 2,
+          "threshold_met": 1
+        }
+      },
+      "t4_additional_hold_candidates": {
+        "current": 0,
+        "recent_250ms": 0,
+        "since_onset": 1
+      },
+      "measured_policy_improvement": false
+    },
+    "p3-13-guard-3": {
+      "cases": 20,
+      "gate_count": 14,
+      "cases_without_gate": 8,
+      "decisions": {
+        "current": {
+          "stop": 10,
+          "not_eligible": 4
+        },
+        "recent_250ms": {
+          "stop": 10,
+          "not_eligible": 4
+        },
+        "since_onset": {
+          "hold": 3,
+          "stop": 7,
+          "not_eligible": 4
+        }
+      },
+      "nonfiring_reasons": {
+        "current": {
+          "below_threshold": 10,
+          "no_main_playback_at_start": 2,
+          "no_main_playback_at_gate": 2
+        },
+        "recent_250ms": {
+          "below_threshold": 10,
+          "no_main_playback_at_start": 2,
+          "no_main_playback_at_gate": 2
+        },
+        "since_onset": {
+          "threshold_met": 3,
+          "below_threshold": 7,
+          "no_main_playback_at_start": 2,
+          "no_main_playback_at_gate": 2
+        }
+      },
+      "t4_additional_hold_candidates": {
+        "current": 0,
+        "recent_250ms": 0,
+        "since_onset": 2
+      },
+      "measured_policy_improvement": false
+    }
+  }
+}

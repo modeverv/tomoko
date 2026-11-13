@@ -1,0 +1,1523 @@
+{
+  "schema_version": 1,
+  "scope": "existing synthetic T5,one before and one after",
+  "source_script_sha256": "70d97c711f1ec88f34b7f4d174e234898da4e45951d1b2f0a221c568da8ed396",
+  "source_runtime_sha256": "1371cc82f6c95f56528d3bee0bee50ab25a31c5fff93beb718a2e285426e7606",
+  "source_numeric_sha256": {
+    "before": "e0e424fc676e18095c7aeea93d0b9119deaf9c993de691bd7663d8fb83650850",
+    "after": "e007753b01819106f9e8ddffede17a2231da5b5b1f342940388046fcf2fd5af3"
+  },
+  "cases": {
+    "t5-01": {
+      "before": {
+        "generation": 9,
+        "turn": 8,
+        "provenance": {
+          "run_sha256": "553fab2b713c5a9b0ee8ecb6026ac2ab60b61fca8277a2958806c1ef7b14e728",
+          "trace_sha256": "7c5c2ede279cfc698276a6d3ba088d4515741bcdccd2f58ca4bbe13d5b35e84a",
+          "results_sha256": "e1835aeb1961a363cd2d069fbdc8c9148499e19594cac04066fbd6c286571d90",
+          "trace_name": "20261113T153439-0012.jsonl"
+        },
+        "input_clock": {
+          "recorded_user_end_s": 33.6267,
+          "last_vad_speech_end_s": 33.696,
+          "vad_decision_window_end_s": 34.08,
+          "vad_receive_audio_s": 34.08,
+          "decision_window_after_recorded_end_s": 0.4532999999999987,
+          "vad_quiet_wait_s": 0.38400000000000034,
+          "final_stt_audio_len_s": 34.688
+        },
+        "server_wall_clock": {
+          "critical_parts_s": {
+            "vad_event_to_stt_start_s": 0.0005000000000023874,
+            "stt_roundtrip_s": 2.4536999999999978,
+            "stt_final_to_llm_start_s": 0.00019999999999953388,
+            "llm_start_to_first_token_s": 0.08100000000000307,
+            "first_token_to_first_phrase_tts_s": 0.02559999999999718,
+            "first_phrase_tts_to_first_ready_s": 0.23279999999999745
+          },
+          "vad_event_to_first_ready_s": 2.7937999999999974,
+          "llm_total_s": 0.6019000000000005,
+          "final_generation_hold_intervals": null,
+          "direct_final_gate_wait_s": null,
+          "first_ready_to_first_send_call_s": null,
+          "events": {
+            "vad_end": {
+              "t": 34.0837,
+              "audio_s": 34.08,
+              "speech_start_s": 27.808,
+              "speech_end_s": 33.696
+            },
+            "stt_start": {
+              "t": 34.0842,
+              "audio_s": 34.08,
+              "turn": 8,
+              "audio_len_s": 34.688
+            },
+            "stt_final": {
+              "t": 36.5379,
+              "audio_s": 36.52,
+              "turn": 8
+            },
+            "llm_start": {
+              "t": 36.5381,
+              "audio_s": 36.52,
+              "turn": 8
+            },
+            "llm_first_token": {
+              "t": 36.6191,
+              "audio_s": 36.6,
+              "turn": 8
+            },
+            "first_tts_start": {
+              "t": 36.6447,
+              "audio_s": 36.64,
+              "turn": 8,
+              "phrase": 0
+            },
+            "first_tts_ready": {
+              "t": 36.8775,
+              "audio_s": 36.86,
+              "turn": 8,
+              "phrase": 0
+            }
+          }
+        },
+        "receiver_clock": {
+          "scored_final_latency_s": 3.7173000000000016,
+          "scored_final_main_segment_s": [
+            37.344,
+            48.288
+          ],
+          "parts_s": {
+            "first_packet_after_recorded_user_end_s": 3.2327999999999975,
+            "sample_rounding_shift_s": 0.0,
+            "prior_output_queue_wait_s": 0.0,
+            "scorer_onset_minus_first_placed_main_sample_s": 0.48450000000000415
+          },
+          "first_packet": {
+            "receiver_arrival_s": 36.8595,
+            "start_sample": 884628,
+            "sample_rounding_shift_s": 0.0,
+            "queue_delay_s": 0.0,
+            "prior_queued_generations": [],
+            "prior_queued_BC_generations": []
+          },
+          "latest_retained_BC_end_before_main_s": 34.2975
+        },
+        "case_holds": [],
+        "unclosed_holds": [],
+        "first_phrase_audio_len_s": 0.416,
+        "text_metrics_only": {
+          "final_stt_chars": 181,
+          "final_llm_chars": 84,
+          "first_phrase_chars": 3
+        }
+      },
+      "after": {
+        "generation": 14,
+        "turn": 8,
+        "provenance": {
+          "run_sha256": "92fa308f0026faf7dbeac9e75c1ae8b3a493313bb9c39c5f3b24ede8dae89d5e",
+          "trace_sha256": "b1b836859eacc43c9bb90006d868ed8b51735c27987d575482e87139606e4bf9",
+          "results_sha256": "5118ce7f02704de677b8ae468a9780fd56758e713ca3363704849aea00e2f84f",
+          "trace_name": "20261113T155608-0005.jsonl"
+        },
+        "input_clock": {
+          "recorded_user_end_s": 33.6267,
+          "last_vad_speech_end_s": 33.696,
+          "vad_decision_window_end_s": 34.08,
+          "vad_receive_audio_s": 34.08,
+          "decision_window_after_recorded_end_s": 0.4532999999999987,
+          "vad_quiet_wait_s": 0.38400000000000034,
+          "final_stt_audio_len_s": 34.688
+        },
+        "server_wall_clock": {
+          "critical_parts_s": {
+            "vad_event_to_stt_start_s": 0.00039999999999906777,
+            "stt_roundtrip_s": 0.6356999999999999,
+            "stt_final_to_llm_start_s": 0.00010000000000331966,
+            "llm_start_to_first_token_s": 0.08209999999999695,
+            "first_token_to_first_phrase_tts_s": 0.028199999999998226,
+            "first_phrase_tts_to_first_ready_s": 0.2161000000000044
+          },
+          "vad_event_to_first_ready_s": 0.9626000000000019,
+          "llm_total_s": 0.5643999999999991,
+          "final_generation_hold_intervals": [],
+          "direct_final_gate_wait_s": 0,
+          "first_ready_to_first_send_call_s": 9.999999999621423e-05,
+          "events": {
+            "vad_end": {
+              "t": 34.0822,
+              "audio_s": 34.08,
+              "speech_start_s": 27.808,
+              "speech_end_s": 33.696
+            },
+            "stt_start": {
+              "t": 34.0826,
+              "audio_s": 34.08,
+              "turn": 8,
+              "audio_len_s": 34.688
+            },
+            "stt_final": {
+              "t": 34.7183,
+              "audio_s": 34.7,
+              "turn": 8
+            },
+            "llm_start": {
+              "t": 34.7184,
+              "audio_s": 34.7,
+              "turn": 8
+            },
+            "llm_first_token": {
+              "t": 34.8005,
+              "audio_s": 34.78,
+              "turn": 8
+            },
+            "first_tts_start": {
+              "t": 34.8287,
+              "audio_s": 34.82,
+              "turn": 8,
+              "phrase": 0
+            },
+            "first_tts_ready": {
+              "t": 35.0448,
+              "audio_s": 35.04,
+              "turn": 8,
+              "phrase": 0
+            },
+            "first_send_call": {
+              "t": 35.0449,
+              "audio_s": 35.04,
+              "turn": 8,
+              "generation": 14,
+              "vad_now_s": 35.04,
+              "user_speaking": false,
+              "sustained": true
+            }
+          }
+        },
+        "receiver_clock": {
+          "scored_final_latency_s": 1.8933000000000035,
+          "scored_final_main_segment_s": [
+            35.52,
+            46.112
+          ],
+          "parts_s": {
+            "first_packet_after_recorded_user_end_s": 1.4003000000000014,
+            "sample_rounding_shift_s": 0.0,
+            "prior_output_queue_wait_s": 0.0,
+            "scorer_onset_minus_first_placed_main_sample_s": 0.4930000000000021
+          },
+          "first_packet": {
+            "receiver_arrival_s": 35.027,
+            "start_sample": 840648,
+            "sample_rounding_shift_s": 0.0,
+            "queue_delay_s": 0.0,
+            "prior_queued_generations": [],
+            "prior_queued_BC_generations": []
+          },
+          "latest_retained_BC_end_before_main_s": 34.29770833333333
+        },
+        "case_holds": [
+          {
+            "generation": 1,
+            "turn": 1,
+            "start_server_t": 5.1713,
+            "end_server_t": 5.3225,
+            "duration_server_s": 0.15120000000000022,
+            "start_input_s": 5.16,
+            "end_input_s": 5.32,
+            "cancelled": true
+          },
+          {
+            "generation": 3,
+            "turn": 2,
+            "start_server_t": 9.2787,
+            "end_server_t": 9.3625,
+            "duration_server_s": 0.0838000000000001,
+            "start_input_s": 9.26,
+            "end_input_s": 9.36,
+            "cancelled": true
+          },
+          {
+            "generation": 5,
+            "turn": 3,
+            "start_server_t": 13.1695,
+            "end_server_t": 13.3626,
+            "duration_server_s": 0.19310000000000116,
+            "start_input_s": 13.16,
+            "end_input_s": 13.36,
+            "cancelled": true
+          },
+          {
+            "generation": 6,
+            "turn": 4,
+            "start_server_t": 14.5211,
+            "end_server_t": 14.6613,
+            "duration_server_s": 0.1402000000000001,
+            "start_input_s": 14.5,
+            "end_input_s": 14.66,
+            "cancelled": true
+          },
+          {
+            "generation": 10,
+            "turn": 6,
+            "start_server_t": 23.2771,
+            "end_server_t": 23.3449,
+            "duration_server_s": 0.0677999999999983,
+            "start_input_s": 23.26,
+            "end_input_s": 23.34,
+            "cancelled": true
+          }
+        ],
+        "unclosed_holds": [],
+        "first_phrase_audio_len_s": 0.416,
+        "text_metrics_only": {
+          "final_stt_chars": 181,
+          "final_llm_chars": 79,
+          "first_phrase_chars": 3
+        }
+      },
+      "text_equality_only": {
+        "final_stt_equal": true,
+        "final_llm_equal": false,
+        "first_phrase_equal": true
+      },
+      "deltas_after_minus_before": {
+        "scored_final_latency_s": -1.823999999999998,
+        "receiver_parts_s": {
+          "first_packet_after_recorded_user_end_s": -1.832499999999996,
+          "sample_rounding_shift_s": 0.0,
+          "prior_output_queue_wait_s": 0.0,
+          "scorer_onset_minus_first_placed_main_sample_s": 0.008499999999997954
+        },
+        "server_critical_parts_s": {
+          "vad_event_to_stt_start_s": -0.00010000000000331966,
+          "stt_roundtrip_s": -1.8179999999999978,
+          "stt_final_to_llm_start_s": -9.999999999621423e-05,
+          "llm_start_to_first_token_s": 0.0010999999999938836,
+          "first_token_to_first_phrase_tts_s": 0.002600000000001046,
+          "first_phrase_tts_to_first_ready_s": -0.016699999999993054
+        },
+        "final_stt_audio_len_s": 0.0
+      }
+    },
+    "t5-02": {
+      "before": {
+        "generation": 9,
+        "turn": 7,
+        "provenance": {
+          "run_sha256": "52fb14318066e14d5a193f4b4edf54b2e68d2048926c2a8a55a95111605bae84",
+          "trace_sha256": "bed2400a008e3aaf47131c43c0bb985bb5b1f14d937a5e994f025468f40e7dbe",
+          "results_sha256": "e1835aeb1961a363cd2d069fbdc8c9148499e19594cac04066fbd6c286571d90",
+          "trace_name": "20261113T153530-0013.jsonl"
+        },
+        "input_clock": {
+          "recorded_user_end_s": 34.9763,
+          "last_vad_speech_end_s": 35.04,
+          "vad_decision_window_end_s": 35.424,
+          "vad_receive_audio_s": 35.44,
+          "decision_window_after_recorded_end_s": 0.44769999999999754,
+          "vad_quiet_wait_s": 0.38400000000000034,
+          "final_stt_audio_len_s": 35.872
+        },
+        "server_wall_clock": {
+          "critical_parts_s": {
+            "vad_event_to_stt_start_s": 0.0002999999999957481,
+            "stt_roundtrip_s": 2.8608000000000047,
+            "stt_final_to_llm_start_s": 0.0002999999999957481,
+            "llm_start_to_first_token_s": 0.07869999999999777,
+            "first_token_to_first_phrase_tts_s": 0.06910000000000593,
+            "first_phrase_tts_to_first_ready_s": 0.24459999999999837
+          },
+          "vad_event_to_first_ready_s": 3.2537999999999982,
+          "llm_total_s": 1.1257999999999981,
+          "final_generation_hold_intervals": null,
+          "direct_final_gate_wait_s": null,
+          "first_ready_to_first_send_call_s": null,
+          "events": {
+            "vad_end": {
+              "t": 35.4423,
+              "audio_s": 35.44,
+              "speech_start_s": 30.144,
+              "speech_end_s": 35.04
+            },
+            "stt_start": {
+              "t": 35.4426,
+              "audio_s": 35.44,
+              "turn": 7,
+              "audio_len_s": 35.872
+            },
+            "stt_final": {
+              "t": 38.3034,
+              "audio_s": 38.3,
+              "turn": 7
+            },
+            "llm_start": {
+              "t": 38.3037,
+              "audio_s": 38.3,
+              "turn": 7
+            },
+            "llm_first_token": {
+              "t": 38.3824,
+              "audio_s": 38.38,
+              "turn": 7
+            },
+            "first_tts_start": {
+              "t": 38.4515,
+              "audio_s": 38.44,
+              "turn": 7,
+              "phrase": 0
+            },
+            "first_tts_ready": {
+              "t": 38.6961,
+              "audio_s": 38.68,
+              "turn": 7,
+              "phrase": 0
+            }
+          }
+        },
+        "receiver_clock": {
+          "scored_final_latency_s": 3.7757000000000005,
+          "scored_final_main_segment_s": [
+            38.752,
+            45.728
+          ],
+          "parts_s": {
+            "first_packet_after_recorded_user_end_s": 3.7017999999999986,
+            "sample_rounding_shift_s": -1.6666666667219943e-05,
+            "prior_output_queue_wait_s": 0.0,
+            "scorer_onset_minus_first_placed_main_sample_s": 0.07391666666666907
+          },
+          "first_packet": {
+            "receiver_arrival_s": 38.6781,
+            "start_sample": 928274,
+            "sample_rounding_shift_s": -1.6666666667219943e-05,
+            "queue_delay_s": 0.0,
+            "prior_queued_generations": [],
+            "prior_queued_BC_generations": []
+          },
+          "latest_retained_BC_end_before_main_s": 35.638
+        },
+        "case_holds": [],
+        "unclosed_holds": [],
+        "first_phrase_audio_len_s": 1.568,
+        "text_metrics_only": {
+          "final_stt_chars": 181,
+          "final_llm_chars": 141,
+          "first_phrase_chars": 11
+        }
+      },
+      "after": {
+        "generation": 13,
+        "turn": 7,
+        "provenance": {
+          "run_sha256": "7cbc4fedf30754cab1cdcc00c959ee5626ffaac71ee3012ffeb9ca28c4e1ee88",
+          "trace_sha256": "1621615731f9ab40b05a1b4576417dd9cb8db77fc9e5566daaef79532d01dd55",
+          "results_sha256": "5118ce7f02704de677b8ae468a9780fd56758e713ca3363704849aea00e2f84f",
+          "trace_name": "20261113T155657-0006.jsonl"
+        },
+        "input_clock": {
+          "recorded_user_end_s": 34.9763,
+          "last_vad_speech_end_s": 35.04,
+          "vad_decision_window_end_s": 35.424,
+          "vad_receive_audio_s": 35.44,
+          "decision_window_after_recorded_end_s": 0.44769999999999754,
+          "vad_quiet_wait_s": 0.38400000000000034,
+          "final_stt_audio_len_s": 35.872
+        },
+        "server_wall_clock": {
+          "critical_parts_s": {
+            "vad_event_to_stt_start_s": 0.0002999999999957481,
+            "stt_roundtrip_s": 0.6548999999999978,
+            "stt_final_to_llm_start_s": 0.00030000000000285354,
+            "llm_start_to_first_token_s": 0.04809999999999803,
+            "first_token_to_first_phrase_tts_s": 0.06500000000000483,
+            "first_phrase_tts_to_first_ready_s": 0.2224999999999966
+          },
+          "vad_event_to_first_ready_s": 0.9910999999999959,
+          "llm_total_s": 0.4894000000000034,
+          "final_generation_hold_intervals": [],
+          "direct_final_gate_wait_s": 0,
+          "first_ready_to_first_send_call_s": 0.0,
+          "events": {
+            "vad_end": {
+              "t": 35.4423,
+              "audio_s": 35.44,
+              "speech_start_s": 30.144,
+              "speech_end_s": 35.04
+            },
+            "stt_start": {
+              "t": 35.4426,
+              "audio_s": 35.44,
+              "turn": 7,
+              "audio_len_s": 35.872
+            },
+            "stt_final": {
+              "t": 36.0975,
+              "audio_s": 36.08,
+              "turn": 7
+            },
+            "llm_start": {
+              "t": 36.0978,
+              "audio_s": 36.08,
+              "turn": 7
+            },
+            "llm_first_token": {
+              "t": 36.1459,
+              "audio_s": 36.14,
+              "turn": 7
+            },
+            "first_tts_start": {
+              "t": 36.2109,
+              "audio_s": 36.2,
+              "turn": 7,
+              "phrase": 0
+            },
+            "first_tts_ready": {
+              "t": 36.4334,
+              "audio_s": 36.42,
+              "turn": 7,
+              "phrase": 0
+            },
+            "first_send_call": {
+              "t": 36.4334,
+              "audio_s": 36.42,
+              "turn": 7,
+              "generation": 13,
+              "vad_now_s": 36.416,
+              "user_speaking": false,
+              "sustained": true
+            }
+          }
+        },
+        "receiver_clock": {
+          "scored_final_latency_s": 1.503699999999995,
+          "scored_final_main_segment_s": [
+            36.48,
+            46.368
+          ],
+          "parts_s": {
+            "first_packet_after_recorded_user_end_s": 1.439,
+            "sample_rounding_shift_s": -8.333333333609971e-06,
+            "prior_output_queue_wait_s": 0.0,
+            "scorer_onset_minus_first_placed_main_sample_s": 0.06470833333332848
+          },
+          "first_packet": {
+            "receiver_arrival_s": 36.4153,
+            "start_sample": 873967,
+            "sample_rounding_shift_s": -8.333333333609971e-06,
+            "queue_delay_s": 0.0,
+            "prior_queued_generations": [],
+            "prior_queued_BC_generations": []
+          },
+          "latest_retained_BC_end_before_main_s": 35.637791666666665
+        },
+        "case_holds": [
+          {
+            "generation": 1,
+            "turn": 1,
+            "start_server_t": 5.2871,
+            "end_server_t": 5.442,
+            "duration_server_s": 0.15490000000000048,
+            "start_input_s": 5.28,
+            "end_input_s": 5.44,
+            "cancelled": true
+          },
+          {
+            "generation": 3,
+            "turn": 2,
+            "start_server_t": 11.5813,
+            "end_server_t": 12.0422,
+            "duration_server_s": 0.46089999999999876,
+            "start_input_s": 11.56,
+            "end_input_s": 12.04,
+            "cancelled": true
+          },
+          {
+            "generation": 7,
+            "turn": 4,
+            "start_server_t": 21.3827,
+            "end_server_t": 21.4819,
+            "duration_server_s": 0.09919999999999973,
+            "start_input_s": 21.38,
+            "end_input_s": 21.48,
+            "cancelled": true
+          },
+          {
+            "generation": 9,
+            "turn": 5,
+            "start_server_t": 26.8226,
+            "end_server_t": 26.862,
+            "duration_server_s": 0.03939999999999699,
+            "start_input_s": 26.82,
+            "end_input_s": 26.86,
+            "cancelled": true
+          }
+        ],
+        "unclosed_holds": [],
+        "first_phrase_audio_len_s": 1.76,
+        "text_metrics_only": {
+          "final_stt_chars": 181,
+          "final_llm_chars": 69,
+          "first_phrase_chars": 13
+        }
+      },
+      "text_equality_only": {
+        "final_stt_equal": true,
+        "final_llm_equal": false,
+        "first_phrase_equal": false
+      },
+      "deltas_after_minus_before": {
+        "scored_final_latency_s": -2.2720000000000056,
+        "receiver_parts_s": {
+          "first_packet_after_recorded_user_end_s": -2.2627999999999986,
+          "sample_rounding_shift_s": 8.333333333609971e-06,
+          "prior_output_queue_wait_s": 0.0,
+          "scorer_onset_minus_first_placed_main_sample_s": -0.00920833333334059
+        },
+        "server_critical_parts_s": {
+          "vad_event_to_stt_start_s": 0.0,
+          "stt_roundtrip_s": -2.205900000000007,
+          "stt_final_to_llm_start_s": 7.105427357601002e-15,
+          "llm_start_to_first_token_s": -0.03059999999999974,
+          "first_token_to_first_phrase_tts_s": -0.004100000000001103,
+          "first_phrase_tts_to_first_ready_s": -0.022100000000001785
+        },
+        "final_stt_audio_len_s": 0.0
+      }
+    },
+    "t5-03": {
+      "before": {
+        "generation": 10,
+        "turn": 6,
+        "provenance": {
+          "run_sha256": "f47551ea46c082784b303faff69a1c6fef611096af3496bbcc1f4cb7d129c020",
+          "trace_sha256": "1fb72cc48467af4cb2872411ffd97287e6ed8118650cbed18a4e264efd43cfff",
+          "results_sha256": "e1835aeb1961a363cd2d069fbdc8c9148499e19594cac04066fbd6c286571d90",
+          "trace_name": "20261113T153632-0014.jsonl"
+        },
+        "input_clock": {
+          "recorded_user_end_s": 31.3496,
+          "last_vad_speech_end_s": 31.392,
+          "vad_decision_window_end_s": 31.776,
+          "vad_receive_audio_s": 31.78,
+          "decision_window_after_recorded_end_s": 0.426400000000001,
+          "vad_quiet_wait_s": 0.38400000000000034,
+          "final_stt_audio_len_s": 6.048
+        },
+        "server_wall_clock": {
+          "critical_parts_s": {
+            "vad_event_to_stt_start_s": 9.999999999976694e-05,
+            "stt_roundtrip_s": 0.23600000000000065,
+            "stt_final_to_llm_start_s": 0.00030000000000285354,
+            "llm_start_to_first_token_s": 0.07339999999999947,
+            "first_token_to_first_phrase_tts_s": 0.0642999999999958,
+            "first_phrase_tts_to_first_ready_s": 0.3406999999999982
+          },
+          "vad_event_to_first_ready_s": 0.7147999999999968,
+          "llm_total_s": 0.21519999999999584,
+          "final_generation_hold_intervals": null,
+          "direct_final_gate_wait_s": null,
+          "first_ready_to_first_send_call_s": null,
+          "events": {
+            "vad_end": {
+              "t": 31.7821,
+              "audio_s": 31.78,
+              "speech_start_s": 25.6,
+              "speech_end_s": 31.392
+            },
+            "stt_start": {
+              "t": 31.7822,
+              "audio_s": 31.78,
+              "turn": 6,
+              "audio_len_s": 6.048
+            },
+            "stt_final": {
+              "t": 32.0182,
+              "audio_s": 32.0,
+              "turn": 6
+            },
+            "llm_start": {
+              "t": 32.0185,
+              "audio_s": 32.0,
+              "turn": 6
+            },
+            "llm_first_token": {
+              "t": 32.0919,
+              "audio_s": 32.08,
+              "turn": 6
+            },
+            "first_tts_start": {
+              "t": 32.1562,
+              "audio_s": 32.14,
+              "turn": 6,
+              "phrase": 0
+            },
+            "first_tts_ready": {
+              "t": 32.4969,
+              "audio_s": 32.48,
+              "turn": 6,
+              "phrase": 0
+            }
+          }
+        },
+        "receiver_clock": {
+          "scored_final_latency_s": 1.130399999999998,
+          "scored_final_main_segment_s": [
+            32.48,
+            35.2
+          ],
+          "parts_s": {
+            "first_packet_after_recorded_user_end_s": 1.1297000000000033,
+            "sample_rounding_shift_s": -8.333333333609971e-06,
+            "prior_output_queue_wait_s": 0.0,
+            "scorer_onset_minus_first_placed_main_sample_s": 0.0007083333333284259
+          },
+          "first_packet": {
+            "receiver_arrival_s": 32.4793,
+            "start_sample": 779503,
+            "sample_rounding_shift_s": -8.333333333609971e-06,
+            "queue_delay_s": 0.0,
+            "prior_queued_generations": [],
+            "prior_queued_BC_generations": []
+          },
+          "latest_retained_BC_end_before_main_s": 31.998
+        },
+        "case_holds": [],
+        "unclosed_holds": [],
+        "first_phrase_audio_len_s": 1.589,
+        "text_metrics_only": {
+          "final_stt_chars": 39,
+          "final_llm_chars": 20,
+          "first_phrase_chars": 11
+        }
+      },
+      "after": {
+        "generation": 10,
+        "turn": 6,
+        "provenance": {
+          "run_sha256": "86095488473855bac7e310dbcf0761d3d60a83614f39d8a979c6ebcac586cc37",
+          "trace_sha256": "b5e8cc00de3766b01558d64bdb00a0d3f419e60d8c427961926d883a36f24190",
+          "results_sha256": "5118ce7f02704de677b8ae468a9780fd56758e713ca3363704849aea00e2f84f",
+          "trace_name": "20261113T155746-0007.jsonl"
+        },
+        "input_clock": {
+          "recorded_user_end_s": 31.3496,
+          "last_vad_speech_end_s": 31.392,
+          "vad_decision_window_end_s": 31.776,
+          "vad_receive_audio_s": 31.78,
+          "decision_window_after_recorded_end_s": 0.426400000000001,
+          "vad_quiet_wait_s": 0.38400000000000034,
+          "final_stt_audio_len_s": 32.128
+        },
+        "server_wall_clock": {
+          "critical_parts_s": {
+            "vad_event_to_stt_start_s": 0.00019999999999953388,
+            "stt_roundtrip_s": 0.5914000000000037,
+            "stt_final_to_llm_start_s": 0.00019999999999953388,
+            "llm_start_to_first_token_s": 0.04679999999999751,
+            "first_token_to_first_phrase_tts_s": 0.06589999999999918,
+            "first_phrase_tts_to_first_ready_s": 0.2516000000000034
+          },
+          "vad_event_to_first_ready_s": 0.9561000000000028,
+          "llm_total_s": 0.5585999999999984,
+          "final_generation_hold_intervals": [],
+          "direct_final_gate_wait_s": 0,
+          "first_ready_to_first_send_call_s": 9.999999999621423e-05,
+          "events": {
+            "vad_end": {
+              "t": 31.782,
+              "audio_s": 31.78,
+              "speech_start_s": 25.6,
+              "speech_end_s": 31.392
+            },
+            "stt_start": {
+              "t": 31.7822,
+              "audio_s": 31.78,
+              "turn": 6,
+              "audio_len_s": 32.128
+            },
+            "stt_final": {
+              "t": 32.3736,
+              "audio_s": 32.36,
+              "turn": 6
+            },
+            "llm_start": {
+              "t": 32.3738,
+              "audio_s": 32.36,
+              "turn": 6
+            },
+            "llm_first_token": {
+              "t": 32.4206,
+              "audio_s": 32.4,
+              "turn": 6
+            },
+            "first_tts_start": {
+              "t": 32.4865,
+              "audio_s": 32.48,
+              "turn": 6,
+              "phrase": 0
+            },
+            "first_tts_ready": {
+              "t": 32.7381,
+              "audio_s": 32.72,
+              "turn": 6,
+              "phrase": 0
+            },
+            "first_send_call": {
+              "t": 32.7382,
+              "audio_s": 32.72,
+              "turn": 6,
+              "generation": 10,
+              "vad_now_s": 32.704,
+              "user_speaking": false,
+              "sustained": true
+            }
+          }
+        },
+        "receiver_clock": {
+          "scored_final_latency_s": 1.4503999999999984,
+          "scored_final_main_segment_s": [
+            32.8,
+            42.176
+          ],
+          "parts_s": {
+            "first_packet_after_recorded_user_end_s": 1.3707999999999991,
+            "sample_rounding_shift_s": 1.6666666667219943e-05,
+            "prior_output_queue_wait_s": 0.0,
+            "scorer_onset_minus_first_placed_main_sample_s": 0.07958333333333201
+          },
+          "first_packet": {
+            "receiver_arrival_s": 32.7204,
+            "start_sample": 785290,
+            "sample_rounding_shift_s": 1.6666666667219943e-05,
+            "queue_delay_s": 0.0,
+            "prior_queued_generations": [],
+            "prior_queued_BC_generations": []
+          },
+          "latest_retained_BC_end_before_main_s": 31.997708333333332
+        },
+        "case_holds": [
+          {
+            "generation": 1,
+            "turn": 1,
+            "start_server_t": 5.5899,
+            "end_server_t": 5.7421,
+            "duration_server_s": 0.15219999999999967,
+            "start_input_s": 5.58,
+            "end_input_s": 5.74,
+            "cancelled": true
+          },
+          {
+            "generation": 3,
+            "turn": 2,
+            "start_server_t": 9.2303,
+            "end_server_t": 9.3816,
+            "duration_server_s": 0.15130000000000088,
+            "start_input_s": 9.22,
+            "end_input_s": 9.38,
+            "cancelled": true
+          },
+          {
+            "generation": 5,
+            "turn": 3,
+            "start_server_t": 14.3986,
+            "end_server_t": 14.5026,
+            "duration_server_s": 0.1039999999999992,
+            "start_input_s": 14.38,
+            "end_input_s": 14.5,
+            "cancelled": true
+          },
+          {
+            "generation": 6,
+            "turn": 4,
+            "start_server_t": 18.5708,
+            "end_server_t": 18.7023,
+            "duration_server_s": 0.13150000000000261,
+            "start_input_s": 18.56,
+            "end_input_s": 18.7,
+            "cancelled": true
+          },
+          {
+            "generation": 8,
+            "turn": 5,
+            "start_server_t": 26.064,
+            "end_server_t": 26.1221,
+            "duration_server_s": 0.058099999999999596,
+            "start_input_s": 26.06,
+            "end_input_s": 26.12,
+            "cancelled": true
+          }
+        ],
+        "unclosed_holds": [],
+        "first_phrase_audio_len_s": 1.536,
+        "text_metrics_only": {
+          "final_stt_chars": 158,
+          "final_llm_chars": 80,
+          "first_phrase_chars": 11
+        }
+      },
+      "text_equality_only": {
+        "final_stt_equal": false,
+        "final_llm_equal": false,
+        "first_phrase_equal": false
+      },
+      "deltas_after_minus_before": {
+        "scored_final_latency_s": 0.3200000000000003,
+        "receiver_parts_s": {
+          "first_packet_after_recorded_user_end_s": 0.24109999999999587,
+          "sample_rounding_shift_s": 2.5000000000829914e-05,
+          "prior_output_queue_wait_s": 0.0,
+          "scorer_onset_minus_first_placed_main_sample_s": 0.07887500000000358
+        },
+        "server_critical_parts_s": {
+          "vad_event_to_stt_start_s": 9.999999999976694e-05,
+          "stt_roundtrip_s": 0.35540000000000305,
+          "stt_final_to_llm_start_s": -0.00010000000000331966,
+          "llm_start_to_first_token_s": -0.026600000000001955,
+          "first_token_to_first_phrase_tts_s": 0.0016000000000033765,
+          "first_phrase_tts_to_first_ready_s": -0.08909999999999485
+        },
+        "final_stt_audio_len_s": 26.08
+      }
+    },
+    "t5-04": {
+      "before": {
+        "generation": 14,
+        "turn": 9,
+        "provenance": {
+          "run_sha256": "758fd410ddc1d9ace2aebe87c69ba6115c2b6e25ffdbfd492e6f68d0efc64ca1",
+          "trace_sha256": "966cbfd8b32a636b85bba42269705f45757e15cd98ef6342457f5a867e0438d3",
+          "results_sha256": "e1835aeb1961a363cd2d069fbdc8c9148499e19594cac04066fbd6c286571d90",
+          "trace_name": "20261113T153710-0015.jsonl"
+        },
+        "input_clock": {
+          "recorded_user_end_s": 32.9681,
+          "last_vad_speech_end_s": 33.024,
+          "vad_decision_window_end_s": 33.408,
+          "vad_receive_audio_s": 33.42,
+          "decision_window_after_recorded_end_s": 0.4399000000000015,
+          "vad_quiet_wait_s": 0.38400000000000034,
+          "final_stt_audio_len_s": 4.096
+        },
+        "server_wall_clock": {
+          "critical_parts_s": {
+            "vad_event_to_stt_start_s": 0.00019999999999953388,
+            "stt_roundtrip_s": 0.2009000000000043,
+            "stt_final_to_llm_start_s": 9.999999999621423e-05,
+            "llm_start_to_first_token_s": 0.06360000000000099,
+            "first_token_to_first_phrase_tts_s": 0.0257000000000005,
+            "first_phrase_tts_to_first_ready_s": 0.20810000000000173
+          },
+          "vad_event_to_first_ready_s": 0.49860000000000326,
+          "llm_total_s": 0.306200000000004,
+          "final_generation_hold_intervals": null,
+          "direct_final_gate_wait_s": null,
+          "first_ready_to_first_send_call_s": null,
+          "events": {
+            "vad_end": {
+              "t": 33.422,
+              "audio_s": 33.42,
+              "speech_start_s": 31.808,
+              "speech_end_s": 33.024
+            },
+            "stt_start": {
+              "t": 33.4222,
+              "audio_s": 33.42,
+              "turn": 9,
+              "audio_len_s": 4.096
+            },
+            "stt_final": {
+              "t": 33.6231,
+              "audio_s": 33.62,
+              "turn": 9
+            },
+            "llm_start": {
+              "t": 33.6232,
+              "audio_s": 33.62,
+              "turn": 9
+            },
+            "llm_first_token": {
+              "t": 33.6868,
+              "audio_s": 33.68,
+              "turn": 9
+            },
+            "first_tts_start": {
+              "t": 33.7125,
+              "audio_s": 33.7,
+              "turn": 9,
+              "phrase": 0
+            },
+            "first_tts_ready": {
+              "t": 33.9206,
+              "audio_s": 33.9,
+              "turn": 9,
+              "phrase": 0
+            }
+          }
+        },
+        "receiver_clock": {
+          "scored_final_latency_s": 1.015900000000002,
+          "scored_final_main_segment_s": [
+            33.984,
+            39.008
+          ],
+          "parts_s": {
+            "first_packet_after_recorded_user_end_s": 0.9343000000000004,
+            "sample_rounding_shift_s": 1.6666666667219943e-05,
+            "prior_output_queue_wait_s": 0.0,
+            "scorer_onset_minus_first_placed_main_sample_s": 0.08158333333333445
+          },
+          "first_packet": {
+            "receiver_arrival_s": 33.9024,
+            "start_sample": 813658,
+            "sample_rounding_shift_s": 1.6666666667219943e-05,
+            "queue_delay_s": 0.0,
+            "prior_queued_generations": [],
+            "prior_queued_BC_generations": []
+          },
+          "latest_retained_BC_end_before_main_s": 33.617416666666664
+        },
+        "case_holds": [],
+        "unclosed_holds": [],
+        "first_phrase_audio_len_s": 0.64,
+        "text_metrics_only": {
+          "final_stt_chars": 26,
+          "final_llm_chars": 40,
+          "first_phrase_chars": 5
+        }
+      },
+      "after": {
+        "generation": 12,
+        "turn": 7,
+        "provenance": {
+          "run_sha256": "3fe8599f53d8ace5954cc256fec4eaa9d84a4d10d153be0043c3280e372539ac",
+          "trace_sha256": "f19f7bb4ee744a94df853108457b6b256f8142c4b9c1134746dc4b255cd42da3",
+          "results_sha256": "5118ce7f02704de677b8ae468a9780fd56758e713ca3363704849aea00e2f84f",
+          "trace_name": "20261113T155834-0008.jsonl"
+        },
+        "input_clock": {
+          "recorded_user_end_s": 32.9681,
+          "last_vad_speech_end_s": 33.024,
+          "vad_decision_window_end_s": 33.408,
+          "vad_receive_audio_s": 33.42,
+          "decision_window_after_recorded_end_s": 0.4399000000000015,
+          "vad_quiet_wait_s": 0.38400000000000034,
+          "final_stt_audio_len_s": 34.24
+        },
+        "server_wall_clock": {
+          "critical_parts_s": {
+            "vad_event_to_stt_start_s": 0.00019999999999953388,
+            "stt_roundtrip_s": 0.6226000000000056,
+            "stt_final_to_llm_start_s": 0.00019999999999953388,
+            "llm_start_to_first_token_s": 0.05819999999999936,
+            "first_token_to_first_phrase_tts_s": 0.08129999999999882,
+            "first_phrase_tts_to_first_ready_s": 0.27960000000000207
+          },
+          "vad_event_to_first_ready_s": 1.042100000000005,
+          "llm_total_s": 0.3656000000000006,
+          "final_generation_hold_intervals": [],
+          "direct_final_gate_wait_s": 0,
+          "first_ready_to_first_send_call_s": 9.999999999621423e-05,
+          "events": {
+            "vad_end": {
+              "t": 33.422,
+              "audio_s": 33.42,
+              "speech_start_s": 28.288,
+              "speech_end_s": 33.024
+            },
+            "stt_start": {
+              "t": 33.4222,
+              "audio_s": 33.42,
+              "turn": 7,
+              "audio_len_s": 34.24
+            },
+            "stt_final": {
+              "t": 34.0448,
+              "audio_s": 34.04,
+              "turn": 7
+            },
+            "llm_start": {
+              "t": 34.045,
+              "audio_s": 34.04,
+              "turn": 7
+            },
+            "llm_first_token": {
+              "t": 34.1032,
+              "audio_s": 34.1,
+              "turn": 7
+            },
+            "first_tts_start": {
+              "t": 34.1845,
+              "audio_s": 34.18,
+              "turn": 7,
+              "phrase": 0
+            },
+            "first_tts_ready": {
+              "t": 34.4641,
+              "audio_s": 34.46,
+              "turn": 7,
+              "phrase": 0
+            },
+            "first_send_call": {
+              "t": 34.4642,
+              "audio_s": 34.46,
+              "turn": 7,
+              "generation": 12,
+              "vad_now_s": 34.432,
+              "user_speaking": false,
+              "sustained": true
+            }
+          }
+        },
+        "receiver_clock": {
+          "scored_final_latency_s": 1.559899999999999,
+          "scored_final_main_segment_s": [
+            34.528,
+            41.056
+          ],
+          "parts_s": {
+            "first_packet_after_recorded_user_end_s": 1.4778999999999982,
+            "sample_rounding_shift_s": 0.0,
+            "prior_output_queue_wait_s": 0.0,
+            "scorer_onset_minus_first_placed_main_sample_s": 0.08200000000000074
+          },
+          "first_packet": {
+            "receiver_arrival_s": 34.446,
+            "start_sample": 826704,
+            "sample_rounding_shift_s": 0.0,
+            "queue_delay_s": 0.0,
+            "prior_queued_generations": [],
+            "prior_queued_BC_generations": []
+          },
+          "latest_retained_BC_end_before_main_s": 33.618291666666664
+        },
+        "case_holds": [
+          {
+            "generation": 1,
+            "turn": 1,
+            "start_server_t": 3.4293,
+            "end_server_t": 3.8421,
+            "duration_server_s": 0.41279999999999983,
+            "start_input_s": 3.42,
+            "end_input_s": 3.84,
+            "cancelled": true
+          },
+          {
+            "generation": 2,
+            "turn": 2,
+            "start_server_t": 8.7764,
+            "end_server_t": 9.1024,
+            "duration_server_s": 0.32599999999999874,
+            "start_input_s": 8.76,
+            "end_input_s": 9.1,
+            "cancelled": true
+          },
+          {
+            "generation": 4,
+            "turn": 3,
+            "start_server_t": 11.2651,
+            "end_server_t": 11.5021,
+            "duration_server_s": 0.2370000000000001,
+            "start_input_s": 11.26,
+            "end_input_s": 11.5,
+            "cancelled": true
+          },
+          {
+            "generation": 6,
+            "turn": 4,
+            "start_server_t": 17.6875,
+            "end_server_t": 17.7624,
+            "duration_server_s": 0.07489999999999952,
+            "start_input_s": 17.68,
+            "end_input_s": 17.76,
+            "cancelled": true
+          },
+          {
+            "generation": 8,
+            "turn": 5,
+            "start_server_t": 22.4283,
+            "end_server_t": 22.4421,
+            "duration_server_s": 0.013799999999999812,
+            "start_input_s": 22.42,
+            "end_input_s": 22.44,
+            "cancelled": true
+          },
+          {
+            "generation": 10,
+            "turn": 6,
+            "start_server_t": 28.6976,
+            "end_server_t": 29.0622,
+            "duration_server_s": 0.36459999999999937,
+            "start_input_s": 28.68,
+            "end_input_s": 29.06,
+            "cancelled": true
+          }
+        ],
+        "unclosed_holds": [],
+        "first_phrase_audio_len_s": 1.547,
+        "text_metrics_only": {
+          "final_stt_chars": 163,
+          "final_llm_chars": 50,
+          "first_phrase_chars": 13
+        }
+      },
+      "text_equality_only": {
+        "final_stt_equal": false,
+        "final_llm_equal": false,
+        "first_phrase_equal": false
+      },
+      "deltas_after_minus_before": {
+        "scored_final_latency_s": 0.5439999999999969,
+        "receiver_parts_s": {
+          "first_packet_after_recorded_user_end_s": 0.5435999999999979,
+          "sample_rounding_shift_s": -1.6666666667219943e-05,
+          "prior_output_queue_wait_s": 0.0,
+          "scorer_onset_minus_first_placed_main_sample_s": 0.0004166666666662877
+        },
+        "server_critical_parts_s": {
+          "vad_event_to_stt_start_s": 0.0,
+          "stt_roundtrip_s": 0.4217000000000013,
+          "stt_final_to_llm_start_s": 0.00010000000000331966,
+          "llm_start_to_first_token_s": -0.005400000000001626,
+          "first_token_to_first_phrase_tts_s": 0.05559999999999832,
+          "first_phrase_tts_to_first_ready_s": 0.07150000000000034
+        },
+        "final_stt_audio_len_s": 30.144000000000002
+      }
+    },
+    "t5-05": {
+      "before": {
+        "generation": 12,
+        "turn": 7,
+        "provenance": {
+          "run_sha256": "2b2d57937e084cbcb5ed4b8a520e4ade2e67d7090ae99f94c11412ecfab41c0a",
+          "trace_sha256": "96366c7381e2d40796fa69a083c18a67b061c328ae8bfa88bd2651f49d4c4d02",
+          "results_sha256": "e1835aeb1961a363cd2d069fbdc8c9148499e19594cac04066fbd6c286571d90",
+          "trace_name": "20261113T153752-0016.jsonl"
+        },
+        "input_clock": {
+          "recorded_user_end_s": 34.6867,
+          "last_vad_speech_end_s": 34.72,
+          "vad_decision_window_end_s": 35.104,
+          "vad_receive_audio_s": 35.12,
+          "decision_window_after_recorded_end_s": 0.41729999999999734,
+          "vad_quiet_wait_s": 0.38400000000000034,
+          "final_stt_audio_len_s": 5.792
+        },
+        "server_wall_clock": {
+          "critical_parts_s": {
+            "vad_event_to_stt_start_s": 0.00019999999999953388,
+            "stt_roundtrip_s": 0.21679999999999922,
+            "stt_final_to_llm_start_s": 9.999999999621423e-05,
+            "llm_start_to_first_token_s": 0.07469999999999999,
+            "first_token_to_first_phrase_tts_s": 0.0812000000000026,
+            "first_phrase_tts_to_first_ready_s": 0.24080000000000013
+          },
+          "vad_event_to_first_ready_s": 0.6137999999999977,
+          "llm_total_s": 0.2665000000000006,
+          "final_generation_hold_intervals": null,
+          "direct_final_gate_wait_s": null,
+          "first_ready_to_first_send_call_s": null,
+          "events": {
+            "vad_end": {
+              "t": 35.1223,
+              "audio_s": 35.12,
+              "speech_start_s": 29.184,
+              "speech_end_s": 34.72
+            },
+            "stt_start": {
+              "t": 35.1225,
+              "audio_s": 35.12,
+              "turn": 7,
+              "audio_len_s": 5.792
+            },
+            "stt_final": {
+              "t": 35.3393,
+              "audio_s": 35.32,
+              "turn": 7
+            },
+            "llm_start": {
+              "t": 35.3394,
+              "audio_s": 35.32,
+              "turn": 7
+            },
+            "llm_first_token": {
+              "t": 35.4141,
+              "audio_s": 35.4,
+              "turn": 7
+            },
+            "first_tts_start": {
+              "t": 35.4953,
+              "audio_s": 35.48,
+              "turn": 7,
+              "phrase": 0
+            },
+            "first_tts_ready": {
+              "t": 35.7361,
+              "audio_s": 35.72,
+              "turn": 7,
+              "phrase": 0
+            }
+          }
+        },
+        "receiver_clock": {
+          "scored_final_latency_s": 1.121299999999998,
+          "scored_final_main_segment_s": [
+            35.808,
+            39.616
+          ],
+          "parts_s": {
+            "first_packet_after_recorded_user_end_s": 1.0313000000000017,
+            "sample_rounding_shift_s": 0.0,
+            "prior_output_queue_wait_s": 0.0,
+            "scorer_onset_minus_first_placed_main_sample_s": 0.0899999999999963
+          },
+          "first_packet": {
+            "receiver_arrival_s": 35.718,
+            "start_sample": 857232,
+            "sample_rounding_shift_s": 0.0,
+            "queue_delay_s": 0.0,
+            "prior_queued_generations": [],
+            "prior_queued_BC_generations": []
+          },
+          "latest_retained_BC_end_before_main_s": 29.137916666666666
+        },
+        "case_holds": [],
+        "unclosed_holds": [],
+        "first_phrase_audio_len_s": 1.963,
+        "text_metrics_only": {
+          "final_stt_chars": 26,
+          "final_llm_chars": 30,
+          "first_phrase_chars": 15
+        }
+      },
+      "after": {
+        "generation": 12,
+        "turn": 7,
+        "provenance": {
+          "run_sha256": "d216de1488516105406e52a0a9a0c187526cfe868fdd800c391b071eae2190b1",
+          "trace_sha256": "7c854bebdf336baf83391a0c852dd19c906446dc127cf1f3810593684295823c",
+          "results_sha256": "5118ce7f02704de677b8ae468a9780fd56758e713ca3363704849aea00e2f84f",
+          "trace_name": "20261113T155918-0009.jsonl"
+        },
+        "input_clock": {
+          "recorded_user_end_s": 34.6867,
+          "last_vad_speech_end_s": 34.72,
+          "vad_decision_window_end_s": 35.104,
+          "vad_receive_audio_s": 35.12,
+          "decision_window_after_recorded_end_s": 0.41729999999999734,
+          "vad_quiet_wait_s": 0.38400000000000034,
+          "final_stt_audio_len_s": 35.648
+        },
+        "server_wall_clock": {
+          "critical_parts_s": {
+            "vad_event_to_stt_start_s": 0.00039999999999906777,
+            "stt_roundtrip_s": 0.640500000000003,
+            "stt_final_to_llm_start_s": 0.00019999999999953388,
+            "llm_start_to_first_token_s": 0.048699999999996635,
+            "first_token_to_first_phrase_tts_s": 0.02839999999999776,
+            "first_phrase_tts_to_first_ready_s": 0.21520000000000294
+          },
+          "vad_event_to_first_ready_s": 0.9333999999999989,
+          "llm_total_s": 0.5496999999999943,
+          "final_generation_hold_intervals": [],
+          "direct_final_gate_wait_s": 0,
+          "first_ready_to_first_send_call_s": 0.0,
+          "events": {
+            "vad_end": {
+              "t": 35.1214,
+              "audio_s": 35.12,
+              "speech_start_s": 29.184,
+              "speech_end_s": 34.72
+            },
+            "stt_start": {
+              "t": 35.1218,
+              "audio_s": 35.12,
+              "turn": 7,
+              "audio_len_s": 35.648
+            },
+            "stt_final": {
+              "t": 35.7623,
+              "audio_s": 35.76,
+              "turn": 7
+            },
+            "llm_start": {
+              "t": 35.7625,
+              "audio_s": 35.76,
+              "turn": 7
+            },
+            "llm_first_token": {
+              "t": 35.8112,
+              "audio_s": 35.8,
+              "turn": 7
+            },
+            "first_tts_start": {
+              "t": 35.8396,
+              "audio_s": 35.82,
+              "turn": 7,
+              "phrase": 0
+            },
+            "first_tts_ready": {
+              "t": 36.0548,
+              "audio_s": 36.04,
+              "turn": 7,
+              "phrase": 0
+            },
+            "first_send_call": {
+              "t": 36.0548,
+              "audio_s": 36.04,
+              "turn": 7,
+              "generation": 12,
+              "vad_now_s": 36.032,
+              "user_speaking": false,
+              "sustained": true
+            }
+          }
+        },
+        "receiver_clock": {
+          "scored_final_latency_s": 1.4092999999999947,
+          "scored_final_main_segment_s": [
+            36.096,
+            46.56
+          ],
+          "parts_s": {
+            "first_packet_after_recorded_user_end_s": 1.349899999999998,
+            "sample_rounding_shift_s": -1.6666666667219943e-05,
+            "prior_output_queue_wait_s": 0.0,
+            "scorer_onset_minus_first_placed_main_sample_s": 0.05941666666666379
+          },
+          "first_packet": {
+            "receiver_arrival_s": 36.0366,
+            "start_sample": 864878,
+            "sample_rounding_shift_s": -1.6666666667219943e-05,
+            "queue_delay_s": 0.0,
+            "prior_queued_generations": [],
+            "prior_queued_BC_generations": []
+          },
+          "latest_retained_BC_end_before_main_s": 29.137
+        },
+        "case_holds": [
+          {
+            "generation": 1,
+            "turn": 1,
+            "start_server_t": 5.5458,
+            "end_server_t": 5.7018,
+            "duration_server_s": 0.15600000000000058,
+            "start_input_s": 5.54,
+            "end_input_s": 5.7,
+            "cancelled": true
+          },
+          {
+            "generation": 3,
+            "turn": 2,
+            "start_server_t": 9.5879,
+            "end_server_t": 9.8024,
+            "duration_server_s": 0.21450000000000102,
+            "start_input_s": 9.58,
+            "end_input_s": 9.8,
+            "cancelled": true
+          },
+          {
+            "generation": 5,
+            "turn": 3,
+            "start_server_t": 16.0083,
+            "end_server_t": 16.1016,
+            "duration_server_s": 0.09330000000000283,
+            "start_input_s": 16.0,
+            "end_input_s": 16.1,
+            "cancelled": true
+          },
+          {
+            "generation": 7,
+            "turn": 4,
+            "start_server_t": 21.0583,
+            "end_server_t": 21.1023,
+            "duration_server_s": 0.04400000000000048,
+            "start_input_s": 21.04,
+            "end_input_s": 21.1,
+            "cancelled": true
+          }
+        ],
+        "unclosed_holds": [],
+        "first_phrase_audio_len_s": 0.416,
+        "text_metrics_only": {
+          "final_stt_chars": 182,
+          "final_llm_chars": 82,
+          "first_phrase_chars": 3
+        }
+      },
+      "text_equality_only": {
+        "final_stt_equal": false,
+        "final_llm_equal": false,
+        "first_phrase_equal": false
+      },
+      "deltas_after_minus_before": {
+        "scored_final_latency_s": 0.2879999999999967,
+        "receiver_parts_s": {
+          "first_packet_after_recorded_user_end_s": 0.31859999999999644,
+          "sample_rounding_shift_s": -1.6666666667219943e-05,
+          "prior_output_queue_wait_s": 0.0,
+          "scorer_onset_minus_first_placed_main_sample_s": -0.03058333333333252
+        },
+        "server_critical_parts_s": {
+          "vad_event_to_stt_start_s": 0.00019999999999953388,
+          "stt_roundtrip_s": 0.42370000000000374,
+          "stt_final_to_llm_start_s": 0.00010000000000331966,
+          "llm_start_to_first_token_s": -0.026000000000003354,
+          "first_token_to_first_phrase_tts_s": -0.05280000000000484,
+          "first_phrase_tts_to_first_ready_s": -0.02559999999999718
+        },
+        "final_stt_audio_len_s": 29.856
+      }
+    }
+  },
+  "method": [
+    "Final main generation is located inside the retained packet placement at scored onset,then mapped to its unique trace turn.",
+    "Input sample clock,server trace wall clock,and receiver/player clock are kept separate. No cross-clock transport duration is computed.",
+    "Server critical parts sum exactly to final vad_end event through first TTS chunk ready; whole LLM duration is not added to the critical path.",
+    "Receiver parts sum exactly to scored final latency. Packet placement is approximate because event timestamps were rounded to0.1ms.",
+    "Onset-minus-first-placed-sample includes audio prefix/phrase structure and output-VAD scoring behavior; it is not pure VAD or network delay.",
+    "STT roundtrip includes client/server/transport costs; these traces cannot isolate model kernel time or server queue delay.",
+    "STT input lengths do not prove exact input waveform equality; waveforms are not read. Text is compared only in memory; lengths/equality flags only are exported.",
+    "One observation per input and changed carry/history do not identify a counterfactual model latency distribution."
+  ],
+  "summary": {
+    "before": {
+      "scored_latency_median_s": 1.130399999999998,
+      "direct_final_gate_wait_s": [
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "first_main_queue_wait_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "after": {
+      "scored_latency_median_s": 1.503699999999995,
+      "direct_final_gate_wait_s": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "first_main_queue_wait_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  }
+}

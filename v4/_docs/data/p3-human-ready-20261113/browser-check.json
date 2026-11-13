@@ -1,0 +1,36 @@
+{
+  "created_at": "2026-11-13T16:54:59.279043+09:00",
+  "browser": "Orca embedded Chromium",
+  "url": "http://127.0.0.1:8767/",
+  "main_js_sha256": "d686b7f0fc3cddaa3a8850dec9bbcfbb8b4ca142e65b53d8ad4b646d08c6672f",
+  "physical_microphone": false,
+  "real_voice_or_speaker_validation": false,
+  "cases": [
+    {
+      "kind": "synthetic permission denial with real AudioContext and AudioWorklet module",
+      "capture_calls": 1,
+      "context_states": [
+        "closed",
+        "closed"
+      ],
+      "button": "始める",
+      "button_disabled": false,
+      "state": "マイクの使用が許可されていません。ブラウザの設定を確認してください"
+    },
+    {
+      "kind": "synthetic silent MediaStream with real APIs; deliberately absent WebSocket on static preview",
+      "capture_calls": 1,
+      "stopped_tracks": 1,
+      "track_state": "ended",
+      "context_states": [
+        "closed",
+        "closed",
+        "closed"
+      ],
+      "button": "始める",
+      "button_disabled": false,
+      "state": "接続できませんでした。もう一度「始める」を押してください"
+    }
+  ],
+  "restored": "navigated to guide; test overrides removed"
+}

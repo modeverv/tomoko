@@ -1,0 +1,354 @@
+{
+  "definitions": "1",
+  "source_results_sha256": "d1cad6f3717fb8759ed7d7c38aa19d1868ecc421c90eceabb3b41f1355679145",
+  "scoring": "Local timing only; no content judging",
+  "percentile_method": "bench.report._pct: sorted non-null values at min(n-1, round((n-1)*p)), using Python round; P50 for n=10 is the lower middle observation",
+  "runs": [
+    {
+      "id": "t1-04",
+      "axis": "T1",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          4.064,
+          4.32
+        ],
+        [
+          6.336,
+          7.968
+        ],
+        [
+          8.448,
+          13.248
+        ]
+      ],
+      "timing": {
+        "axis": "T1",
+        "silent": false,
+        "no_main": false,
+        "responded": true,
+        "early": false,
+        "early_first": false,
+        "talked_over": false,
+        "latency": 0.9713000000000003,
+        "double_answer": false,
+        "shorts_during_user": 1
+      }
+    },
+    {
+      "id": "t2-06",
+      "axis": "T2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          8.736,
+          8.928
+        ],
+        [
+          11.008,
+          17.408
+        ]
+      ],
+      "timing": {
+        "axis": "T2",
+        "silent": false,
+        "no_main": false,
+        "interrupted": false,
+        "responded": true
+      }
+    },
+    {
+      "id": "t2-07",
+      "axis": "T2",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          9.248,
+          18.656
+        ]
+      ],
+      "timing": {
+        "axis": "T2",
+        "silent": false,
+        "no_main": false,
+        "interrupted": false,
+        "responded": true
+      }
+    },
+    {
+      "id": "t3-03",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.664,
+          5.888
+        ],
+        [
+          6.336,
+          9.376
+        ],
+        [
+          10.432,
+          12.768
+        ],
+        [
+          13.216,
+          20.128
+        ]
+      ],
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": true
+      }
+    },
+    {
+      "id": "t3-06",
+      "axis": "T3",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.824,
+          8.832
+        ],
+        [
+          9.92,
+          19.776
+        ]
+      ],
+      "timing": {
+        "axis": "T3",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "interrupted": true
+      }
+    },
+    {
+      "id": "t4-01",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.632,
+          8.192
+        ],
+        [
+          13.696,
+          20.896
+        ]
+      ],
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 1.0520000000000005,
+        "responded": true,
+        "latency": 1.2175999999999991
+      }
+    },
+    {
+      "id": "t4-07",
+      "axis": "T4",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          5.568,
+          8.416
+        ],
+        [
+          11.744,
+          15.648
+        ],
+        [
+          16.096,
+          20.224
+        ]
+      ],
+      "timing": {
+        "axis": "T4",
+        "silent": false,
+        "no_main": false,
+        "precondition": true,
+        "stopped": true,
+        "stop_latency": 1.3360000000000003,
+        "responded": true,
+        "latency": 0.9679000000000002
+      }
+    },
+    {
+      "id": "t5-03",
+      "axis": "T5",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          31.776,
+          31.968
+        ],
+        [
+          32.8,
+          42.336
+        ],
+        [
+          42.752,
+          43.968
+        ]
+      ],
+      "timing": {
+        "axis": "T5",
+        "silent": false,
+        "no_main": false,
+        "count": 0,
+        "per_minute": 0.0,
+        "in_gap": 0,
+        "overlapped": 0,
+        "bursts": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.4503999999999984
+      }
+    },
+    {
+      "id": "t5-04",
+      "axis": "T5",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          34.592,
+          37.952
+        ],
+        [
+          38.464,
+          47.136
+        ]
+      ],
+      "timing": {
+        "axis": "T5",
+        "silent": false,
+        "no_main": false,
+        "count": 0,
+        "per_minute": 0.0,
+        "in_gap": 0,
+        "overlapped": 0,
+        "bursts": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.623899999999999
+      }
+    },
+    {
+      "id": "t5-05",
+      "axis": "T5",
+      "error": null,
+      "precondition_failed": false,
+      "stale_chunks": 0,
+      "segments": [
+        [
+          36.224,
+          43.104
+        ]
+      ],
+      "timing": {
+        "axis": "T5",
+        "silent": false,
+        "no_main": false,
+        "count": 0,
+        "per_minute": 0.0,
+        "in_gap": 0,
+        "overlapped": 0,
+        "bursts": 0,
+        "main_interruptions": 0,
+        "final_responded": true,
+        "final_latency": 1.5372999999999948
+      }
+    }
+  ],
+  "summary": {
+    "T1": {
+      "n": 1,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "response_rate": 1.0,
+      "early_rate": 0.0,
+      "early_first_rate": 0.0,
+      "talked_over_rate": 0.0,
+      "latency_p50": 0.9713000000000003,
+      "latency_p90": 0.9713000000000003,
+      "double_answers": 0,
+      "shorts_during_user": 1
+    },
+    "T2": {
+      "n": 2,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "interruption_rate": 0.0,
+      "response_rate": 1.0
+    },
+    "T3": {
+      "n": 2,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "valid": 2,
+      "interruption_rate": 1.0
+    },
+    "T4": {
+      "n": 2,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "valid": 2,
+      "stop_rate": 1.0,
+      "stop_latency_p50": 1.0520000000000005,
+      "response_rate": 1.0,
+      "latency_p50": 0.9679000000000002
+    },
+    "T5": {
+      "n": 3,
+      "errors": 0,
+      "silent": 0,
+      "no_main": 0,
+      "precondition_failed": 0,
+      "per_minute": 0.0,
+      "in_gap_share": null,
+      "overlapped_share": null,
+      "bursts": 0,
+      "main_interruptions": 0,
+      "final_response_rate": 1.0,
+      "final_latency_p50": 1.5372999999999948
+    },
+    "R1": {
+      "stale_chunks": 0,
+      "double_answers": 0
+    }
+  }
+}
