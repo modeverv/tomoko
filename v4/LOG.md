@@ -246,3 +246,9 @@
 - 別Claudeの681eca8による同時更新を保存し、詳細報告は_docs/p3-maai-recovery-20261113.mdへ分離した。次の変更は隔離作業ツリーで準備し、元のClaudeセッションは操作していない。
 - 独立Codexが数表276セル、660件のtrace対応、収集時コードSHAを照合してPASS。音声・会話本文は数値成果物に含めない。
 - 次に人間と決めること: 終端判定と中断保留の方針、予測処理の安定性の調査範囲、本人の声での評価。P3は未完了。
+
+
+### 共通記録の保存確認
+- Drive llm/eventsへ新規orgイベント51ab16cb-daef-493d-9fbb-f2c06d3c1cbdを作成（AUTHOR Codex）。再取得して本文の完全一致とMIME text/plainを確認した。
+- 保存先: https://drive.google.com/file/d/1ngtjcTmbiWe4WExUuAcSiiL63lw5lzHW/view
+- PLAN.htmlの追記をOrcaブラウザで表示し、本文とリンクを確認。既存のv3未コミット差分は対象外のまま。
