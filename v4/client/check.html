@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tomoko — 会話の確認</title>
+<style>
+  :root { color-scheme: light dark; --line: #8885; --accent: #337e84; }
+  * { box-sizing: border-box; }
+  body { max-width: 54rem; margin: 2.5rem auto; padding: 0 1.2rem 3rem; font: 16px/1.8 system-ui, sans-serif; }
+  h1 { font-size: 1.9rem; line-height: 1.35; margin: .4rem 0; }
+  h2 { margin-top: 2rem; font-size: 1.2rem; }
+  .meta { font-size: .9rem; opacity: .7; }
+  .open { display: inline-block; padding: .6rem 1.3rem; background: var(--accent); color: white; border-radius: .4rem; text-decoration: none; }
+  ol { padding-left: 1.5rem; }
+  li { padding: .3rem 0; }
+  article { border-top: 1px solid var(--line); padding: 1rem 0; }
+  article h2 { margin: 0 0 .4rem; }
+  article p { margin: .45rem 0; }
+  blockquote { margin: .5rem 0; padding: .5rem 1rem; border-left: 3px solid var(--accent); background: #8881; }
+  .observe { font-size: .95rem; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 1rem; border: 1px solid var(--line); border-radius: .4rem; font: inherit; }
+</style>
+</head>
+<body>
+<main>
+<p class="meta">Tomoko v4 · ご本人による確認 · 約10分</p>
+<h1>話す間と、相づちを確かめる</h1>
+<p>合成音声での検証の次に、普段の話し方での間合いを確認します。声質は確認済みなので、今回は待ち時間・話の遮り・相づちの頻度を見てください。</p>
+<ol>
+  <li>ヘッドセットを着け、OSまたはブラウザの設定で、使うマイクと出力を選びます。</li>
+  <li>下のリンクで会話画面を開き、「始める」を押します。マイクの許可を求められたら許可します。</li>
+  <li>次の5項目を、急がず一度ずつ試します。終わったら会話画面の「止める」を押します。</li>
+</ol>
+<p><a class="open" href="/" target="_blank" rel="noopener">会話画面を開く ↗</a></p>
+
+<article>
+<h2>1. 普通の質問</h2>
+<blockquote>散歩を習慣にするコツを教えて。</blockquote>
+<p class="observe">言い終わってから答え始めるまで、待たされる感じがあるか。返事の最初が欠けたり、不自然に切れたりしないか。</p>
+</article>
+<article>
+<h2>2. 少し間を空けて話を続ける</h2>
+<blockquote>今日、散歩に出ようと思って……<br>（普段の言いよどみくらい間を空ける）<br>でも雨が降りそうだから、家でできる運動を教えて。</blockquote>
+<p class="observe">続きを話している最中に本回答が割り込まないか。最後の依頼まで聞いてから答えるか。短い「うん」と本回答は分けて見てください。</p>
+</article>
+<article>
+<h2>3. Tomokoの説明に相づちを打つ</h2>
+<blockquote>旅行の荷物を減らす工夫を、少し詳しく教えて。</blockquote>
+<p>説明中に、いつもの調子で「うん」、別の箇所で「そうなんですね」と返してください。</p>
+<p class="observe">Tomokoは説明を続けるか、止まってしまうか。長めの相づちを割り込みと区別する点は、まだ確認が必要です。</p>
+</article>
+<article>
+<h2>4. はっきり話を変える</h2>
+<blockquote>待って。旅行の話はやめて、夕食の献立を教えて。</blockquote>
+<p>Tomokoの説明中に言います。</p>
+<p class="observe">声を止めて依頼を聞くか。前の説明へ戻らず、新しい話題へ移るか。相づちを待つ設定によって、こちらを無視する感じになっていないか。</p>
+</article>
+<article>
+<h2>5. 自由に1〜2分話す</h2>
+<p>今日の出来事や、考えていることを普段の速さで話してください。</p>
+<p class="observe">相づちは「少ない・ちょうどよい・多い」のどれか。途中の沈黙で急かされないか。話し終わった後の待ち時間は受け入れられるか。</p>
+</article>
+
+<h2>このチャットへ伝えること</h2>
+<p>下の形で短く返してください。問題が起きたときのおおよその時刻と、何番の確認かがあると、手元のログと照合できます。</p>
+<pre>1. 普通の返事：問題なし／気になる点
+2. 話の続き：最後まで聞いた／途中で本回答が出た
+3. 自分の相づち：説明を続けた／止まった（どの言葉か）
+4. 話題変更：止まって切り替わった／気になる点
+5. Tomokoの相づち：少ない／ちょうどよい／多い
+   長く話した後の待ち時間：許容できる／長い
+試した時刻：</pre>
+<p class="meta">このページを開いただけではマイクを使いません。「会話画面」の操作で開始・終了します。</p>
+</main>
+</body>
+</html>

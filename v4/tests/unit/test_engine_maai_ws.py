@@ -110,7 +110,8 @@ async def test_connection_attaches_both_sensors_with_matching_clock_channels_and
         transcribe=object(), synthesize=object(), synthesize_stream=None,
         backchannel_clip=None, http=object(),
     )
-    session = SimpleNamespace(on_maai=Mock(), attach_maai=Mock(), close=AsyncMock())
+    session = SimpleNamespace(on_maai=Mock(), on_maai_observation=Mock(),
+                              attach_maai=Mock(), close=AsyncMock())
     sensors = [object(), object()]
     sensor = Mock(side_effect=sensors)
     composite = Mock(return_value=object())
@@ -136,6 +137,8 @@ async def test_connection_attaches_both_sensors_with_matching_clock_channels_and
             "user_channel": 0 if enabled else cfg.maai_user_channel,
             "on_frame": session.on_maai,
             "loop": asyncio.get_running_loop(),
+            "source": "cpc" if shared is vap else "mimi",
+            "on_observation": session.on_maai_observation,
         }
     if enabled and not cpc_only:
         composite.assert_called_once_with(*sensors)

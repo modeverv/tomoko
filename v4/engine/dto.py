@@ -24,6 +24,65 @@ class MaaiFrame:
     p_bc_det_user: float | None = None
     vad_user: float | None = None
     vad_tomoko: float | None = None
+    vap_at_s: float | None = None
+    bc_at_s: float | None = None
+    bc_det_at_s: float | None = None
+
+    @staticmethod
+    def _fields_for(signal: str) -> tuple[str, ...]:
+        if signal == "vap":
+            return "p_now", "p_future", "vad_user", "vad_tomoko"
+        if signal == "bc":
+            return ("p_bc",)
+        if signal == "bc_det":
+            return ("p_bc_det_user",)
+        raise ValueError(f"unknown MaAI signal: {signal}")
+
+    def time_for(self, signal: str) -> float | None:
+        """信号が欠測ならNone。旧DTOの時刻は at_s を引き継ぐ。"""
+        if all(getattr(self, field) is None for field in self._fields_for(signal)):
+            return None
+        value = getattr(self, f"{signal}_at_s")
+        return self.at_s if value is None else value
+
+    def fresh_for(self, signal: str, *, now_s: float, stale_s: float) -> MaaiFrame | None:
+        """必要な信号の時刻で選び、他の古い信号も判断へ流さない。"""
+        at_s = self.time_for(signal)
+        if at_s is None or now_s - at_s > stale_s:
+            return None
+        changes: dict = {"at_s": at_s}
+        for group in ("vap", "bc", "bc_det"):
+            observed = self.time_for(group)
+            if observed is None or now_s - observed > stale_s:
+                changes.update(dict.fromkeys(self._fields_for(group)))
+            elif observed != at_s:
+                # at_sの選び直しで、旧DTOから残した信号の時刻を更新しない。
+                changes[f"{group}_at_s"] = observed
+        return dataclasses.replace(self, **changes)
+
+
+@dataclass(frozen=True, slots=True)
+class MaaiObservation:
+    """音声・文字を含まない観測。perf_sは全て同じ単調時計、at_sは入力の時計。"""
+
+    kind: str
+    source: str
+    at_s: float
+    enqueued_perf_s: float | None = None
+    dequeued_perf_s: float | None = None
+    process_started_perf_s: float | None = None
+    process_finished_perf_s: float | None = None
+    reset_started_perf_s: float | None = None
+    reset_finished_perf_s: float | None = None
+    worker_started_perf_s: float | None = None
+    model_ready_perf_s: float | None = None
+    posted_perf_s: float | None = None
+    dispatched_perf_s: float | None = None
+    pending_frames: int = 0
+    dropped_frames: int = 0
+    dropped_total: int = 0
+    output: bool = False
+    latest_at_s: float | None = None
 
 
 @dataclass(frozen=True)

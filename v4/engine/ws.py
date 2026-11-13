@@ -154,11 +154,13 @@ async def ws(socket: WebSocket) -> None:
         maai = MaaiSensor(
             models.maai.lease, frame_samples=models.maai.frame_samples,
             user_channel=0 if cfg.maai_vap_cpc else cfg.maai_user_channel,
-            on_frame=session.on_maai, loop=asyncio.get_running_loop())
+            on_frame=session.on_maai, loop=asyncio.get_running_loop(), source="mimi",
+            on_observation=session.on_maai_observation)
     if models.maai_vap is not None:
         vap = MaaiSensor(
             models.maai_vap.lease, frame_samples=1600, user_channel=0,
-            on_frame=session.on_maai, loop=asyncio.get_running_loop())
+            on_frame=session.on_maai, loop=asyncio.get_running_loop(), source="cpc",
+            on_observation=session.on_maai_observation)
         maai = CompositeMaai(maai, vap) if maai is not None else vap
     if maai is not None:
         session.attach_maai(maai)

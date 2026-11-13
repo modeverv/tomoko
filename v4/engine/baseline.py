@@ -26,10 +26,12 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import aclosing
+from dataclasses import asdict
+from time import perf_counter
 
 import numpy as np
 
-from engine.dto import IN_SR, OUT_SR, EngineConfig, MaaiFrame, Utterance
+from engine.dto import IN_SR, OUT_SR, EngineConfig, MaaiFrame, MaaiObservation, Utterance
 from engine.front_llm import PhraseSplitter
 from engine.sensors.vad import VadSensor
 from engine.trace import Trace
@@ -141,6 +143,10 @@ class BaselineSession:
         self._trace.event("maai", **_frame_fields(frame))
         self._maybe_backchannel(frame)
 
+    def on_maai_observation(self, observation: MaaiObservation) -> None:
+        """ワーカーの時計は入力の時計やTraceの相対時計へ置き換えず記録する。"""
+        self._trace.event("maai_worker", **asdict(observation))
+
     def on_playback(self, report: dict) -> None:
         self._trace.event("playback", **{k: report.get(k) for k in ("generation", "played_s")})
 
@@ -179,11 +185,17 @@ class BaselineSession:
                 asyncio.get_running_loop().run_in_executor(None, _close_quietly, maai)
             return None
 
-    def _fresh_frame(self, now: float) -> MaaiFrame | None:
+    def _fresh_frame(self, now: float, signal: str = "vap") -> MaaiFrame | None:
         frame = None if self._maai is None else self._maai_call(self._maai.latest)
-        if frame is None or now - frame.at_s > self._cfg.maai_stale_s:
-            return None
-        return frame
+        read_at = perf_counter()
+        fresh = None if frame is None else frame.fresh_for(
+            signal, now_s=now, stale_s=self._cfg.maai_stale_s)
+        ages = {name: None if frame is None or frame.time_for(name) is None
+                else now - frame.time_for(name) for name in ("vap", "bc", "bc_det")}
+        self._trace.event("maai_latest_read", signal=signal, now_s=now, read_perf_s=read_at,
+                          ages_s=ages, raw=None if frame is None else asdict(frame),
+                          used=None if fresh is None else asdict(fresh))
+        return fresh
 
     def _decide_end(self, silence_s: float) -> bool | None:
         """VAD から、無音の途中で聞かれる。True は言い終わり、False は待つ、None は既定に従う。"""
@@ -203,7 +215,7 @@ class BaselineSession:
         """声を出している最中のユーザーの声が、相づちらしいか（bc_det）。らしければ、その値を返す。"""
         if not (self._cfg.barge_guard and self._speech_started_while_playing and self._playing()):
             return None
-        frame = self._fresh_frame(now)
+        frame = self._fresh_frame(now, "bc_det")
         if (frame is not None and frame.p_bc_det_user is not None
                 and frame.p_bc_det_user >= self._cfg.guard_bc_det):
             return frame.p_bc_det_user
@@ -214,22 +226,24 @@ class BaselineSession:
         if not cfg.backchannel or self._bc_clip is None or self._maai is None:
             return
         now = self._vad.now_s
+        bc_at = None if frame is None else frame.time_for("bc")
         if (frame is not None and frame.p_bc is not None and frame.p_bc >= cfg.bc_threshold
-                and frame.at_s > self._bc_armed_frame and now - frame.at_s <= cfg.maai_stale_s):
+                and bc_at > self._bc_armed_frame and now - bc_at <= cfg.maai_stale_s):
             # p_bc は、相づちを打つべき時刻より先に上がる。少しの間、ユーザーの短い無音を待つ
-            self._bc_armed_until, self._bc_armed_frame = frame.at_s + cfg.bc_arm_s, frame.at_s
+            self._bc_armed_until, self._bc_armed_frame = bc_at + cfg.bc_arm_s, bc_at
         vad = self._vad
-        latest = self._fresh_frame(now)  # 最後の判断は、届いた順ではなく、いちばん新しい予測で
-        if (latest is None or now > self._bc_armed_until or not vad.speaking
+        if (now > self._bc_armed_until or not vad.speaking
                 or vad.quiet_s + 1e-9 < cfg.bc_quiet_s
-                # 無音に入ってからの予測を待つ（言い終わりの直後に、無音の前の予測で打たない）
-                or latest.at_s + 1e-9 < now - vad.quiet_s
                 or now - vad.start_s < cfg.bc_min_turn_s
                 or now - self._bc_last < cfg.bc_cooldown_s
                 or asyncio.get_running_loop().time() < self._output_end
                 or (self._bc_task is not None and not self._bc_task.done())
                 or (self._answering is not None and not self._answering.done())):
             return
+        # 判断をする場面でだけlatestを記録し、毎マイク断片で観測JSONを増やさない。
+        latest = self._fresh_frame(now, "bc")
+        if latest is None or latest.at_s + 1e-9 < now - vad.quiet_s:
+            return  # 無音に入ってからのBC予測を待つ。
         if latest.p_now is not None and latest.p_now[1] >= cfg.bc_max_shift_p:
             return  # 言い終わりらしい。相づちではなく答える場面
         self._bc_last, self._bc_armed_until = now, -1.0
@@ -459,6 +473,10 @@ def _frame_fields(frame: MaaiFrame) -> dict:
         value = getattr(frame, name)
         if value is not None:
             out[name] = round(value, 3)
+    for name in ("vap_at_s", "bc_at_s", "bc_det_at_s"):
+        value = getattr(frame, name)
+        if value is not None:
+            out[name] = round(value, 6)
     return out
 
 

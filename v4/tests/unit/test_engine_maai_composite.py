@@ -36,11 +36,13 @@ def test_latest_uses_primary_backchannel_cpc_vap_and_older_time(primary_at, vap_
     assert combined.latest() == MaaiFrame(
         at_s=min(primary_at, vap_at), p_bc=0.7, p_bc_det_user=0.8,
         p_now=(0.3, 0.7), p_future=(0.4, 0.6), vad_user=0.9, vad_tomoko=0.1,
+        vap_at_s=vap_at, bc_at_s=primary_at, bc_det_at_s=primary_at,
     )
     # キャッシュせず、2 つの最新の予測を取り直す。
     vap.latest.return_value = MaaiFrame(at_s=1.2, p_now=(0.2, 0.8))
     assert combined.latest() == MaaiFrame(
         at_s=primary_at, p_bc=0.7, p_bc_det_user=0.8, p_now=(0.2, 0.8),
+        vap_at_s=1.2, bc_at_s=primary_at, bc_det_at_s=primary_at,
     )
 
 

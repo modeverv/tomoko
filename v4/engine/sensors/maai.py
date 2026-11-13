@@ -7,14 +7,17 @@ import logging
 import threading
 from collections import deque
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from math import isfinite
 from queue import Empty, Queue
+from time import perf_counter
 from typing import Any, Protocol
 
 import numpy as np
 
-from engine.dto import IN_SR, MaaiFrame
+from engine.dto import IN_SR, MaaiFrame, MaaiObservation
 from engine.sensors._maai_audio import _TomokoAudio
+from engine.sensors._maai_worker import run_worker
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +69,9 @@ class MaaiSensor:
         user_channel: int = 0, max_pending_frames: int = 4,
         on_frame: Callable[[MaaiFrame], None] | None = None,
         loop: asyncio.AbstractEventLoop | None = None,
+        source: str = "maai",
+        on_observation: Callable[[MaaiObservation], None] | None = None,
+        clock: Callable[[], float] = perf_counter,
     ) -> None:
         if not isinstance(frame_samples, int) or frame_samples <= 0:
             raise ValueError("frame_samples must be positive")
@@ -76,9 +82,11 @@ class MaaiSensor:
         self._factory, self._frame_samples = model_factory, frame_samples
         self._user_channel, self._max_pending = user_channel, max_pending_frames
         self._on_frame = on_frame
-        self._loop = asyncio.get_running_loop() if on_frame is not None and loop is None else loop
+        self._on_observation, self._source, self._clock = on_observation, source, clock
+        callbacks = on_frame is not None or on_observation is not None
+        self._loop = asyncio.get_running_loop() if callbacks and loop is None else loop
         self._condition = threading.Condition()
-        self._pending: deque[tuple[int, np.ndarray, np.ndarray]] = deque()
+        self._pending: deque[tuple[int, np.ndarray, np.ndarray, float]] = deque()
         self._rest = np.empty(0, dtype=np.float32)
         self._frame_end = 0
         self._tomoko = _TomokoAudio()
@@ -107,7 +115,7 @@ class MaaiSensor:
                 end = self._frame_end + self._frame_samples
                 mic = audio[offset:offset + self._frame_samples].copy()
                 tomoko = self._tomoko.take(self._frame_end, self._frame_samples)
-                self._pending.append((end, mic, tomoko))
+                self._pending.append((end, mic, tomoko, self._clock()))
                 self._frame_end, offset = end, offset + self._frame_samples
                 if len(self._pending) > self._max_pending:
                     self._pending.popleft()
@@ -115,9 +123,14 @@ class MaaiSensor:
             self._rest = audio[offset:].copy()
             self._dropped_frames += dropped
             total = self._dropped_frames
+            pending = len(self._pending)
+            at_s = self._frame_end / IN_SR
             self._condition.notify()
         if dropped:
             log.warning("maai dropped_frames=%d total_dropped_frames=%d", dropped, total)
+            self._observe(MaaiObservation(
+                kind="drop", source=self._source, at_s=at_s, pending_frames=pending,
+                dropped_frames=dropped, dropped_total=total))
         return dropped
 
     def add_tomoko_audio(self, samples_24k: np.ndarray, at_mic_s: float) -> None:
@@ -135,7 +148,7 @@ class MaaiSensor:
         with self._condition:
             self._check_open()
             self._tomoko.stop(at_mic_s)
-            for end, _, tomoko in self._pending:
+            for end, _, tomoko, _ in self._pending:
                 tomoko[max(0, cut - (end - self._frame_samples)):] = 0
 
     def latest(self) -> MaaiFrame | None:
@@ -184,54 +197,25 @@ class MaaiSensor:
         self._on_frame(frame)
 
     def _run(self) -> None:
-        model = None
-        log.info("maai sensor starting")
+        run_worker(self, _to_frame)
+
+    def _observe(self, observation: MaaiObservation) -> None:
+        if self._on_observation is None:
+            return
+        observation = replace(observation, posted_perf_s=self._clock())
         try:
-            model = self._factory()
-            if getattr(model, "audio_samples_per_frame", self._frame_samples) != self._frame_samples:
-                raise ValueError("sensor frame_samples does not match the model frame rate")
-            previous_end = None
-            while True:
-                with self._condition:
-                    self._condition.wait_for(lambda: self._closed or self._pending)
-                    if self._closed:
-                        break
-                    end, mic, tomoko = self._pending.popleft()
-                if previous_end is not None and end - previous_end != self._frame_samples:
-                    # 欠けた音声の前後を隣接した履歴として encoder / KV に渡さない。
-                    model.reset_runtime_state()
-                    log.warning("maai context reset after input gap at_s=%.3f", end / IN_SR)
-                previous_end = end
-                ch1, ch2 = (mic, tomoko) if self._user_channel == 0 else (tomoko, mic)
-                model.process(ch1, ch2)
-                try:
-                    result = model.result_dict_queue.get_nowait()
-                except Empty:  # Mimi の最初の出力など。次の入力がなければ結果は来ない。
-                    continue
-                frame = _to_frame(result, end / IN_SR, self._user_channel)
-                with self._condition:
-                    if self._closed:
-                        break
-                    self._latest = frame
-                if self._on_frame is not None:
-                    self._loop.call_soon_threadsafe(self._deliver, frame)
-        except Exception as exc:
-            log.exception("maai sensor failed")
-            with self._condition:
-                self._error = exc
-        finally:
-            if model is not None:
-                try:
-                    model.stop(wait=True)
-                except Exception as exc:
-                    log.exception("maai sensor stop failed")
-                    with self._condition:
-                        if self._error is None:
-                            self._error = exc
-            with self._condition:
-                self._closed = True
-                self._pending.clear()
-            log.info("maai sensor stopped")
+            self._loop.call_soon_threadsafe(self._deliver_observation, observation)
+        except Exception:
+            log.exception("maai observation dispatch failed source=%s", self._source)
+
+    def _deliver_observation(self, observation: MaaiObservation) -> None:
+        with self._condition:
+            if self._closed:
+                return
+        try:
+            self._on_observation(replace(observation, dispatched_perf_s=self._clock()))
+        except Exception:
+            log.exception("maai observation callback failed source=%s", self._source)
 
 
 class CompositeMaai:
@@ -261,6 +245,8 @@ class CompositeMaai:
             at_s=min(primary.at_s, vap.at_s), p_bc=primary.p_bc,
             p_bc_det_user=primary.p_bc_det_user, p_now=vap.p_now, p_future=vap.p_future,
             vad_user=vap.vad_user, vad_tomoko=vap.vad_tomoko,
+            vap_at_s=vap.time_for("vap"), bc_at_s=primary.time_for("bc"),
+            bc_det_at_s=primary.time_for("bc_det"),
         )
 
     @property
